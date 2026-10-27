@@ -1,0 +1,19 @@
+{
+  "name": "demo-yarn4",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "dependencies": {
+    "chalk": "^4.1.0",
+    "is-odd": ">=3 <4",
+    "lib": "workspace:^",
+    "my-ms": "npm:ms@2.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  },
+  "optionalDependencies": {
+    "fsevents": "^2.3.3"
+  }
+}

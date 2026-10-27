@@ -1,0 +1,8 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "dependencies": {
+    "is-odd": "catalog:legacy",
+    "is-number": "catalog:"
+  }
+}

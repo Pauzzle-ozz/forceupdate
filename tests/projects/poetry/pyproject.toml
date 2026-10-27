@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "demo-poetry"
+version = "0.1.0"
+description = "Mini-projet Poetry pour les tests de forceupdate"
+authors = ["Pauzzle"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+requests = "^2.31"
+click = { version = "^8.1", optional = true }
+PyYAML = "6.0.2"
+
+[tool.poetry.extras]
+cli = ["click"]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

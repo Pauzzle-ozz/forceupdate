@@ -1,0 +1,5 @@
+# Hors des « members » du workspace : le uv.lock de la racine ne le concerne pas.
+[project]
+name = "demo-script"
+version = "0.1.0"
+dependencies = ["typer"]

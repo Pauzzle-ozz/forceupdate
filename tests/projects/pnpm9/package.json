@@ -1,0 +1,16 @@
+{
+  "name": "demo-pnpm9",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "dependencies": {
+    "chalk": "^4.1.0",
+    "is-odd": ">=3 <4",
+    "my-ms": "npm:ms@2.0.0"
+  },
+  "devDependencies": {
+    "semver": "^6.0.0 || ^7.0.0"
+  },
+  "optionalDependencies": {
+    "fsevents": "^2.3.3"
+  }
+}

@@ -1,0 +1,10 @@
+packages:
+  - packages/*
+
+catalog:
+  is-number: ^7.0.0
+  my-ms: npm:ms@^2.1.0
+
+catalogs:
+  legacy:
+    is-odd: ^2.0.0

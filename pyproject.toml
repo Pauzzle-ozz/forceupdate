@@ -1,0 +1,80 @@
+[project]
+name = "forceupdate"
+version = "0.1.0.dev0"
+description = "Trouve les dépendances à mettre à jour (versions, failles, fins de vie) et fait les mises à jour : en local, ou par pull request sur GitHub, GitLab et Bitbucket."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+authors = [{ name = "Pauzzle" }]
+keywords = [
+    "dependencies",
+    "update",
+    "outdated",
+    "vulnerabilities",
+    "osv",
+    "end-of-life",
+    "pull-request",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Natural Language :: French",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+    "Topic :: Software Development",
+    "Topic :: System :: Software Distribution",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "httpx>=0.28.1",
+    "packaging>=26.3",
+    "platformdirs>=4.13.6",
+    "pyyaml>=6.0.3",
+    "rich>=15.0.0",
+    "typer>=0.27.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/Pauzzle-ozz/forceupdate"
+Repository = "https://github.com/Pauzzle-ozz/forceupdate"
+Issues = "https://github.com/Pauzzle-ozz/forceupdate/issues"
+
+[project.scripts]
+forceupdate = "forceupdate.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "respx>=0.23.1",
+    "ruff>=0.17.3",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/forceupdate"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests"]
+
+[tool.ruff]
+line-length = 100
+extend-exclude = ["reference"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "-p", "pytester"]

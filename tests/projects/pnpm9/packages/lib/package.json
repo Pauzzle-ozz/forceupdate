@@ -1,0 +1,10 @@
+{
+  "name": "lib",
+  "version": "1.0.0",
+  "dependencies": {
+    "is-number": "^7.0.0"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0"
+  }
+}

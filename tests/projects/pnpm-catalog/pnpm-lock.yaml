@@ -1,0 +1,67 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+catalogs:
+  default:
+    is-number:
+      specifier: ^7.0.0
+      version: 7.0.0
+    my-ms:
+      specifier: npm:ms@^2.1.0
+      version: 2.1.3
+  legacy:
+    is-odd:
+      specifier: ^2.0.0
+      version: 2.0.0
+
+importers:
+
+  .:
+    dependencies:
+      is-number:
+        specifier: 'catalog:'
+        version: 7.0.0
+      my-ms:
+        specifier: catalog:default
+        version: ms@2.1.3
+
+  packages/app:
+    dependencies:
+      is-number:
+        specifier: 'catalog:'
+        version: 7.0.0
+      is-odd:
+        specifier: catalog:legacy
+        version: 2.0.0
+
+packages:
+
+  is-number@4.0.0:
+    resolution: {integrity: sha512-rSklcAIlf1OmFdyAqbnWTLVelsQ58uvZ66S/ZyawjWqIviTWCjg2PzVGw8WUA+nNuPTqb4wgA+NszrJ+08LlgQ==}
+    engines: {node: '>=0.10.0'}
+
+  is-number@7.0.0:
+    resolution: {integrity: sha512-41Cifkg6e8TylSpdtTpeLVMqvSBEVzTttHvERD741+pnZ8ANv0004MRL43QKPDlK9cGvNp6NZWZUBlbGXYxxng==}
+    engines: {node: '>=0.12.0'}
+
+  is-odd@2.0.0:
+    resolution: {integrity: sha512-OTiixgpZAT1M4NHgS5IguFp/Vz2VI3U7Goh4/HA1adtwyLtSBrxYlcSYkhpAE07s4fKEcjrFxyvtQBND4vFQyQ==}
+    engines: {node: '>=0.10.0'}
+
+  ms@2.1.3:
+    resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
+
+snapshots:
+
+  is-number@4.0.0: {}
+
+  is-number@7.0.0: {}
+
+  is-odd@2.0.0:
+    dependencies:
+      is-number: 4.0.0
+
+  ms@2.1.3: {}

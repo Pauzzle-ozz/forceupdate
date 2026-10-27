@@ -1,0 +1,11 @@
+# Dépendances de l'application, installées avec pip.
+-c constraints.txt
+
+flask==2.0.1
+requests >= 2.25, < 3  # client HTTP
+Django_REST_framework~=3.14
+uvicorn[standard]>=0.20.0
+numpy ; python_version >= "3.9"
+mylib @ git+https://github.com/example/mylib.git@v1.0
+-e ./libs/local-lib
+--index-url https://pypi.org/simple

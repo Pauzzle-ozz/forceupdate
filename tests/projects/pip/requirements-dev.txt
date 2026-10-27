@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest==8.0.0 \
+    --hash=sha256:50fb9cbe836c3f20f0dfa99c565201fb75dc54c8d76373cd1bde06b06657bdb6
+ruff

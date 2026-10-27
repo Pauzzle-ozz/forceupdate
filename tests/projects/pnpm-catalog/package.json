@@ -1,0 +1,8 @@
+{
+  "name": "demo-pnpm-catalog",
+  "private": true,
+  "dependencies": {
+    "is-number": "catalog:",
+    "my-ms": "catalog:default"
+  }
+}

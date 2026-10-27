@@ -1,0 +1,25 @@
+{
+  "name": "demo-yarn1",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "chalk": "^4.1.0",
+    "debug": "~4.3.1",
+    "is-number": "7.x",
+    "is-odd": ">=3 <4",
+    "lodash": "4.17.15",
+    "my-ms": "npm:ms@2.0.0",
+    "@sindresorhus/is": "^4.0.0",
+    "local-lib": "file:./vendor/local-lib"
+  },
+  "devDependencies": {
+    "@types/ms": "*",
+    "semver": "^6.0.0 || ^7.0.0"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0"
+  },
+  "optionalDependencies": {
+    "fsevents": "^2.3.3"
+  }
+}

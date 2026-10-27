@@ -1,0 +1,13 @@
+{
+  "name": "demo-npm-workspace",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "dependencies": {
+    "is-number": "^7.0.0"
+  },
+  "devDependencies": {
+    "semver": "^7.6.0"
+  }
+}
