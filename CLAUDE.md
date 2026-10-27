@@ -74,7 +74,7 @@ uv run pytest                    # tests hors ligne ; reference/ n'est jamais ra
 uv run pytest --run-network      # avec en plus les tests marqués network (vrai réseau)
 uv run ruff check                # lint
 uv run ruff format               # formatage ; la CI vérifie avec --check
-uv run python tests/fixtures/record.py   # ré-enregistre les réponses des registres
+uv run python tests/fixtures/record.py   # ré-enregistre les réponses des registres et d'OSV
 
 # une autre version de Python que celle de .venv (la CI teste 3.11 et 3.14)
 uv run --isolated --python 3.11 --group dev pytest
@@ -91,7 +91,7 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   standard (heredoc) abîme les accents : l'écrire dans un fichier.
 - Les tests ne touchent jamais le réseau sans le marqueur `network`, ni le cache de
   l'utilisateur : deux garde-fous automatiques de `tests/conftest.py` y veillent.
-  La fixture `recorded` simule PyPI et npm avec les réponses de `tests/fixtures/`.
+  La fixture `recorded` simule PyPI, npm et OSV avec les réponses de `tests/fixtures/`.
 
 ## Interface
 

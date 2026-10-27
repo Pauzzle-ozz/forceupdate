@@ -213,11 +213,14 @@ class Finding:
     gap: Gap | None = None
     """Écart entre ``current_version`` et ``target_version``."""
     identifiers: tuple[str, ...] = ()
-    """Identifiants de la faille (CVE, GHSA…)."""
+    """Identifiants de la faille : les CVE, puis les GHSA, puis les autres (PYSEC, MAL…)."""
+    cvss_score: float | None = None
+    """Score CVSS 3 de la faille, de 0 à 10, s'il est connu."""
     detail: str | None = None
-    """Ce que dit le registre, tel quel : la raison d'un retrait, le message de dépréciation."""
+    """Ce que dit la source, tel quel : la raison d'un retrait, le message de dépréciation, le
+    titre de l'avis de sécurité."""
     url: str | None = None
-    """Lien pour en savoir plus : avis de sécurité, page du paquet, endoflife.date."""
+    """Lien pour en savoir plus : avis de sécurité (osv.dev), page du paquet, endoflife.date."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -276,8 +279,9 @@ class ScanOptions:
     dev: bool = True
     """Vérifier aussi les dépendances de développement (``Scope.DEV``)."""
     transitive: bool = False
-    """Vérifier aussi les dépendances indirectes (celles du lockfile seul). Par défaut, les
-    versions plus récentes ne sont cherchées que pour les directes (brief, décision n°3)."""
+    """Vérifier aussi les dépendances indirectes (celles du lockfile seul) : versions plus
+    récentes, retirées, dépréciées. Par défaut, ce n'est fait que pour les directes (brief,
+    décision n°3). Les failles, elles, sont toujours cherchées sur toutes les dépendances."""
     offline: bool = False
     """Hors ligne : seulement le cache, même périmé ; le reste est « non concluant »."""
     cache: bool = True
@@ -302,8 +306,8 @@ class Report:
     scanned_at: datetime | None = None
     """Quand l'analyse a été lancée (UTC)."""
     oldest_data: datetime | None = None
-    """La date des plus anciennes données de registre utilisées (UTC). Hors ligne, elles
-    viennent du cache, et peuvent dater de plusieurs jours : le rapport le dit."""
+    """La date des plus anciennes données des registres et d'OSV utilisées (UTC). Hors ligne,
+    elles viennent du cache, et peuvent dater de plusieurs jours : le rapport le dit."""
 
     @property
     def findings(self) -> list[Finding]:
@@ -319,9 +323,14 @@ class EventKind(enum.StrEnum):
     PROJECTS_FOUND = "projects_found"
     """Projets trouvés : ``total`` en donne le nombre."""
     CHECKING = "checking"
-    """Vérification auprès des registres : ``total`` paquets à demander."""
+    """Vérification auprès des registres et d'OSV : ``total`` vérifications, une par paquet à
+    demander aux registres, plus une pour les failles."""
     PACKAGE_CHECKED = "package_checked"
-    """Un paquet vérifié (``ecosystem``, ``name``) : ``done`` sur ``total``."""
+    """Un paquet vérifié auprès de son registre (``ecosystem``, ``name``) : ``done`` sur
+    ``total``."""
+    VULNERABILITIES_CHECKED = "vulnerabilities_checked"
+    """Les failles cherchées auprès d'OSV, pour toutes les dépendances : ``done`` sur
+    ``total``."""
     FINISHED = "finished"
     """Le rapport est prêt."""
 

@@ -13,8 +13,8 @@ avis (CVSS, E08). Pour les autres, elle sert à l'affichage ; l'ordre, lui, suit
 - version plus récente : ``LOW`` pour une majeure, ``INFO`` pour une mineure ou un correctif ;
 - non vérifiable, non concluant : ``INFO``.
 
-Un paquet malveillant retiré par npm (crossenv) n'est qu'un « paquet déprécié » ici : OSV le
-connaît (identifiants ``MAL-…``), E08 en fera une faille critique.
+Un paquet malveillant retiré par npm (crossenv) est aussi une faille critique : OSV le connaît
+(``checks.vulns``).
 """
 
 import enum

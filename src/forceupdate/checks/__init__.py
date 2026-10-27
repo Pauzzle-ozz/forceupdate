@@ -4,10 +4,11 @@
   remplacement ;
 - ``outdated.py`` : une version plus récente existe (type 1) ;
 - ``deprecated.py`` : paquet ou version déprécié, version retirée (type 4) ;
+- ``vulns.py`` : la version utilisée a une faille connue (type 2) ;
 - ``priority.py`` : l'ordre des constats (décision n°8) et le seuil de ``--fail-on``.
 
-Les failles (``vulns.py``, type 2) viennent à E08, les fins de vie (``eol.py``, type 3) à E27.
-Les contrôles ne parlent pas au réseau : le moteur leur donne le ``PackageInfo`` du registre.
+Les fins de vie (``eol.py``, type 3) viennent à E27. Les contrôles ne parlent pas au réseau :
+le moteur leur donne le ``PackageInfo`` du registre, et ce qu'OSV sait des failles.
 """
 
 from forceupdate.checks import deprecated, outdated

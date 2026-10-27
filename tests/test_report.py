@@ -24,6 +24,7 @@ from forceupdate.models import (
     Report,
     ScanOptions,
     Scope,
+    Severity,
 )
 from forceupdate.net import Cache, HttpClient
 from forceupdate.report import json as json_report
@@ -176,6 +177,7 @@ def test_json(report: Report) -> None:
         "wanted_version",
         "gap",
         "identifiers",
+        "cvss_score",
         "detail",
         "url",
     }
@@ -290,6 +292,93 @@ def test_terminal_says_offline_data_date() -> None:
     lines = render(report)
     oldest = datetime(2026, 10, 20, 9, 30, tzinfo=UTC).astimezone().strftime("%d/%m/%Y à %H:%M")
     assert lines[1].endswith(
-        f"hors ligne : données des registres prises dans le cache, la plus ancienne du {oldest}."
+        "hors ligne : données des registres et d'OSV prises dans le cache, la plus ancienne du "
+        f"{oldest}."
     )
     assert lines[-1] == "Résumé : 0 dépendance vérifiée, rien à mettre à jour."
+
+
+# -- failles -------------------------------------------------------------------
+
+
+def vulnerable_report() -> Report:
+    """Une directe en faille possible (sans lockfile), une indirecte en faille, une indirecte
+    sans constat ; analysée sans ``--transitive``."""
+    flask = dependency("flask", constraint=">=0.12")
+    jinja2 = dependency("jinja2", installed="2.10", direct=False)
+    project = Project(
+        path=".",
+        dependencies=[flask, jinja2, dependency("click", installed="7.0", direct=False)],
+        findings=[
+            Finding(
+                kind=FindingKind.VULNERABLE,
+                severity=Severity.HIGH,
+                message="CVE-2018-1000656 (gravité élevée, CVSS 7,5) : … Faille possible : …",
+                dependency=flask,
+                current_version="0.12",
+                current_is_approximate=True,
+                target_version="0.12.3",
+                identifiers=("CVE-2018-1000656",),
+                cvss_score=7.5,
+                url="https://osv.dev/vulnerability/GHSA-562c-5r94-xh97",
+            ),
+            Finding(
+                kind=FindingKind.VULNERABLE,
+                severity=Severity.HIGH,
+                message="CVE-2019-10906 (gravité élevée, CVSS 8,6) : Jinja2 sandbox escape.",
+                dependency=jinja2,
+                current_version="2.10",
+                target_version="2.10.1",
+                identifiers=("CVE-2019-10906",),
+                url="https://osv.dev/vulnerability/GHSA-462w-v97r-4m45",
+            ),
+        ],
+    )
+    return Report(source=".", projects=[project], options=ScanOptions())
+
+
+def test_indirect_rows_show_vulnerabilities_without_transitive() -> None:
+    report = vulnerable_report()
+    project = report.projects[0]
+    (flask,) = rows(project, report)
+    assert (flask.current, flask.states) == ("≈ 0.12", ["faille possible"])
+    (jinja2,) = rows(project, report, direct=False)  # click n'a pas de constat
+    assert (jinja2.name, jinja2.current, jinja2.states) == ("jinja2", "2.10", ["faille"])
+
+
+def test_summary_counts_the_dependencies_searched_for_vulnerabilities() -> None:
+    summary = summarize(vulnerable_report())
+    assert (summary.checked, summary.audited) == (1, 3)
+    assert summary.findings[FindingKind.VULNERABLE] == 2
+    assert summary.to_update == 2
+    data = json.loads(json_report.render(vulnerable_report()))
+    assert data["summary"]["audited"] == 3
+    assert data["projects"][0]["findings"][0]["cvss_score"] == 7.5
+
+
+def test_terminal_with_vulnerabilities() -> None:
+    lines = render(vulnerable_report())
+    assert "  Dépendances indirectes à signaler" in lines
+    assert ["jinja2", "-", "2.10", "faille"] in [line.split() for line in lines]
+    assert any(
+        "faille possible flask : CVE-2018-1000656" in " ".join(line.split()) for line in lines
+    )
+    assert any(
+        "faille jinja2 2.10 (indirecte) : CVE-2019-10906" in " ".join(line.split())
+        for line in lines
+    )
+    assert lines[-1] == (
+        "Résumé : 1 dépendance vérifiée, failles cherchées sur 3, 2 à mettre à jour : 2 failles."
+    )
+
+
+def test_markdown_with_vulnerabilities() -> None:
+    text = markdown.render(vulnerable_report())
+    assert "- 1 projet, 1 dépendance vérifiée, failles cherchées sur 3\n" in text
+    assert "  - 2 failles\n" in text
+    assert "### Dépendances indirectes à signaler" in text
+    assert (
+        "- **faille** — `jinja2` 2.10 (indirecte) : CVE-2019-10906 \\(gravité élevée, CVSS 8,6\\) "
+        ": Jinja2 sandbox escape. [Avis](https://osv.dev/vulnerability/GHSA-462w-v97r-4m45)\n"
+    ) in text
+    assert "- **faille possible** — `flask` : CVE-2018-1000656" in text

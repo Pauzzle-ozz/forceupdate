@@ -3,8 +3,9 @@
 L'interface web et la ligne de commande l'appellent, et n'ont pas de logique métier.
 
 - ``inventory`` : langages, projets, dépendances. Synchrone, sans réseau ;
-- ``check`` : demande aux registres ce qu'ils savent de chaque paquet, et en tire les
-  constats (``checks/``). Asynchrone : tous les paquets sont demandés en même temps ;
+- ``check`` : demande aux registres ce qu'ils savent de chaque paquet, et à OSV les failles
+  de chaque version, et en tire les constats (``checks/``). Asynchrone : tous les paquets
+  sont demandés en même temps ;
 - ``analyze`` : les deux à la suite. C'est la coroutine que lancera le serveur (E12) ;
 - ``scan`` : ``analyze`` pour qui n'a pas de boucle ``asyncio`` (la ligne de commande).
 
@@ -24,6 +25,9 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from forceupdate import checks, parsers, registries
+from forceupdate.advisories import Osv, OsvError, Query, Vulnerabilities
+from forceupdate.checks import vulns
+from forceupdate.checks.base import Current
 from forceupdate.detect.languages import detect_languages
 from forceupdate.detect.manifests import find_projects
 from forceupdate.models import (
@@ -33,6 +37,7 @@ from forceupdate.models import (
     EventKind,
     Finding,
     FindingKind,
+    Notice,
     Project,
     Report,
     ScanOptions,
@@ -45,6 +50,7 @@ from forceupdate.sources.base import Source
 EventCallback = Callable[[Event], None]
 
 _Outcome = PackageInfo | PackageNotFound | RegistryError
+_Found = Vulnerabilities | OsvError
 
 
 def inventory(source: Source, *, include_tests: bool = False) -> Report:
@@ -104,18 +110,22 @@ async def check(
     http: HttpClient | None = None,
     cache: Cache | None = None,
 ) -> None:
-    """Vérifie les dépendances du rapport auprès des registres, et range les constats dans
-    chaque projet, du plus grave au moins grave.
+    """Vérifie les dépendances du rapport auprès des registres et d'OSV, et range les constats
+    dans chaque projet, du plus grave au moins grave.
 
-    Sont vérifiées les directes, plus les indirectes avec ``options.transitive`` ; celles de
-    développement sauf sans ``options.dev``. Chaque paquet n'est demandé qu'une fois, même
-    déclaré deux fois ou dans plusieurs projets, et tous le sont en même temps.
+    Sont vérifiées auprès des registres les directes, plus les indirectes avec
+    ``options.transitive`` ; les failles sont cherchées pour toutes, indirectes comprises
+    (``checks.vulns``). Celles de développement sauf sans ``options.dev``. Chaque paquet n'est
+    demandé qu'une fois, même déclaré deux fois ou dans plusieurs projets, et tous le sont en
+    même temps, en même temps qu'OSV.
 
     ``http`` et ``cache`` : ceux de la session s'ils sont donnés (le serveur les partage entre
     ses analyses), sinon un ``HttpClient`` (hors ligne avec ``options.offline``) et un
     ``Cache`` (``Cache.disabled()`` sans ``options.cache``) créés pour l'analyse, et fermés
     après. Un paquet introuvable donne un constat « non vérifiable », une erreur du registre
-    un « non concluant » ; toute autre exception est un bug, et remonte.
+    un « non concluant » ; toute autre exception est un bug, et remonte. Si OSV ne répond pas,
+    une dépendance vérifiée a un constat « non concluant » ; pour les autres indirectes, une
+    remarque du projet le dit.
     """
     options = options or ScanOptions()
     emit = on_event or _ignore
@@ -139,6 +149,14 @@ async def check(
                     dependency=dependency,
                 )
             )
+    audited: list[tuple[Project, Dependency, Current]] = [
+        (project, dependency, current)
+        for project in report.projects
+        for dependency in project.dependencies
+        if vulns.audited(dependency, options)
+        and (current := vulns.version_to_check(dependency)) is not None
+    ]
+    queries = sorted({_query(dependency, current) for _, dependency, current in audited})
 
     async with contextlib.AsyncExitStack() as stack:
         if http is None:
@@ -160,8 +178,12 @@ async def check(
                 if dependency.ecosystem in clients
             }
         )
-        emit(Event(kind=EventKind.CHECKING, total=len(packages)))
-        outcomes = await _lookup_all(clients, packages, emit)
+        progress = _Progress(emit, total=len(packages) + (1 if queries else 0))
+        emit(Event(kind=EventKind.CHECKING, total=progress.total))
+        outcomes, found = await asyncio.gather(
+            _lookup_all(clients, packages, progress),
+            _vulnerabilities(Osv(http, cache), queries, progress),
+        )
 
     for project, dependency in to_check:
         client = clients.get(dependency.ecosystem)
@@ -170,36 +192,76 @@ async def check(
         else:
             outcome = outcomes[dependency.ecosystem, client.normalize(dependency.name)]
         project.findings.extend(_findings(dependency, outcome))
+    unchecked: dict[tuple[int, str, str], int] = {}
+    for project, dependency, current in audited:
+        result = found[_query(dependency, current)]
+        if isinstance(result, Vulnerabilities):
+            project.findings.extend(vulns.check(dependency, current, result))
+        elif checks.selected(dependency, options):
+            project.findings.append(vulns.unchecked(dependency, current, result))
+        else:
+            # Des centaines d'indirectes « non concluantes » noieraient le rapport : une
+            # remarque par lockfile le dit à leur place.
+            key = (id(project), dependency.file, str(result))
+            unchecked[key] = unchecked.get(key, 0) + 1
     for project in report.projects:
+        for (owner, file, error), count in unchecked.items():
+            if owner == id(project):
+                indirect = "dépendance indirecte" if count == 1 else "dépendances indirectes"
+                message = f"Failles non vérifiées pour {count} {indirect}. {error}"
+                project.notices.append(Notice(file=file, message=message))
         project.findings = checks.sort_findings(project.findings)
     dates = [o.fetched_at for o in outcomes.values() if isinstance(o, PackageInfo)]
+    dates += [f.fetched_at for f in found.values() if isinstance(f, Vulnerabilities)]
     report.oldest_data = min(dates, default=None)
+
+
+def _query(dependency: Dependency, current: Current) -> Query:
+    assert current.version is not None
+    return dependency.ecosystem, dependency.name, current.version
+
+
+class _Progress:
+    """Compte les vérifications terminées (les paquets des registres, puis les failles) pour
+    les événements de progression."""
+
+    def __init__(self, emit: EventCallback, *, total: int) -> None:
+        self.emit = emit
+        self.total = total
+        self.done = 0
+
+    def step(
+        self, kind: EventKind, *, ecosystem: Ecosystem | None = None, name: str | None = None
+    ) -> None:
+        self.done += 1
+        self.emit(
+            Event(kind=kind, done=self.done, total=self.total, ecosystem=ecosystem, name=name)
+        )
+
+
+async def _vulnerabilities(
+    osv: Osv, queries: list[Query], progress: _Progress
+) -> dict[Query, _Found]:
+    """Les failles de toutes les versions demandées, auprès d'OSV."""
+    if not queries:
+        return {}
+    found = await osv.vulnerabilities(queries)
+    progress.step(EventKind.VULNERABILITIES_CHECKED)
+    return found
 
 
 async def _lookup_all(
     clients: dict[Ecosystem, Registry],
     packages: list[tuple[Ecosystem, str]],
-    emit: EventCallback,
+    progress: _Progress,
 ) -> dict[tuple[Ecosystem, str], _Outcome]:
     """Demande tous les paquets en même temps ; un événement par paquet vérifié."""
-    total = len(packages)
-    done = 0
 
     async def lookup(ecosystem: Ecosystem, name: str) -> PackageInfo:
-        nonlocal done
         try:
             return await clients[ecosystem].package(name)
         finally:
-            done += 1
-            emit(
-                Event(
-                    kind=EventKind.PACKAGE_CHECKED,
-                    done=done,
-                    total=total,
-                    ecosystem=ecosystem,
-                    name=name,
-                )
-            )
+            progress.step(EventKind.PACKAGE_CHECKED, ecosystem=ecosystem, name=name)
 
     results = await asyncio.gather(
         *(lookup(ecosystem, name) for ecosystem, name in packages), return_exceptions=True

@@ -34,11 +34,11 @@ def render(report: Report) -> str:
         lines += ["", f"Analyse du {format_date(report.scanned_at)}."]
         if report.options is not None and report.options.offline:
             if report.oldest_data is None:
-                lines.append("Hors ligne, sans données de registre en cache.")
+                lines.append("Hors ligne, sans données des registres ni d'OSV en cache.")
             else:
                 lines.append(
-                    "Hors ligne : données des registres prises dans le cache, la plus ancienne"
-                    f" du {format_date(report.oldest_data)}."
+                    "Hors ligne : données des registres et d'OSV prises dans le cache, la plus"
+                    f" ancienne du {format_date(report.oldest_data)}."
                 )
     if report.options is not None:
         lines += ["", "## Résumé", "", *_summary(summarize(report))]
@@ -75,6 +75,8 @@ def _summary(summary: Summary) -> list[str]:
         f"- {plural(summary.projects, 'projet')}, "
         f"{plural(summary.checked, 'dépendance')} vérifiée{'s' if summary.checked > 1 else ''}"
     ]
+    if summary.audited != summary.checked:
+        lines[0] += f", failles cherchées sur {summary.audited}"
     if not summary.to_update:
         lines.append("- Rien à mettre à jour.")
     else:
@@ -116,8 +118,17 @@ def _project(project: Project, report: Report) -> list[str]:
     if details:
         lines += ["", "### Détails", ""]
         for finding in details:
-            name = f"`{_code(finding.dependency.name)}` : " if finding.dependency else ""
-            lines.append(f"- **{label(finding)}** — {name}{_escape(finding.message)}")
+            dependency = finding.dependency
+            name = ""
+            if dependency is not None:
+                name = f"`{_code(dependency.name)}`"
+                if not dependency.direct and dependency.installed:
+                    name += f" {_escape(dependency.installed)}"
+                name += " (indirecte) : " if not dependency.direct else " : "
+            link = ""
+            if finding.kind is FindingKind.VULNERABLE and finding.url:
+                link = f" [Avis]({finding.url})"
+            lines.append(f"- **{label(finding)}** — {name}{_escape(finding.message)}{link}")
     if project.notices:
         lines += ["", "### Remarques", ""]
         lines += [

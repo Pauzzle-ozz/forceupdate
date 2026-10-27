@@ -12,10 +12,12 @@ marqué ``network`` ne peut pas ouvrir de connexion (une requête non simulée p
 
 import asyncio
 import asyncio.base_events
+import json
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 import respx
 
@@ -48,11 +50,29 @@ def _no_network(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(asyncio.base_events.BaseEventLoop, "create_connection", refuse)
 
 
+def osv_querybatch(results: dict[str, Any]) -> Callable[[httpx.Request], httpx.Response]:
+    """Une réponse ``querybatch`` d'OSV faite de ``results`` (``écosystème/nom@version`` →
+    résultat, comme ``tests/fixtures/osv/queries.json``) ; ``{}`` (aucune faille) pour une
+    version qui n'y est pas."""
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        queries = json.loads(request.content)["queries"]
+        found = [
+            results.get(f"{q['package']['ecosystem']}/{q['package']['name']}@{q['version']}", {})
+            for q in queries
+        ]
+        return httpx.Response(200, json={"results": found})
+
+    return respond
+
+
 @pytest.fixture
 def recorded() -> Iterator[dict[str, respx.Route]]:
-    """PyPI et npm simulés par ``respx``, avec les réponses enregistrées par
+    """PyPI, npm et OSV simulés par ``respx``, avec les réponses enregistrées par
     ``tests/fixtures/record.py`` : flask, requests, aioredis ; left-pad, @hapi/joi, colors,
-    crossenv. Tout autre paquet est introuvable (404). Rend les routes, par nom de paquet.
+    crossenv, lodash. Tout autre paquet est introuvable (404). OSV connaît les failles des
+    versions de ``tests/fixtures/osv/queries.json`` ; pour les autres, il n'en connaît pas.
+    Rend les routes, par nom de paquet, plus ``osv:querybatch`` et ``osv:<id>``.
     """
     with respx.mock(assert_all_called=False) as router:
         routes = {}
@@ -68,6 +88,15 @@ def recorded() -> Iterator[dict[str, respx.Route]]:
             )
         router.get(url__regex=r"^https://pypi\.org/simple/").respond(404)
         router.get(url__regex=r"^https://registry\.npmjs\.org/").respond(404, json={})
+        queries = json.loads((FIXTURES / "osv" / "queries.json").read_text(encoding="utf-8"))
+        routes["osv:querybatch"] = router.post("https://api.osv.dev/v1/querybatch").mock(
+            side_effect=osv_querybatch(queries)
+        )
+        for path in sorted((FIXTURES / "osv" / "vulns").glob("*.json")):
+            routes[f"osv:{path.stem}"] = router.get(
+                f"https://api.osv.dev/v1/vulns/{path.stem}"
+            ).respond(200, content=path.read_bytes(), headers={"content-type": "application/json"})
+        router.get(url__regex=r"^https://api\.osv\.dev/v1/vulns/").respond(404, json={})
         yield routes
 
 

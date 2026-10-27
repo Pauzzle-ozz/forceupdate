@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 import respx
 
@@ -28,6 +29,7 @@ from forceupdate.sources.local import LocalSource
 
 MakeTree = Callable[..., Path]
 Routes = dict[str, respx.Route]
+VULNS_CHECKED = EventKind.VULNERABILITIES_CHECKED
 
 REQUIREMENTS = """\
 flask==2.0.1
@@ -126,8 +128,12 @@ def test_events(recorded: Routes, monorepo: Path) -> None:
     assert kinds[-1] is EventKind.FINISHED
     assert events[1].total == 2
     checked = [event for event in events if event.kind is EventKind.PACKAGE_CHECKED]
-    assert events[2].total == len(checked) == 7  # local-lib n'est pas demandé
-    assert [event.done for event in checked] == list(range(1, 8))
+    assert len(checked) == 7  # local-lib n'est pas demandé
+    # Plus une étape pour les failles, cherchées en même temps que les paquets.
+    steps = [e for e in events if e.kind in (EventKind.PACKAGE_CHECKED, VULNS_CHECKED)]
+    assert events[2].total == len(steps) == 8
+    assert [event.done for event in steps] == list(range(1, 9))
+    assert sum(1 for event in steps if event.kind is VULNS_CHECKED) == 1
     assert {event.name for event in checked} == {
         "flask",
         "requests",
@@ -247,9 +253,11 @@ def test_offline_uses_stale_cache_and_dates_it(
 def test_offline_without_cache_is_inconclusive(make_tree: MakeTree) -> None:
     root = make_tree({"requirements.txt": "flask==2.0.1\n"})
     report = analyze(root, ScanOptions(offline=True), cache=Cache.disabled())
-    (finding,) = report.findings
-    assert finding.kind is FindingKind.INCONCLUSIVE
-    assert finding.message == "PyPI : mode hors ligne, et flask n'est pas dans le cache."
+    assert [f.kind for f in report.findings] == [FindingKind.INCONCLUSIVE] * 2
+    assert [f.message for f in report.findings] == [
+        "PyPI : mode hors ligne, et flask n'est pas dans le cache.",
+        "Failles non vérifiées. OSV : mode hors ligne, sans réponse en cache.",
+    ]
     assert report.oldest_data is None
 
 
@@ -278,7 +286,8 @@ def test_inventory_does_not_check(make_tree: MakeTree) -> None:
 
 @pytest.mark.network
 def test_the_real_registries(make_tree: MakeTree) -> None:
-    """Bout en bout, sur les vrais PyPI et npm : des constats qui ne bougent plus."""
+    """Bout en bout, sur les vrais PyPI, npm et OSV : des constats qui ne bougent plus. De
+    nouvelles failles peuvent s'ajouter à celles-ci, jamais les remplacer."""
     root = make_tree(
         {
             "api/requirements.txt": "requests==2.32.0\nflask==2.0.1\n",
@@ -287,9 +296,154 @@ def test_the_real_registries(make_tree: MakeTree) -> None:
     )
     report = engine.scan(LocalSource(root), ScanOptions(cache=False))
     api, web = report.projects
-    assert by_name(api.findings) == {
+    others = [f for f in api.findings if f.kind is not FindingKind.VULNERABLE]
+    assert by_name(others) == {
         "requests": [FindingKind.YANKED, FindingKind.OUTDATED],
         "flask": [FindingKind.OUTDATED],
     }
-    assert api.findings[0].target_version == "2.32.2"
-    assert by_name(web.findings) == {"request": [FindingKind.DEPRECATED, FindingKind.OUTDATED]}
+    assert others[0].target_version == "2.32.2"
+    assert ("CVE-2023-30861", "2.2.5") in vulnerabilities(api.findings, "flask")
+    assert ("CVE-2024-47081", "2.32.4") in vulnerabilities(api.findings, "requests")
+    # request est déprécié, et sa faille SSRF n'a jamais été corrigée.
+    assert ("CVE-2023-28155", None) in vulnerabilities(web.findings, "request")
+    others = [f for f in web.findings if f.kind is not FindingKind.VULNERABLE]
+    assert by_name(others) == {"request": [FindingKind.DEPRECATED, FindingKind.OUTDATED]}
+    assert FindingKind.INCONCLUSIVE not in {f.kind for f in report.findings}
+
+
+# -- failles (OSV) -------------------------------------------------------------
+
+VULNERABLE = Path(__file__).parent / "projects" / "vulnerable"
+"""Le mini-projet du critère de fin de E08 : lodash 4.17.15, flask 0.12 et ses dépendances de
+fin 2018 (``requirements.txt`` compilé par uv)."""
+
+
+def vulnerabilities(findings: list[Finding], name: str) -> list[tuple[str, str | None]]:
+    """Les failles de ``name`` : premier identifiant et version corrigée."""
+    return [
+        (f.identifiers[0], f.target_version)
+        for f in findings
+        if f.kind is FindingKind.VULNERABLE and f.dependency and f.dependency.name == name
+    ]
+
+
+def test_the_vulnerable_mini_project(recorded: Routes) -> None:
+    """Le critère de fin de E08 : les CVE attendues, avec la bonne version corrigée."""
+    report = analyze(VULNERABLE, cache=Cache.disabled())
+    (project,) = report.projects
+    findings = project.findings
+    assert sorted(vulnerabilities(findings, "lodash")) == [
+        ("CVE-2020-28500", "4.17.21"),
+        ("CVE-2020-8203", "4.17.19"),
+        ("CVE-2021-23337", "4.17.21"),
+        ("CVE-2025-13465", "4.17.23"),
+        ("CVE-2026-2950", "4.18.0"),
+        ("CVE-2026-4800", "4.18.0"),
+    ]
+    assert sorted(vulnerabilities(findings, "flask")) == [
+        ("CVE-2018-1000656", "0.12.3"),
+        ("CVE-2019-1010083", "1.0"),
+        ("CVE-2023-30861", "2.2.5"),
+        ("CVE-2026-27205", "3.1.3"),
+    ]
+    # Les indirectes aussi, sans --transitive : jinja2 2.10 et werkzeug 0.14.1.
+    assert ("CVE-2019-10906", "2.10.1") in vulnerabilities(findings, "jinja2")
+    assert len(vulnerabilities(findings, "jinja2")) == 6
+    assert len(vulnerabilities(findings, "werkzeug")) == 12
+    for name in ("click", "itsdangerous", "markupsafe"):
+        assert vulnerabilities(findings, name) == []
+    # Les failles d'abord, les plus graves en tête.
+    assert findings[0].kind is FindingKind.VULNERABLE
+    assert findings[0].severity is Severity.HIGH
+    assert FindingKind.INCONCLUSIVE not in {f.kind for f in findings}
+    # Une seule requête querybatch pour les 7 versions, et chaque avis demandé une fois.
+    assert recorded["osv:querybatch"].call_count == 1
+    assert recorded["osv:GHSA-35jh-r3h4-6jhm"].call_count == 1
+    # Les registres, eux, ne sont interrogés que pour les directes.
+    assert recorded["lodash"].call_count == recorded["flask"].call_count == 1
+
+
+def test_vulnerabilities_follow_no_dev(recorded: Routes, make_tree: MakeTree) -> None:
+    root = make_tree({"package.json": json.dumps({"devDependencies": {"lodash": "4.17.15"}})})
+    assert len(vulnerabilities(analyze(root, cache=Cache.disabled()).findings, "lodash")) == 6
+    report = analyze(root, ScanOptions(dev=False), cache=Cache.disabled())
+    assert report.findings == []
+    assert recorded["osv:querybatch"].call_count == 1
+
+
+def test_every_installed_version_of_an_npm_package(recorded: Routes, make_tree: MakeTree) -> None:
+    """lodash à jour en direct, mais 4.17.15 imbriqué sous un autre paquet : celle-là aussi."""
+    lock = {
+        "name": "web",
+        "lockfileVersion": 3,
+        "packages": {
+            "": {"name": "web", "dependencies": {"lodash": "^4.17.21", "old": "1.0.0"}},
+            "node_modules/lodash": {"version": "4.17.21"},
+            "node_modules/old": {"version": "1.0.0", "dependencies": {"lodash": "4.17.15"}},
+            "node_modules/old/node_modules/lodash": {"version": "4.17.15"},
+        },
+    }
+    root = make_tree(
+        {
+            "package.json": json.dumps({"dependencies": {"lodash": "^4.17.21", "old": "1.0.0"}}),
+            "package-lock.json": json.dumps(lock),
+        }
+    )
+    report = analyze(root, cache=Cache.disabled())
+    found = [f for f in report.findings if f.kind is FindingKind.VULNERABLE]
+    assert len(found) == 6
+    assert {(f.dependency.direct, f.current_version) for f in found if f.dependency} == {
+        (False, "4.17.15")
+    }
+    body = json.loads(recorded["osv:querybatch"].calls.last.request.content)
+    asked = sorted((q["package"]["name"], q["version"]) for q in body["queries"])
+    assert asked == [("lodash", "4.17.15"), ("lodash", "4.17.21"), ("old", "1.0.0")]
+
+
+def test_a_malicious_package_is_a_critical_vulnerability(
+    recorded: Routes, make_tree: MakeTree
+) -> None:
+    """crossenv, retiré par npm : plus seulement un paquet déprécié (E07)."""
+    root = make_tree({"package.json": json.dumps({"dependencies": {"crossenv": "1.0.0"}})})
+    report = analyze(root, cache=Cache.disabled())
+    assert [(f.kind, f.severity) for f in report.findings][:2] == [
+        (FindingKind.VULNERABLE, Severity.CRITICAL),
+        (FindingKind.DEPRECATED, Severity.LOW),
+    ]
+    assert report.findings[0].message.startswith("Code malveillant (CVE-2017-16074")
+
+
+def test_osv_unreachable_is_never_no_vulnerability(recorded: Routes) -> None:
+    """Les directes ont un constat « non concluant » ; les indirectes, une remarque."""
+    recorded["osv:querybatch"].mock(side_effect=httpx.ConnectError("refusé"))
+    report = analyze(VULNERABLE, cache=Cache.disabled())
+    (project,) = report.projects
+    error = "OSV : api.osv.dev injoignable (ConnectError)."
+    inconclusive = [f for f in project.findings if f.kind is FindingKind.INCONCLUSIVE]
+    assert sorted((f.dependency.name, f.message) for f in inconclusive if f.dependency) == [
+        ("flask", f"Failles non vérifiées. {error}"),
+        ("lodash", f"Failles non vérifiées. {error}"),
+    ]
+    assert FindingKind.VULNERABLE not in {f.kind for f in project.findings}
+    assert [(n.file, n.message) for n in project.notices] == [
+        ("requirements.txt", f"Failles non vérifiées pour 5 dépendances indirectes. {error}")
+    ]
+
+
+def test_offline_vulnerabilities_come_from_the_cache(recorded: Routes, tmp_path: Path) -> None:
+    disk = Cache(tmp_path / "c.sqlite3")
+    online = analyze(VULNERABLE, cache=disk)
+    recorded["osv:querybatch"].reset()
+    offline = analyze(VULNERABLE, ScanOptions(offline=True), cache=disk)
+    disk.close()
+    assert recorded["osv:querybatch"].call_count == 0
+    assert [f.message for f in offline.findings] == [f.message for f in online.findings]
+    assert offline.oldest_data is not None
+
+    empty = analyze(VULNERABLE, ScanOptions(offline=True), cache=Cache.disabled())
+    (project,) = empty.projects
+    assert FindingKind.VULNERABLE not in {f.kind for f in project.findings}
+    assert [n.message for n in project.notices] == [
+        "Failles non vérifiées pour 5 dépendances indirectes. OSV : mode hors ligne, sans "
+        "réponse en cache."
+    ]

@@ -1,0 +1,2 @@
+# Une vieille application Flask ; requirements.txt est compilé avec uv pip compile.
+flask==0.12

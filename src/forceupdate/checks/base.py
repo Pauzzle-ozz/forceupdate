@@ -69,6 +69,13 @@ def current_version(dependency: Dependency) -> Current:
     )
 
 
+def sentence(text: str) -> str:
+    """``text`` terminé par un point, sans en doubler un (le message d'un registre ou d'un avis
+    peut déjà finir par ``.``, ``!``, ``?`` ou ``…``)."""
+    text = text.rstrip()
+    return text if text.endswith((".", "!", "?", "…")) else text + "."
+
+
 def nearest(scheme: VersionScheme, current: str, choices: Iterable[str]) -> str | None:
     """La version de ``choices`` la plus proche de ``current``, pour remplacer une version
     retirée ou dépréciée : la plus petite au-dessus sans changer de majeure (souvent celle

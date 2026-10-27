@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from forceupdate import checks
-from forceupdate.checks import GAP_LABELS
+from forceupdate.checks import GAP_LABELS, vulns
 from forceupdate.models import (
     Dependency,
     Finding,
@@ -36,13 +36,30 @@ KIND_LABELS = {
 """Le type d'un constat en français, tel qu'on l'affiche."""
 
 UP_TO_DATE = "à jour"
+POSSIBLE_VULNERABILITY = "faille possible"
+"""Une faille de la borne basse d'une contrainte, sans lockfile : la version installée peut
+être plus récente, et corrigée."""
 
 
 def label(finding: Finding) -> str:
-    """Le constat en un ou deux mots : ``majeure``, ``retirée``, ``non concluant``…"""
+    """Le constat en un ou deux mots : ``majeure``, ``retirée``, ``faille possible``…"""
     if finding.kind is FindingKind.OUTDATED and finding.gap is not None:
         return GAP_LABELS[finding.gap]
+    if finding.kind is FindingKind.VULNERABLE and finding.current_is_approximate:
+        return POSSIBLE_VULNERABILITY
     return KIND_LABELS[finding.kind]
+
+
+def subject(finding: Finding) -> str:
+    """Ce dont parle le constat, pour le détail : le paquet ; pour une dépendance indirecte, sa
+    version aussi (un paquet npm peut y être en plusieurs versions)."""
+    dependency = finding.dependency
+    if dependency is None:
+        return ""
+    if dependency.direct:
+        return dependency.name
+    version = f" {dependency.installed}" if dependency.installed else ""
+    return f"{dependency.name}{version} (indirecte)"
 
 
 def plural(count: int, word: str) -> str:
@@ -76,6 +93,9 @@ class Summary:
     transitive: int
     checked: int
     """Dépendances vérifiées auprès des registres (voir ``ScanOptions``)."""
+    audited: int = 0
+    """Dépendances dont les failles ont été cherchées (OSV) : toutes celles dont on connaît la
+    version, indirectes comprises (voir ``checks.vulns``)."""
     findings: dict[FindingKind, int] = field(default_factory=dict)
     """Constats par type, dans l'ordre de priorité ; tous les types y sont, même à 0."""
     outdated: dict[Gap, int] = field(default_factory=dict)
@@ -102,12 +122,20 @@ def summarize(report: Report) -> Summary:
     dependencies = [d for project in report.projects for d in project.dependencies]
     direct = sum(1 for d in dependencies if d.direct)
     options = report.options
-    checked = 0 if options is None else sum(1 for d in dependencies if checks.selected(d, options))
+    checked = audited = 0
+    if options is not None:
+        checked = sum(1 for d in dependencies if checks.selected(d, options))
+        audited = sum(
+            1
+            for d in dependencies
+            if vulns.audited(d, options) and vulns.version_to_check(d) is not None
+        )
     return Summary(
         projects=len(report.projects),
         direct=direct,
         transitive=len(dependencies) - direct,
         checked=checked,
+        audited=audited,
         findings=findings,
         outdated=outdated,
     )
@@ -174,15 +202,19 @@ def rows(project: Project, report: Report, *, direct: bool = True) -> list[Row]:
     """Les lignes du tableau de ``project`` : ses dépendances directes vérifiées (ou toutes si
     rien n'a été vérifié), une ligne par paquet, les plus graves en tête.
 
-    ``direct=False`` : les dépendances indirectes qui ont un constat (vérifiées avec
-    ``--transitive``) ; une ligne par version installée.
+    ``direct=False`` : les dépendances indirectes qui ont un constat (une faille, ou ce
+    qu'ajoute ``--transitive``) ; une ligne par version installée.
     """
     several_files = len({d.file for d in project.dependencies if d.direct}) > 1
     groups: dict[tuple[str, ...], list[Dependency]] = {}
     for dependency in project.dependencies:
         if dependency.direct is not direct:
             continue
-        if report.options is not None and not checks.selected(dependency, report.options):
+        if (
+            direct
+            and report.options is not None
+            and not checks.selected(dependency, report.options)
+        ):
             continue
         key = (dependency.ecosystem, dependency.name)
         if not direct:

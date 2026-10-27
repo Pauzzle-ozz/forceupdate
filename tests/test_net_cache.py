@@ -24,7 +24,9 @@ class Clock:
 
 def test_kinds_and_their_lifetime() -> None:
     assert VERSIONS.ttl == 3600
-    assert [kind.value for kind in CacheKind] == ["versions"]
+    assert CacheKind.VULNERABILITIES.ttl == 3600
+    assert CacheKind.ADVISORIES.ttl == 7 * 24 * 3600
+    assert [kind.value for kind in CacheKind] == ["versions", "vulnerabilities", "advisories"]
 
 
 def test_default_path_is_the_user_cache_dir() -> None:

@@ -69,7 +69,7 @@ def test_scan_shows_languages_and_projects(make_tree: MakeTree) -> None:
     lines = result.stdout.splitlines()
     assert lines[0] == f"Source : {root.resolve().as_posix()}"
     assert lines[1].startswith("Analyse du ")
-    assert lines[1].endswith(" ; hors ligne, sans données de registre en cache.")
+    assert lines[1].endswith(" ; hors ligne, sans données des registres ni d'OSV en cache.")
     assert "  Python   75,0 %  PyPI" in lines
     assert "  C        25,0 %  aucun gestionnaire de paquets reconnu" in lines
     assert "Projets : 2" in lines
@@ -143,9 +143,12 @@ def test_scan_json_to_stdout(make_tree: MakeTree) -> None:
     data = json.loads(result.stdout_bytes.decode("utf-8"))
     assert data["schema_version"] == 1
     assert data["options"]["offline"] is True
-    (finding,) = data["projects"][0]["findings"]
-    assert finding["kind"] == "inconclusive"
-    assert finding["message"] == "PyPI : mode hors ligne, et flask n'est pas dans le cache."
+    findings = data["projects"][0]["findings"]
+    assert [finding["kind"] for finding in findings] == ["inconclusive", "inconclusive"]
+    assert [finding["message"] for finding in findings] == [
+        "PyPI : mode hors ligne, et flask n'est pas dans le cache.",
+        "Failles non vérifiées. OSV : mode hors ligne, sans réponse en cache.",
+    ]
 
 
 @pytest.mark.parametrize(

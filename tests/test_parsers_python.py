@@ -591,6 +591,54 @@ resolution-markers = ["python_full_version < '3.10'"]
     ]
 
 
+def test_another_version_of_a_direct_is_a_transitive() -> None:
+    """Fourche de uv.lock : la directe garde la plus haute, l'autre version est rendue comme
+    une transitive, pour que ses failles soient cherchées aussi (E08)."""
+    registry = 'source = { registry = "https://pypi.org/simple" }'
+    lock = f"""\
+version = 1
+
+[[package]]
+name = "app"
+version = "0.1.0"
+source = {{ virtual = "." }}
+dependencies = [
+    {{ name = "numpy", version = "1.26.4", marker = "python_full_version < '3.10'" }},
+    {{ name = "numpy", version = "2.1.0", marker = "python_full_version >= '3.10'" }},
+]
+
+[package.dev-dependencies]
+dev = [{{ name = "pytest" }}]
+
+[[package]]
+name = "numpy"
+version = "1.26.4"
+{registry}
+resolution-markers = ["python_full_version < '3.10'"]
+
+[[package]]
+name = "numpy"
+version = "2.1.0"
+{registry}
+resolution-markers = ["python_full_version >= '3.10'"]
+
+[[package]]
+name = "pytest"
+version = "8.0.0"
+{registry}
+"""
+    pyproject = (
+        '[project]\nname = "app"\nversion = "0.1.0"\ndependencies = ["numpy>=1.26"]\n'
+        '[dependency-groups]\ndev = ["pytest"]\n'
+    )
+    project = parse({"pyproject.toml": pyproject, "uv.lock": lock})
+    directs = [(d.name, d.installed) for d in project.dependencies if d.direct]
+    assert directs == [("numpy", "2.1.0"), ("pytest", "8.0.0")]
+    assert [(d.name, d.installed, d.scope) for d in transitives(project)] == [
+        ("numpy", "1.26.4", Scope.RUNTIME)
+    ]
+
+
 def test_poetry_lock_groups_optional_dependencies_and_sources() -> None:
     content = """\
 [[package]]

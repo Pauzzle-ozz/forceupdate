@@ -173,7 +173,11 @@ chaque fois) :
 - **`go.sum`** contient aussi des versions qui ne sont plus utilisées.
 - **Les lockfiles noient le signal** si on remonte toutes les transitives.
 - **OSV `querybatch`** ne renvoie que les identifiants des failles (voir
-  `reference/README.md`, point 3).
+  `reference/README.md`, point 3). Constaté à E08 : il arrondit leur date de
+  modification à la microseconde, `vulns/{id}` la donne en nanosecondes ; une même
+  faille a souvent deux avis (GitHub et PyPI) qui se citent dans leurs `aliases` ;
+  un paquet malveillant peut avoir un avis `MAL-…` et des avis GitHub qui ne se
+  citent pas.
 - **Réécrire un manifeste sans le casser** : re-sérialiser un JSON, un TOML ou un
   XML change toute sa mise en forme et perd les commentaires. Il faut remplacer
   seulement le texte de la contrainte, à l'endroit exact où elle est écrite.
@@ -261,7 +265,7 @@ débit changent).
 
 | Besoin | Source |
 |---|---|
-| Failles connues, complètes | OSV : `POST https://api.osv.dev/v1/query`, `GET https://api.osv.dev/v1/vulns/{id}` |
+| Failles connues, complètes | **Vérifié (E08)** : OSV, `POST https://api.osv.dev/v1/querybatch` (jusqu'à 1000 versions, les identifiants seulement, `next_page_token` par version), puis `GET https://api.osv.dev/v1/vulns/{id}` (l'avis complet : `aliases`, `severity` en vecteur CVSS, `affected[].ranges[].events`). `POST /v1/query` renvoie les avis complets, mais une version par requête |
 | Fins de vie | endoflife.date : `GET https://endoflife.date/api/v1/products/{produit}` (l'ancienne forme `/api/{produit}.json` existe aussi) |
 
 | Besoin | GitHub (`api.github.com`) | GitLab (`/api/v4`) | Bitbucket Cloud (`api.bitbucket.org/2.0`) |

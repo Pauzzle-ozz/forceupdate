@@ -1091,9 +1091,21 @@ def _with_installed(declared: Iterable[Declared], locks: Sequence[Lockfile]) -> 
 
 
 def _transitives(lock: Lockfile, declared: Sequence[Declared], names: set[str]) -> list[Dependency]:
-    """Les paquets du lockfile qui ne sont pas des directes : une version de plus d'une
-    directe (fourche de ``uv.lock``) n'en est pas une."""
-    return transitives(lock, graph_starts(declared), lambda package: package.name in names)
+    """Les paquets du lockfile qui ne sont pas des directes.
+
+    Une autre version d'une directe (fourche par marqueurs de ``uv.lock`` : numpy 1.26 pour
+    Python < 3.10, 2.x au-dessus) est rendue comme une transitive, comme une autre version
+    d'une directe imbriquée dans ``node_modules`` : la directe garde la plus haute
+    (``installed_version``), mais les failles de l'autre doivent être cherchées aussi (E08).
+    """
+    installed = {name: installed_version(lock, name) for name in names}
+
+    def is_direct(package: LockedPackage) -> bool:
+        if package.name not in names:
+            return False
+        return not package.version or package.version == installed[package.name]
+
+    return transitives(lock, graph_starts(declared), is_direct)
 
 
 # ---------------------------------------------------------------------------

@@ -114,7 +114,13 @@ def scan(
     ] = True,
     transitive: Annotated[
         bool,
-        typer.Option("--transitive", help="Vérifie aussi les dépendances indirectes."),
+        typer.Option(
+            "--transitive",
+            help=(
+                "Cherche aussi les versions plus récentes, retirées ou dépréciées des "
+                "dépendances indirectes (leurs failles sont toujours cherchées)."
+            ),
+        ),
     ] = False,
     offline: Annotated[
         bool,
@@ -223,3 +229,5 @@ class _ProgressBar:
             )
         elif event.kind is EventKind.PACKAGE_CHECKED:
             self._progress.update(self._task, completed=event.done, name=event.name or "")
+        elif event.kind is EventKind.VULNERABILITIES_CHECKED:
+            self._progress.update(self._task, completed=event.done, name="failles (OSV)")

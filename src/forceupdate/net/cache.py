@@ -43,6 +43,12 @@ class CacheKind(enum.StrEnum):
 
     VERSIONS = "versions"
     """Les versions d'un paquet et sa dépréciation : 1 h, une version peut sortir à tout moment."""
+    VULNERABILITIES = "vulnerabilities"
+    """Les failles connues d'une version d'un paquet (leurs identifiants, chez OSV) : 1 h, un
+    avis peut être publié à tout moment."""
+    ADVISORIES = "advisories"
+    """Un avis de sécurité complet (OSV) : 7 jours. Il ne change pas sans que sa date de
+    modification change, et on la vérifie à chaque fois."""
 
     @property
     def ttl(self) -> float:
@@ -50,7 +56,11 @@ class CacheKind(enum.StrEnum):
         return _TTLS[self]
 
 
-_TTLS = {CacheKind.VERSIONS: 3600.0}
+_TTLS = {
+    CacheKind.VERSIONS: 3600.0,
+    CacheKind.VULNERABILITIES: 3600.0,
+    CacheKind.ADVISORIES: 7 * 24 * 3600.0,
+}
 
 
 @dataclass(frozen=True, kw_only=True)

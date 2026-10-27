@@ -16,7 +16,7 @@ Une borne basse (``>=2.32.0``) ne dit pas qu'on utilise ``2.32.0``.
 """
 
 from forceupdate import versions
-from forceupdate.checks.base import Current, nearest
+from forceupdate.checks.base import Current, nearest, sentence
 from forceupdate.models import Dependency, Finding, FindingKind, Gap, Severity
 from forceupdate.registries import PackageInfo
 from forceupdate.versions import InvalidVersion
@@ -62,7 +62,7 @@ def check(dependency: Dependency, info: PackageInfo, current: Current) -> list[F
     if published.yanked:
         target = _nearest(scheme, current.version, info.available())
         reason = f" : {published.yanked_reason}" if published.yanked_reason else ""
-        reason = _sentence(f"Version {current.version} retirée de {registry}{reason}")
+        reason = sentence(f"Version {current.version} retirée de {registry}{reason}")
         replacement = (
             f"La plus proche non retirée : {target}."
             if target is not None
@@ -92,7 +92,7 @@ def check(dependency: Dependency, info: PackageInfo, current: Current) -> list[F
                 kind=FindingKind.DEPRECATED,
                 severity=Severity.LOW,
                 message=(
-                    _sentence(f"Version {current.version} dépréciée : {published.deprecated}")
+                    sentence(f"Version {current.version} dépréciée : {published.deprecated}")
                     + f" {replacement}"
                 ),
                 target_version=target,
@@ -102,13 +102,6 @@ def check(dependency: Dependency, info: PackageInfo, current: Current) -> list[F
             )
         )
     return findings
-
-
-def _sentence(text: str) -> str:
-    """``text`` terminé par un point, sans en doubler un (le message du registre peut déjà
-    finir par ``.``, ``!`` ou ``?``)."""
-    text = text.rstrip()
-    return text if text.endswith((".", "!", "?")) else text + "."
 
 
 def _nearest(scheme: versions.VersionScheme, current: str, choices: list[str]) -> str | None:

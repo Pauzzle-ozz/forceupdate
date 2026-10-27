@@ -11,12 +11,14 @@ En construction. L'outil sera publié gratuitement sur PyPI
 (`uv tool install forceupdate`), sous licence MIT.
 
 Déjà là, en ligne de commande, pour Python et npm : `forceupdate scan <dossier>`
-dit quelles dépendances ont une version plus récente, une version retirée, ou
-sont dépréciées.
+dit quelles dépendances ont une faille connue (d'après [OSV](https://osv.dev),
+indirectes comprises, avec la version qui la corrige), une version plus récente,
+une version retirée, ou sont dépréciées.
 
 ```bash
 forceupdate scan .                              # rapport dans le terminal
 forceupdate scan . --format json -o rapport.json   # ou md ; toujours en UTF-8
+forceupdate scan . --fail-on vuln               # code 1 si une faille est connue
 forceupdate scan . --fail-on major              # code 1 si une majeure (ou pire) attend
 forceupdate scan . --offline                    # seulement le cache, sans réseau
 ```

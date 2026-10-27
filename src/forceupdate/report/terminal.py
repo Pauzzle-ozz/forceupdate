@@ -26,6 +26,7 @@ from forceupdate.report import (
     label,
     plural,
     rows,
+    subject,
     summarize,
 )
 
@@ -79,11 +80,11 @@ def _print_dates(report: Report, console: Console) -> None:
     line = f"Analyse du {format_date(report.scanned_at)}"
     if report.options is not None and report.options.offline:
         if report.oldest_data is None:
-            line += " ; hors ligne, sans données de registre en cache"
+            line += " ; hors ligne, sans données des registres ni d'OSV en cache"
         else:
             line += (
-                " ; hors ligne : données des registres prises dans le cache, la plus ancienne"
-                f" du {format_date(report.oldest_data)}"
+                " ; hors ligne : données des registres et d'OSV prises dans le cache, la plus"
+                f" ancienne du {format_date(report.oldest_data)}"
             )
     console.print(Text(line + ".", style="dim"))
 
@@ -125,7 +126,7 @@ def _print_project(project: Project, report: Report, console: Console) -> None:
         for finding in details:
             message = Text()
             if finding.dependency is not None:
-                message.append(f"{finding.dependency.name} : ", style="bold")
+                message.append(f"{subject(finding)} : ", style="bold")
             message.append(finding.message)
             grid.add_row("", Text(label(finding), style=_finding_style(finding)), message)
         console.print(grid)
@@ -213,6 +214,8 @@ def _summary_line(summary: Summary) -> Text:
     text = Text("Résumé : ", style="bold")
     checked = plural(summary.checked, "dépendance")
     text.append(f"{checked} vérifiée{'s' if summary.checked > 1 else ''}")
+    if summary.audited != summary.checked:
+        text.append(f", failles cherchées sur {summary.audited}")
     if not summary.to_update:
         text.append(", rien à mettre à jour")
     else:

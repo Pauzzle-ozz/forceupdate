@@ -17,6 +17,7 @@ figés : ne pas les régénérer sans mettre à jour les tests qui en dépendent
 | `pnpm9/` | workspace pnpm 9 : deux membres reliés par `workspace:*`, un exclu par `!packages/excluded` | `pnpm install --lockfile-only` (9.15.9) |
 | `npm-workspace/` | workspace npm : deux membres, un conflit de versions entre eux, un dossier hors workspace | `npm install` (npm 11.6) |
 | `pnpm-catalog/` | workspace pnpm à catalogues : `catalog:`, `catalog:default`, `catalog:legacy` (sous `catalogs:`), un alias `npm:` dans le catalogue | `pnpm install --lockfile-only --ignore-scripts` (12.15.0) |
+| `vulnerable/` | des failles connues (E08) : `lodash` 4.17.15, `flask` 0.12 et ses dépendances de fin 2018 (jinja2 2.10, werkzeug 0.14.1) | `npm install --package-lock-only --ignore-scripts` (npm 11.6) ; `uv pip compile requirements.in -o requirements.txt --python-version 3.7 --exclude-newer 2019-01-01` (uv 0.10) |
 
 Les lockfiles npm ont été produits avec `--ignore-scripts`, dans un dossier à part,
 puis copiés ici sans `node_modules/`. `vendor/local-lib/` (cible du `file:` de `npm/`
