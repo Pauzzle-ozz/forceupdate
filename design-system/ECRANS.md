@@ -33,7 +33,7 @@ Chaque écran a son adresse (lien profond, retour du navigateur) :
 | `/` | 1. Accueil |
 | `/choisir?mode=dossier` (ou `fichier`) | 2. Choisir |
 | `/analyses/{id}` | 3. Analyse en cours tant que `status` vaut `running`, puis 4. Rapport (ou l'état échouée, annulée) |
-| `/analyses/{id}/mise-a-jour` | 5. Mise à jour, étape Choisir |
+| `/analyses/{id}/mise-a-jour` | 5. Mise à jour, étape Choisir (`?plan=<id>` : la sélection de ce plan ; `?paquet=<Update.id>` : le focus sur la carte de ce paquet) |
 | `/plans/{id}` | 5. Mise à jour, étapes Vérifier, Appliquer, Résultat (un plan se retrouve après un rechargement) |
 | `/comptes` | 6. Comptes |
 | `/depots` | 7. Mes dépôts ; le rapport d'un dépôt réutilise l'écran 4 (`/analyses/{id}`) |

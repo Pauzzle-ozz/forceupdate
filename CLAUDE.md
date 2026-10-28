@@ -64,15 +64,18 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 ├── frontend/               ← l'interface : React + TypeScript + Vite + Tailwind 4 + shadcn/ui (E14)
 │   ├── src/api/            ← schema.d.ts (généré depuis openapi.json), client.ts, types.ts
 │   ├── src/styles/         ← tokens.css (ceux de MASTER), app.css (Tailwind, polices)
-│   ├── src/components/ui/  ← les composants shadcn/ui, habillés par les tokens ; sheet.tsx : <dialog> natif
-│   ├── src/screens/        ← les écrans (Home, Choose, ScanProgress, report/…) ; tests *.test.tsx à côté
+│   ├── src/components/ui/  ← les composants shadcn/ui, habillés par les tokens ; sheet.tsx, dialog.tsx : <dialog> natif
+│   ├── src/screens/        ← les écrans (Home, Choose, ScanProgress, report/…, update/ : l'écran 5) ;
+│   │                         tests *.test.tsx à côté
 │   ├── src/test/           ← mise en place de Vitest, fetch et EventSource simulés, rapport d'exemple
-│   └── e2e/                ← tests Playwright (vrai serveur, front construit, CSP, axe-core)
+│   └── e2e/                ← tests Playwright (vrai serveur, front construit, CSP, axe-core) ;
+│                             helpers.ts : copie d'un mini-projet dans un dossier temporaire
 ├── src/forceupdate/        ← le code de l'outil (architecture cible : PLAN.md)
 │   └── web/                ← le serveur de ui (FastAPI) ; openapi.json, exporté, donne les types du front ;
 │                             static/ : le front construit (npm run build), ignoré par git, livré dans le paquet
 └── tests/                  ← les tests ; conftest.py gère le marqueur network
-    ├── e2e_server.py       ← le serveur de ui hors ligne pour Playwright, et les rapports d'exemple du front
+    ├── e2e_server.py       ← le serveur de ui hors ligne pour Playwright (npm et uv simulés), et les
+    │                         rapports d'exemple du front
     ├── fixtures/           ← réponses HTTP enregistrées ; record.py les ré-enregistre
     └── projects/           ← mini-projets par outil, lockfiles produits par les vrais outils
 ```
@@ -135,7 +138,10 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
 - CSP du serveur (`default-src 'self'`) : rien d'un CDN, pas d'URL `data:`, pas de
   `<style>` ni de script en ligne (les styles posés par React passent). Radix Dialog et
   Sonner injectent un `<style>` : refusés ; le panneau et les dialogues sont des
-  `<dialog>` natifs (`components/ui/sheet.tsx`).
+  `<dialog>` natifs (`components/ui/sheet.tsx`, `dialog.tsx`), « Copié » s'annonce par une
+  région `aria-live` (`components/Command.tsx`).
+- Les tests e2e qui écrivent travaillent sur une copie (`e2e/helpers.ts`, `copyProject`) ;
+  le serveur de test est partagé entre les tests : ses chemins récents s'accumulent.
 - Pour essayer `forceupdate update` en vrai : sur une copie dans le scratchpad, jamais
   dans `tests/projects/` (les outils réécrivent les lockfiles). yarn, poetry, pdm,
   pipenv et pip-compile ne sont pas installés (choix de l'utilisateur) : `npx yarn@1`,

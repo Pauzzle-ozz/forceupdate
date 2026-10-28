@@ -49,9 +49,11 @@ forceupdate update . --exclude "eslint*" --ecosystem npm
 seulement, et ouvre le navigateur, réservé à qui a le jeton de session que porte
 l'adresse affichée. On y choisit un dossier ou un fichier de l'ordinateur (ou on le
 dépose), on suit l'analyse, et on lit le rapport : synthèse, projets, dépendances
-filtrables et triables, détail de chaque dépendance. Choisir et appliquer les mises
-à jour depuis l'interface arrive à l'étape suivante ; `forceupdate update` le fait
-déjà. Ctrl+C l'arrête.
+filtrables et triables, détail de chaque dépendance. Puis on met à jour : on coche
+(les mises à jour sûres le sont déjà, les majeures jamais d'office), on lit le diff
+de chaque fichier, les lockfiles à régénérer et le garde-fou git, on applique et on
+voit les versions obtenues. Un fichier déposé ne s'écrit pas : sa version mise à
+jour se télécharge. Ctrl+C l'arrête.
 
 ```bash
 forceupdate ui                           # un port libre, et le navigateur

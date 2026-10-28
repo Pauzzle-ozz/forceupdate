@@ -2,9 +2,10 @@ import { resolve } from 'node:path'
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
 import { TOKEN } from '../playwright.config.ts'
+import { copyProject, gitWithChange, removeCopies } from './helpers.ts'
 
 /**
- * L'accessibilité des écrans 1 à 4 (MASTER, « Accessibilité ») : axe-core, règles WCAG 2.1 A et
+ * L'accessibilité des écrans 1 à 5 (MASTER, « Accessibilité ») : axe-core, règles WCAG 2.1 A et
  * AA (contrastes compris), en clair et en sombre, au large et à 375 px.
  */
 const VULNERABLE = resolve(import.meta.dirname, '../../tests/projects/vulnerable').replaceAll('\\', '/')
@@ -39,6 +40,43 @@ for (const scheme of ['light', 'dark'] as const) {
       await page.getByRole('button', { name: 'flask, voir le détail' }).click()
       await expect(page.getByRole('dialog', { name: 'flask' })).toBeVisible()
       await audit(page, 'détail')
+    })
+  }
+}
+
+test.afterAll(removeCopies)
+
+for (const scheme of ['light', 'dark'] as const) {
+  for (const width of [1440, 375]) {
+    test(`écran 5, ${scheme === 'light' ? 'clair' : 'sombre'}, ${width} px`, async ({ page }) => {
+      // Une copie dans git, avec un changement pas encore commité : le garde-fou et sa confirmation.
+      const root = copyProject('vulnerable')
+      gitWithChange(root, 'requirements.in')
+      await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' })
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto(`/?token=${TOKEN}`)
+      await page.getByLabel("Chemin absolu d'un dossier ou d'un fichier").fill(root)
+      await page.getByRole('button', { name: 'Analyser', exact: true }).click()
+      await expect(page.getByRole('heading', { level: 1, name: 'vulnerable' })).toBeVisible({ timeout: 30_000 })
+
+      await page.getByRole('link', { name: /Mettre à jour/ }).click()
+      await page.getByRole('radio', { name: /^3\.1\.3,/ }).check()
+      await expect(page.getByText('Une majeure est cochée')).toBeVisible()
+      await audit(page, 'choisir')
+
+      await page.getByRole('button', { name: 'Vérifier le plan' }).click()
+      await expect(page.getByRole('region', { name: 'Diff de package.json' })).toBeVisible()
+      await audit(page, 'vérifier')
+
+      await page.getByRole('button', { name: 'Appliquer quand même…' }).click()
+      await expect(page.getByRole('alertdialog')).toBeVisible()
+      await audit(page, 'confirmation')
+
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Appliquer quand même' }).click()
+      await expect(page.getByText('Mise à jour appliquée')).toBeVisible({ timeout: 30_000 })
+      await audit(page, 'résultat')
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+      expect(overflow).toBeLessThanOrEqual(0)
     })
   }
 }

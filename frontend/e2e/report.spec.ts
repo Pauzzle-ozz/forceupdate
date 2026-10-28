@@ -67,7 +67,8 @@ test('choisir un mini-projet, voir le bon rapport, sous la CSP du serveur', asyn
   await page.getByRole('navigation', { name: 'Navigation principale' }).getByRole('link', { name: 'Analyser' }).click()
   await expect(page.getByRole('heading', { name: 'Cette session' })).toBeVisible()
   await expect(page.getByText('28 failles').first()).toBeVisible()
-  await expect(page.getByRole('button', { name: /^vulnerable, analyser de nouveau/ })).toBeVisible()
+  // Le serveur de test est partagé : les copies de vulnerable des autres tests y sont aussi.
+  await expect(page.getByRole('button', { name: `vulnerable, analyser de nouveau (${VULNERABLE})` })).toBeVisible()
 
   expect(errors).toEqual([])
 })

@@ -10,6 +10,10 @@ fixe, pour que les tests ouvrent l'adresse d'entrée ::
 
 Le front servi est celui de ``src/forceupdate/web/static/`` (``npm run build`` d'abord).
 
+Jamais de vrai outil de lockfile non plus : npm et uv sont simulés (``fake_which``,
+``fake_spawn``, comme ``conftest.FakeTools``) ; ils écrivent dans le lockfile les versions que
+leur commande demande. Les autres outils sont absents (« commande à lancer »).
+
 Un rapport d'exemple (``--report`` : le JSON de ``scan --format json``, celui de
 ``GET /api/scans/{id}``, avec le chemin analysé remplacé par ``--source`` et des dates fixes)
 pour les tests du front (``frontend/src/test/fixtures/``) ::
@@ -20,9 +24,12 @@ pour les tests du front (``frontend/src/test/fixtures/``) ::
 
 import argparse
 import json
+import re
+import subprocess
 import sys
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePath
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -33,11 +40,59 @@ from forceupdate.models import ScanOptions
 from forceupdate.net import cache as cache_module
 from forceupdate.report import json as json_report
 from forceupdate.sources.local import LocalSource
+from forceupdate.update import lockfiles
 from forceupdate.web import app, security
+
+FAKE_TOOLS = ("npm", "uv")
+
+
+def fake_which(program: str) -> str | None:
+    return f"/outils-e2e/{program}" if program in FAKE_TOOLS else None
+
+
+def fake_spawn(command: list[str], **options: Any) -> subprocess.CompletedProcess[bytes]:
+    """npm : chaque version exacte de ``package.json`` (épinglée le temps du passage) passe
+    dans ``package-lock.json``. uv : chaque ``-P nom==version`` passe dans le fichier ``-o``.
+    Le reste des commandes ne fait rien."""
+    cwd = Path(options["cwd"])
+    program, *arguments = command
+    if PurePath(program).name == "npm":
+        _npm(cwd)
+    elif PurePath(program).name == "uv" and "-o" in arguments:
+        _uv(cwd / arguments[arguments.index("-o") + 1], arguments)
+    return subprocess.CompletedProcess(command, 0, b"", b"")
+
+
+def _npm(cwd: Path) -> None:
+    manifest = json.loads((cwd / "package.json").read_text(encoding="utf-8"))
+    path = cwd / "package-lock.json"
+    lock = json.loads(path.read_text(encoding="utf-8"))
+    for section in ("dependencies", "devDependencies"):
+        for name, spec in manifest.get(section, {}).items():
+            entry = lock.get("packages", {}).get(f"node_modules/{name}")
+            if entry is not None and re.fullmatch(r"\d+\.\d+\.\d+", spec):
+                entry["version"] = spec
+                entry["resolved"] = (
+                    f"https://registry.npmjs.org/{name}/-/{name.split('/')[-1]}-{spec}.tgz"
+                )
+                entry.pop("integrity", None)
+    path.write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8", newline="\n")
+
+
+def _uv(output: Path, arguments: list[str]) -> None:
+    text = output.read_text(encoding="utf-8")
+    for index, argument in enumerate(arguments[:-1]):
+        if argument == "-P":
+            name, version = arguments[index + 1].split("==")
+            pattern = rf"^{re.escape(name)}==\S+$"
+            text = re.sub(pattern, f"{name}=={version}", text, flags=re.MULTILINE | re.IGNORECASE)
+    output.write_text(text, encoding="utf-8", newline="\n")
 
 
 def serve(port: int, token: str, state_dir: Path) -> None:
     security.new_token = lambda: token
+    lockfiles._which = fake_which
+    lockfiles._spawn = fake_spawn
     app.serve(
         port=port,
         browser=False,

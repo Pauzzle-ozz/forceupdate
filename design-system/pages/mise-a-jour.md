@@ -63,3 +63,19 @@
   obtenue et son badge (« version exacte » vert ; « plus haute que choisie » info ;
   « retenue par *paquet version* » avertissement).
 - Sortie d'un outil en échec : bloc en chasse fixe, 12 dernières lignes, défilant.
+
+## Fait à E15 : écarts à cette page
+
+- Titre d'un groupe de cartes : écosystème et lockfile, **sans l'outil** : il n'est connu
+  qu'avec le plan (`LockJob.tool`), à l'étape Vérifier. Le chemin d'un lockfile part de la
+  source et dit déjà le projet ; le groupe « sans lockfile » nomme le sien s'il y en a
+  plusieurs.
+- Barre collante en bas sous 1024 px : à l'étape Choisir seulement, comme la maquette. À
+  Vérifier, « Appliquer » reste sous les diffs et le garde-fou, pour qu'on les ait lus.
+- Étape Appliquer : pas de durée par ligne (un rechargement rejoue les événements d'un coup,
+  les durées seraient fausses) ; « 2 sur 2 » sur la ligne en cours.
+- « Ce qui sera fait » est aussi montré pour un fichier envoyé (la maquette le cachait).
+- Un plan `failed` (fichier changé depuis le diff : rien n'est écrit) reste à l'étape
+  Vérifier, avec ce qui s'est passé et « Relancer l'analyse ».
+- Retour à « Choisir » : l'adresse `/analyses/{id}/mise-a-jour?plan=<id>` reprend la
+  sélection de ce plan (« Modifier la sélection », retour du navigateur, « Réessayer »).

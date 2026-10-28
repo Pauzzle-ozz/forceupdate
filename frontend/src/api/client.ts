@@ -6,7 +6,7 @@
  * serveur (`connection`) : une erreur réseau, c'est le serveur arrêté ; un 401, la session
  * terminée (le serveur a redémarré, son jeton a changé). La coquille en fait des bandeaux.
  */
-import type { Listing, ScanDetail, ScanRequest, ScanSummary } from './types'
+import type { ApplyRequest, Listing, PlanRequest, ScanDetail, ScanRequest, ScanSummary, UpdatePlan } from './types'
 
 export type Connection = 'ok' | 'down' | 'session'
 
@@ -101,10 +101,25 @@ export const api = {
     }),
 
   scanEventsUrl: (id: string) => `/api/scans/${encodeURIComponent(id)}/events`,
+
+  /** Prépare une sélection, sans rien écrire : diffs, lockfiles, garde-fou git. */
+  planUpdate: (body: PlanRequest) => request<UpdatePlan>('POST', '/api/updates/plan', json(body)),
+
+  /** Applique un plan, en tâche de fond ; `force` passe outre le garde-fou git. */
+  applyUpdate: (body: ApplyRequest) => request<UpdatePlan>('POST', '/api/updates/apply', json(body)),
+
+  getPlan: (id: string) => request<UpdatePlan>('GET', `/api/updates/${encodeURIComponent(id)}`),
+
+  planEventsUrl: (id: string) => `/api/updates/${encodeURIComponent(id)}/events`,
+
+  /** Un fichier tel que le plan le réécrit (fichier envoyé : sa version mise à jour). */
+  planFileUrl: (id: string, path: string) =>
+    `/api/updates/${encodeURIComponent(id)}/files/${path.split('/').map(encodeURIComponent).join('/')}`,
 }
 
 export const queryKeys = {
   scans: ['scans'] as const,
   scan: (id: string) => ['scan', id] as const,
+  plan: (id: string) => ['plan', id] as const,
   folder: (path: string | null) => ['fs', path] as const,
 }

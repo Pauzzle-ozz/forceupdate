@@ -7,7 +7,7 @@ import { render } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { vi } from 'vitest'
 import { AppRoutes, createQueryClient } from '@/App'
-import type { Listing, Report, ScanDetail, ScanSummary } from '@/api/types'
+import type { Listing, Report, ScanDetail, ScanSummary, UpdatePlan } from '@/api/types'
 import vulnerable from './fixtures/vulnerable.json'
 
 /** Le rapport de `tests/projects/vulnerable` (`tests/e2e_server.py --report`). */
@@ -93,6 +93,104 @@ export function scanDetail(overrides: Partial<ScanDetail> = {}): ScanDetail {
 export function scanSummary(overrides: Partial<ScanSummary> = {}): ScanSummary {
   const { report: _report, ...summary } = scanDetail(overrides as Partial<ScanDetail>)
   return summary
+}
+
+/**
+ * Le plan de la sélection proposée de `vulnerable` (lodash 4.18.1, flask 0.12.5, jinja2
+ * 2.11.3), tel que le rend `POST /api/updates/plan` : deux diffs, npm et uv trouvés.
+ */
+export function planDocument(overrides: Partial<UpdatePlan> = {}): UpdatePlan {
+  return {
+    id: 'p1',
+    scan: 'a1',
+    status: 'planned',
+    created_at: '2026-10-28T17:31:00+00:00',
+    finished_at: null,
+    selection: { '.|npm|lodash': '4.18.1', '.|PyPI|flask': '0.12.5', '.|PyPI|jinja2|2.10': '2.11.3' },
+    applied: [
+      { update: '.|PyPI|flask', version: '0.12.5' },
+      { update: '.|PyPI|jinja2|2.10', version: '2.11.3' },
+      { update: '.|npm|lodash', version: '4.18.1' },
+    ],
+    skipped: [],
+    files: [
+      {
+        path: 'package.json',
+        diff:
+          '--- a/package.json\n+++ b/package.json\n@@ -3,6 +3,6 @@\n   "version": "1.0.0",\n   "private": true,\n   "dependencies": {\n-    "lodash": "4.17.15"\n+    "lodash": "4.18.1"\n   }\n }\n',
+      },
+      {
+        path: 'requirements.in',
+        diff:
+          '--- a/requirements.in\n+++ b/requirements.in\n@@ -1,2 +1,2 @@\n # Une vieille application Flask ; requirements.txt est compilé avec uv pip compile.\n-flask==0.12\n+flask==0.12.5\n',
+      },
+    ],
+    lockfiles: [
+      {
+        lockfile: 'package-lock.json',
+        kind: 'npm',
+        tool: 'npm',
+        program: 'npm',
+        available: true,
+        command: 'npm install --package-lock-only --ignore-scripts',
+        directory: '.',
+        updates: [{ update: '.|npm|lodash', version: '4.18.1' }],
+        workspace: false,
+        reason: null,
+        warnings: [],
+      },
+      {
+        lockfile: 'requirements.txt',
+        kind: 'uv-pip-compile',
+        tool: 'uv pip compile',
+        program: 'uv',
+        available: true,
+        command:
+          'uv pip compile requirements.in -o requirements.txt --python-version 3.7 -P flask==0.12.5 -P jinja2==2.11.3',
+        directory: '.',
+        updates: [
+          { update: '.|PyPI|flask', version: '0.12.5' },
+          { update: '.|PyPI|jinja2|2.10', version: '2.11.3' },
+        ],
+        workspace: false,
+        reason: null,
+        warnings: [
+          "Pas repris de l'en-tête de requirements.txt : --exclude-newer 2019-01-01, qui écarterait les versions choisies.",
+        ],
+      },
+    ],
+    uncommitted: [],
+    applicable: true,
+    error: null,
+    results: [],
+    progress: null,
+    ...overrides,
+  }
+}
+
+/** Ce que rend la régénération des deux lockfiles de `vulnerable` : versions exactes. */
+export function regenerated(): UpdatePlan['results'] {
+  const exact = (update: string, version: string) => ({ update, version, versions: [version], reach: 'exact' as const, held_by: [] })
+  return [
+    {
+      lockfile: 'package-lock.json',
+      status: 'regenerated',
+      error: null,
+      restored: [],
+      installed: [exact('.|npm|lodash', '4.18.1')],
+      changed: [],
+      warnings: [],
+    },
+    {
+      lockfile: 'requirements.txt',
+      status: 'regenerated',
+      error: null,
+      restored: [],
+      installed: [exact('.|PyPI|flask', '0.12.5'), exact('.|PyPI|jinja2|2.10', '2.11.3')],
+      changed: [],
+      warnings: [],
+    },
+  ]
 }
 
 export function listing(overrides: Partial<Listing> = {}): Listing {

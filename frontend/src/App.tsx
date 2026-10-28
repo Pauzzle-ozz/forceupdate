@@ -1,10 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { FolderGit2, GitPullRequest, KeyRound, ListChecks, Settings } from 'lucide-react'
+import { FolderGit2, GitPullRequest, KeyRound, Settings } from 'lucide-react'
 import { useState } from 'react'
-import { BrowserRouter, Route, Routes, useParams } from 'react-router'
+import { BrowserRouter, Route, Routes } from 'react-router'
 import { Choose } from '@/screens/Choose'
 import { Home } from '@/screens/Home'
 import { ScanPage } from '@/screens/ScanPage'
+import { PlanPage } from '@/screens/update/PlanPage'
+import { UpdatePage } from '@/screens/update/UpdatePage'
 import { AppShell } from '@/shell/AppShell'
 import { ComingSoon, NotFound } from '@/shell/NotFound'
 
@@ -27,8 +29,8 @@ export function AppRoutes() {
         <Route index element={<Home />} />
         <Route path="choisir" element={<Choose />} />
         <Route path="analyses/:id" element={<ScanPage />} />
-        <Route path="analyses/:id/mise-a-jour" element={<UpdateSoon />} />
-        <Route path="plans/:id" element={<UpdateSoon />} />
+        <Route path="analyses/:id/mise-a-jour" element={<UpdatePage />} />
+        <Route path="plans/:id" element={<PlanPage />} />
         <Route
           path="depots"
           element={
@@ -64,23 +66,6 @@ export function AppRoutes() {
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
-  )
-}
-
-/** L'écran 5 (mise à jour) vient à l'étape suivante ; le lien du rapport y mène déjà. */
-function UpdateSoon() {
-  const { id } = useParams()
-  return (
-    <ComingSoon
-      title="Mise à jour"
-      icon={ListChecks}
-      back={id ? { to: `/analyses/${id}`, label: 'Revenir au rapport' } : undefined}
-    >
-      <p>
-        Choisir les mises à jour, voir le diff et appliquer : pas encore dans l'interface. En attendant,{' '}
-        <code>forceupdate update</code> le fait en ligne de commande.
-      </p>
-    </ComingSoon>
   )
 }
 

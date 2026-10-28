@@ -93,6 +93,10 @@
   --color-danger-bg: var(--danger-bg);
   --color-inconclusive: var(--inconclusive);
   --color-inconclusive-bg: var(--inconclusive-bg);
+  --color-diff-add: var(--diff-add);
+  --color-diff-add-bg: var(--diff-add-bg);
+  --color-diff-del: var(--diff-del);
+  --color-diff-del-bg: var(--diff-del-bg);
 
   --color-chart-critical: var(--chart-critical);
   --color-chart-high: var(--chart-high);
@@ -271,9 +275,112 @@ dialog.sheet::backdrop {
   background: var(--scrim);
 }
 
+/* -- Dialogue de confirmation : un <dialog> natif aussi (src/components/ui/dialog.tsx) -------- */
+
+dialog.confirm {
+  width: min(520px, calc(100% - 32px));
+  max-width: none;
+  margin: auto;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+}
+
+dialog.confirm[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: dialog-in var(--duration) var(--ease-out);
+}
+
+dialog.confirm::backdrop {
+  background: var(--scrim);
+}
+
 /* La page ne défile pas derrière un panneau ouvert. */
 html:has(dialog[open]) {
   overflow: hidden;
+}
+
+/* -- Cases à cocher et boutons radio (écran 5) : les contrôles natifs, dessinés aux tokens ---- */
+
+input.choice {
+  appearance: none;
+  flex: none;
+  display: grid;
+  place-content: center;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  border: 1.5px solid var(--border-control);
+  background: var(--surface);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast),
+    border-color var(--duration-fast);
+}
+
+input.choice[type="checkbox"] {
+  border-radius: var(--radius-xs);
+}
+
+input.choice[type="radio"] {
+  border-radius: 50%;
+}
+
+input.choice[type="checkbox"]::after {
+  content: "";
+  width: 10px;
+  height: 6px;
+  border: 2px solid var(--on-primary);
+  border-top: 0;
+  border-right: 0;
+  transform: rotate(-45deg) translate(1px, -1px) scale(0);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+input.choice[type="radio"]::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--on-primary);
+  transform: scale(0);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+input.choice:checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+input.choice[type="checkbox"]:checked::after {
+  transform: rotate(-45deg) translate(1px, -1px) scale(1);
+}
+
+input.choice[type="radio"]:checked::after {
+  transform: scale(1);
+}
+
+input.choice:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Au doigt : 44 px de cible autour de la case. */
+@media (pointer: coarse) {
+  input.choice {
+    position: relative;
+  }
+
+  input.choice::before {
+    content: "";
+    position: absolute;
+    inset: -13px;
+  }
 }
 
 @keyframes spin {
@@ -294,6 +401,17 @@ html:has(dialog[open]) {
   }
   to {
     transform: translateX(290%);
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    transform: scale(0.97);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
   }
 }
 

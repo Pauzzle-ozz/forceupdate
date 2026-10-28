@@ -364,6 +364,21 @@ son ou nom de personnage repris.
 - vérifié par axe-core (WCAG 2.1 AA, contrastes compris) en clair et en sombre, à 1440 et
   375 px (`frontend/e2e/a11y.spec.ts`).
 
+**Fait à E15** (l'écran 5, `frontend/src/screens/update/`) :
+
+- cases et boutons radio : les contrôles natifs (`ui/choice.tsx`), dessinés aux tokens par
+  `input.choice` dans `app.css` (mêmes mesures que les maquettes) ; pas le Checkbox ni le
+  RadioGroup de Radix : le clavier natif d'un groupe radio suffit ;
+- confirmation : un `<dialog>` natif aussi (`ui/dialog.tsx`, `role="alertdialog"`, focus sur
+  « Annuler », Échap annule, focus rendu ; le voile ne ferme pas) ; « Copié » s'annonce par une
+  région `aria-live` (`components/Command.tsx`), pas par Sonner ;
+- le nom d'un bouton radio est un `aria-label` en mots séparés (« 4.18.1, mineure, dernière
+  mineure · corrige les failles, proposée ») : les badges collés au texte se lisaient
+  « 4.18.1Mineure » ;
+- diff (`components/Diff.tsx`), tokens `--diff-*` ajoutés au `@theme` de Tailwind ;
+- vérifié par axe-core sur Choisir, Vérifier, la confirmation et Résultat, en clair et en
+  sombre, à 1440 et 375 px ; pas de défilement horizontal de 375 à 1440 px.
+
 ## Anti-motifs
 
 - Couleur seule pour dire une gravité ou un état ; vert pour l'accent.

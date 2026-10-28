@@ -1,14 +1,14 @@
-import { useQuery } from '@tanstack/react-query'
 import { CircleStop, CircleX, History, RefreshCw, ServerOff } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
-import { ApiError, api, queryKeys } from '@/api/client'
+import { ApiError } from '@/api/client'
 import type { ScanDetail } from '@/api/types'
 import { EmptyState } from '@/components/EmptyState'
 import { Alert, AlertActions, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useScan } from '@/hooks/useScan'
 import { rescanRequest, useStartScan } from '@/hooks/useScanActions'
 import { basename, fr } from '@/lib/format'
 import { Breadcrumb, Container, useDocumentTitle } from '@/shell/Page'
@@ -22,12 +22,7 @@ import { ReportView } from './report/ReportView'
  */
 export function ScanPage() {
   const { id = '' } = useParams()
-  const scan = useQuery({
-    queryKey: queryKeys.scan(id),
-    queryFn: () => api.getScan(id),
-    // Un rapport fini ne change plus.
-    staleTime: (query) => (query.state.data && query.state.data.status !== 'running' ? Infinity : 0),
-  })
+  const scan = useScan(id)
   // L'analyse a fini sous les yeux : le focus ira au titre du rapport.
   const [followed, setFollowed] = useState(false)
 
@@ -74,8 +69,9 @@ function ReportSkeleton() {
   )
 }
 
-function ScanError({ error, retry }: { error: Error; retry: () => void }) {
-  useDocumentTitle('Rapport')
+/** L'analyse n'a pas pu être lue : oubliée par le serveur (404), ou une autre erreur. */
+export function ScanError({ error, retry, title = 'Rapport' }: { error: Error; retry: () => void; title?: string }) {
+  useDocumentTitle(title)
   if (error instanceof ApiError && error.status === 404) {
     return (
       <Container narrow>
@@ -103,7 +99,7 @@ function ScanError({ error, retry }: { error: Error; retry: () => void }) {
       <EmptyState
         icon={ServerOff}
         level="h1"
-        title="Rapport indisponible"
+        title={`${title} indisponible`}
         actions={
           <Button onClick={retry}>
             <RefreshCw aria-hidden="true" />
