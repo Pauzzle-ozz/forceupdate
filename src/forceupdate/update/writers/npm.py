@@ -7,7 +7,9 @@ le ``pnpm-workspace.yaml`` le plus proche en remontant, celui que lit l'analyse
 YAML ; une plage écrite sur plusieurs lignes ou avec un échappement n'est pas réécrite.
 """
 
-from forceupdate.models import Edit, Update
+from collections.abc import Iterable
+
+from forceupdate.models import Dependency, Edit
 from forceupdate.parsers.base import ParseError, ReadText
 from forceupdate.parsers.lockfiles import dirname
 from forceupdate.parsers.npm import (
@@ -55,14 +57,15 @@ READERS: dict[str, Reader] = {"package.json": read_package_json}
 ``pnpm-workspace.yaml`` n'en est pas un : il est reconnu à son nom (``PNPM_WORKSPACE``)."""
 
 
-def catalog_target(edit: Edit, update: Update, read_text: ReadText) -> Target:
+def catalog_target(edit: Edit, dependencies: Iterable[Dependency], read_text: ReadText) -> Target:
     """La plage d'un catalogue pnpm à réécrire (``EditKind.CATALOG``), dans le
-    ``pnpm-workspace.yaml`` du ``package.json`` de ``edit``. Lève ``Refused`` si on ne l'y
-    trouve pas, ou si on ne sait pas la réécrire."""
+    ``pnpm-workspace.yaml`` du ``package.json`` de ``edit`` ; la dépendance qui y renvoie est
+    parmi ``dependencies``. Lève ``Refused`` si on ne l'y trouve pas, ou si on ne sait pas la
+    réécrire."""
     dependency = next(
         (
             d
-            for d in update.dependencies
+            for d in dependencies
             if d.file == edit.file
             and d.resolved_constraint == edit.old
             and catalog_name(d.constraint) is not None

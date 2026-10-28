@@ -4,29 +4,44 @@ Les tests qui touchent le vrai réseau sont marqués ``network`` : ils sont saut
 par défaut, et lancés avec ``--run-network``. Les autres tournent hors ligne, sur
 des réponses HTTP enregistrées dans ``tests/fixtures/``.
 
-Deux garde-fous valent pour tous les tests : le cache de l'utilisateur n'est jamais
-touché (``Cache.default()`` en ouvre un dans le dossier du test), et un test qui n'est pas
+Quatre garde-fous valent pour tous les tests : le cache de l'utilisateur n'est jamais
+touché (``Cache.default()`` en ouvre un dans le dossier du test), un test qui n'est pas
 marqué ``network`` ne peut pas ouvrir de connexion (une requête non simulée par ``respx``
-échoue au lieu de partir sur le réseau).
+échoue au lieu de partir sur le réseau), ni lancer un vrai outil de lockfile (npm, uv… :
+``update.lockfiles`` les croit absents ; un test les simule avec ``FakeTools``), et aucun
+test n'ouvre le navigateur (``webbrowser.open`` échoue).
+
+Le serveur de l'interface se teste avec ``api``, le client de test de FastAPI.
 """
 
 import asyncio
 import asyncio.base_events
 import json
-from collections.abc import Callable, Iterator
-from pathlib import Path
+import subprocess
+import time
+import webbrowser
+from collections.abc import Callable, Iterable, Iterator
+from dataclasses import dataclass, field
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import httpx
 import pytest
 import respx
+from fastapi.testclient import TestClient
 
 from forceupdate.net import Cache, HttpClient
 from forceupdate.net import cache as cache_module
 from forceupdate.registries import Registry
 from forceupdate.registries.pypi import ACCEPT
+from forceupdate.update import lockfiles
+from forceupdate.web import Settings, create_app
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+API_TOKEN = "jeton-de-test"
+API_PORT = 8765
+API_BASE = f"http://127.0.0.1:{API_PORT}"
 
 
 @pytest.fixture(autouse=True)
@@ -48,6 +63,99 @@ def _no_network(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch)
         raise RuntimeError("test hors ligne : connexion refusée (requête non simulée par respx)")
 
     monkeypatch.setattr(asyncio.base_events.BaseEventLoop, "create_connection", refuse)
+
+
+@pytest.fixture(autouse=True)
+def _no_lock_tools(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hors des tests ``network``, aucun outil de lockfile n'est installé, et en lancer un est
+    une erreur du test : npm et uv touchent le vrai registre."""
+    if "network" in request.keywords:
+        return
+
+    def refuse(command: list[str], **options: object) -> None:
+        raise RuntimeError(f"test hors ligne : outil réel refusé ({command[0]})")
+
+    monkeypatch.setattr(lockfiles, "_which", lambda program: None)
+    monkeypatch.setattr(lockfiles, "_spawn", refuse)
+
+
+@pytest.fixture(autouse=True)
+def _no_browser(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ouvrir le navigateur (``forceupdate ui``) est une erreur du test."""
+
+    def refuse(url: str, *args: object, **kwargs: object) -> bool:
+        raise RuntimeError(f"test : navigateur refusé ({url})")
+
+    monkeypatch.setattr(webbrowser, "open", refuse)
+
+
+@dataclass
+class ToolCall:
+    """Un outil lancé par ``update.lockfiles`` : son nom (``npm``), ses arguments, et ce qu'il
+    a vu."""
+
+    program: str
+    arguments: list[str]
+    cwd: Path
+    env: dict[str, str]
+    options: dict[str, Any]
+    files: dict[str, str] = field(default_factory=dict)
+    """Les fichiers que le test a demandé de lire au moment de l'appel (``FakeTools.watch``)."""
+
+
+Handler = Callable[[ToolCall], int | tuple[int, str, str] | None]
+"""Ce que fait un faux outil : écrire des fichiers, puis rendre son code de sortie (0 si
+``None``), ou le code, la sortie et la sortie d'erreur."""
+
+
+class FakeTools:
+    """De faux outils de lockfile : ``programs`` sont « installés », chaque appel est noté
+    (``calls``), et ``handlers[nom]`` fait ce que l'outil ferait."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch, programs: Iterable[str]) -> None:
+        self.programs = set(programs)
+        self.calls: list[ToolCall] = []
+        self.handlers: dict[str, Handler] = {}
+        self.watched: list[Path] = []
+        monkeypatch.setattr(lockfiles, "_which", self.which)
+        monkeypatch.setattr(lockfiles, "_spawn", self.spawn)
+
+    def which(self, program: str) -> str | None:
+        return f"/outils/{program}" if program in self.programs else None
+
+    def watch(self, *paths: Path) -> None:
+        """Lit ``paths`` à chaque appel (``ToolCall.files``), pour voir ce que l'outil a vu."""
+        self.watched += paths
+
+    def spawn(self, command: list[str], **options: Any) -> subprocess.CompletedProcess[bytes]:
+        cwd = Path(options.get("cwd", "."))
+        call = ToolCall(
+            program=PurePosixPath(command[0]).name,
+            arguments=list(command[1:]),
+            cwd=cwd,
+            env=dict(options.get("env") or {}),
+            options=options,
+            files={p.name: p.read_text(encoding="utf-8") for p in self.watched if p.exists()},
+        )
+        self.calls.append(call)
+        handler = self.handlers.get(call.program)
+        outcome = handler(call) if handler is not None else None
+        code, out, err = (outcome or 0, "", "") if not isinstance(outcome, tuple) else outcome
+        return subprocess.CompletedProcess(command, code, out.encode(), err.encode())
+
+    def commands(self) -> list[str]:
+        """Les appels, comme on les taperait : ``npm install --package-lock-only…``."""
+        return [" ".join([call.program, *call.arguments]) for call in self.calls]
+
+
+@pytest.fixture
+def fake_tools(monkeypatch: pytest.MonkeyPatch) -> Callable[..., FakeTools]:
+    """``fake_tools("npm", "uv")`` : ces outils sont « installés », et simulés."""
+
+    def make(*programs: str) -> FakeTools:
+        return FakeTools(monkeypatch, programs)
+
+    return make
 
 
 def osv_querybatch(results: dict[str, Any]) -> Callable[[httpx.Request], httpx.Response]:
@@ -161,6 +269,47 @@ def lookup(cache: Cache) -> Callable[..., list[Any]]:
         return asyncio.run(main())
 
     return run
+
+
+@pytest.fixture
+def web_settings(tmp_path: Path) -> Settings:
+    """Les réglages du serveur de test : jeton ``API_TOKEN``, port ``API_PORT``, chemins récents
+    et front dans le dossier du test."""
+    return Settings(
+        token=API_TOKEN,
+        port=API_PORT,
+        state_dir=tmp_path / "état",
+        static_dir=tmp_path / "static",
+    )
+
+
+@pytest.fixture
+def api(web_settings: Settings) -> Iterator[TestClient]:
+    """Le serveur de ``forceupdate ui`` (client de test de FastAPI), démarré, avec le jeton
+    (``Authorization: Bearer``). Ses analyses ont le cache du test (``_no_user_cache``)."""
+    with TestClient(
+        create_app(web_settings),
+        base_url=API_BASE,
+        headers={"Authorization": f"Bearer {API_TOKEN}"},
+    ) as client:
+        yield client
+
+
+@pytest.fixture
+def finished(api: TestClient) -> Callable[[str], dict[str, Any]]:
+    """``finished("/api/scans/<id>")`` : attend (10 s au plus) que la tâche ne tourne plus, et
+    rend son état."""
+
+    def wait(url: str) -> dict[str, Any]:
+        deadline = time.monotonic() + 10
+        while True:
+            state: dict[str, Any] = api.get(url).json()
+            if state["status"] != "running":
+                return state
+            assert time.monotonic() < deadline, f"{url} tourne encore"
+            time.sleep(0.02)
+
+    return wait
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

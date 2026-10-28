@@ -159,6 +159,25 @@ def reachable_scopes(starts: Sequence[Start], lock: Lockfile) -> dict[str, Scope
     return scopes
 
 
+def dependents(lock: Lockfile, name: str, version: str) -> list[LockedPackage]:
+    """Les paquets du lockfile qui requièrent ``name`` à la version ``version`` : ce qui le
+    retient à cette version. Vide si le lockfile n'a pas de graphe."""
+    nodes = {p.node for p in lock.packages if p.name == name and p.version == version}
+    if not nodes:
+        return []
+    return [
+        package
+        for package in lock.packages
+        if package.node not in nodes and any(node in nodes for node, _ in _all_edges(package))
+    ]
+
+
+def _all_edges(package: LockedPackage) -> Iterable[Edge]:
+    yield from package.dependencies
+    for edges in package.extras.values():
+        yield from edges
+
+
 def reach(starts: Iterable[Edge], by_node: Mapping[str, list[LockedPackage]]) -> set[str]:
     """Les nœuds tirés, de proche en proche, depuis ``starts``.
 

@@ -2,9 +2,10 @@
 
 Version du schéma : **1**.
 
-C'est ce qu'écrit `forceupdate scan --format json`, et ce que renverra l'API de
-l'interface web (`GET /api/scans/{id}`, étape E12). Le code qui le produit est
-`src/forceupdate/report/json.py`.
+C'est ce qu'écrit `forceupdate scan --format json`, et ce que rend l'API de
+l'interface web (`GET /api/scans/{id}`, champ `report`). Le code qui le produit est
+`src/forceupdate/report/json.py`. Les autres objets de l'API sont décrits à la fin :
+[L'API de l'interface web](#lapi-de-linterface-web).
 
 ## Conventions
 
@@ -473,3 +474,205 @@ retirée, il faut changer la contrainte. Chaque constat donne sa propre cible
 (2.33.0 et 2.32.4 pour les failles, 2.32.2 pour le retrait, 2.34.2 pour la
 dernière) : choisir la version qui les satisfait toutes est le travail du
 planificateur (E09).
+
+# L'API de l'interface web
+
+Le serveur local de `forceupdate ui` (E12). Le code est dans `src/forceupdate/web/` ;
+le schéma OpenAPI, d'où viennent les types du front, est exporté dans
+`src/forceupdate/web/openapi.json` (`uv run python -m forceupdate.web.openapi` le
+refait ; un test vérifie qu'il est à jour, un autre que les réponses le suivent). Les
+conventions sont celles du rapport : UTF-8, dates ISO 8601 en UTC, énumérations en
+chaînes, tous les champs toujours présents (`null` ou `[]` s'il n'y a rien). Les
+chemins envoyés sont absolus ; ceux que rend l'API aussi, au format POSIX
+(`C:/Users/…` sous Windows).
+
+## Accès
+
+- Le serveur n'écoute que sur `127.0.0.1`, sur un port libre (ou `--port`).
+- Chaque requête porte le **jeton de session**, tiré au démarrage : le cookie que pose
+  l'adresse affichée par `forceupdate ui` (`http://127.0.0.1:<port>/?token=<jeton>`,
+  qui renvoie ensuite vers `/` sans le jeton), ou l'en-tête
+  `Authorization: Bearer <jeton>`. Sans lui : `401`. Le jeton n'est jamais accepté
+  dans l'adresse d'une route de `/api`.
+- `Host` doit être `127.0.0.1:<port>` ou `localhost:<port>` (sinon `400`) ; `Origin`,
+  s'il y en a un, l'adresse du serveur, et `Sec-Fetch-Site`, s'il y en a un,
+  `same-origin` ou `none` (sinon `403`). Pas de CORS.
+
+Avec curl :
+
+```bash
+curl -H "Authorization: Bearer $JETON" "http://127.0.0.1:$PORT/api/scans"
+```
+
+## Les routes
+
+| Méthode et chemin | Corps | Réponse |
+|---|---|---|
+| `GET /api/fs?path=` | | `200` [liste de dossier](#liste-de-dossier) ; sans `path`, les points de départ |
+| `POST /api/scans` | [demande d'analyse](#demande-danalyse) | `202` [analyse](#analyse), lancée en tâche de fond |
+| `GET /api/scans` | | `200` les [analyses](#analyse) de la session, de la plus récente à la plus ancienne |
+| `GET /api/scans/{id}` | | `200` [analyse](#analyse), avec `report` une fois finie |
+| `GET /api/scans/{id}/events` | | `200` [progression](#progression-sse) en Server-Sent Events |
+| `DELETE /api/scans/{id}` | | `200` [analyse](#analyse) annulée ; `409` si elle est déjà finie |
+| `POST /api/updates/plan` | `{"scan": id, "selection": {…}}` | `201` [plan](#plan-de-mise-à-jour) |
+| `POST /api/updates/apply` | `{"plan": id, "force": false}` | `202` [plan](#plan-de-mise-à-jour), appliqué en tâche de fond |
+| `GET /api/updates/{id}` | | `200` [plan](#plan-de-mise-à-jour), avec `results` une fois appliqué |
+| `GET /api/updates/{id}/events` | | `200` [progression](#progression-sse) de l'application ; `409` si le plan n'est pas appliqué |
+| `GET /api/updates/{id}/files/{chemin}` | | `200` le fichier tel que le plan le réécrit, à télécharger |
+| `POST /api/files?name=<nom>` | le contenu du fichier | `202` [analyse](#analyse) d'un [fichier envoyé](#fichier-envoyé) |
+
+Une erreur rend `{"detail": "…"}`, une phrase en français : `400` (requête invalide :
+chemin relatif, sélection qui ne correspond pas au rapport, nom de fichier refusé),
+`401`, `403`, `404` (analyse, plan, chemin inconnus), `409` (impossible dans l'état
+actuel : analyse pas finie, plan déjà appliqué, changements que git n'a pas en commit,
+rien à appliquer), `413` (fichier envoyé trop gros). Un corps mal formé rend le `422`
+de FastAPI, dont `detail` est une liste.
+
+Les analyses et les plans restent en mémoire le temps de la session (les 20 analyses
+les plus récentes, avec leurs plans) ; seuls les chemins récents sont gardés sur le
+disque.
+
+## Demande d'analyse
+
+| Champ | Type | Sens |
+|---|---|---|
+| `path` | chaîne | chemin absolu d'un dossier ou d'un fichier ; requis |
+| `dev`, `transitive`, `include_tests`, `offline`, `cache` | booléens | les [options](#options), mêmes valeurs par défaut que `scan` |
+
+## Analyse
+
+| Champ | Type | Sens |
+|---|---|---|
+| `id` | chaîne | identifiant de l'analyse |
+| `source` | chaîne | le chemin analysé ; pour un fichier envoyé, son nom |
+| `kind` | chaîne | `folder`, `file`, ou `upload` (un fichier envoyé) |
+| `status` | chaîne | `running`, puis `done`, `failed` ou `cancelled` |
+| `options` | [options](#options) | |
+| `started_at`, `finished_at` | dates | `finished_at` : `null` tant qu'elle tourne |
+| `error` | chaîne ou `null` | `failed` : ce qui s'est passé |
+| `progress` | [événement](#événement) ou `null` | le dernier reçu |
+| `report` | [rapport](#le-rapport) ou `null` | seulement dans `GET /api/scans/{id}`, une fois `done` : le JSON de `scan --format json` |
+
+## Plan de mise à jour
+
+Un plan est la sélection préparée sur le rapport d'une analyse finie, sans rien
+écrire. Il reste sur le serveur : on l'applique par son identifiant, et c'est ce plan
+qui est écrit (si un fichier a changé depuis son diff, rien n'est écrit). Les mises à
+jour et leurs options ne sont pas recopiées : elles sont désignées par l'`id` de la
+[mise à jour](#mise-à-jour) et la `version` de l'option, dans le rapport de l'analyse.
+
+`selection`, envoyée et rendue : `{"<id de la mise à jour>": "<version>"}`. La
+sélection par défaut est celle des `selected` du rapport. Un paquet absent n'est pas
+mis à jour.
+
+| Champ | Type | Sens |
+|---|---|---|
+| `id` | chaîne | identifiant du plan |
+| `scan` | chaîne | l'analyse dont il vient |
+| `status` | chaîne | `planned`, puis `running` (écriture et lockfiles), `done` (écrit ; chaque lockfile dit dans `results` ce qu'il est advenu de lui) ou `failed` (rien n'est écrit) |
+| `created_at`, `finished_at` | dates | |
+| `selection` | objet | la sélection envoyée |
+| `applied` | liste de `{"update", "version"}` | les options qui seront appliquées |
+| `skipped` | liste de `{"update", "version", "reason"}` | celles qui ne le seront pas, et pourquoi (à faire à la main, fichier changé depuis l'analyse, `--hash`…) |
+| `files` | liste de `{"path", "diff"}` | les fichiers réécrits, par chemin, avec leur diff unifié (comme `git diff`) |
+| `lockfiles` | liste de [lockfiles à régénérer](#lockfile-à-régénérer) | dans l'ordre ; aucun pour un fichier envoyé |
+| `uncommitted` | liste de chemins ou `null` | parmi les fichiers à écrire, ceux qui ont des changements que git n'a pas en commit ; `null` hors d'un dépôt git (rien ne permettra de revenir en arrière). Revérifié en appliquant : refusé (`409`) sauf `"force": true` |
+| `applicable` | booléen | on peut l'appliquer : pas encore fait, quelque chose à écrire ou à lancer, pas un fichier envoyé |
+| `error` | chaîne ou `null` | `failed` : pourquoi rien n'a été écrit |
+| `results` | liste de [lockfiles régénérés](#lockfile-régénéré) | une fois `done` |
+| `progress` | [événement](#événement) ou `null` | le dernier reçu |
+
+Les mises à jour s'appliquent une à la fois, dans l'ordre où elles sont demandées. Une
+mise à jour en cours ne s'annule pas : si un outil échoue, ses fichiers sont remis
+comme avant.
+
+### Lockfile à régénérer
+
+| Champ | Type | Sens |
+|---|---|---|
+| `lockfile` | chemin | |
+| `kind` | chaîne | `npm`, `pnpm`, `yarn1`, `yarn`, `uv`, `poetry`, `pdm`, `pipenv`, `pip-compile`, `uv-pip-compile` |
+| `tool` | chaîne | le nom de l'outil, pour le dire (`uv pip compile`) |
+| `program` | chaîne | le programme à installer (`uv`) |
+| `available` | booléen | l'outil est installé ; sinon le lockfile n'est pas régénéré, et `command` est à lancer à la main |
+| `command` | chaîne | la commande à lancer à la main, dans `directory` |
+| `directory` | chemin | le dossier du lockfile |
+| `updates` | liste de `{"update", "version"}` | les mises à jour qu'il porte |
+| `workspace` | booléen | le lockfile d'un workspace |
+| `reason` | chaîne ou `null` | pourquoi il est régénéré sans mise à jour à lui (pip-tools : `requirements.txt a changé`) |
+| `warnings` | liste de chaînes | ce que l'outil exécute quand même, une option d'en-tête pas reprise… |
+
+### Lockfile régénéré
+
+| Champ | Type | Sens |
+|---|---|---|
+| `lockfile` | chemin | |
+| `status` | chaîne | `regenerated`, `tool_missing` (manifestes réécrits, commande à lancer), `failed` (fichiers remis comme avant), `undone` (remis comme avant : un lockfile qui dépend des mêmes fichiers a échoué) |
+| `error` | chaîne ou `null` | `failed` : ce que l'outil a dit ; `undone` : quel lockfile a échoué |
+| `restored` | liste de chemins | les fichiers remis comme avant |
+| `installed` | liste | `regenerated` : pour chaque mise à jour, `{"update", "version", "versions", "reach", "held_by"}`, les versions installées relues ; `reach` vaut `exact`, `above` (l'outil a pris la plus haute permise), `below` (retenue par `held_by`, `["debug 4.3.1"]`) ou `unknown` |
+| `changed` | liste de chaînes | les autres paquets que le lockfile a changés (`h11 0.16.0 → 0.14.0`) |
+| `warnings` | liste de chaînes | ce qui s'est passé en route |
+
+## Progression (SSE)
+
+`GET …/events` envoie des Server-Sent Events. Les événements déjà passés sont envoyés
+d'abord : depuis le début, ou depuis celui qui suit `Last-Event-ID` quand le
+navigateur se rebranche.
+
+```
+id: 0
+event: progress
+data: {"kind":"reading","done":0,"total":0,"ecosystem":null,"name":null}
+
+id: 7
+event: end
+data: {"status":"done","error":null}
+```
+
+- `progress` : un [événement](#événement) ;
+- `end` : la tâche est finie (`status` et `error` comme dans l'analyse ou le plan) ; le
+  flux se ferme. Le navigateur doit alors fermer son `EventSource`, qui sinon se
+  rebrancherait ;
+- `: ping`, un commentaire, après 15 s sans rien.
+
+### Événement
+
+| Champ | Type | Sens |
+|---|---|---|
+| `kind` | chaîne | l'étape (ci-dessous) |
+| `done`, `total` | entiers | où on en est |
+| `ecosystem` | chaîne ou `null` | `package_checked` : l'écosystème du paquet |
+| `name` | chaîne ou `null` | `package_checked` : le paquet ; `regenerating` : le lockfile |
+
+Une analyse : `reading`, `projects_found` (`total` projets), `checking` (`total`
+vérifications : une par paquet, plus une pour les failles), `package_checked` et
+`vulnerabilities_checked` (`done` sur `total`), `finished`. L'application d'un plan :
+`written` (`total` fichiers réécrits), `regenerating` (un par outil lancé : `done`
+déjà faits sur `total`), `finished`. Un outil peut tourner plusieurs minutes (10 au
+plus par commande).
+
+## Liste de dossier
+
+Seulement des noms : les dossiers, et les fichiers de dépendances que forceupdate sait
+lire. Jamais le contenu d'un fichier. Les liens symboliques et les jonctions Windows
+ne sont pas listés (un dossier OneDrive l'est).
+
+| Champ | Type | Sens |
+|---|---|---|
+| `path` | chemin ou `null` | le dossier listé ; `null` pour les points de départ (le dossier personnel, puis les lecteurs : `C:/`… sous Windows, `/` ailleurs) |
+| `parent` | chemin ou `null` | |
+| `entries` | liste de `{"name", "path", "kind", "hidden"}` | les dossiers puis les fichiers, par nom ; `kind` : `drive`, `folder` ou `file` ; `hidden` : nom en `.`, ou caché pour Windows |
+| `truncated` | booléen | plus de 5000 entrées : la liste est coupée |
+| `home` | chemin | le dossier personnel |
+| `recent` | liste de chemins | les 10 derniers chemins analysés qui existent encore, du plus récent au plus ancien |
+
+## Fichier envoyé
+
+`POST /api/files?name=package.json`, avec le contenu du fichier comme corps
+(`application/octet-stream`) : un manifeste ou un lockfile (`400` sinon), de 2 Mo au
+plus (50 Mo pour un lockfile ; `413` au-delà). Il est analysé comme un fichier de
+l'ordinateur (`kind: "upload"`) : même progression, même rapport (`source` est son
+nom), même plan. Mais rien ne s'écrit sur le disque de la personne et aucun outil
+n'est lancé : le plan n'a pas de lockfiles, ne s'applique pas (`409`), et sa version
+réécrite se télécharge par `GET /api/updates/{id}/files/{nom}`.

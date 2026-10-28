@@ -14,6 +14,9 @@ En deux temps :
    - chaque réécriture (``Edit``) est située (``Target``) : le manifeste et l'emplacement de la
      contrainte, ou la plage d'un catalogue pnpm dans ``pnpm-workspace.yaml`` (``npm``). Le
      fichier doit avoir ``old`` à cet endroit : sinon il a changé depuis l'analyse ;
+   - une version figée par un fichier de contraintes de pip (``-c constraints.txt``) : ce n'est
+     pas un lockfile, aucun outil ne le régénère. Sa ligne ``==X`` est réécrite comme une
+     contrainte de plus (``python.constraints_target``) ;
    - une option s'applique en entier ou pas du tout. Deux options qui réécrivent la même
      contrainte (le catalogue de deux projets, la version forcée de deux versions installées)
      doivent dire la même chose, sinon la seconde n'est pas appliquée ;
@@ -32,7 +35,9 @@ En deux temps :
 
 Un fichier qui n'est pas de l'UTF-8 valide, ou qui a des fins de ligne « \\r » seules, n'est pas
 réécrit : les emplacements des parseurs ne s'y retrouveraient pas. Les lockfiles ne sont pas
-touchés (E11) : ``Changes.lockfiles`` dit lesquels régénérer.
+touchés ici : ``Changes.lockfiles`` dit lesquels régénérer, ``update.lockfiles`` le fait.
+``rewrite`` sert aussi à ``update.lockfiles`` pour écrire, le temps d'une régénération, une
+version exacte à la place d'une contrainte.
 """
 
 import contextlib
@@ -47,7 +52,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from forceupdate.detect.manifests import match_dependency_file
-from forceupdate.models import EditKind, Location, Project, Update, UpdateOption
+from forceupdate.models import Ecosystem, EditKind, Location, Project, Update, UpdateOption
 from forceupdate.parsers.base import ParseError
 from forceupdate.update.writers import npm, python
 from forceupdate.update.writers.base import Check, Reader, Refused, Target
@@ -56,9 +61,14 @@ __all__ = [
     "Changes",
     "Choice",
     "FileChange",
+    "Refused",
     "Skipped",
+    "Target",
     "WriteError",
+    "constraints_file",
     "prepare",
+    "replace_file",
+    "rewrite",
     "unified_diff",
     "write",
 ]
@@ -113,8 +123,13 @@ class Changes:
 
     @property
     def lockfiles(self) -> tuple[str, ...]:
-        """Les lockfiles à régénérer ensuite pour les options appliquées, sans doublon."""
-        found = (option.lockfile for _, _, option in self.applied if option.lockfile)
+        """Les lockfiles à régénérer ensuite pour les options appliquées, sans doublon. Un
+        fichier de contraintes de pip n'en est pas un : il est dans ``files``."""
+        found = (
+            option.lockfile
+            for project, update, option in self.applied
+            if option.lockfile and constraints_file(project, update, option) is None
+        )
         return tuple(dict.fromkeys(found))
 
     @property
@@ -130,13 +145,14 @@ def prepare(root: Path, chosen: Iterable[Choice]) -> Changes:
     skipped: list[Skipped] = []
     pending: list[tuple[Choice, list[Target]]] = []
     for choice in chosen:
-        _, update, option = choice
+        project, update, option = choice
         if option.manual is not None:
             reason = f"à faire à la main : {option.manual}"
             skipped.append(Skipped(update=update, option=option, reason=reason))
             continue
         try:
-            targets = [_target(files, target) for target in _locate(files, update, option)]
+            located = _locate(files, project, update, option)
+            targets = [_target(files, target) for target in located]
         except Refused as refused:
             skipped.append(Skipped(update=update, option=option, reason=str(refused)))
             continue
@@ -161,6 +177,38 @@ def prepare(root: Path, chosen: Iterable[Choice]) -> Changes:
     )
 
 
+def rewrite(root: Path, targets: Iterable[Target]) -> tuple[FileChange, ...]:
+    """Les fichiers réécrits par ``targets``, dans la source de dossier ``root``, sans rien
+    écrire : chaque réécriture vérifiée puis relue, comme dans ``prepare``, mais toutes ou
+    aucune. Deux réécritures au même endroit n'en font qu'une. Lève ``Refused``."""
+    files = _Files(root)
+    by_path: dict[str, dict[Location, Target]] = {}
+    for target in targets:
+        checked = _target(files, target)
+        by_path.setdefault(checked.path, {}).setdefault(checked.location, checked)
+    changed = []
+    for path in sorted(by_path):
+        before = files.text(path)
+        after = _rewrite(path, before, list(by_path[path].values()))
+        if after != before:
+            diff = unified_diff(path, before, after)
+            changed.append(FileChange(path=path, before=before, after=after, diff=diff))
+    return tuple(changed)
+
+
+def constraints_file(project: Project, update: Update, option: UpdateOption) -> str | None:
+    """Le fichier de contraintes de pip (``-c constraints.txt``) qui fige la version de
+    ``update``, si c'est de lui que vient ``option.lockfile`` ; ``None`` pour un vrai lockfile.
+
+    C'est un fichier que le projet ne range pas parmi ses lockfiles, et dont le nom n'est pas
+    celui d'un lockfile : un ``.txt`` compilé par pip-tools, lui, en est un."""
+    path = option.lockfile
+    if path is None or update.ecosystem is not Ecosystem.PYPI or path in project.lockfiles:
+        return None
+    match = match_dependency_file(path)
+    return None if match is not None and match.lockfile else path
+
+
 def write(root: Path, changes: Changes) -> None:
     """Écrit les fichiers de ``changes`` dans la source de dossier ``root``.
 
@@ -180,11 +228,11 @@ def write(root: Path, changes: Changes) -> None:
     done: list[FileChange] = []
     for change in changes.files:
         try:
-            _replace(root / change.path, change.after)
+            replace_file(root / change.path, change.after.encode("utf-8"))
         except OSError as err:
             for previous in reversed(done):
                 with contextlib.suppress(OSError):
-                    _replace(root / previous.path, previous.before)
+                    replace_file(root / previous.path, previous.before.encode("utf-8"))
             restored = " ; les fichiers déjà écrits sont remis comme avant" if done else ""
             raise WriteError(
                 f"{change.path} : écriture impossible ({err.strerror or err}){restored}."
@@ -215,12 +263,15 @@ def _diff_lines(text: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _locate(files: "_Files", update: Update, option: UpdateOption) -> list[Target]:
-    """Les réécritures de ``option``, situées. Lève ``Refused``."""
+def _locate(
+    files: "_Files", project: Project, update: Update, option: UpdateOption
+) -> list[Target]:
+    """Les réécritures de ``option``, situées, avec la ligne de son fichier de contraintes de pip
+    s'il en a un. Lève ``Refused``."""
     targets = []
     for edit in option.edits:
         if edit.kind is EditKind.CATALOG:
-            targets.append(npm.catalog_target(edit, update, files.parsed_text))
+            targets.append(npm.catalog_target(edit, update.dependencies, files.parsed_text))
         elif edit.location is None:
             raise Refused(
                 f"{edit.file} : emplacement de « {edit.old} » inconnu, à réécrire à la main en "
@@ -230,6 +281,11 @@ def _locate(files: "_Files", update: Update, option: UpdateOption) -> list[Targe
             targets.append(
                 Target(path=edit.file, location=edit.location, old=edit.old, new=edit.new)
             )
+    constraints = constraints_file(project, update, option)
+    if constraints is not None:
+        targets.append(
+            python.constraints_target(constraints, update, option.version, files.parsed_text)
+        )
     return targets
 
 
@@ -245,8 +301,7 @@ def _target(files: "_Files", target: Target) -> Target:
             f"{target.path} a changé depuis l'analyse : « {target.old} » n'est plus à la ligne "
             f"{location.line}."
         )
-    match = match_dependency_file(target.path)
-    check = None if match is None else _CHECKS.get(match.pattern)
+    check = _CHECKS.get(_pattern(target.path, target.pattern) or "")
     if check is not None:
         check(target.path, text, target)
     return target
@@ -313,8 +368,8 @@ def _rewrite_all(
 
 
 def _rewrite(path: str, text: str, targets: list[Target]) -> str:
-    """``text`` avec ``targets`` appliquées de la fin vers le début, puis relu
-    (``_verify``)."""
+    """``text`` avec ``targets`` (toutes de ``path``) appliquées de la fin vers le début, puis
+    relu (``_verify``)."""
     ordered = sorted(targets, key=lambda t: (t.location.line, t.location.column))
     for first, second in itertools.pairwise(ordered):
         if (
@@ -335,7 +390,7 @@ def _rewrite(path: str, text: str, targets: list[Target]) -> str:
 def _verify(path: str, before: str, after: str, targets: list[Target]) -> None:
     """Relit ``after`` avec le parseur de ``path`` : mêmes déclarations que ``before``, la
     nouvelle contrainte à chaque endroit réécrit, rien d'autre de changé. Lève ``Refused``."""
-    reader = _reader(path)
+    reader = _reader(path, next((t.pattern for t in targets if t.pattern), None))
     if reader is None:
         raise Refused(f"{path} : forceupdate ne sait pas relire ce fichier.")
     try:
@@ -393,12 +448,21 @@ def _moved(targets: list[Target]) -> dict[Location, Location]:
     return moved
 
 
-def _reader(path: str) -> Reader | None:
-    """Le parseur qui relit ``path`` ; ``None`` pour un fichier qu'on ne sait pas relire."""
+def _reader(path: str, pattern: str | None = None) -> Reader | None:
+    """Le parseur qui relit ``path`` (au format ``pattern`` s'il est donné) ; ``None`` pour un
+    fichier qu'on ne sait pas relire."""
     if posixpath.basename(path) == npm.PNPM_WORKSPACE:
         return npm.read_pnpm_workspace
+    return _READERS.get(_pattern(path, pattern) or "")
+
+
+def _pattern(path: str, pattern: str | None) -> str | None:
+    """Le motif de ``detect.manifests`` dont ``path`` suit le format : ``pattern`` s'il est
+    donné, sinon celui que reconnaît son nom."""
+    if pattern is not None:
+        return pattern
     match = match_dependency_file(path)
-    return None if match is None else _READERS.get(match.pattern)
+    return None if match is None else match.pattern
 
 
 def _parsed(text: str) -> str:
@@ -467,15 +531,15 @@ def _read(root: Path, path: str) -> str:
     return text
 
 
-def _replace(path: Path, text: str) -> None:
-    """Écrit ``text`` dans ``path`` d'un coup : un fichier temporaire à côté, qui le remplace.
+def replace_file(path: Path, data: bytes) -> None:
+    """Écrit ``data`` dans ``path`` d'un coup : un fichier temporaire à côté, qui le remplace.
     Les droits du fichier sont gardés."""
     descriptor, temporary = tempfile.mkstemp(
         dir=path.parent, prefix=f".{path.name}.", suffix=".forceupdate"
     )
     try:
         with os.fdopen(descriptor, "wb") as file:
-            file.write(text.encode("utf-8"))
+            file.write(data)
         shutil.copymode(path, temporary)
         os.replace(temporary, path)
     except BaseException:

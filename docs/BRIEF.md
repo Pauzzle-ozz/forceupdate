@@ -191,11 +191,28 @@ chaque fois) :
   passer devant.
 - **Garder le style de contrainte** : `^4.17.0` devient `^4.21.2`, pas `4.21.2`.
 - **Un lockfile se régénère avec l'outil natif** (npm, uv, cargo…). S'il n'est pas
-  installé, on ne peut que modifier le manifeste et dire quelle commande lancer.
+  installé, on ne peut que modifier le manifeste et dire quelle commande lancer. Fait
+  à E11 (`update/lockfiles.py`), avec ce qu'on y a appris :
+  - régénérer garde les versions figées qui satisfont encore les contraintes : une
+    mise à jour « par le lockfile seul » ne bouge pas sans viser le paquet. uv et
+    pip-compile ont `-P x==V` ; npm, pnpm, Poetry et PDM gardent une version
+    épinglée quand la plage revient (on l'écrit le temps d'un passage) ; **Yarn 1,
+    Yarn 4 et pipenv non** : ils reprennent la plus haute version permise ;
+  - `yarn upgrade` (Yarn 1) réordonne le `package.json` ; pipenv ignore la version
+    demandée et re-résout tout ; Poetry 2 refuse `--no-update`, Poetry 1 en a besoin ;
+  - un environnement hérité trompe les outils : `VIRTUAL_ENV` (pipenv a pris le
+    `.venv` de forceupdate pour celui du projet), `CI=true` (pnpm et Yarn 4 refusent
+    alors de changer le lockfile) ;
+  - pipenv crée le virtualenv du projet, PDM un `.venv` dans le projet, s'ils n'en
+    ont pas.
 - **Régénérer un lockfile peut exécuter du code du projet** : scripts npm,
   `Gemfile` (c'est du Ruby), `build.gradle`, `setup.py`. Toujours passer
   `--ignore-scripts` / `--no-scripts` quand l'outil le permet, et le dire quand il
-  ne le permet pas.
+  ne le permet pas. Constaté à E11 : `uv --no-build` n'est pas un `--ignore-scripts`,
+  il change la résolution (un paquet sans wheel pour une seule plateforme la rend
+  impossible : `sslyze` dans Argos) ; il n'est pas passé, et le plan dit qu'uv,
+  Poetry, PDM, pipenv et pip-compile peuvent construire des paquets. Yarn 2+ lance
+  la version de Yarn du projet (`yarnPath`) et ses extensions.
 - **Plafond de taille** : `safe_read_text` ignore les fichiers de plus de 2 Mo. Un
   `package-lock.json` les dépasse souvent : relever le plafond pour les lockfiles.
 - **Go, majeur ≥ 2** : changer de majeur change le chemin du module (`/v2`) et
@@ -212,6 +229,13 @@ chaque fois) :
   - vérifier les en-têtes `Host` (contre le DNS rebinding) et `Origin` (contre les
     requêtes venues d'autres sites) ;
   - ne pas activer CORS.
+- **`SameSite` ne suffit pas** (trouvé à E12) : pour le navigateur, une page servie
+  par un autre port de 127.0.0.1 est du même « site », et les cookies ne distinguent
+  pas les ports. D'où la vérification d'`Origin` et de `Sec-Fetch-Site` sur chaque
+  requête, et le port dans le nom du cookie.
+- **Le jeton est dans la première adresse** : jamais dans un journal (uvicorn sans
+  journal des accès), ni dans un `Referer` (`Referrer-Policy: no-referrer`), et retiré
+  de la barre d'adresse par une redirection une fois le cookie posé.
 - **Les tokens ne vont jamais au navigateur** : le front demande au serveur, et
   c'est le serveur qui parle aux forges.
 - **Les analyses sont longues** (des dizaines de dépôts) : tâches de fond,

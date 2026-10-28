@@ -276,3 +276,43 @@ def test_an_error_that_retrying_cannot_fix(respx_mock: respx.MockRouter) -> None
     message = failure(lambda http: http.get(URL))
     assert message == "requête vers registry.example impossible (TooManyRedirects)."
     assert route.call_count == 21
+
+
+def test_an_abandoned_host_is_tried_again_after_a_while(respx_mock: respx.MockRouter) -> None:
+    route = respx_mock.get(URL).mock(
+        side_effect=[httpx.ConnectError("hors ligne"), httpx.Response(200)]
+    )
+    now = [1000.0]
+
+    async def send(http: HttpClient) -> int:
+        with pytest.raises(NetworkError):
+            await http.get(URL)
+        now[0] += 59.0
+        with pytest.raises(NetworkError):
+            await http.get(OTHER)  # encore abandonné
+        now[0] += 2.0
+        return (await http.get(URL)).status_code  # le réseau est revenu
+
+    status, _ = run(send, retries=0, clock=lambda: now[0])
+    assert status == 200
+    assert route.call_count == 2
+
+
+def test_a_long_retry_after_abandons_the_host_for_as_long(respx_mock: respx.MockRouter) -> None:
+    route = respx_mock.get(URL).mock(
+        side_effect=[httpx.Response(429, headers={"Retry-After": "300"}), httpx.Response(200)]
+    )
+    now = [0.0]
+
+    async def send(http: HttpClient) -> int:
+        with pytest.raises(NetworkError):
+            await http.get(URL)
+        now[0] = 299.0
+        with pytest.raises(NetworkError):
+            await http.get(URL)
+        now[0] = 300.0
+        return (await http.get(URL)).status_code
+
+    status, _ = run(send, clock=lambda: now[0])
+    assert status == 200
+    assert route.call_count == 2

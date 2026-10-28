@@ -6,11 +6,18 @@ change, celui de l'analyse (``parsers.python``).
 
 Une ligne de ``requirements`` qui porte des empreintes (``--hash``) n'est pas réécrite : ce sont
 celles de la version actuelle, et pip refuserait d'installer la nouvelle.
+
+Un fichier de contraintes (``-c constraints.txt``) fige des versions sans être un lockfile :
+``constraints_target`` y retrouve la ligne ``==X`` d'un paquet, qui se réécrit comme une
+contrainte de manifeste.
 """
 
 import re
 
+from forceupdate.models import Ecosystem, Update
 from forceupdate.parsers import python
+from forceupdate.parsers.base import ParseError, ReadText
+from forceupdate.update.constraints import rewrite
 from forceupdate.update.writers.base import (
     Check,
     Declaration,
@@ -19,6 +26,9 @@ from forceupdate.update.writers.base import (
     Target,
     dependencies,
 )
+
+CONSTRAINTS_PATTERN = "requirements*.txt"
+"""Le format d'un fichier de contraintes de pip, quel que soit son nom."""
 
 _COMMENT = re.compile(r"(?:^|\s)#")
 _HASH = re.compile(r"(?:^|\s)--hash\b")
@@ -57,6 +67,37 @@ def _no_hashes(path: str, content: str, target: Target) -> None:
             f"{path} : ligne {target.location.line}, les empreintes (--hash) sont celles de la "
             "version actuelle ; à réécrire à la main, avec celles de la nouvelle."
         )
+
+
+def constraints_target(path: str, update: Update, version: str, read_text: ReadText) -> Target:
+    """La ligne qui fige ``update`` à sa version actuelle dans le fichier de contraintes
+    ``path`` (``-c`` de pip), réécrite pour ``version``. Lève ``Refused`` si elle n'y est plus,
+    ou si on ne sait pas la réécrire."""
+    content = read_text(path)
+    if content is None:
+        raise Refused(f"{path} : introuvable.")
+    try:
+        found = python.parse_requirements_txt(path, content)
+    except ParseError as err:
+        raise Refused(f"{path} : {err}") from err
+    lines = [
+        d
+        for d in found
+        if d.name == update.name and python.pinned_version(d.constraint) == update.current_version
+    ]
+    if len(lines) != 1:
+        raise Refused(
+            f"{path} : la ligne qui fige {update.name} {update.current_version} n'y est plus."
+        )
+    line = lines[0]
+    new = rewrite(Ecosystem.PYPI, line.constraint, version)
+    if line.location is None or new is None:
+        raise Refused(
+            f"{path} : « {line.constraint} » ({update.name}) à réécrire à la main pour {version}."
+        )
+    return Target(
+        path=path, location=line.location, old=line.constraint, new=new, pattern=CONSTRAINTS_PATTERN
+    )
 
 
 READERS: dict[str, Reader] = {

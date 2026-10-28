@@ -1,6 +1,6 @@
 """Le rapport pour la console, avec ``rich`` : ``forceupdate scan``, et pour ``forceupdate
-update`` les mises à jour proposées (``render_plan``), le diff des fichiers à réécrire
-(``render_changes``) et ce qui reste à faire (``render_outcome``).
+update`` les mises à jour proposées (``render_plan``), le diff des fichiers à réécrire et les
+lockfiles à régénérer (``render_changes``), puis ce qu'il en est advenu (``render_outcome``).
 
 Pour ``scan``, dans l'ordre : la source, les langages, chaque projet (fichiers, un tableau de ses
 dépendances directes, le détail des constats autres que « plus récente », les remarques), les
@@ -9,6 +9,8 @@ fichiers écartés, puis le résumé.
 Tout ce qui vient des fichiers analysés ou des registres passe par ``Text`` : un nom de paquet
 ou un message qui contient ``[…]`` (``sechunter[all]``) ne doit pas être lu comme du balisage.
 """
+
+from collections.abc import Sequence
 
 from rich import box
 from rich.console import Console
@@ -46,6 +48,7 @@ from forceupdate.report import (
     summarize,
     update_subject,
 )
+from forceupdate.update.lockfiles import Installed, Job, LockStatus, Reach, Regenerated
 from forceupdate.update.planner import DEFAULT_RULES, Rules, Selection
 from forceupdate.update.writers import Changes
 
@@ -285,9 +288,10 @@ def render_plan(
     console.print(line)
 
 
-def render_changes(changes: Changes, console: Console) -> None:
-    """Écrit ce que la mise à jour va réécrire : le diff de chaque fichier, puis les options
-    choisies qui ne seront pas appliquées, et pourquoi."""
+def render_changes(changes: Changes, console: Console, jobs: Sequence[Job] = ()) -> None:
+    """Écrit ce que la mise à jour va faire : le diff de chaque fichier, les options choisies
+    qui ne seront pas appliquées et pourquoi, puis les lockfiles à régénérer (``jobs``) et avec
+    quelle commande."""
     console.print()
     if changes.files:
         console.print(Text("Fichiers à réécrire", style="bold"))
@@ -305,20 +309,110 @@ def render_changes(changes: Changes, console: Console) -> None:
             name.append(f" {item.update.current_version} → {item.option.version}")
             grid.add_row("", name, Text(item.reason, style="yellow"))
         console.print(grid)
-
-
-def render_outcome(changes: Changes, console: Console, *, written: bool) -> None:
-    """Écrit la fin d'une mise à jour : les fichiers réécrits (``written``), puis les lockfiles
-    qui restent à régénérer."""
-    if written:
+    if jobs:
         console.print()
-        paths = ", ".join(change.path for change in changes.files)
-        console.print(Text.assemble(("Fichiers réécrits : ", "bold"), f"{paths}."))
-    if changes.lockfiles:
-        line = Text("Lockfiles à régénérer ensuite : ", style="bold")
-        line.append(", ".join(changes.lockfiles))
-        line.append(" (forceupdate ne le fait pas encore).", style="dim")
-        console.print(line)
+        console.print(Text("Lockfiles à régénérer", style="bold"))
+        grid = _grid()
+        for job in jobs:
+            if job.program is None:
+                detail = Text(f"{job.program_name} n'est pas installé : ", style="yellow")
+                detail.append(_manual(job), style="bold")
+                detail.append(" à lancer soi-même.", style="yellow")
+            else:
+                detail = Text(job.command)
+            if job.reason is not None:
+                detail.append(f" ({job.reason})", style="dim")
+            grid.add_row("", Text(job.lockfile, style="bold"), detail)
+            for warning in job.warnings:
+                grid.add_row("", "", Text(warning, style="yellow"))
+        console.print(grid)
+
+
+def render_outcome(changes: Changes, results: Sequence[Regenerated], console: Console) -> None:
+    """Écrit la fin d'une mise à jour, une fois les fichiers de ``changes`` écrits : ceux qui le
+    restent, puis ce qu'il est advenu de chaque lockfile (``results``)."""
+    restored = {path for result in results for path in result.restored}
+    console.print()
+    kept = [change.path for change in changes.files if change.path not in restored]
+    if kept:
+        console.print(Text.assemble(("Fichiers réécrits : ", "bold"), f"{', '.join(kept)}."))
+    for result in results:
+        _print_result(result, console)
+
+
+_REACH_STYLES = {Reach.EXACT: "green", Reach.ABOVE: "cyan", Reach.BELOW: "yellow"}
+
+_CHANGED_SHOWN = 10
+"""Au-delà, les autres paquets changés par un lockfile sont comptés, pas listés."""
+
+
+def _print_result(result: Regenerated, console: Console) -> None:
+    job = result.job
+    line = Text.assemble((job.lockfile, "bold"), " : ")
+    grid = _grid()
+    notes = Table.grid(padding=(0, 1))  # l'erreur de l'outil, ce qui s'est passé en route
+    notes.add_column(width=3)
+    notes.add_column(overflow="fold")
+    if result.status is LockStatus.REGENERATED:
+        line.append(f"régénéré ({job.tool}).", style="green")
+        for installed in result.installed:
+            grid.add_row("", Text(update_subject(installed.update)), _installed(installed, job))
+        if result.changed:
+            shown = ", ".join(result.changed[:_CHANGED_SHOWN])
+            more = len(result.changed) - _CHANGED_SHOWN
+            if more > 0:
+                shown += f", et {plural(more, 'autre')}"
+            grid.add_row("", Text("aussi changé", style="dim"), Text(shown, style="dim"))
+    elif result.status is LockStatus.TOOL_MISSING:
+        line.append(f"à régénérer, {job.program_name} n'est pas installé : ", style="yellow")
+        line.append(_manual(job), style="bold")
+        line.append(".", style="yellow")
+    else:
+        if result.status is LockStatus.FAILED:
+            line.append(f"échec de {job.tool}", style="bold red")
+        else:
+            line.append(f"pas régénéré, {result.error}", style="red")
+        if result.restored:
+            line.append(f" ; remis comme avant : {', '.join(result.restored)}", style="red")
+        line.append(".", style="red")
+        if result.status is LockStatus.FAILED and result.error:
+            for said in result.error.split("\n"):
+                notes.add_row("", Text(said, style="dim"))
+    console.print(line)
+    for warning in result.warnings:
+        notes.add_row("", Text(warning, style="yellow"))
+    for table in (grid, notes):
+        if table.row_count:
+            console.print(table)
+
+
+def _installed(installed: Installed, job: Job) -> Text:
+    """La version qu'une mise à jour a donnée, et pourquoi si ce n'est pas la version choisie."""
+    found = ", ".join(installed.versions)
+    wanted = installed.option.version
+    text = Text(found or "?", style=_REACH_STYLES.get(installed.reach, "yellow"))
+    if installed.reach is Reach.ABOVE:
+        text.append(
+            f" au lieu de {wanted} : {job.tool} prend la plus haute version que permet la "
+            "contrainte.",
+            style="dim",
+        )
+    elif installed.reach is Reach.BELOW:
+        text.append(f", pas {wanted} : ", style="yellow")
+        if installed.held_by:
+            text.append(f"retenue par {', '.join(installed.held_by)}.", style="yellow")
+        else:
+            text.append("quelque chose la retient.", style="yellow")
+    elif installed.reach is Reach.UNKNOWN:
+        text = Text("plus trouvée dans le lockfile.", style="yellow")
+    return text
+
+
+def _manual(job: Job) -> str:
+    """La commande à lancer à la main, avec le dossier où la lancer."""
+    if job.directory == ".":
+        return f"« {job.command} »"
+    return f"« {job.command} » dans {job.directory}"
 
 
 def _diff_style(line: str) -> str:

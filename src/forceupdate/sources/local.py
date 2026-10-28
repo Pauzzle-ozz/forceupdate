@@ -55,6 +55,11 @@ class LocalSource(Source):
         else:
             raise SourceError(f"« {path} » n'est ni un dossier ni un fichier")
 
+    @property
+    def file(self) -> str | None:
+        """Pour un fichier seul, son chemin relatif à ``root`` ; ``None`` pour un dossier."""
+        return self._file
+
     def files(self) -> list[SourceFile]:
         if self._file is None:
             return sorted(_list_dir(self.root))

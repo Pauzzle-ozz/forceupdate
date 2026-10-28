@@ -1,9 +1,9 @@
 """Ligne de commande : ``forceupdate ui``, ``scan`` et ``update``.
 
 Pas de logique métier ici : chaque commande appelle le moteur (et ``update/`` pour la
-réécriture), et les rapports (``report/``) mettent le résultat en forme. Codes de retour : 0
-rien à signaler, 1 seuil ``--fail-on`` atteint, 2 erreur (dont un refus du garde-fou de
-``update``).
+réécriture et les lockfiles), et les rapports (``report/``) mettent le résultat en forme. Codes
+de retour : 0 rien à signaler, 1 seuil ``--fail-on`` atteint, 2 erreur (dont un refus du
+garde-fou de ``update``, ou un lockfile que son outil n'a pas pu régénérer).
 
 Le JSON et le Markdown sortent toujours en UTF-8, sur la sortie standard comme dans un fichier.
 Sous Windows, une sortie redirigée serait sinon écrite dans le codage de la console (cp1252) :
@@ -28,7 +28,7 @@ from forceupdate.report import json as json_report
 from forceupdate.report import markdown, plural, terminal
 from forceupdate.sources.base import SourceError
 from forceupdate.sources.local import LocalSource
-from forceupdate.update import git, planner, writers
+from forceupdate.update import local, lockfiles, planner, writers
 
 EXIT_FAIL_ON = 1
 EXIT_ERROR = 2
@@ -82,15 +82,40 @@ def _fail(command: str, message: str) -> NoReturn:
     raise typer.Exit(code=EXIT_ERROR)
 
 
-def _not_available(command: str) -> NoReturn:
-    """Commande prévue au plan mais pas encore écrite : le dire, et sortir en erreur."""
-    _fail(command, "pas encore disponible.")
-
-
 @app.command()
-def ui() -> None:
-    """Ouvre l'interface web dans le navigateur."""
-    _not_available("ui")
+def ui(
+    port: Annotated[
+        int,
+        typer.Option(
+            "--port",
+            min=0,
+            max=65535,
+            help="Port d'écoute, sur 127.0.0.1 (par défaut, un port libre).",
+        ),
+    ] = 0,
+    no_browser: Annotated[
+        bool,
+        typer.Option(
+            "--no-browser", help="N'ouvre pas le navigateur : l'adresse est seulement affichée."
+        ),
+    ] = False,
+) -> None:
+    """Ouvre l'interface web dans le navigateur.
+
+    Le serveur n'écoute que sur 127.0.0.1, et ne répond qu'avec le jeton de session que porte
+    l'adresse affichée. Ctrl+C l'arrête.
+    """
+    from forceupdate import web  # FastAPI et uvicorn ne servent qu'ici
+
+    def announce(url: str) -> None:
+        typer.echo(f"forceupdate : interface sur {url}")
+        typer.echo("Ctrl+C pour arrêter.")
+
+    try:
+        web.serve(port=port, browser=not no_browser, announce=announce)
+    except OSError as err:
+        _fail("ui", f"impossible d'écouter sur 127.0.0.1:{port} ({err.strerror or err}).")
+    typer.echo("Interface arrêtée.")
 
 
 @app.command()
@@ -261,8 +286,10 @@ def update(
 ) -> None:
     """Met à jour les dépendances d'un dossier ou d'un fichier.
 
-    Montre les mises à jour choisies et le diff des manifestes, puis les réécrit après
-    confirmation. Les lockfiles ne sont pas encore régénérés : la commande dit lesquels.
+    Montre les mises à jour choisies, le diff des manifestes et les lockfiles à régénérer ;
+    après confirmation, réécrit les manifestes puis régénère les lockfiles avec l'outil de
+    chacun (npm, pnpm, Yarn, uv, Poetry, PDM, pipenv, pip-compile), sans les scripts du projet.
+    Sans l'outil, la commande à lancer est donnée.
     """
     try:
         source = LocalSource(path)
@@ -284,16 +311,15 @@ def update(
     terminal.render_plan(report, selection, console, rules)
     if not selection:
         return
-    changes = writers.prepare(source.root, planner.chosen(report, selection))
-    terminal.render_changes(changes, console)
-    if not changes.files or dry_run:
-        if changes.files:
+    prepared = local.prepare(source, report, selection)
+    terminal.render_changes(prepared.changes, console, prepared.jobs)
+    if prepared.empty or dry_run:
+        if not prepared.empty:
             console.print()
             console.print(Text("Rien n'est écrit (--dry-run).", style="dim"))
-        terminal.render_outcome(changes, console, written=False)
         return
     if not force:
-        dirty = git.uncommitted(source.root, [change.path for change in changes.files])
+        dirty = local.uncommitted(source, prepared)
         if dirty:
             _fail(
                 "update",
@@ -304,15 +330,27 @@ def update(
             console.print(
                 Text("Pas de dépôt git ici : rien ne permettra de revenir en arrière.", style="dim")
             )
-    count = plural(len(changes.files), "fichier")
-    if not yes and not _confirm(f"Réécrire {count} ?"):
+    question = _question(len(prepared.changes.files), len(prepared.runnable))
+    if not yes and not _confirm(question):
         console.print(Text("Rien n'est écrit.", style="dim"))
         return
     try:
-        writers.write(source.root, changes)
+        results = local.apply(source, report, prepared)
     except writers.WriteError as err:
         _fail("update", str(err))
-    terminal.render_outcome(changes, console, written=True)
+    terminal.render_outcome(prepared.changes, results, console)
+    if any(result.status is lockfiles.LockStatus.FAILED for result in results):
+        raise typer.Exit(code=EXIT_ERROR)
+
+
+def _question(files: int, locks: int) -> str:
+    """« Réécrire 2 fichiers et régénérer 1 lockfile ? »"""
+    parts = []
+    if files:
+        parts.append(f"réécrire {plural(files, 'fichier')}")
+    if locks:
+        parts.append(f"régénérer {plural(locks, 'lockfile')}")
+    return " et ".join(parts).capitalize() + " ?"
 
 
 def _confirm(question: str) -> bool:

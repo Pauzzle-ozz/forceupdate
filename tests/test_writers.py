@@ -670,14 +670,14 @@ def test_a_failed_write_restores_the_files_already_written(
     changes = writers.prepare(
         root, [choice(project, "ms", "2.1.3"), choice(project, "flask", "==3.1.3")]
     )
-    replace = writers._replace
+    replace = writers.replace_file
 
-    def failing(path: Path, text: str) -> None:
+    def failing(path: Path, data: bytes) -> None:
         if path.name == "requirements.txt":
             raise PermissionError(13, "Permission refusée")
-        replace(path, text)
+        replace(path, data)
 
-    monkeypatch.setattr(writers, "_replace", failing)
+    monkeypatch.setattr(writers, "replace_file", failing)
     with pytest.raises(WriteError) as raised:
         writers.write(root, changes)
     assert str(raised.value) == (

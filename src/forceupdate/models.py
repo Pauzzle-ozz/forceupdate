@@ -164,8 +164,10 @@ class Dependency:
     installed: str | None = None
     """Version installée, lue dans le lockfile ; ``None`` sans lockfile."""
     lockfile: str | None = None
-    """Le lockfile où ``installed`` a été lu, celui qu'une mise à jour régénère (E11) ;
-    ``None`` sans version installée. Pour une indirecte, c'est ``file``."""
+    """Le lockfile où ``installed`` a été lu, celui qu'une mise à jour régénère
+    (``update.lockfiles``) ; ``None`` sans version installée. Pour une indirecte, c'est
+    ``file``. Un fichier de contraintes de pip (``-c``) en tient lieu : il se réécrit comme un
+    manifeste (``update.writers.constraints_file``)."""
     direct: bool = True
     scope: Scope = Scope.RUNTIME
     file: str
@@ -323,7 +325,8 @@ class UpdateOption:
     """Les contraintes à réécrire. Vide : la version est déjà dans la contrainte, on y monte en
     régénérant le lockfile seul."""
     lockfile: str | None = None
-    """Le lockfile à régénérer (E11) ; ``None`` sans lockfile."""
+    """Le lockfile à régénérer (``update.lockfiles``), ou le fichier de contraintes de pip à
+    réécrire ; ``None`` sans lockfile."""
     manual: str | None = None
     """Pourquoi forceupdate ne sait pas l'appliquer seul (contrainte sans emplacement, style
     non géré…) ; ``None`` s'il le sait. Elle n'est jamais pré-cochée."""
@@ -462,7 +465,8 @@ class Report:
 
 
 class EventKind(enum.StrEnum):
-    """Les étapes d'une analyse, dans l'ordre où elles arrivent."""
+    """Les étapes d'une analyse, puis celles d'une mise à jour, dans l'ordre où elles
+    arrivent."""
 
     READING = "reading"
     """Lecture de la source : langages, projets, dépendances."""
@@ -477,21 +481,26 @@ class EventKind(enum.StrEnum):
     VULNERABILITIES_CHECKED = "vulnerabilities_checked"
     """Les failles cherchées auprès d'OSV, pour toutes les dépendances : ``done`` sur
     ``total``."""
+    WRITTEN = "written"
+    """Mise à jour : les manifestes sont réécrits (``total`` fichiers)."""
+    REGENERATING = "regenerating"
+    """Mise à jour : un lockfile en cours de régénération (``name``, son chemin), ``done``
+    déjà régénérés sur ``total``."""
     FINISHED = "finished"
-    """Le rapport est prêt."""
+    """Le rapport est prêt, ou la mise à jour finie."""
 
 
 @dataclass(frozen=True, kw_only=True)
 class Event:
-    """Un événement de progression d'une analyse : la ligne de commande en fait une barre de
-    progression, l'API (E12) l'envoie au navigateur."""
+    """Un événement de progression d'une analyse ou d'une mise à jour : la ligne de commande en
+    fait une barre de progression, l'API (E12) l'envoie au navigateur."""
 
     kind: EventKind
     done: int = 0
     total: int = 0
     ecosystem: Ecosystem | None = None
     name: str | None = None
-    """Le paquet vérifié (``PACKAGE_CHECKED``)."""
+    """Le paquet vérifié (``PACKAGE_CHECKED``), le lockfile régénéré (``REGENERATING``)."""
 
 
 def to_dict(model: Any) -> dict[str, Any]:

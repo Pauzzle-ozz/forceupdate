@@ -1,0 +1,2857 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "forceupdate",
+    "description": "L'API du serveur local de forceupdate : analyser un dossier ou un fichier, préparer et appliquer les mises à jour. Chaque requête porte le jeton de session (cookie posé par l'adresse que donne « forceupdate ui », ou « Authorization: Bearer <jeton> »).",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/fs": {
+      "get": {
+        "tags": [
+          "dossiers"
+        ],
+        "summary": "List Folder",
+        "description": "Le contenu du dossier ``path`` (absolu) ; sans ``path``, les points de départ : le\ndossier personnel et les lecteurs. Toujours avec les derniers chemins analysés.",
+        "operationId": "list_folder",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Listing"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/scans": {
+      "get": {
+        "tags": [
+          "analyses"
+        ],
+        "summary": "List Scans",
+        "description": "Les analyses de la session, de la plus récente à la plus ancienne.",
+        "operationId": "list_scans",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ScanSummary"
+                  },
+                  "type": "array",
+                  "title": "Response List Scans"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "analyses"
+        ],
+        "summary": "Start Scan",
+        "description": "Lance l'analyse d'un dossier ou d'un fichier de l'ordinateur, en tâche de fond. La\nprogression se suit sur ``…/events``, le rapport se lit sur ``GET /api/scans/{id}``.",
+        "operationId": "start_scan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/scans/{scan_id}": {
+      "get": {
+        "tags": [
+          "analyses"
+        ],
+        "summary": "Get Scan",
+        "description": "L'analyse, et son rapport une fois finie.",
+        "operationId": "get_scan",
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "analyses"
+        ],
+        "summary": "Cancel Scan",
+        "description": "Annule l'analyse si elle tourne encore.",
+        "operationId": "cancel_scan",
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Impossible dans l'état actuel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/scans/{scan_id}/events": {
+      "get": {
+        "tags": [
+          "analyses"
+        ],
+        "summary": "Scan Events",
+        "description": "La progression de l'analyse, en Server-Sent Events : des ``Event`` (``progress``), puis\n``end`` avec le statut final.",
+        "operationId": "scan_events",
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "name": "last-event-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Flux d'événements (text/event-stream) : « progress », puis « end ».",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/updates/plan": {
+      "post": {
+        "tags": [
+          "mises à jour"
+        ],
+        "summary": "Plan Update",
+        "description": "Prépare une sélection sur le rapport d'une analyse finie, sans rien écrire : les diffs,\nce qui ne sera pas appliqué, les lockfiles à régénérer, et le garde-fou git.",
+        "operationId": "plan_update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdatePlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Impossible dans l'état actuel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/updates/apply": {
+      "post": {
+        "tags": [
+          "mises à jour"
+        ],
+        "summary": "Apply Update",
+        "description": "Applique un plan, en tâche de fond : réécrit les fichiers, puis régénère les lockfiles.\nRefusé si des fichiers à toucher ont des changements que git n'a pas en commit, sauf\n``force``. La progression se suit sur ``/api/updates/{id}/events``.",
+        "operationId": "apply_update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdatePlan"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Impossible dans l'état actuel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/updates/{plan_id}": {
+      "get": {
+        "tags": [
+          "mises à jour"
+        ],
+        "summary": "Get Plan",
+        "description": "Le plan ; une fois appliqué, ce qu'il est advenu de chaque lockfile.",
+        "operationId": "get_plan",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdatePlan"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/updates/{plan_id}/events": {
+      "get": {
+        "tags": [
+          "mises à jour"
+        ],
+        "summary": "Plan Events",
+        "description": "La progression de l'application, en Server-Sent Events : ``written``, un\n``regenerating`` par lockfile, ``finished``, puis ``end`` avec le statut final.",
+        "operationId": "plan_events",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "last-event-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Flux d'événements (text/event-stream) : « progress », puis « end ».",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Impossible dans l'état actuel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/updates/{plan_id}/files/{path}": {
+      "get": {
+        "tags": [
+          "mises à jour"
+        ],
+        "summary": "Download File",
+        "description": "Un fichier tel que le plan le réécrit : pour un fichier envoyé par glisser-déposer, sa\nversion mise à jour.",
+        "operationId": "download_file",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Le fichier réécrit, à télécharger.",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/files": {
+      "post": {
+        "tags": [
+          "fichiers"
+        ],
+        "summary": "Upload File",
+        "description": "Analyse un fichier envoyé : un manifeste ou un lockfile, son contenu dans le corps de la\nrequête. Rend l'analyse lancée, comme ``POST /api/scans``.",
+        "operationId": "upload_file",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Le nom du fichier (package.json…).",
+              "title": "Name"
+            },
+            "description": "Le nom du fichier (package.json…)."
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Fichier trop gros",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "description": "Le contenu du fichier, tel quel.",
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApplyRequest": {
+        "properties": {
+          "plan": {
+            "type": "string",
+            "title": "Plan"
+          },
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan"
+        ],
+        "title": "ApplyRequest",
+        "description": "Un plan à appliquer."
+      },
+      "Chosen": {
+        "properties": {
+          "update": {
+            "type": "string",
+            "title": "Update"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "update",
+          "version"
+        ],
+        "title": "Chosen",
+        "description": "Une option de mise à jour, désignée dans le rapport de l'analyse."
+      },
+      "Dependency": {
+        "properties": {
+          "ecosystem": {
+            "$ref": "#/components/schemas/Ecosystem"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "constraint": {
+            "type": "string",
+            "title": "Constraint",
+            "default": ""
+          },
+          "resolved_constraint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved Constraint"
+          },
+          "installed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installed"
+          },
+          "lockfile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lockfile"
+          },
+          "direct": {
+            "type": "boolean",
+            "title": "Direct",
+            "default": true
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope",
+            "default": "runtime"
+          },
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Location"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unverifiable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unverifiable Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ecosystem",
+          "name",
+          "constraint",
+          "resolved_constraint",
+          "installed",
+          "lockfile",
+          "direct",
+          "scope",
+          "file",
+          "location",
+          "unverifiable_reason"
+        ],
+        "title": "Dependency",
+        "description": "Une dépendance d'un projet.\n\nUne directe vient du manifeste (``package.json``, ``pyproject.toml``…). Une\ntransitive vient seulement du lockfile : ``direct=False``, sans ``location``."
+      },
+      "Document": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "languages": {
+            "items": {
+              "$ref": "#/components/schemas/Language"
+            },
+            "type": "array",
+            "title": "Languages"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/Project"
+            },
+            "type": "array",
+            "title": "Projects"
+          },
+          "ignored_manifests": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ignored Manifests"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScanOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scanned_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanned At"
+          },
+          "oldest_data": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Data"
+          },
+          "schema_version": {
+            "type": "integer",
+            "title": "Schema Version"
+          },
+          "tool": {
+            "$ref": "#/components/schemas/Tool"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SummaryDocument"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "languages",
+          "projects",
+          "ignored_manifests",
+          "options",
+          "scanned_at",
+          "oldest_data",
+          "schema_version",
+          "tool",
+          "summary"
+        ],
+        "title": "Document",
+        "description": "Le rapport tel que le rend ``build`` : ``schema_version``, ``tool``, tous les champs de\n``Report``, puis ``summary``. Il ne sert qu'à décrire le JSON."
+      },
+      "Ecosystem": {
+        "type": "string",
+        "enum": [
+          "PyPI",
+          "npm",
+          "crates.io",
+          "Go",
+          "Packagist",
+          "RubyGems",
+          "Maven",
+          "NuGet"
+        ],
+        "title": "Ecosystem",
+        "description": "Un écosystème de paquets. Les valeurs sont les noms qu'utilise OSV."
+      },
+      "Edit": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/EditKind"
+          },
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Location"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "old": {
+            "type": "string",
+            "title": "Old"
+          },
+          "new": {
+            "type": "string",
+            "title": "New"
+          },
+          "override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Override"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "file",
+          "location",
+          "old",
+          "new",
+          "override"
+        ],
+        "title": "Edit",
+        "description": "Une contrainte à réécrire : à ``location`` dans ``file``, ``old`` devient ``new``.\n\nC'est le planificateur (E09) qui le calcule ; la réécriture (``update.writers``) vérifie que\nle fichier contient bien ``old`` à cet endroit avant d'y écrire ``new``. La déclaration\nréécrite est celle de ``Update.dependencies`` qui a ce fichier et cet emplacement (pour un\ncatalogue : ce fichier et ``old`` pour ``resolved_constraint``)."
+      },
+      "EditKind": {
+        "type": "string",
+        "enum": [
+          "dependency",
+          "catalog",
+          "override"
+        ],
+        "title": "EditKind",
+        "description": "Ce qu'une réécriture modifie."
+      },
+      "Entry": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EntryKind"
+          },
+          "hidden": {
+            "type": "boolean",
+            "title": "Hidden"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "path",
+          "kind",
+          "hidden"
+        ],
+        "title": "Entry"
+      },
+      "EntryKind": {
+        "type": "string",
+        "enum": [
+          "drive",
+          "folder",
+          "file"
+        ],
+        "title": "EntryKind"
+      },
+      "Error": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "Error",
+        "description": "Une erreur : ``detail`` dit ce qui ne va pas, en français."
+      },
+      "Event": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/EventKind"
+          },
+          "done": {
+            "type": "integer",
+            "title": "Done",
+            "default": 0
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "default": 0
+          },
+          "ecosystem": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Ecosystem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "done",
+          "total",
+          "ecosystem",
+          "name"
+        ],
+        "title": "Event",
+        "description": "Un événement de progression d'une analyse ou d'une mise à jour : la ligne de commande en\nfait une barre de progression, l'API (E12) l'envoie au navigateur."
+      },
+      "EventKind": {
+        "type": "string",
+        "enum": [
+          "reading",
+          "projects_found",
+          "checking",
+          "package_checked",
+          "vulnerabilities_checked",
+          "written",
+          "regenerating",
+          "finished"
+        ],
+        "title": "EventKind",
+        "description": "Les étapes d'une analyse, puis celles d'une mise à jour, dans l'ordre où elles\narrivent."
+      },
+      "FileDiff": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "diff": {
+            "type": "string",
+            "title": "Diff"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "diff"
+        ],
+        "title": "FileDiff",
+        "description": "Un fichier à réécrire, et son diff unifié."
+      },
+      "Finding": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/FindingKind"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity",
+            "default": "info"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "dependency": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Dependency"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version"
+          },
+          "current_is_approximate": {
+            "type": "boolean",
+            "title": "Current Is Approximate",
+            "default": false
+          },
+          "target_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Version"
+          },
+          "wanted_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wanted Version"
+          },
+          "gap": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Gap"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "identifiers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Identifiers",
+            "default": []
+          },
+          "cvss_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss Score"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "severity",
+          "message",
+          "dependency",
+          "current_version",
+          "current_is_approximate",
+          "target_version",
+          "wanted_version",
+          "gap",
+          "identifiers",
+          "cvss_score",
+          "detail",
+          "url"
+        ],
+        "title": "Finding",
+        "description": "Un constat : quelque chose à mettre à jour, ou qui n'a pas pu être vérifié.\n\nCe sont les contrôles (``checks/``) qui les produisent ; E07, E08 et E27\ncomplètent ce que chaque type remplit."
+      },
+      "FindingKind": {
+        "type": "string",
+        "enum": [
+          "outdated",
+          "vulnerable",
+          "eol",
+          "yanked",
+          "deprecated",
+          "unverifiable",
+          "inconclusive"
+        ],
+        "title": "FindingKind",
+        "description": "Le type d'un constat : les quatre types du brief, et ce qui n'a pas pu être vérifié."
+      },
+      "Gap": {
+        "type": "string",
+        "enum": [
+          "patch",
+          "minor",
+          "major"
+        ],
+        "title": "Gap",
+        "description": "L'écart entre deux versions.\n\nDepuis ``2.3.1`` : ``2.3.4`` est un correctif, ``2.9.0`` une mineure, ``3.0.0`` une majeure."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "InstalledVersion": {
+        "properties": {
+          "update": {
+            "type": "string",
+            "title": "Update"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "versions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Versions"
+          },
+          "reach": {
+            "$ref": "#/components/schemas/Reach"
+          },
+          "held_by": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Held By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "update",
+          "version",
+          "versions",
+          "reach",
+          "held_by"
+        ],
+        "title": "InstalledVersion",
+        "description": "La version qu'une mise à jour a donnée, lockfile relu (``lockfiles.Installed``)."
+      },
+      "Language": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "bytes": {
+            "type": "integer",
+            "title": "Bytes"
+          },
+          "ecosystem": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Ecosystem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "bytes",
+          "ecosystem"
+        ],
+        "title": "Language",
+        "description": "Un langage de la source, avec son poids en octets, comme GitHub Linguist."
+      },
+      "Listing": {
+        "properties": {
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/Entry"
+            },
+            "type": "array",
+            "title": "Entries"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated"
+          },
+          "home": {
+            "type": "string",
+            "title": "Home"
+          },
+          "recent": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "parent",
+          "entries",
+          "truncated",
+          "home",
+          "recent"
+        ],
+        "title": "Listing",
+        "description": "Le contenu d'un dossier, pour choisir quoi analyser : ses dossiers, et les fichiers de\ndépendances qu'il contient. Jamais le contenu d'un fichier."
+      },
+      "Location": {
+        "properties": {
+          "line": {
+            "type": "integer",
+            "title": "Line"
+          },
+          "column": {
+            "type": "integer",
+            "title": "Column"
+          },
+          "end_column": {
+            "type": "integer",
+            "title": "End Column"
+          }
+        },
+        "type": "object",
+        "required": [
+          "line",
+          "column",
+          "end_column"
+        ],
+        "title": "Location",
+        "description": "L'endroit exact où une contrainte est écrite dans son fichier.\n\n``line`` commence à 1 ; les colonnes commencent à 0, comptent des caractères\n(pas des octets), et ``end_column`` est exclue. C'est ce qui permet de\nréécrire la contrainte sans toucher au reste du fichier (E10)."
+      },
+      "LockJob": {
+        "properties": {
+          "lockfile": {
+            "type": "string",
+            "title": "Lockfile"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LockKind"
+          },
+          "tool": {
+            "type": "string",
+            "title": "Tool"
+          },
+          "program": {
+            "type": "string",
+            "title": "Program"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "command": {
+            "type": "string",
+            "title": "Command"
+          },
+          "directory": {
+            "type": "string",
+            "title": "Directory"
+          },
+          "updates": {
+            "items": {
+              "$ref": "#/components/schemas/Chosen"
+            },
+            "type": "array",
+            "title": "Updates"
+          },
+          "workspace": {
+            "type": "boolean",
+            "title": "Workspace"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lockfile",
+          "kind",
+          "tool",
+          "program",
+          "available",
+          "command",
+          "directory",
+          "updates",
+          "workspace",
+          "reason",
+          "warnings"
+        ],
+        "title": "LockJob",
+        "description": "Un lockfile à régénérer après l'écriture, et comment (``lockfiles.Job``)."
+      },
+      "LockKind": {
+        "type": "string",
+        "enum": [
+          "npm",
+          "pnpm",
+          "yarn1",
+          "yarn",
+          "uv",
+          "poetry",
+          "pdm",
+          "pipenv",
+          "pip-compile",
+          "uv-pip-compile"
+        ],
+        "title": "LockKind",
+        "description": "Le format d'un lockfile, donc l'outil qui le régénère."
+      },
+      "LockResult": {
+        "properties": {
+          "lockfile": {
+            "type": "string",
+            "title": "Lockfile"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LockStatus"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "restored": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Restored"
+          },
+          "installed": {
+            "items": {
+              "$ref": "#/components/schemas/InstalledVersion"
+            },
+            "type": "array",
+            "title": "Installed"
+          },
+          "changed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Changed"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lockfile",
+          "status",
+          "error",
+          "restored",
+          "installed",
+          "changed",
+          "warnings"
+        ],
+        "title": "LockResult",
+        "description": "Ce qu'il est advenu d'un lockfile (``lockfiles.Regenerated``)."
+      },
+      "LockStatus": {
+        "type": "string",
+        "enum": [
+          "regenerated",
+          "tool_missing",
+          "failed",
+          "undone"
+        ],
+        "title": "LockStatus",
+        "description": "Ce qu'il est advenu d'un lockfile."
+      },
+      "Notice": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "message"
+        ],
+        "title": "Notice",
+        "description": "Une remarque sur un fichier d'un projet : non lu, illisible, mal formé…\n\nCe n'est pas un constat sur une dépendance : c'est ce que l'analyse n'a pas pu\nfaire, pour que le rapport ne passe rien sous silence."
+      },
+      "Override": {
+        "properties": {
+          "ecosystem": {
+            "$ref": "#/components/schemas/Ecosystem"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "constraint": {
+            "type": "string",
+            "title": "Constraint"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "section": {
+            "type": "string",
+            "title": "Section"
+          },
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Location"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "ecosystem",
+          "name",
+          "constraint",
+          "key",
+          "section",
+          "file",
+          "location"
+        ],
+        "title": "Override",
+        "description": "Une version forcée : ``overrides`` (npm), ``resolutions`` (Yarn), ``pnpm.overrides``,\nou ``overrides`` de ``pnpm-workspace.yaml`` (pnpm 10+).\n\nElle s'impose à toutes les copies du paquet dans l'arbre (ou à celles que tire un paquet\nprécis), quoi que demandent les paquets qui le tirent. Une indirecte forcée ne bouge pas\navec ``npm update x`` : c'est la version forcée qu'il faut réécrire."
+      },
+      "PlanRequest": {
+        "properties": {
+          "scan": {
+            "type": "string",
+            "title": "Scan"
+          },
+          "selection": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Selection"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scan",
+          "selection"
+        ],
+        "title": "PlanRequest",
+        "description": "Une sélection à préparer, sur le rapport d'une analyse finie."
+      },
+      "Project": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "ecosystems": {
+            "items": {
+              "$ref": "#/components/schemas/Ecosystem"
+            },
+            "type": "array",
+            "title": "Ecosystems"
+          },
+          "manifests": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Manifests"
+          },
+          "lockfiles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lockfiles"
+          },
+          "dependencies": {
+            "items": {
+              "$ref": "#/components/schemas/Dependency"
+            },
+            "type": "array",
+            "title": "Dependencies"
+          },
+          "overrides": {
+            "items": {
+              "$ref": "#/components/schemas/Override"
+            },
+            "type": "array",
+            "title": "Overrides"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            },
+            "type": "array",
+            "title": "Findings"
+          },
+          "updates": {
+            "items": {
+              "$ref": "#/components/schemas/Update"
+            },
+            "type": "array",
+            "title": "Updates"
+          },
+          "notices": {
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            },
+            "type": "array",
+            "title": "Notices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "ecosystems",
+          "manifests",
+          "lockfiles",
+          "dependencies",
+          "overrides",
+          "findings",
+          "updates",
+          "notices"
+        ],
+        "title": "Project",
+        "description": "Un projet : un dossier qui contient au moins un manifeste ou un lockfile.\n\nUn monorepo en donne plusieurs (``backend/`` en Python, ``frontend/`` en npm)."
+      },
+      "Reach": {
+        "type": "string",
+        "enum": [
+          "exact",
+          "above",
+          "below",
+          "unknown"
+        ],
+        "title": "Reach",
+        "description": "Où en est une mise à jour, une fois le lockfile relu."
+      },
+      "ScanDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SourceKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "options": {
+            "$ref": "#/components/schemas/ScanOptions"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Event"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Document"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "kind",
+          "status",
+          "options",
+          "started_at",
+          "finished_at",
+          "error",
+          "progress",
+          "report"
+        ],
+        "title": "ScanDetail",
+        "description": "Une analyse, avec son rapport une fois finie."
+      },
+      "ScanOptions": {
+        "properties": {
+          "include_tests": {
+            "type": "boolean",
+            "title": "Include Tests",
+            "default": false
+          },
+          "dev": {
+            "type": "boolean",
+            "title": "Dev",
+            "default": true
+          },
+          "transitive": {
+            "type": "boolean",
+            "title": "Transitive",
+            "default": false
+          },
+          "offline": {
+            "type": "boolean",
+            "title": "Offline",
+            "default": false
+          },
+          "cache": {
+            "type": "boolean",
+            "title": "Cache",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "ScanOptions",
+        "description": "Ce que vérifie une analyse.",
+        "required": [
+          "include_tests",
+          "dev",
+          "transitive",
+          "offline",
+          "cache"
+        ]
+      },
+      "ScanRequest": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "dev": {
+            "type": "boolean",
+            "title": "Dev",
+            "default": true
+          },
+          "transitive": {
+            "type": "boolean",
+            "title": "Transitive",
+            "default": false
+          },
+          "include_tests": {
+            "type": "boolean",
+            "title": "Include Tests",
+            "default": false
+          },
+          "offline": {
+            "type": "boolean",
+            "title": "Offline",
+            "default": false
+          },
+          "cache": {
+            "type": "boolean",
+            "title": "Cache",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "ScanRequest",
+        "description": "Une analyse à lancer : un dossier ou un fichier de l'ordinateur, et ce qu'elle vérifie\n(voir ``models.ScanOptions``)."
+      },
+      "ScanSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SourceKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "options": {
+            "$ref": "#/components/schemas/ScanOptions"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Event"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "kind",
+          "status",
+          "options",
+          "started_at",
+          "finished_at",
+          "error",
+          "progress"
+        ],
+        "title": "ScanSummary",
+        "description": "Une analyse, sans son rapport."
+      },
+      "Scope": {
+        "type": "string",
+        "enum": [
+          "runtime",
+          "dev",
+          "optional",
+          "peer",
+          "build"
+        ],
+        "title": "Scope",
+        "description": "À quoi sert une dépendance dans son projet."
+      },
+      "Severity": {
+        "type": "string",
+        "enum": [
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "info"
+        ],
+        "title": "Severity",
+        "description": "Gravité d'un constat, du plus grave au moins grave.\n\nRemplace l'enum d'Argos (``ARGOS (1)`` dans ``reference/``), mêmes membres."
+      },
+      "SkippedOption": {
+        "properties": {
+          "update": {
+            "type": "string",
+            "title": "Update"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "update",
+          "version",
+          "reason"
+        ],
+        "title": "SkippedOption",
+        "description": "Une option choisie qui ne sera pas appliquée, et pourquoi (``writers.Skipped``)."
+      },
+      "SourceKind": {
+        "type": "string",
+        "enum": [
+          "folder",
+          "file",
+          "upload"
+        ],
+        "title": "SourceKind",
+        "description": "Ce qui est analysé."
+      },
+      "SummaryDocument": {
+        "properties": {
+          "projects": {
+            "type": "integer",
+            "title": "Projects"
+          },
+          "direct": {
+            "type": "integer",
+            "title": "Direct"
+          },
+          "transitive": {
+            "type": "integer",
+            "title": "Transitive"
+          },
+          "checked": {
+            "type": "integer",
+            "title": "Checked"
+          },
+          "audited": {
+            "type": "integer",
+            "title": "Audited",
+            "default": 0
+          },
+          "findings": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/FindingKind"
+            },
+            "type": "object",
+            "title": "Findings"
+          },
+          "outdated": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/Gap"
+            },
+            "type": "object",
+            "title": "Outdated"
+          },
+          "to_update": {
+            "type": "integer",
+            "title": "To Update",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "projects",
+          "direct",
+          "transitive",
+          "checked",
+          "audited",
+          "findings",
+          "outdated",
+          "to_update"
+        ],
+        "title": "SummaryDocument",
+        "description": "Le résumé, avec ``to_update`` (une propriété de ``Summary``)."
+      },
+      "TaskStatus": {
+        "type": "string",
+        "enum": [
+          "planned",
+          "running",
+          "done",
+          "failed",
+          "cancelled"
+        ],
+        "title": "TaskStatus",
+        "description": "Où en est une analyse, ou l'application d'un plan."
+      },
+      "Tool": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "version"
+        ],
+        "title": "Tool",
+        "description": "L'outil qui a fait le rapport."
+      },
+      "Update": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "ecosystem": {
+            "$ref": "#/components/schemas/Ecosystem"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "direct": {
+            "type": "boolean",
+            "title": "Direct"
+          },
+          "dependencies": {
+            "items": {
+              "$ref": "#/components/schemas/Dependency"
+            },
+            "type": "array",
+            "title": "Dependencies"
+          },
+          "current_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version"
+          },
+          "current_is_approximate": {
+            "type": "boolean",
+            "title": "Current Is Approximate",
+            "default": false
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/UpdateOption"
+            },
+            "type": "array",
+            "title": "Options",
+            "default": []
+          },
+          "selected": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "ecosystem",
+          "name",
+          "direct",
+          "dependencies",
+          "current_version",
+          "current_is_approximate",
+          "options",
+          "selected",
+          "note"
+        ],
+        "title": "Update",
+        "description": "Les mises à jour possibles d'un paquet d'un projet. Au plus une est choisie : ses\noptions s'excluent l'une l'autre, comme des boutons radio qu'on peut aussi tous décocher.\n\nPour une directe, toutes ses déclarations (runtime et dev, deux extras) montent ensemble ;\nune indirecte est une version installée précise (npm peut en installer plusieurs)."
+      },
+      "UpdateOption": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "gap": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Gap"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/UpdateReason"
+            },
+            "type": "array",
+            "title": "Reasons"
+          },
+          "fixes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fixes",
+            "default": []
+          },
+          "unfixed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unfixed",
+            "default": []
+          },
+          "introduced": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Introduced",
+            "default": []
+          },
+          "edits": {
+            "items": {
+              "$ref": "#/components/schemas/Edit"
+            },
+            "type": "array",
+            "title": "Edits",
+            "default": []
+          },
+          "lockfile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lockfile"
+          },
+          "manual": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "gap",
+          "reasons",
+          "fixes",
+          "unfixed",
+          "introduced",
+          "edits",
+          "lockfile",
+          "manual",
+          "warnings"
+        ],
+        "title": "UpdateOption",
+        "description": "Une version vers laquelle monter un paquet : une case à cocher de l'interface."
+      },
+      "UpdatePlan": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "scan": {
+            "type": "string",
+            "title": "Scan"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "selection": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Selection"
+          },
+          "applied": {
+            "items": {
+              "$ref": "#/components/schemas/Chosen"
+            },
+            "type": "array",
+            "title": "Applied"
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/SkippedOption"
+            },
+            "type": "array",
+            "title": "Skipped"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/FileDiff"
+            },
+            "type": "array",
+            "title": "Files"
+          },
+          "lockfiles": {
+            "items": {
+              "$ref": "#/components/schemas/LockJob"
+            },
+            "type": "array",
+            "title": "Lockfiles"
+          },
+          "uncommitted": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncommitted"
+          },
+          "applicable": {
+            "type": "boolean",
+            "title": "Applicable"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/LockResult"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Event"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "scan",
+          "status",
+          "created_at",
+          "finished_at",
+          "selection",
+          "applied",
+          "skipped",
+          "files",
+          "lockfiles",
+          "uncommitted",
+          "applicable",
+          "error",
+          "results",
+          "progress"
+        ],
+        "title": "UpdatePlan",
+        "description": "Un plan de mise à jour : ce qu'écrira la sélection, puis ce qu'il en est advenu."
+      },
+      "UpdateReason": {
+        "type": "string",
+        "enum": [
+          "latest_patch",
+          "latest_minor",
+          "latest_major",
+          "security_fix",
+          "replacement"
+        ],
+        "title": "UpdateReason",
+        "description": "Pourquoi une version est proposée. Une même version peut l'être pour plusieurs raisons\n(la dernière mineure corrige souvent aussi les failles)."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

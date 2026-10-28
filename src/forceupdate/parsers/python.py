@@ -1054,7 +1054,7 @@ def _requirements_lock(parsed: _RequirementsFile, scope: Scope) -> Lockfile:
         packages.append(
             LockedPackage(
                 name=dependency.name,
-                version=_pinned_version(dependency.constraint) or "",
+                version=pinned_version(dependency.constraint) or "",
                 scope=scope,
                 unverifiable_reason=dependency.unverifiable_reason,
                 constraint=dependency.constraint,
@@ -1064,7 +1064,21 @@ def _requirements_lock(parsed: _RequirementsFile, scope: Scope) -> Lockfile:
     return Lockfile(path=parsed.path, ecosystem=Ecosystem.PYPI, packages=tuple(packages))
 
 
-def _pinned_version(constraint: str) -> str | None:
+def parse_pinned_requirements(path: str, content: str) -> Lockfile:
+    """Un ``.txt`` compilé par pip-tools (ou un fichier de contraintes), vu comme un lockfile,
+    sans graphe : ses ``==X``. Les ``-r`` et ``-c`` ne sont pas suivis."""
+    scope = _file_scope(path)
+    return _requirements_lock(_parse_requirements(path, content, scope), scope)
+
+
+def requirements_references(path: str, content: str) -> list[str]:
+    """Les fichiers que cite un ``requirements*.txt`` ou un ``.in`` avec ``-r``, puis avec
+    ``-c``, en chemins relatifs à la source ; ceux qui en sortent ne sont pas rendus."""
+    parsed = _parse_requirements(path, content, Scope.RUNTIME)
+    return [*parsed.includes, *parsed.constraints]
+
+
+def pinned_version(constraint: str) -> str | None:
     """La version d'une contrainte exacte (``==2.0.1``) ; ``None`` sinon."""
     try:
         specifiers = list(SpecifierSet(constraint))

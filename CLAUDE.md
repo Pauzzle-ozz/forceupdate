@@ -53,9 +53,10 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 ├── .github/workflows/      ← ci.yml : ruff + pytest, Ubuntu et Windows, Python 3.11 et 3.14
 ├── docs/
 │   ├── BRIEF.md            ← l'idée, les décisions prises, les pièges, les sources de données
-│   └── JSON_FORMAT.md      ← le format du rapport JSON (scan --format json, et l'API)
+│   └── JSON_FORMAT.md      ← le format du rapport JSON (scan --format json), et l'API de ui
 ├── reference/              ← code repris d'Argos, à piocher (voir reference/README.md)
 ├── src/forceupdate/        ← le code de l'outil (architecture cible : PLAN.md)
+│   └── web/                ← le serveur de ui (FastAPI) ; openapi.json, exporté, donne les types du front
 └── tests/                  ← les tests ; conftest.py gère le marqueur network
     ├── fixtures/           ← réponses HTTP enregistrées ; record.py les ré-enregistre
     └── projects/           ← mini-projets par outil, lockfiles produits par les vrais outils
@@ -70,8 +71,11 @@ Viendront plus tard : `frontend/` (l'interface, à partir de E14) et
 uv sync                          # installe l'outil et ses dépendances dans .venv
 uv run forceupdate --version     # lance l'outil (ui, scan, update)
 uv run forceupdate scan <chemin> # analyse ; --format json|md, --output, --offline, --fail-on…
-uv run forceupdate update <chemin>  # le plan, le diff, puis la réécriture des manifestes ;
+uv run forceupdate update <chemin>  # le plan, le diff, puis la réécriture des manifestes et
+                                    # la régénération des lockfiles (npm, uv… s'ils sont là) ;
                                     # --dry-run, --yes, --force, --level, --security-only…
+uv run forceupdate ui --no-browser  # le serveur local (127.0.0.1), l'adresse avec le jeton ; Ctrl+C
+uv run python -m forceupdate.web.openapi  # réexporte web/openapi.json (un test vérifie qu'il est à jour)
 uv run pytest                    # tests hors ligne ; reference/ n'est jamais ramassé
 uv run pytest --run-network      # avec en plus les tests marqués network (vrai réseau)
 uv run ruff check                # lint
@@ -93,8 +97,20 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   un autre script, `PYTHONIOENCODING=utf-8`. Un script passé à Python par l'entrée
   standard (heredoc) abîme les accents : l'écrire dans un fichier.
 - Les tests ne touchent jamais le réseau sans le marqueur `network`, ni le cache de
-  l'utilisateur : deux garde-fous automatiques de `tests/conftest.py` y veillent.
-  La fixture `recorded` simule PyPI, npm et OSV avec les réponses de `tests/fixtures/`.
+  l'utilisateur, ni un vrai outil de lockfile (npm, uv…), et n'ouvrent jamais le
+  navigateur : quatre garde-fous automatiques de `tests/conftest.py` y veillent. La
+  fixture `recorded` simule PyPI, npm et OSV avec les réponses de `tests/fixtures/` ;
+  `fake_tools("npm", "uv")` simule les outils (`FakeTools`) ; `api` est le serveur de
+  `ui` (client de test de FastAPI, jeton compris), `finished` attend la fin d'une tâche.
+- Un test qui lance une vraie commande `ui` (sans `serve` simulé) bloque la suite :
+  le serveur attend Ctrl+C.
+- Pour essayer `forceupdate update` en vrai : sur une copie dans le scratchpad, jamais
+  dans `tests/projects/` (les outils réécrivent les lockfiles). yarn, poetry, pdm,
+  pipenv et pip-compile ne sont pas installés (choix de l'utilisateur) : `npx yarn@1`,
+  `corepack yarn@4.18.1`, `uvx poetry`, `uvx pdm`, `uvx pipenv`,
+  `uvx --from pip-tools pip-compile`. pipenv crée un virtualenv dans `~/.virtualenvs`
+  (le retirer avec `uvx pipenv --rm`), et prend le `.venv` activé si `VIRTUAL_ENV` est
+  défini.
 
 ## Interface
 

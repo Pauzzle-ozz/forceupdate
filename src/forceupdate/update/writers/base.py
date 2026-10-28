@@ -21,6 +21,9 @@ class Target:
     location: Location
     old: str
     new: str
+    pattern: str | None = None
+    """Le motif de ``detect.manifests`` dont le fichier suit le format, quand son nom ne le dit
+    pas : ``requirements*.txt`` pour un fichier de contraintes de pip (``-c``)."""
 
 
 @dataclass(frozen=True, kw_only=True)

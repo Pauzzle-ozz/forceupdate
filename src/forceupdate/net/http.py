@@ -10,7 +10,9 @@ Tout ce qui parle au réseau passe par ``HttpClient`` :
   ``Retry-After`` ; s'il demande plus d'une minute, on abandonne ;
 - au plus 8 requêtes à la fois par hôte ;
 - un hôte resté injoignable après ses reprises (ou qui limite le débit) n'est plus
-  interrogé de la session : sans réseau, chaque paquet attendrait sinon ses reprises ;
+  interrogé pendant une minute (ou le temps que demande ``Retry-After``) : sans réseau, chaque
+  paquet attendrait sinon ses reprises. Pas plus longtemps : le client de l'interface web sert
+  des heures, le réseau peut revenir ;
 - une réponse de plus de 128 Mo est refusée (le document npm de ``next`` en fait 32).
 
 Une requête qui n'aboutit pas lève ``NetworkError``, avec un message en français fait pour
@@ -24,6 +26,7 @@ import json
 import logging
 import random
 import re
+import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -49,6 +52,9 @@ MAX_BODY = 128 * 1024 * 1024
 """Taille maximale d'une réponse, décompressée, en octets."""
 MAX_RETRY_AFTER = 60.0
 """Attente maximale demandée par ``Retry-After``, en secondes : au-delà, on abandonne."""
+DOWN_FOR = 60.0
+"""Durée, en secondes, pendant laquelle un hôte abandonné n'est plus interrogé (plus, si
+``Retry-After`` demande plus)."""
 
 _BACKOFF = 0.5
 """Première attente entre deux essais sans ``Retry-After`` ; elle double à chaque reprise."""
@@ -99,7 +105,8 @@ class HttpClient:
     vaillent pour tout le monde. À fermer après usage : ``async with HttpClient() as http``.
 
     ``offline`` : aucune requête ne part, chacune lève ``NetworkError`` ; les registres se
-    contentent alors du cache. ``sleep`` sert aux tests, pour ne pas attendre les reprises.
+    contentent alors du cache. ``sleep`` et ``clock`` servent aux tests, pour ne pas attendre les
+    reprises ni la fin d'un abandon.
     """
 
     def __init__(
@@ -110,17 +117,22 @@ class HttpClient:
         max_per_host: int = MAX_PER_HOST,
         max_body: int = MAX_BODY,
         deadline: float = DEADLINE,
+        down_for: float = DOWN_FOR,
         sleep: Callable[[float], Awaitable[object]] = asyncio.sleep,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.offline = offline
         self._retries = retries
         self._max_per_host = max_per_host
         self._max_body = max_body
         self._deadline = deadline
+        self._down_for = down_for
         self._sleep = sleep
+        self._clock = clock
         self._slots: dict[str, asyncio.Semaphore] = {}
-        self._down: dict[str, str] = {}
-        """Les hôtes abandonnés pour la session, avec le message de leur échec."""
+        self._down: dict[str, tuple[str, float]] = {}
+        """Les hôtes abandonnés, avec le message de leur échec et l'heure (``clock``) jusqu'à
+        laquelle ils le restent."""
         self._client = httpx.AsyncClient(
             headers={"User-Agent": USER_AGENT},
             timeout=TIMEOUT,
@@ -162,8 +174,12 @@ class HttpClient:
         host = httpx.URL(url).host
         if self.offline:
             raise NetworkError(f"mode hors ligne : {host} n'est pas interrogé.")
-        if host in self._down:
-            raise NetworkError(self._down[host])
+        down = self._down.get(host)
+        if down is not None:
+            message, until = down
+            if self._clock() < until:
+                raise NetworkError(message)
+            del self._down[host]
         if retry is None:
             retry = method.upper() in _IDEMPOTENT
         attempts = 1 + (self._retries if retry else 0)
@@ -180,7 +196,7 @@ class HttpClient:
                 )
                 if final:
                     message = _failure(host, error)
-                    self._down[host] = message
+                    self._abandon(host, message)
                     raise NetworkError(message) from error
                 await self._sleep(_backoff(attempt))
                 continue
@@ -198,7 +214,7 @@ class HttpClient:
             if final or (wait is not None and wait > MAX_RETRY_AFTER):
                 message = _status_failure(host, status, wait)
                 if status == 429:
-                    self._down[host] = message
+                    self._abandon(host, message, wait)
                 raise NetworkError(message)
             await self._sleep(_backoff(attempt) if wait is None else wait)
         raise AssertionError("inaccessible : le dernier essai rend ou lève")
@@ -227,6 +243,10 @@ class HttpClient:
                 headers=response.headers,
                 content=b"".join(chunks),
             )
+
+    def _abandon(self, host: str, message: str, wait: float | None = None) -> None:
+        """N'interroge plus ``host`` pendant ``down_for`` secondes, ou ``wait`` si c'est plus."""
+        self._down[host] = (message, self._clock() + max(self._down_for, wait or 0.0))
 
     def _slot(self, host: str) -> asyncio.Semaphore:
         slot = self._slots.get(host)

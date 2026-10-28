@@ -1,6 +1,6 @@
 """Le planificateur : pour chaque paquet à mettre à jour, les versions possibles, ce qu'il faut
 toucher, et ce qui est pré-coché. Il n'écrit rien : la réécriture des manifestes est dans
-``update.writers``, celle des lockfiles viendra à E11.
+``update.writers``, la régénération des lockfiles dans ``update.lockfiles``.
 
 **Les versions proposées** (``UpdateOption``), pour un paquet qui a un constat :
 

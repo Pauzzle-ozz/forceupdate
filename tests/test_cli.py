@@ -1,4 +1,4 @@
-"""La ligne de commande : version, ``scan``, ``update``, et commandes pas encore disponibles."""
+"""La ligne de commande : version, ``scan``, ``update`` (``ui`` : ``test_web_server.py``)."""
 
 import json
 import os
@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 import respx
+from conftest import FakeTools, ToolCall
 from typer.testing import CliRunner, Result
 
 from forceupdate import __version__
@@ -34,12 +35,6 @@ def test_version_option() -> None:
 def test_console_script_points_to_app() -> None:
     (script,) = entry_points(group="console_scripts", name="forceupdate")
     assert script.load() is app
-
-
-def test_ui_is_not_available_yet() -> None:
-    result = runner.invoke(app, ["ui"])
-    assert result.exit_code == EXIT_ERROR
-    assert "forceupdate ui : pas encore disponible." in result.stderr
 
 
 def scan(*args: str) -> Result:
@@ -243,10 +238,8 @@ def test_update_shows_the_default_selection(recorded: dict[str, respx.Route]) ->
     assert "Proposées, non cochées" in lines
     assert any(line.startswith("flask 0.12 → 3.1.3") for line in lines)
     assert "Mises à jour choisies : 3 sur 4 paquets à mettre à jour (--level minor)." in lines
-    # Puis le diff des manifestes, et rien n'est écrit.
-    diff = lines[
-        lines.index("Fichiers à réécrire") + 1 : lines.index("Rien n'est écrit (--dry-run).")
-    ]
+    # Puis le diff des manifestes, les lockfiles à régénérer, et rien n'est écrit.
+    diff = lines[lines.index("Fichiers à réécrire") + 1 : lines.index("Lockfiles à régénérer")]
     assert diff == [
         "--- a/package.json",
         "+++ b/package.json",
@@ -266,10 +259,20 @@ def test_update_shows_the_default_selection(recorded: dict[str, respx.Route]) ->
         "+flask==0.12.5",
         "",
     ]
-    assert lines[-1] == (
-        "Lockfiles à régénérer ensuite : requirements.txt, package-lock.json (forceupdate ne le "
-        "fait pas encore)."
-    )
+    # Les outils ne sont pas installés pendant les tests (tests/conftest.py).
+    assert lines[lines.index("Lockfiles à régénérer") + 1 :] == [
+        "package-lock.json npm n'est pas installé : « npm install --package-lock-only "
+        "--ignore-scripts » à lancer soi-même.",
+        "requirements.txt  uv n'est pas installé : « uv pip compile requirements.in -o "
+        "requirements.txt --python-version 3.7 -P flask==0.12.5 -P jinja2==2.11.3 » à lancer "
+        "soi-même.",
+        "Pas repris de l'en-tête de requirements.txt : --exclude-newer 2019-01-01, qui "
+        "écarterait les versions choisies.",
+        "uv construit les paquets publiés sans wheel dont il lit les dépendances, et le projet "
+        "si elles sont dynamiques : leur code de construction s'exécute.",
+        "",
+        "Rien n'est écrit (--dry-run).",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -351,8 +354,12 @@ def test_update_yes_writes_the_manifests(
     assert rewritten(root)
     lines = result.stdout.splitlines()
     assert "Pas de dépôt git ici : rien ne permettra de revenir en arrière." in lines
-    assert "Fichiers réécrits : package.json, requirements.in." in lines
-    assert lines[-1].startswith("Lockfiles à régénérer ensuite : requirements.txt, package-lock")
+    assert lines[lines.index("Fichiers réécrits : package.json, requirements.in.") + 1 :] == [
+        "package-lock.json : à régénérer, npm n'est pas installé : « npm install "
+        "--package-lock-only --ignore-scripts ».",
+        "requirements.txt : à régénérer, uv n'est pas installé : « uv pip compile requirements.in "
+        "-o requirements.txt --python-version 3.7 -P flask==0.12.5 -P jinja2==2.11.3 ».",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -408,6 +415,103 @@ def test_update_refuses_uncommitted_manifests(
     git(root, "commit", "-q", "-am", "mise à jour")
     assert update(str(root), "--yes", "--level", "major").exit_code == 0
     assert "flask==3.1.3" in (root / "requirements.in").read_text(encoding="utf-8")
+
+
+def fake_npm_and_uv(fake_tools: Callable[..., FakeTools], root: Path) -> FakeTools:
+    """npm et uv simulés sur ``vulnerable`` : ils écrivent les versions choisies."""
+    tools = fake_tools("npm", "uv")
+
+    def npm(call: ToolCall) -> None:
+        lock = root / "package-lock.json"
+        text = lock.read_text(encoding="utf-8")
+        lock.write_text(text.replace('"version": "4.17.15"', '"version": "4.18.1"'), "utf-8")
+
+    def uv(call: ToolCall) -> None:
+        lock = root / "requirements.txt"
+        text = lock.read_text(encoding="utf-8").replace("flask==0.12\n", "flask==0.12.5\n")
+        lock.write_text(text.replace("jinja2==2.10\n", "jinja2==2.11.3\n"), encoding="utf-8")
+
+    tools.handlers.update(npm=npm, uv=uv)
+    return tools
+
+
+def test_update_regenerates_the_lockfiles(
+    recorded: dict[str, respx.Route],
+    tmp_path: Path,
+    fake_tools: Callable[..., FakeTools],
+) -> None:
+    root = vulnerable_copy(tmp_path)
+    tools = fake_npm_and_uv(fake_tools, root)
+    result = update(str(root), input="o\n")
+    assert result.exit_code == 0, result.output
+    assert "Réécrire 2 fichiers et régénérer 2 lockfiles ? [o/N]" in result.stdout
+    lines = [line.strip() for line in result.stdout.splitlines()]
+    assert lines[lines.index("Fichiers réécrits : package.json, requirements.in.") :] == [
+        "Fichiers réécrits : package.json, requirements.in.",
+        "package-lock.json : régénéré (npm).",
+        "lodash 4.18.1",
+        "requirements.txt : régénéré (uv pip compile).",
+        "flask              0.12.5",
+        "jinja2 (indirecte) 2.11.3",
+    ]
+    assert [call.program for call in tools.calls] == ["npm", "uv"]
+    assert "flask==0.12.5" in (root / "requirements.txt").read_text(encoding="utf-8")
+
+
+def test_update_says_when_a_lockfile_fails(
+    recorded: dict[str, respx.Route],
+    tmp_path: Path,
+    fake_tools: Callable[..., FakeTools],
+) -> None:
+    root = vulnerable_copy(tmp_path)
+    tools = fake_npm_and_uv(fake_tools, root)
+    tools.handlers["npm"] = lambda call: (1, "", "npm error code ETARGET\nnpm error pas de 4.18.1")
+    result = update(str(root), "--yes")
+    assert result.exit_code == EXIT_ERROR, result.output
+    lines = [line.strip() for line in result.stdout.splitlines()]
+    assert lines[lines.index("Fichiers réécrits : requirements.in.") :][:5] == [
+        "Fichiers réécrits : requirements.in.",
+        "package-lock.json : échec de npm ; remis comme avant : package.json.",
+        "« npm install --package-lock-only --ignore-scripts --no-audit --no-fund » a échoué "
+        "(code 1) :",
+        "npm error code ETARGET",
+        "npm error pas de 4.18.1",
+    ]
+    assert (root / "package.json").read_bytes() == (VULNERABLE / "package.json").read_bytes()
+    assert "flask==0.12.5" in (root / "requirements.txt").read_text(encoding="utf-8")
+
+
+def test_update_by_the_lockfile_alone(
+    recorded: dict[str, respx.Route],
+    tmp_path: Path,
+    fake_tools: Callable[..., FakeTools],
+) -> None:
+    root = vulnerable_copy(tmp_path)
+    tools = fake_npm_and_uv(fake_tools, root)
+    result = update(str(root), "--include", "jinja2", input="o\n")
+    assert result.exit_code == 0, result.output
+    assert "Aucun manifeste à réécrire." in result.stdout
+    assert "Régénérer 1 lockfile ? [o/N]" in result.stdout
+    assert [call.arguments[-2:] for call in tools.calls] == [["-P", "jinja2==2.11.3"]]
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git absent")
+def test_update_refuses_an_uncommitted_lockfile(
+    recorded: dict[str, respx.Route],
+    tmp_path: Path,
+    fake_tools: Callable[..., FakeTools],
+) -> None:
+    root = vulnerable_copy(tmp_path)
+    fake_npm_and_uv(fake_tools, root)
+    git(root, "init", "-q")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "départ")
+    with (root / "package-lock.json").open("a", encoding="utf-8", newline="") as file:
+        file.write("\n")
+    result = update(str(root), "--yes")
+    assert result.exit_code == EXIT_ERROR
+    assert result.stderr.startswith("forceupdate update : package-lock.json : des changements")
+    assert (root / "package.json").read_bytes() == (VULNERABLE / "package.json").read_bytes()
 
 
 def test_update_missing_path(tmp_path: Path) -> None:
