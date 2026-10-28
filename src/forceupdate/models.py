@@ -163,6 +163,9 @@ class Dependency:
     elle-même la plage, ou si la plage est introuvable."""
     installed: str | None = None
     """Version installée, lue dans le lockfile ; ``None`` sans lockfile."""
+    lockfile: str | None = None
+    """Le lockfile où ``installed`` a été lu, celui qu'une mise à jour régénère (E11) ;
+    ``None`` sans version installée. Pour une indirecte, c'est ``file``."""
     direct: bool = True
     scope: Scope = Scope.RUNTIME
     file: str
@@ -182,6 +185,30 @@ class Dependency:
         """La contrainte à interpréter (``forceupdate.versions``) : ``resolved_constraint``
         s'il y en a une, sinon ``constraint``."""
         return self.constraint if self.resolved_constraint is None else self.resolved_constraint
+
+
+@dataclass(frozen=True, kw_only=True)
+class Override:
+    """Une version forcée : ``overrides`` (npm), ``resolutions`` (Yarn), ``pnpm.overrides``.
+
+    Elle s'impose à toutes les copies du paquet dans l'arbre (ou à celles que tire un paquet
+    précis), quoi que demandent les paquets qui le tirent. Une indirecte forcée ne bouge pas
+    avec ``npm update x`` : c'est la version forcée qu'il faut réécrire.
+    """
+
+    ecosystem: Ecosystem
+    name: str
+    """Le paquet forcé."""
+    constraint: str
+    """La version forcée telle qu'écrite (``^3.4.13``, ``$dompurify``, ``npm:autre@1.0``)."""
+    key: str
+    """La clé telle qu'écrite : ``dompurify``, ``**/lodash`` (Yarn), ``foo@<2`` ou ``a>b``
+    (pnpm) ; pour npm, le chemin des clés imbriquées, séparées par ``>`` (``a>b``)."""
+    section: str
+    """``overrides``, ``resolutions`` ou ``pnpm.overrides``."""
+    file: str
+    location: Location | None = None
+    """Emplacement de ``constraint`` dans ``file`` ; ``None`` si on ne sait pas la réécrire."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -221,6 +248,111 @@ class Finding:
     titre de l'avis de sécurité."""
     url: str | None = None
     """Lien pour en savoir plus : avis de sécurité (osv.dev), page du paquet, endoflife.date."""
+
+
+class UpdateReason(enum.StrEnum):
+    """Pourquoi une version est proposée. Une même version peut l'être pour plusieurs raisons
+    (la dernière mineure corrige souvent aussi les failles)."""
+
+    LATEST_PATCH = "latest_patch"
+    """Le dernier correctif de la version utilisée."""
+    LATEST_MINOR = "latest_minor"
+    """La dernière mineure : la plus haute version sans changer de majeure."""
+    LATEST_MAJOR = "latest_major"
+    """La dernière version, quand elle est majeure."""
+    SECURITY_FIX = "security_fix"
+    """La plus petite version publiée qui corrige toutes les failles qui peuvent l'être."""
+    REPLACEMENT = "replacement"
+    """Remplace une version retirée ou dépréciée."""
+
+
+class EditKind(enum.StrEnum):
+    """Ce qu'une réécriture modifie."""
+
+    DEPENDENCY = "dependency"
+    """La contrainte d'une dépendance, dans son manifeste."""
+    CATALOG = "catalog"
+    """La plage d'un catalogue pnpm, dans ``pnpm-workspace.yaml`` (E10 l'y trouve)."""
+    OVERRIDE = "override"
+    """Une version forcée (``overrides``, ``resolutions``, ``pnpm.overrides``)."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class Edit:
+    """Une contrainte à réécrire : à ``location`` dans ``file``, ``old`` devient ``new``.
+
+    C'est le planificateur (E09) qui le calcule ; la réécriture (E10) vérifie que le fichier
+    contient bien ``old`` à cet endroit avant d'y écrire ``new``. La déclaration réécrite est
+    celle de ``Update.dependencies`` qui a ce fichier et cet emplacement (pour un catalogue :
+    ce fichier et ``old`` pour ``resolved_constraint``).
+    """
+
+    kind: EditKind
+    file: str
+    """Le manifeste ; pour un catalogue pnpm, le ``package.json`` qui y renvoie."""
+    location: Location | None
+    """``None`` pour un catalogue pnpm (E10 cherche sa plage dans ``pnpm-workspace.yaml``)."""
+    old: str
+    new: str
+    override: Override | None = None
+    """La version forcée réécrite (``OVERRIDE``)."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class UpdateOption:
+    """Une version vers laquelle monter un paquet : une case à cocher de l'interface."""
+
+    version: str
+    gap: Gap | None
+    """Écart depuis la version utilisée ; ``None`` pour un retour à une version plus ancienne
+    (la plus proche non retirée d'une version retirée peut être en dessous)."""
+    reasons: tuple[UpdateReason, ...]
+    fixes: tuple[str, ...] = ()
+    """Les failles qu'elle corrige : le premier identifiant de chacune (une CVE s'il y en a)."""
+    unfixed: tuple[str, ...] = ()
+    """Les failles qu'elle laisse."""
+    edits: tuple[Edit, ...] = ()
+    """Les contraintes à réécrire. Vide : la version est déjà dans la contrainte, on y monte en
+    régénérant le lockfile seul."""
+    lockfile: str | None = None
+    """Le lockfile à régénérer (E11) ; ``None`` sans lockfile."""
+    manual: str | None = None
+    """Pourquoi forceupdate ne sait pas l'appliquer seul (contrainte sans emplacement, style
+    non géré…) ; ``None`` s'il le sait. Elle n'est jamais pré-cochée."""
+    warnings: tuple[str, ...] = ()
+    """Ce qu'il faut savoir avant de la cocher (« Majeure : peut demander d'adapter le
+    code. »)."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class Update:
+    """Les mises à jour possibles d'un paquet d'un projet. Au plus une est choisie : ses
+    options s'excluent l'une l'autre, comme des boutons radio qu'on peut aussi tous décocher.
+
+    Pour une directe, toutes ses déclarations (runtime et dev, deux extras) montent ensemble ;
+    une indirecte est une version installée précise (npm peut en installer plusieurs).
+    """
+
+    id: str
+    """Identifiant unique dans le rapport : c'est lui que la sélection désigne."""
+    ecosystem: Ecosystem
+    name: str
+    direct: bool
+    dependencies: tuple[Dependency, ...]
+    """Ses déclarations (directe), ou l'indirecte."""
+    current_version: str | None
+    current_is_approximate: bool = False
+    options: tuple[UpdateOption, ...] = ()
+    """De la plus ancienne à la plus récente version."""
+    selected: str | None = None
+    """La version pré-cochée (brief, décision n°12) ; ``None`` si aucune ne l'est."""
+    note: str | None = None
+    """Ce que les options ne disent pas : faille sans version corrigée, versions publiées
+    inconnues…"""
+
+    def option(self, version: str) -> UpdateOption | None:
+        """L'option de version ``version`` (le même texte) ; ``None`` s'il n'y en a pas."""
+        return next((option for option in self.options if option.version == version), None)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -265,7 +397,13 @@ class Project:
     """Ses lockfiles : ceux de son dossier, ou celui de la racine d'un workspace."""
     dependencies: list[Dependency] = field(default_factory=list)
     """Les directes d'abord, dans l'ordre des manifestes, puis les transitives."""
+    overrides: list[Override] = field(default_factory=list)
+    """Les versions forcées de son ``package.json`` (seules celles de la racine d'un workspace
+    comptent pour npm, Yarn et pnpm)."""
     findings: list[Finding] = field(default_factory=list)
+    updates: list[Update] = field(default_factory=list)
+    """Les mises à jour possibles, une par paquet à mettre à jour, dans l'ordre des constats
+    (``update.planner``) ; vide si les dépendances n'ont pas été vérifiées."""
     notices: list[Notice] = field(default_factory=list)
     """Ce que l'analyse n'a pas pu lire (``setup.py``, fichier invalide…)."""
 

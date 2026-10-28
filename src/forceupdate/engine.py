@@ -46,6 +46,7 @@ from forceupdate.net import Cache, HttpClient
 from forceupdate.parsers.base import REASON_WORKSPACE
 from forceupdate.registries import PackageInfo, PackageNotFound, Registry, RegistryError
 from forceupdate.sources.base import Source
+from forceupdate.update import planner
 
 EventCallback = Callable[[Event], None]
 
@@ -166,7 +167,9 @@ async def check(
             stack.callback(cache.close)
         clients: dict[Ecosystem, Registry] = {}
         unsupported: dict[Ecosystem, str] = {}
-        for ecosystem in sorted({dependency.ecosystem for _, dependency in to_check}):
+        ecosystems = {dependency.ecosystem for _, dependency in to_check}
+        ecosystems |= {dependency.ecosystem for _, dependency, _ in audited}
+        for ecosystem in sorted(ecosystems):
             try:
                 clients[ecosystem] = registries.for_ecosystem(ecosystem, http, cache)
             except LookupError as error:
@@ -184,6 +187,15 @@ async def check(
             _lookup_all(clients, packages, progress),
             _vulnerabilities(Osv(http, cache), queries, progress),
         )
+        # Les versions publiées des indirectes en faille, pour choisir celle qui corrige.
+        vulnerable = {
+            (dependency.ecosystem, clients[dependency.ecosystem].normalize(dependency.name))
+            for _, dependency, current in audited
+            if dependency.ecosystem in clients
+            and isinstance(result := found[_query(dependency, current)], Vulnerabilities)
+            and result.advisories
+        }
+        outcomes |= await _lookup_all(clients, sorted(vulnerable - set(outcomes)), None)
 
     for project, dependency in to_check:
         client = clients.get(dependency.ecosystem)
@@ -211,6 +223,19 @@ async def check(
                 message = f"Failles non vérifiées pour {count} {indirect}. {error}"
                 project.notices.append(Notice(file=file, message=message))
         project.findings = checks.sort_findings(project.findings)
+    infos = {
+        (dependency.ecosystem, dependency.name): outcome
+        for project in report.projects
+        for dependency in project.dependencies
+        if dependency.ecosystem in clients
+        and isinstance(
+            outcome := outcomes.get(
+                (dependency.ecosystem, clients[dependency.ecosystem].normalize(dependency.name))
+            ),
+            PackageInfo,
+        )
+    }
+    planner.plan(report, infos, {q: v for q, v in found.items() if isinstance(v, Vulnerabilities)})
     dates = [o.fetched_at for o in outcomes.values() if isinstance(o, PackageInfo)]
     dates += [f.fetched_at for f in found.values() if isinstance(f, Vulnerabilities)]
     report.oldest_data = min(dates, default=None)
@@ -253,15 +278,17 @@ async def _vulnerabilities(
 async def _lookup_all(
     clients: dict[Ecosystem, Registry],
     packages: list[tuple[Ecosystem, str]],
-    progress: _Progress,
+    progress: _Progress | None,
 ) -> dict[tuple[Ecosystem, str], _Outcome]:
-    """Demande tous les paquets en même temps ; un événement par paquet vérifié."""
+    """Demande tous les paquets en même temps ; un événement par paquet vérifié, sauf sans
+    ``progress``."""
 
     async def lookup(ecosystem: Ecosystem, name: str) -> PackageInfo:
         try:
             return await clients[ecosystem].package(name)
         finally:
-            progress.step(EventKind.PACKAGE_CHECKED, ecosystem=ecosystem, name=name)
+            if progress is not None:
+                progress.step(EventKind.PACKAGE_CHECKED, ecosystem=ecosystem, name=name)
 
     results = await asyncio.gather(
         *(lookup(ecosystem, name) for ecosystem, name in packages), return_exceptions=True

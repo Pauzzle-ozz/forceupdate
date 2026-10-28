@@ -55,7 +55,7 @@ from typing import Any
 import yaml
 
 from forceupdate.detect.manifests import match_dependency_file
-from forceupdate.models import Dependency, Ecosystem, Notice, Project, Scope
+from forceupdate.models import Dependency, Ecosystem, Notice, Override, Project, Scope
 from forceupdate.parsers.base import (
     REASON_GIT,
     REASON_LOCAL,
@@ -64,7 +64,7 @@ from forceupdate.parsers.base import (
     ParseError,
     ReadText,
 )
-from forceupdate.parsers.json_spans import BOM, string_spans
+from forceupdate.parsers.json_spans import BOM, JsonPath, string_spans
 from forceupdate.parsers.lockfiles import (
     Declared,
     Edge,
@@ -221,6 +221,7 @@ class _PackageJson:
     """Motifs des membres du workspace (``packages/*``), s'il y en a."""
     package_manager: str | None
     """L'outil déclaré dans ``packageManager`` (``npm``, ``yarn``, ``pnpm``)."""
+    overrides: list[Override] = field(default_factory=list)
 
 
 def parse_package_json(path: str, content: str) -> list[Dependency]:
@@ -278,7 +279,90 @@ def _parse_package_json(path: str, content: str) -> _PackageJson:
         entries=entries,
         workspaces=_strings(workspaces),
         package_manager=manager.split("@", 1)[0] if isinstance(manager, str) else None,
+        overrides=_overrides(path, data, spans),
     )
+
+
+def parse_overrides(path: str, content: str) -> list[Override]:
+    """Les versions forcées d'un ``package.json`` : ``overrides`` (npm), ``resolutions``
+    (Yarn), ``pnpm.overrides``, dans cet ordre.
+
+    Lève ``ParseError`` si le JSON est invalide.
+    """
+    return _parse_package_json(path, content).overrides
+
+
+def _overrides(path: str, data: Mapping[str, Any], spans: Mapping[JsonPath, Any]) -> list[Override]:
+    """Les versions forcées, avec leur emplacement.
+
+    - npm : des clés imbriquées (``{"a": {"b": "1.0"}}`` force ``b`` sous ``a``), où ``"."``
+      force le paquet lui-même ; une clé peut porter une version (``a@2``) ;
+    - Yarn : un chemin (``**/lodash``, ``a/b``, ``@scope/a/@scope/b``) dont le dernier
+      paquet est forcé ;
+    - pnpm : ``nom``, ``nom@<2``, ou ``parent>nom``.
+    """
+    found: list[Override] = []
+
+    def add(name: str | None, key: str, value: Any, section: str, json_path: JsonPath) -> None:
+        if name is None or not isinstance(value, str):
+            return
+        spec = _split_spec(name, value)
+        span = spans.get(json_path)
+        location = None
+        if span is not None and spec.span is not None:
+            location = span.location(*spec.span)
+        found.append(
+            Override(
+                ecosystem=Ecosystem.NPM,
+                name=name,
+                constraint=spec.constraint,
+                key=key,
+                section=section,
+                file=path,
+                location=location,
+            )
+        )
+
+    def walk(values: Mapping[str, Any], json_path: JsonPath, parents: tuple[str, ...]) -> None:
+        for key, value in values.items():
+            if key == ".":
+                continue  # la version du parent, prise avec lui
+            name = _selector_name(key)
+            chain = ">".join((*parents, key))
+            if isinstance(value, dict):
+                add(name, chain, value.get("."), "overrides", (*json_path, key, "."))
+                walk(value, (*json_path, key), (*parents, key))
+            else:
+                add(name, chain, value, "overrides", (*json_path, key))
+
+    npm = data.get("overrides")
+    if isinstance(npm, dict):
+        walk(npm, ("overrides",), ())
+    for key, value in _mapping(data.get("resolutions")).items():
+        add(_resolution_name(key), key, value, "resolutions", ("resolutions", key))
+    for key, value in _mapping(_mapping(data.get("pnpm")).get("overrides")).items():
+        name = _selector_name(key.rsplit(">", 1)[-1])
+        add(name, key, value, "pnpm.overrides", ("pnpm", "overrides", key))
+    return found
+
+
+def _selector_name(key: str) -> str | None:
+    """Le paquet d'une clé de version forcée, sans sa version : ``a@2`` → ``a``,
+    ``@scope/a@<2`` → ``@scope/a`` ; ``None`` si ce n'est pas un nom de paquet."""
+    match = _PACKAGE_NAME.match(key)
+    if match is None or (match.end() < len(key) and key[match.end()] != "@"):
+        return None
+    return match.group()
+
+
+def _resolution_name(key: str) -> str | None:
+    """Le paquet forcé par une clé de ``resolutions`` (Yarn) : le dernier du chemin
+    (``**/a/b`` → ``b``, ``a/@scope/b`` → ``@scope/b``), sans sa version."""
+    parts = key.split("/")
+    last = parts[-1]
+    if len(parts) >= 2 and parts[-2].startswith("@"):
+        last = f"{parts[-2]}/{last}"
+    return None if last in ("", "*", "**") else _selector_name(last)
 
 
 def _strings(value: Any) -> list[str]:
@@ -886,6 +970,8 @@ class _ProjectParser:
         directs = self._with_catalogs(directs)
         found.sort(key=lambda d: (d.file, d.name, NPM.sort_key(d.installed or "")))
         self.project.dependencies.extend(directs + found)
+        if manifest is not None:
+            self.project.overrides.extend(manifest.overrides)
         self.project.notices.extend(self.notices)
 
     # -- lecture ------------------------------------------------------------
@@ -1138,7 +1224,9 @@ class _ProjectParser:
                     reason = package.unverifiable_reason or REASON_WORKSPACE
                     dependency = dataclasses.replace(dependency, unverifiable_reason=reason)
                 elif package.version and not package.local:
-                    dependency = dataclasses.replace(dependency, installed=package.version)
+                    dependency = dataclasses.replace(
+                        dependency, installed=package.version, lockfile=lock.lockfile.path
+                    )
             directs.append(dependency)
         # Un paquet en double à la même version (les « patch: » que Yarn met d'office) n'est
         # pas une transitive non plus.

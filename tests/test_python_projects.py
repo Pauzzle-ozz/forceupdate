@@ -213,3 +213,39 @@ def test_no_duplicate_declaration_in_a_file() -> None:
         for project in scan(name).values():
             keys = [(d.file, d.location, d.name, d.installed) for d in project.dependencies]
             assert len(keys) == len(set(keys)), name
+
+
+@pytest.mark.parametrize(
+    ("name", "pinned_by"),
+    [
+        ("pip", {"numpy": "constraints.txt", "certifi": "constraints.txt"}),
+        ("pip-tools", {}),
+        ("poetry", {}),
+        ("uv", {}),
+        ("pipenv", {}),
+    ],
+)
+def test_every_installed_version_names_its_lockfile(name: str, pinned_by: dict[str, str]) -> None:
+    """La version installée d'une dépendance vient d'un lockfile du projet : celui qu'une mise
+    à jour régénère (E11). Une indirecte vient de son lockfile. Un fichier de contraintes
+    (``-c constraints.txt``) n'est pas un lockfile, mais c'est lui qui fige la version."""
+    named = 0
+    for project in scan(name).values():
+        for dependency in project.dependencies:
+            if dependency.installed is None:
+                assert dependency.lockfile is None, dependency
+                continue
+            expected = pinned_by.get(dependency.name)
+            if expected is not None:
+                assert dependency.lockfile == expected
+            else:
+                assert dependency.lockfile in project.lockfiles, dependency
+            if not dependency.direct:
+                assert dependency.lockfile == dependency.file
+            named += 1
+    assert named > 0
+
+
+def test_without_lockfile_no_version_and_no_lockfile() -> None:
+    for dependency in scan("setuptools")["."].dependencies:
+        assert (dependency.installed, dependency.lockfile) == (None, None)

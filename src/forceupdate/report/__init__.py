@@ -4,8 +4,9 @@
 - ``json.py`` : le format de l'API (E12), décrit dans ``docs/JSON_FORMAT.md`` ;
 - ``markdown.py`` : un rapport à lire, qui servira aussi de corps aux PR (E18).
 
-Ce module garde ce qu'ils partagent : les noms des constats, le résumé, et les lignes du
-tableau d'un projet (un paquet par ligne, même déclaré deux fois).
+Ce module garde ce qu'ils partagent : les noms des constats, le résumé, les lignes du
+tableau d'un projet (un paquet par ligne, même déclaré deux fois), et la description des
+mises à jour proposées (``forceupdate update``).
 """
 
 from collections.abc import Iterable
@@ -16,12 +17,16 @@ from forceupdate import checks
 from forceupdate.checks import GAP_LABELS, vulns
 from forceupdate.models import (
     Dependency,
+    EditKind,
     Finding,
     FindingKind,
     Gap,
     Project,
     Report,
     Scope,
+    Update,
+    UpdateOption,
+    UpdateReason,
 )
 
 KIND_LABELS = {
@@ -60,6 +65,73 @@ def subject(finding: Finding) -> str:
         return dependency.name
     version = f" {dependency.installed}" if dependency.installed else ""
     return f"{dependency.name}{version} (indirecte)"
+
+
+REASON_LABELS = {
+    UpdateReason.LATEST_PATCH: "dernier correctif",
+    UpdateReason.LATEST_MINOR: "dernière mineure",
+    UpdateReason.LATEST_MAJOR: "dernière version",
+    UpdateReason.SECURITY_FIX: "correction des failles",
+    UpdateReason.REPLACEMENT: "remplace la version retirée ou dépréciée",
+}
+"""Pourquoi une version est proposée, en français."""
+
+DOWNGRADE = "retour en arrière"
+
+
+def update_subject(update: Update) -> str:
+    """Le paquet d'une mise à jour, marqué ``(indirecte)`` pour une dépendance indirecte."""
+    return update.name if update.direct else f"{update.name} (indirecte)"
+
+
+def option_fixed(option: UpdateOption) -> str:
+    """Les failles corrigées, en toutes lettres : ``corrige 2 failles sur 6`` ; vide si le
+    paquet n'en a pas."""
+    total = len(option.fixes) + len(option.unfixed)
+    if not total:
+        return ""
+    return f"corrige {len(option.fixes)} faille{'s' if len(option.fixes) > 1 else ''} sur {total}"
+
+
+def option_gap(option: UpdateOption) -> str:
+    """L'écart d'une option en un mot : ``correctif``, ``mineure``, ``majeure``, ou ``retour
+    en arrière``."""
+    return DOWNGRADE if option.gap is None else GAP_LABELS[option.gap]
+
+
+def option_fixes(option: UpdateOption) -> str:
+    """Les failles qu'une option corrige : ``2 sur 6`` ; vide si le paquet n'en a pas."""
+    total = len(option.fixes) + len(option.unfixed)
+    return f"{len(option.fixes)} sur {total}" if total else ""
+
+
+def option_changes(option: UpdateOption, project: str = ".") -> list[str]:
+    """Ce qu'une option modifie, une ligne par fichier : les contraintes réécrites, le lockfile
+    à régénérer, ou pourquoi il faut le faire à la main. Les chemins sont relatifs au dossier
+    du projet ``project`` quand ils y sont."""
+    lines = []
+    for edit in option.edits:
+        if edit.kind is EditKind.CATALOG:
+            where = "pnpm-workspace.yaml (catalogue)"
+        elif edit.kind is EditKind.OVERRIDE and edit.override is not None:
+            override = edit.override
+            where = f"{_within(edit.file, project)} ({override.section} « {override.key} »)"
+        else:
+            where = _within(edit.file, project)
+        lines.append(f"{where} : {edit.old} → {edit.new}")
+    if option.lockfile is not None:
+        lockfile = _within(option.lockfile, project)
+        lines.append(f"puis {lockfile}" if lines else f"{lockfile} (lockfile seul)")
+    if option.manual is not None:
+        lines.append(f"à la main : {option.manual}")
+    return lines
+
+
+def _within(path: str, project: str) -> str:
+    """``path`` vu depuis le dossier ``project`` s'il y est, sinon tel quel."""
+    if project != "." and path.startswith(project + "/"):
+        return path[len(project) + 1 :]
+    return path
 
 
 def plural(count: int, word: str) -> str:

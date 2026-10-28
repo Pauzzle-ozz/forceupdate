@@ -49,6 +49,7 @@ def test_dependencies_are_read(make_tree: MakeTree) -> None:
             name="flask",
             constraint=">=3",
             installed="3.1.0",
+            lockfile="backend/uv.lock",
             scope=Scope.RUNTIME,
             file="backend/pyproject.toml",
             location=Location(line=3, column=22, end_column=25),

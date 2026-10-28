@@ -359,8 +359,50 @@ def test_the_vulnerable_mini_project(recorded: Routes) -> None:
     # Une seule requête querybatch pour les 7 versions, et chaque avis demandé une fois.
     assert recorded["osv:querybatch"].call_count == 1
     assert recorded["osv:GHSA-35jh-r3h4-6jhm"].call_count == 1
-    # Les registres, eux, ne sont interrogés que pour les directes.
-    assert recorded["lodash"].call_count == recorded["flask"].call_count == 1
+    # Les registres sont interrogés pour les directes, et pour les indirectes en faille (pour
+    # choisir la version qui corrige) ; une seule fois chacune.
+    for name in ("lodash", "flask", "jinja2", "werkzeug"):
+        assert recorded[name].call_count == 1
+
+
+def test_the_plan_of_the_vulnerable_mini_project(recorded: Routes) -> None:
+    """Le critère de fin de E09, de bout en bout : la sélection par défaut."""
+    report = analyze(VULNERABLE, cache=Cache.disabled())
+    (project,) = report.projects
+    updates = {update.name: update for update in project.updates}
+    assert sorted(updates) == ["flask", "jinja2", "lodash", "werkzeug"]
+    # lodash : 4.18.0 corrige tout mais est dépréciée ; la mineure 4.18.1, pré-cochée.
+    lodash = updates["lodash"]
+    assert [(o.version, o.gap) for o in lodash.options] == [
+        ("4.17.23", Gap.PATCH),
+        ("4.18.1", Gap.MINOR),
+    ]
+    assert lodash.selected == "4.18.1"
+    assert len(lodash.options[1].fixes) == 6
+    edit = lodash.options[1].edits[0]
+    assert (edit.file, edit.old, edit.new) == ("package.json", "4.17.15", "4.18.1")
+    assert lodash.options[1].lockfile == "package-lock.json"
+    # flask : le correctif pré-coché ; la majeure qui corrige tout, proposée sans être cochée.
+    flask = updates["flask"]
+    assert [(o.version, o.gap) for o in flask.options] == [
+        ("0.12.5", Gap.PATCH),
+        ("3.1.3", Gap.MAJOR),
+    ]
+    assert flask.selected == "0.12.5"
+    major = flask.options[1]
+    assert len(major.fixes) == 4
+    assert major.warnings == ("Majeure : peut demander d'adapter le code.",)
+    assert [(e.file, e.old, e.new) for e in major.edits] == [
+        ("requirements.in", "==0.12", "==3.1.3")
+    ]
+    assert major.lockfile == "requirements.txt"
+    # Les indirectes : le lockfile seul.
+    jinja2 = updates["jinja2"]
+    assert not jinja2.direct
+    assert jinja2.selected == "2.11.3"
+    assert all(o.edits == () and o.lockfile == "requirements.txt" for o in jinja2.options)
+    assert updates["werkzeug"].selected is None  # seule une majeure corrige
+    assert [o.version for o in updates["werkzeug"].options] == ["3.1.9"]
 
 
 def test_vulnerabilities_follow_no_dev(recorded: Routes, make_tree: MakeTree) -> None:

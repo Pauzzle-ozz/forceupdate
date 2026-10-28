@@ -1,0 +1,47 @@
+name: Publication
+
+# Publie sur PyPI quand une étiquette de version (v0.1.0…) est poussée. Par « Trusted
+# Publisher » : PyPI fait confiance à ce workflow de ce dépôt (OIDC), aucun token n'est rangé
+# nulle part.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: PyPI
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/forceupdate/
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.2
+
+      - name: L'étiquette correspond à la version
+        run: |
+          version="$(uv version --short)"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Étiquette $GITHUB_REF_NAME, mais pyproject.toml dit $version."
+            exit 1
+          fi
+
+      - name: Tests
+        run: |
+          uv sync --locked
+          uv run ruff check
+          uv run pytest
+
+      - name: Construction
+        run: uv build
+
+      - name: Publication
+        run: uv publish

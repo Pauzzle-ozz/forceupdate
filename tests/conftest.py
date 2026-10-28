@@ -69,9 +69,10 @@ def osv_querybatch(results: dict[str, Any]) -> Callable[[httpx.Request], httpx.R
 @pytest.fixture
 def recorded() -> Iterator[dict[str, respx.Route]]:
     """PyPI, npm et OSV simulés par ``respx``, avec les réponses enregistrées par
-    ``tests/fixtures/record.py`` : flask, requests, aioredis ; left-pad, @hapi/joi, colors,
-    crossenv, lodash. Tout autre paquet est introuvable (404). OSV connaît les failles des
-    versions de ``tests/fixtures/osv/queries.json`` ; pour les autres, il n'en connaît pas.
+    ``tests/fixtures/record.py`` : flask, requests, aioredis, jinja2, werkzeug ; left-pad,
+    @hapi/joi, colors, crossenv, lodash. Tout autre paquet est introuvable (404). OSV connaît
+    les failles des versions de ``tests/fixtures/osv/queries.json`` ; pour les autres, il n'en
+    connaît pas.
     Rend les routes, par nom de paquet, plus ``osv:querybatch`` et ``osv:<id>``.
     """
     with respx.mock(assert_all_called=False) as router:

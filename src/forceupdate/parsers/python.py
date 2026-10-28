@@ -1083,9 +1083,11 @@ def _pinned_version(constraint: str) -> str | None:
 def _with_installed(declared: Iterable[Declared], locks: Sequence[Lockfile]) -> list[Dependency]:
     """Les dépendances directes, avec la version du premier lockfile qui les connaît."""
 
-    def installed(item: Declared) -> str | None:
+    def installed(item: Declared) -> tuple[str, str] | None:
         name = item.dependency.name
-        return next((v for lock in locks if (v := installed_version(lock, name))), None)
+        return next(
+            ((v, lock.path) for lock in locks if (v := installed_version(lock, name))), None
+        )
 
     return with_installed(declared, installed)
 

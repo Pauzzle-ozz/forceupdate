@@ -21,6 +21,7 @@ from forceupdate.parsers.base import (
 )
 from forceupdate.parsers.npm import (
     REASON_PATCH,
+    parse_overrides,
     parse_package_json,
     parse_package_lock_json,
     parse_pnpm_lock_yaml,
@@ -1005,3 +1006,60 @@ def test_an_invalid_pnpm_workspace_yaml_gives_one_notice() -> None:
     ]
     assert [n.file for n in project.notices] == ["pnpm-workspace.yaml"]
     assert project.notices[0].message.startswith("YAML invalide")
+
+
+# ---------------------------------------------------------------------------
+# Versions forcées : overrides (npm), resolutions (Yarn), pnpm.overrides
+# ---------------------------------------------------------------------------
+
+OVERRIDES = """{
+  "name": "demo",
+  "dependencies": {"lodash": "^4.17.0"},
+  "overrides": {
+    "dompurify": "^3.4.13",
+    "foo": {".": "1.0.0", "bar": "2.0.0"},
+    "baz@2": {"qux": "npm:autre@3.1.0"},
+    "lodash": "$lodash",
+    "local": "file:../local"
+  },
+  "resolutions": {"**/minimist": "1.2.8", "a/@scope/b": "~1.4.0", "c@npm:1.0.0": "1.0.1"},
+  "pnpm": {"overrides": {"ms": "^2.1.3", "debug@<3": "3.2.7", "express>qs": "6.11.0"}}
+}
+"""
+
+
+def test_overrides_are_read_with_their_location() -> None:
+    found = parse_overrides("package.json", OVERRIDES)
+    assert [(o.section, o.key, o.name, o.constraint) for o in found] == [
+        ("overrides", "dompurify", "dompurify", "^3.4.13"),
+        ("overrides", "foo", "foo", "1.0.0"),
+        ("overrides", "foo>bar", "bar", "2.0.0"),
+        ("overrides", "baz@2>qux", "qux", "3.1.0"),
+        ("overrides", "lodash", "lodash", "$lodash"),
+        ("overrides", "local", "local", ""),
+        ("resolutions", "**/minimist", "minimist", "1.2.8"),
+        ("resolutions", "a/@scope/b", "@scope/b", "~1.4.0"),
+        ("resolutions", "c@npm:1.0.0", "c", "1.0.1"),
+        ("pnpm.overrides", "ms", "ms", "^2.1.3"),
+        ("pnpm.overrides", "debug@<3", "debug", "3.2.7"),
+        ("pnpm.overrides", "express>qs", "qs", "6.11.0"),
+    ]
+    for override in found:
+        assert override.ecosystem is Ecosystem.NPM
+        assert override.file == "package.json"
+        if override.constraint:
+            assert override.location is not None
+            assert override.location.extract(OVERRIDES) == override.constraint
+        else:  # un chemin local : pas de contrainte, pas d'emplacement
+            assert override.location is None
+
+
+def test_a_project_keeps_its_overrides() -> None:
+    project = parse({"package.json": OVERRIDES})
+    assert [o.key for o in project.overrides][:2] == ["dompurify", "foo"]
+    # Une version forcée n'est pas une dépendance.
+    assert directs(project) == [("lodash", "^4.17.0", None, RUNTIME)]
+
+
+def test_package_json_without_overrides() -> None:
+    assert parse_overrides("package.json", package_json(dependencies={"a": "1.0.0"})) == []

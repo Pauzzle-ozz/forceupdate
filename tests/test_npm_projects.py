@@ -263,3 +263,20 @@ def test_npm_workspace() -> None:
     script = projects["tools/script"]
     assert script.lockfiles == []
     assert directs(script) == [("ms", "^2.1.0", None, RUNTIME)]
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_every_installed_version_names_its_lockfile(name: str) -> None:
+    """La version installée d'une dépendance vient d'un lockfile du projet : celui qu'une mise
+    à jour régénère (E11). Une indirecte vient de son lockfile."""
+    named = 0
+    for project in scan(name).values():
+        for dependency in project.dependencies:
+            if dependency.installed is None:
+                assert dependency.lockfile is None, dependency
+                continue
+            assert dependency.lockfile in project.lockfiles, dependency
+            if not dependency.direct:
+                assert dependency.lockfile == dependency.file
+            named += 1
+    assert named > 0

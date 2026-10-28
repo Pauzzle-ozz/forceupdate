@@ -1,6 +1,6 @@
 [project]
 name = "forceupdate"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Trouve les dépendances à mettre à jour (versions, failles, fins de vie) et fait les mises à jour : en local, ou par pull request sur GitHub, GitLab et Bitbucket."
 readme = "README.md"
 license = "MIT"

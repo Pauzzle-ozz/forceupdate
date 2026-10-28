@@ -70,11 +70,14 @@ Viendront plus tard : `frontend/` (l'interface, à partir de E14) et
 uv sync                          # installe l'outil et ses dépendances dans .venv
 uv run forceupdate --version     # lance l'outil (ui, scan, update)
 uv run forceupdate scan <chemin> # analyse ; --format json|md, --output, --offline, --fail-on…
+uv run forceupdate update <chemin>  # le plan des mises à jour (n'écrit rien avant E10) ;
+                                    # --level patch|minor|major, --security-only, --include…
 uv run pytest                    # tests hors ligne ; reference/ n'est jamais ramassé
 uv run pytest --run-network      # avec en plus les tests marqués network (vrai réseau)
 uv run ruff check                # lint
 uv run ruff format               # formatage ; la CI vérifie avec --check
 uv run python tests/fixtures/record.py   # ré-enregistre les réponses des registres et d'OSV
+uv run python tests/fixtures/record.py pypi:jinja2   # un seul paquet (déclaré dans PACKAGES)
 
 # une autre version de Python que celle de .venv (la CI teste 3.11 et 3.14)
 uv run --isolated --python 3.11 --group dev pytest

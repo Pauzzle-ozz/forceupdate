@@ -21,11 +21,12 @@ from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn
 
 from forceupdate import __version__, checks, engine
 from forceupdate.checks import FailOn
-from forceupdate.models import Event, EventKind, ScanOptions
+from forceupdate.models import Ecosystem, Event, EventKind, Gap, ScanOptions
 from forceupdate.report import json as json_report
 from forceupdate.report import markdown, terminal
 from forceupdate.sources.base import SourceError
 from forceupdate.sources.local import LocalSource
+from forceupdate.update import planner
 
 EXIT_FAIL_ON = 1
 EXIT_ERROR = 2
@@ -183,9 +184,84 @@ def scan(
 
 
 @app.command()
-def update(path: PathArgument = Path(".")) -> None:
-    """Met à jour les dépendances d'un dossier ou d'un fichier."""
-    _not_available("update")
+def update(
+    path: PathArgument = Path("."),
+    level: Annotated[
+        Gap,
+        typer.Option(
+            "--level",
+            case_sensitive=False,
+            help=(
+                "Écart le plus grand choisi : patch (correctifs), minor (et mineures, par "
+                "défaut), major (et majeures, qui peuvent demander d'adapter le code)."
+            ),
+        ),
+    ] = Gap.MINOR,
+    security_only: Annotated[
+        bool,
+        typer.Option("--security-only", help="Choisit seulement les corrections de failles."),
+    ] = False,
+    include: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--include",
+            help="Ne choisit que les paquets dont le nom correspond (« * » permis ; répétable).",
+        ),
+    ] = None,
+    exclude: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--exclude",
+            help="Écarte les paquets dont le nom correspond (« * » permis ; répétable).",
+        ),
+    ] = None,
+    ecosystem: Annotated[
+        list[Ecosystem] | None,
+        typer.Option(
+            "--ecosystem",
+            case_sensitive=False,
+            help="Ne choisit que les paquets de cet écosystème (répétable).",
+        ),
+    ] = None,
+    dev: Annotated[
+        bool,
+        typer.Option(
+            "--dev/--no-dev",
+            help="Met à jour aussi les dépendances de développement (par défaut).",
+        ),
+    ] = True,
+    offline: Annotated[
+        bool,
+        typer.Option(
+            "--offline",
+            help="N'interroge pas les registres : seulement le cache, le reste « non concluant ».",
+        ),
+    ] = False,
+    no_cache: Annotated[
+        bool,
+        typer.Option("--no-cache", help="Ne lit ni n'écrit le cache disque."),
+    ] = False,
+) -> None:
+    """Met à jour les dépendances d'un dossier ou d'un fichier.
+
+    Pour l'instant, montre les mises à jour choisies, sans rien écrire.
+    """
+    try:
+        source = LocalSource(path)
+    except SourceError as err:
+        _fail("update", f"{err}.")
+    options = ScanOptions(dev=dev, offline=offline, cache=not no_cache)
+    with _ProgressBar(Console(stderr=True)) as progress:
+        report = engine.scan(source, options, on_event=progress)
+    rules = planner.Rules(
+        level=level,
+        security_only=security_only,
+        include=tuple(include or ()),
+        exclude=tuple(exclude or ()),
+        ecosystems=frozenset(ecosystem or ()),
+    )
+    _utf8_stdout()
+    terminal.render_plan(report, planner.select(report, rules), Console(highlight=False), rules)
 
 
 def _utf8_stdout() -> None:

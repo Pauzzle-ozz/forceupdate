@@ -35,11 +35,10 @@ def test_console_script_points_to_app() -> None:
     assert script.load() is app
 
 
-@pytest.mark.parametrize("args", [["ui"], ["update"], ["update", "."]])
-def test_commands_not_available_yet(args: list[str]) -> None:
-    result = runner.invoke(app, args)
+def test_ui_is_not_available_yet() -> None:
+    result = runner.invoke(app, ["ui"])
     assert result.exit_code == EXIT_ERROR
-    assert f"forceupdate {args[0]} : pas encore disponible." in result.stderr
+    assert "forceupdate ui : pas encore disponible." in result.stderr
 
 
 def scan(*args: str) -> Result:
@@ -206,6 +205,76 @@ def test_fail_on(
         args += ["--fail-on", threshold]
     result = runner.invoke(app, args)
     assert result.exit_code == code, result.output
+
+
+# -- update ---------------------------------------------------------------------
+
+VULNERABLE = PROJECTS / "vulnerable"
+
+
+def update(*args: str) -> Result:
+    """``forceupdate update``, sans cache, sur 200 colonnes."""
+    return runner.invoke(app, ["update", *args, "--no-cache"], env={"COLUMNS": "200"})
+
+
+def test_update_shows_the_default_selection(recorded: dict[str, respx.Route]) -> None:
+    result = update(str(VULNERABLE))
+
+    assert result.exit_code == 0, result.output
+    rows = words(result.stdout)
+    assert ["Paquet", "Version", "Écart", "Failles", "Changement"] in rows
+    assert [
+        "lodash", "4.17.15", "→", "4.18.1", "mineure", "6", "sur", "6",
+        "package.json", ":", "4.17.15", "→", "4.18.1",
+    ] in rows  # fmt: skip
+    assert [
+        "flask", "0.12", "→", "0.12.5", "correctif", "1", "sur", "4",
+        "requirements.in", ":", "==0.12", "→", "==0.12.5",
+    ] in rows  # fmt: skip
+    assert ["puis", "requirements.txt"] in rows
+    assert [
+        "jinja2", "(indirecte)", "2.10", "→", "2.11.3", "mineure", "2", "sur", "6",
+        "requirements.txt", "(lockfile", "seul)",
+    ] in rows  # fmt: skip
+    lines = [line.strip() for line in result.stdout.splitlines()]
+    assert "Proposées, non cochées" in lines
+    assert any(line.startswith("flask 0.12 → 3.1.3") for line in lines)
+    assert "Mises à jour choisies : 3 sur 4 paquets à mettre à jour (--level minor)." in lines
+    assert lines[-1] == (
+        "Aucun fichier n'est modifié : forceupdate update montre pour l'instant ce qu'il ferait."
+    )
+
+
+@pytest.mark.parametrize(
+    ("options", "chosen"),
+    [
+        (["--level", "patch"], "3 sur 4"),
+        (["--level", "major"], "4 sur 4"),
+        (["--security-only"], "3 sur 4"),
+        (["--include", "lodash", "--include", "flask"], "2 sur 4"),
+        (["--exclude", "*"], "0 sur 4"),
+        (["--ecosystem", "npm"], "1 sur 4"),
+        (["--ecosystem", "pypi", "--no-dev"], "2 sur 4"),
+    ],
+)
+def test_update_options(recorded: dict[str, respx.Route], options: list[str], chosen: str) -> None:
+    result = update(str(VULNERABLE), *options)
+    assert result.exit_code == 0, result.output
+    assert f"Mises à jour choisies : {chosen} paquets à mettre à jour" in result.stdout
+
+
+def test_update_with_nothing_to_do(recorded: dict[str, respx.Route], make_tree: MakeTree) -> None:
+    root = make_tree({"requirements.txt": "flask==3.1.3\n"})
+    result = update(str(root))
+    assert result.exit_code == 0, result.output
+    assert result.stdout.splitlines()[-1] == "Rien à mettre à jour."
+
+
+def test_update_missing_path(tmp_path: Path) -> None:
+    missing = tmp_path / "absent"
+    result = runner.invoke(app, ["update", str(missing)])
+    assert result.exit_code == EXIT_ERROR
+    assert result.stderr == f"forceupdate update : le chemin « {missing} » n'existe pas.\n"
 
 
 # -- sortie redirigée ----------------------------------------------------------

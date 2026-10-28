@@ -2,6 +2,7 @@
 
     uv run python tests/fixtures/record.py          # toutes
     uv run python tests/fixtures/record.py npm      # celles d'un registre (pypi, npm, osv)
+    uv run python tests/fixtures/record.py pypi:jinja2   # un seul paquet
 
 À relancer quand un format de réponse change. Chaque réponse est demandée comme le fait
 forceupdate (même URL, mêmes en-têtes) et gardée telle quelle, dans
@@ -42,6 +43,8 @@ PACKAGES: dict[str, tuple[type[Registry], dict[str, str]]] = {
             "flask": "un paquet ordinaire",
             "requests": "deux versions retirées avec leur raison (2.32.0, 2.32.1), un vieux .egg",
             "aioredis": "un projet archivé (PEP 792)",
+            "jinja2": "indirecte du mini-projet vulnerable : failles corrigées en 2.x et 3.x",
+            "werkzeug": "indirecte du mini-projet vulnerable : failles corrigées en 3.x seulement",
         },
     ),
     "npm": (
@@ -84,10 +87,10 @@ def osv_queries() -> list[tuple[Ecosystem, str, str]]:
     return list(dict.fromkeys([*found, *OSV_EXTRA]))
 
 
-async def record_registries(http: HttpClient, key: str) -> None:
+async def record_registries(http: HttpClient, key: str, only: str | None = None) -> None:
     registry_class, names = PACKAGES[key]
     registry = registry_class(http, Cache.disabled())
-    for name in names:
+    for name in names if only is None else [only]:
         url = registry.url_for(registry.normalize(name))
         response = await http.get(url, headers=registry.headers)
         if response.status_code != 200:
@@ -132,19 +135,24 @@ async def record_osv(http: HttpClient) -> None:
 
 async def record(wanted: list[str]) -> None:
     async with HttpClient() as http:
-        for key in wanted:
+        for item in wanted:
+            key, _, only = item.partition(":")
             if key == "osv":
                 await record_osv(http)
             else:
-                await record_registries(http, key)
+                await record_registries(http, key, only or None)
 
 
 def main() -> None:
     known = [*PACKAGES, "osv"]
     wanted = sys.argv[1:] or known
-    unknown = [key for key in wanted if key not in known]
+    unknown = [item for item in wanted if item.partition(":")[0] not in known]
     if unknown:
         raise SystemExit(f"registre inconnu : {', '.join(unknown)} (connus : {', '.join(known)})")
+    for item in wanted:
+        key, _, only = item.partition(":")
+        if only and only not in PACKAGES.get(key, (None, {}))[1]:
+            raise SystemExit(f"{only} : pas dans la liste des paquets de {key} (PACKAGES).")
     asyncio.run(record(wanted))
 
 

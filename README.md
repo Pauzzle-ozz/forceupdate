@@ -25,6 +25,18 @@ forceupdate scan . --offline                    # seulement le cache, sans rése
 
 Autres options : `--no-dev`, `--transitive`, `--no-cache` (`forceupdate scan --help`).
 
+`forceupdate update <dossier>` montre, pour l'instant sans rien écrire, les mises à
+jour qu'il ferait : vers quelle version, quelle contrainte réécrire (dans son style :
+`^4.17.0` devient `^4.21.2`), quel lockfile régénérer. Correctifs, mineures et
+corrections de failles sont choisis ; les majeures sont proposées à part.
+
+```bash
+forceupdate update .                     # correctifs et mineures (--level minor)
+forceupdate update . --level major       # majeures comprises
+forceupdate update . --security-only     # seulement les corrections de failles
+forceupdate update . --exclude "eslint*" --ecosystem npm
+```
+
 - [docs/BRIEF.md](docs/BRIEF.md) : l'idée, les décisions prises, les pièges
 - [docs/JSON_FORMAT.md](docs/JSON_FORMAT.md) : le format du rapport JSON
 - [PLAN.md](PLAN.md) : le plan étape par étape, et l'avancement

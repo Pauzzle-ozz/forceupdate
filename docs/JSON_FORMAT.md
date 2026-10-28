@@ -25,8 +25,9 @@ l'interface web (`GET /api/scans/{id}`, étape E12). Le code qui le produit est
 `schema_version` passe à 2 si un champ est retiré, renommé, ou change de sens. Un
 champ ou une valeur d'énumération ajoutés ne le changent pas : un lecteur doit
 ignorer ce qu'il ne connaît pas. Les failles (E08) sont arrivées ainsi (champs
-`cvss_score` des constats et `audited` du résumé) ; les fins de vie (E27)
-arriveront de même, avec des constats `eol`.
+`cvss_score` des constats et `audited` du résumé), puis les mises à jour
+proposées (E09 : `updates` et `overrides` des projets, `lockfile` des
+dépendances) ; les fins de vie (E27) arriveront de même, avec des constats `eol`.
 
 ## Le rapport
 
@@ -62,7 +63,9 @@ Un dossier qui contient au moins un manifeste ou un lockfile.
 | `manifests` | liste de chemins | ses manifestes |
 | `lockfiles` | liste de chemins | ses lockfiles, ou celui de la racine d'un workspace |
 | `dependencies` | liste de [dépendances](#dépendance) | les directes d'abord, dans l'ordre des manifestes, puis les indirectes |
+| `overrides` | liste de [versions forcées](#version-forcée) | celles de son `package.json` |
 | `findings` | liste de [constats](#constat) | **du plus grave au moins grave** (voir [l'ordre](#ordre-des-constats)) |
+| `updates` | liste de [mises à jour](#mise-à-jour) | une par paquet à mettre à jour, dans l'ordre des constats ; `[]` si les dépendances n'ont pas été vérifiées |
 | `notices` | liste de [remarques](#remarque) | ce que l'analyse n'a pas pu lire, ou pas pu vérifier |
 
 ## Dépendance
@@ -77,6 +80,7 @@ deux extras) donne deux dépendances, chacune avec son emplacement.
 | `constraint` | chaîne | la contrainte telle qu'écrite (`^4.18.0`, `>=2.0,<3`) ; `""` s'il n'y en a pas |
 | `resolved_constraint` | chaîne ou `null` | la plage que désigne `constraint` quand elle renvoie ailleurs : pour `catalog:` (pnpm), celle de `pnpm-workspace.yaml` |
 | `installed` | chaîne ou `null` | version installée, lue dans le lockfile |
+| `lockfile` | chemin ou `null` | le fichier où `installed` a été lu : le lockfile à régénérer pour la mettre à jour (ou un fichier `-c` de pip) ; `null` sans version installée. Pour une indirecte, c'est `file` |
 | `direct` | booléen | `false` pour une dépendance qui ne vient que du lockfile |
 | `scope` | [scope](#scopes) | |
 | `file` | chemin | le fichier qui la déclare (le lockfile pour une indirecte) |
@@ -155,6 +159,76 @@ Dans chaque projet, du plus grave au moins grave (décision n°8 du brief) :
 faille (par gravité) > fin de vie > retirée > dépréciée > majeure > mineure >
 correctif > non vérifiable > non concluant. À rang égal, par nom de paquet.
 
+## Version forcée
+
+`overrides` (npm), `resolutions` (Yarn), `pnpm.overrides` : une version imposée à un
+paquet, quoi que demandent les paquets qui le tirent. Seules celles du `package.json`
+à la racine d'un workspace comptent.
+
+| Champ | Type | Sens |
+|---|---|---|
+| `ecosystem` | [écosystème](#écosystèmes) | `npm` |
+| `name` | chaîne | le paquet forcé |
+| `constraint` | chaîne | la version forcée telle qu'écrite (`^3.4.13`, `$dompurify`) ; `""` pour un chemin local ou une URL |
+| `key` | chaîne | la clé telle qu'écrite : `dompurify`, `**/lodash` (Yarn), `foo@<2` ou `a>b` (pnpm) ; pour npm, les clés imbriquées séparées par `>` |
+| `section` | chaîne | `overrides`, `resolutions` ou `pnpm.overrides` |
+| `file` | chemin | le `package.json` |
+| `location` | [emplacement](#emplacement) ou `null` | où est écrite `constraint` |
+
+## Mise à jour
+
+Les mises à jour possibles d'un paquet d'un projet. C'est un groupe de cases à
+cocher : **au plus une option est choisie**. Une directe monte avec toutes ses
+déclarations ; une indirecte est une version installée précise.
+
+| Champ | Type | Sens |
+|---|---|---|
+| `id` | chaîne | identifiant unique dans le rapport (`api\|PyPI\|requests`, plus la version installée pour une indirecte) : c'est lui que désigne une sélection |
+| `ecosystem` | [écosystème](#écosystèmes) | |
+| `name` | chaîne | le paquet |
+| `direct` | booléen | `false` pour une indirecte : elle monte par son lockfile |
+| `dependencies` | liste de [dépendances](#dépendance) | ses déclarations, ou l'indirecte |
+| `current_version` | chaîne | la version utilisée (la plus basse de ses déclarations) |
+| `current_is_approximate` | booléen | `true` sans lockfile : monter, c'est relever la borne basse |
+| `options` | liste d'[options](#option-de-mise-à-jour) | de la plus ancienne à la plus récente version |
+| `selected` | chaîne ou `null` | la version **pré-cochée**, ou `null` |
+| `note` | chaîne ou `null` | ce que les options ne disent pas : `Code malveillant (…) : retirer ce paquet, aucune version sûre connue.`, `Aucune version corrigée connue pour …`, `Versions publiées inconnues du registre…` |
+
+**Pré-cochée** (décision n°12 du brief) : parmi les options qui ne sont pas
+majeures, ne reviennent pas en arrière et ne sont pas à faire à la main, celle qui
+corrige le plus de failles, puis la plus récente. Une majeure n'est jamais cochée
+d'office, même quand elle seule corrige une faille. En 0.x, ce qui sort de `^` est
+une majeure.
+
+### Option de mise à jour
+
+| Champ | Type | Sens |
+|---|---|---|
+| `version` | chaîne | la version visée |
+| `gap` | [écart](#écarts) ou `null` | depuis `current_version` ; `null` pour un retour à une version plus ancienne (remplacer une version retirée quand rien au-dessus ne convient) |
+| `reasons` | liste de [raisons](#raisons) | pourquoi elle est proposée |
+| `fixes` | liste de chaînes | les failles qu'elle corrige : le premier identifiant de chacune (une CVE s'il y en a) |
+| `unfixed` | liste de chaînes | les failles du paquet qu'elle laisse |
+| `edits` | liste de [réécritures](#réécriture) | les contraintes à réécrire. `[]` : la version est déjà dans la contrainte, le lockfile seul suffit |
+| `lockfile` | chemin ou `null` | le lockfile à régénérer ; `null` sans lockfile |
+| `manual` | chaîne ou `null` | pourquoi forceupdate ne sait pas l'appliquer seul (contrainte sans emplacement, style non géré) ; une telle option n'est jamais pré-cochée |
+| `warnings` | liste de chaînes | à lire avant de cocher : `Majeure : peut demander d'adapter le code.`, `Revient à une version plus ancienne.`, `Version dépréciée : …` |
+
+### Réécriture
+
+Une contrainte à réécrire, dans son style : `^4.17.0` devient `^4.21.2`, pas
+`4.21.2` ; `>=2.25,<3` devient `>=3.1,<4`. Pour une faille, la nouvelle
+contrainte n'accepte plus de version concernée (`~=1.4` → `~=1.9,>=1.9.2`).
+
+| Champ | Type | Sens |
+|---|---|---|
+| `kind` | chaîne | `dependency` (une contrainte du manifeste), `catalog` (la plage d'un catalogue pnpm, dans `pnpm-workspace.yaml`), `override` (une version forcée) |
+| `file` | chemin | le fichier à modifier ; pour un catalogue, le `package.json` qui y renvoie |
+| `location` | [emplacement](#emplacement) ou `null` | où est écrite `old` ; `null` pour un catalogue |
+| `old` | chaîne | le texte actuel de la contrainte |
+| `new` | chaîne | le nouveau texte |
+| `override` | [version forcée](#version-forcée) ou `null` | `override` : celle qui est réécrite |
+
 ## Remarque
 
 | Champ | Type | Sens |
@@ -226,6 +300,16 @@ pour une majeure, `info` pour une mineure ou un correctif ; `unverifiable` et
 `major`, `minor`, `patch`. En `0.y.z`, `y` joue le rôle de la majeure : `0.2.3` →
 `0.3.0` est `major`.
 
+### Raisons
+
+| Valeur | Sens |
+|---|---|
+| `latest_patch` | le dernier correctif de la version utilisée |
+| `latest_minor` | la dernière mineure : la plus haute version sans changer de majeure |
+| `latest_major` | la dernière version, quand elle est majeure |
+| `security_fix` | la plus petite version publiée, ni retirée ni dépréciée, qui corrige toutes les failles qui peuvent l'être |
+| `replacement` | remplace une version retirée ou dépréciée |
+
 ## Exemple
 
 Un `requirements.txt` qui contient `requests==2.32.0` (dépendance répétée dans
@@ -250,6 +334,7 @@ chaque constat, abrégée ici) :
           "constraint": "==2.32.0",
           "resolved_constraint": null,
           "installed": null,
+          "lockfile": null,
           "direct": true,
           "scope": "runtime",
           "file": "api/requirements.txt",
@@ -257,6 +342,7 @@ chaque constat, abrégée ici) :
           "unverifiable_reason": null
         }
       ],
+      "overrides": [],
       "findings": [
         {
           "kind": "vulnerable",
@@ -317,6 +403,44 @@ chaque constat, abrégée ici) :
           "cvss_score": null,
           "detail": null,
           "url": "https://pypi.org/project/requests/"
+        }
+      ],
+      "updates": [
+        {
+          "id": "api|PyPI|requests",
+          "ecosystem": "PyPI",
+          "name": "requests",
+          "direct": true,
+          "dependencies": [{"ecosystem": "PyPI", "name": "requests", "…": "…"}],
+          "current_version": "2.32.0",
+          "current_is_approximate": false,
+          "options": [
+            {
+              "version": "2.32.2",
+              "gap": "patch",
+              "reasons": ["replacement"],
+              "fixes": [],
+              "unfixed": ["CVE-2026-25645", "CVE-2024-47081"],
+              "edits": [
+                {
+                  "kind": "dependency",
+                  "file": "api/requirements.txt",
+                  "location": {"line": 1, "column": 8, "end_column": 16},
+                  "old": "==2.32.0",
+                  "new": "==2.32.2",
+                  "override": null
+                }
+              ],
+              "lockfile": null,
+              "manual": null,
+              "warnings": []
+            },
+            {"version": "2.32.5", "gap": "patch", "reasons": ["latest_patch"], "fixes": ["CVE-2024-47081"], "unfixed": ["CVE-2026-25645"], "…": "…"},
+            {"version": "2.33.0", "gap": "minor", "reasons": ["security_fix"], "fixes": ["CVE-2026-25645", "CVE-2024-47081"], "unfixed": [], "…": "…"},
+            {"version": "2.34.2", "gap": "minor", "reasons": ["latest_minor"], "fixes": ["CVE-2026-25645", "CVE-2024-47081"], "unfixed": [], "…": "…"}
+          ],
+          "selected": "2.34.2",
+          "note": null
         }
       ],
       "notices": []

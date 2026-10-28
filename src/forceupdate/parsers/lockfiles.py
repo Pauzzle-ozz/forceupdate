@@ -81,9 +81,10 @@ Les dépendances de build ne sont pas dans les lockfiles."""
 
 
 def with_installed(
-    declared: Iterable[Declared], installed: Callable[[Declared], str | None]
+    declared: Iterable[Declared], installed: Callable[[Declared], tuple[str, str] | None]
 ) -> list[Dependency]:
-    """Les dépendances directes, avec la version que leur donne ``installed``.
+    """Les dépendances directes, avec la version installée et le lockfile que leur donne
+    ``installed`` (``(version, chemin du lockfile)``).
 
     Une dépendance de build n'en reçoit jamais : elle n'est pas installée avec le
     projet, et les lockfiles ne la figent pas.
@@ -92,9 +93,10 @@ def with_installed(
     for item in declared:
         dependency = item.dependency
         if dependency.scope is not Scope.BUILD:
-            version = installed(item)
-            if version is not None:
-                dependency = replace(dependency, installed=version)
+            found = installed(item)
+            if found is not None:
+                version, lockfile = found
+                dependency = replace(dependency, installed=version, lockfile=lockfile)
         result.append(dependency)
     return result
 
@@ -134,6 +136,7 @@ def transitives(
                 name=package.name,
                 constraint=package.constraint,
                 installed=package.version or None,
+                lockfile=lock.path,
                 direct=False,
                 scope=scopes.get(package.node) or package.scope or Scope.RUNTIME,
                 file=lock.path,
