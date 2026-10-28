@@ -356,8 +356,13 @@ def test_the_vulnerable_mini_project(recorded: Routes) -> None:
     assert findings[0].kind is FindingKind.VULNERABLE
     assert findings[0].severity is Severity.HIGH
     assert FindingKind.INCONCLUSIVE not in {f.kind for f in findings}
-    # Une seule requête querybatch pour les 7 versions, et chaque avis demandé une fois.
-    assert recorded["osv:querybatch"].call_count == 1
+    # Une requête querybatch pour les 7 versions utilisées, une autre pour toutes les versions
+    # proposées (E10), et chaque avis demandé une fois.
+    assert recorded["osv:querybatch"].call_count == 2
+    first, second = (json.loads(call.request.content) for call in recorded["osv:querybatch"].calls)
+    assert len(first["queries"]) == 7
+    proposed = {(q["package"]["name"], q["version"]) for q in second["queries"]}
+    assert {("lodash", "4.18.1"), ("flask", "0.12.5"), ("werkzeug", "3.1.9")} <= proposed
     assert recorded["osv:GHSA-35jh-r3h4-6jhm"].call_count == 1
     # Les registres sont interrogés pour les directes, et pour les indirectes en faille (pour
     # choisir la version qui corrige) ; une seule fois chacune.
@@ -410,7 +415,9 @@ def test_vulnerabilities_follow_no_dev(recorded: Routes, make_tree: MakeTree) ->
     assert len(vulnerabilities(analyze(root, cache=Cache.disabled()).findings, "lodash")) == 6
     report = analyze(root, ScanOptions(dev=False), cache=Cache.disabled())
     assert report.findings == []
-    assert recorded["osv:querybatch"].call_count == 1
+    # Les deux requêtes de la première analyse (versions utilisées, puis proposées) ; la
+    # seconde ne demande rien.
+    assert recorded["osv:querybatch"].call_count == 2
 
 
 def test_every_installed_version_of_an_npm_package(recorded: Routes, make_tree: MakeTree) -> None:
@@ -437,7 +444,7 @@ def test_every_installed_version_of_an_npm_package(recorded: Routes, make_tree: 
     assert {(f.dependency.direct, f.current_version) for f in found if f.dependency} == {
         (False, "4.17.15")
     }
-    body = json.loads(recorded["osv:querybatch"].calls.last.request.content)
+    body = json.loads(recorded["osv:querybatch"].calls[0].request.content)
     asked = sorted((q["package"]["name"], q["version"]) for q in body["queries"])
     assert asked == [("lodash", "4.17.15"), ("lodash", "4.17.21"), ("old", "1.0.0")]
 
@@ -467,9 +474,13 @@ def test_osv_unreachable_is_never_no_vulnerability(recorded: Routes) -> None:
         ("lodash", f"Failles non vérifiées. {error}"),
     ]
     assert FindingKind.VULNERABLE not in {f.kind for f in project.findings}
+    # Les versions proposées (flask et lodash sont dépassées) ne sont pas vérifiées non plus :
+    # une remarque, et leurs options ne changent pas.
     assert [(n.file, n.message) for n in project.notices] == [
-        ("requirements.txt", f"Failles non vérifiées pour 5 dépendances indirectes. {error}")
+        ("requirements.txt", f"Failles non vérifiées pour 5 dépendances indirectes. {error}"),
+        ("requirements.in", f"Failles non vérifiées pour 4 versions proposées. {error}"),
     ]
+    assert all(not o.introduced for u in project.updates for o in u.options)
 
 
 def test_offline_vulnerabilities_come_from_the_cache(recorded: Routes, tmp_path: Path) -> None:

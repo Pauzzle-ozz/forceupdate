@@ -1,8 +1,9 @@
 """La mise à jour : des constats aux fichiers réécrits.
 
 - ``constraints.py`` : réécrire une contrainte pour une nouvelle version, dans son style ;
-- ``planner.py`` : les mises à jour possibles de chaque paquet, et la sélection.
+- ``planner.py`` : les mises à jour possibles de chaque paquet, et la sélection ;
+- ``writers/`` : réécrire les contraintes choisies dans les manifestes, avec leur diff ;
+- ``git.py`` : le garde-fou, les fichiers qui ont des changements que git n'a pas en commit.
 
-Viendront la réécriture des manifestes (``writers/``, E10) et celle des lockfiles
-(``lockfiles.py``, E11). Rien ici n'écrit encore de fichier.
+Viendra celle des lockfiles (``lockfiles.py``, E11).
 """

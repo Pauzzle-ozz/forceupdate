@@ -182,6 +182,9 @@ def _split_pep508(text: str) -> _Pep508 | None:
     while end > start and text[end - 1].isspace():
         end -= 1
     constraint = text[start:end]
+    if not constraint:
+        # Collé au nom (et aux extras), pas après les espaces : « click>=8 ; python_version… ».
+        start = end = len(text[: head.end()].rstrip())
     try:
         found = SpecifierSet(constraint) == requirement.specifier
     except InvalidSpecifier:

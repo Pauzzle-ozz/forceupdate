@@ -186,7 +186,8 @@ class TestRequirementsLocations:
         assert [(d.name, d.constraint, d.location) for d in deps] == [
             ("flask", "==2.0.1", Location(line=1, column=5, end_column=12)),
             ("requests", ">= 2.25, < 3", Location(line=2, column=11, end_column=23)),
-            ("numpy", "", Location(line=3, column=6, end_column=6)),
+            # Sans contrainte : juste après le nom, avant l'espace (E10 y insère).
+            ("numpy", "", Location(line=3, column=5, end_column=5)),
             ("uvicorn", ">=0.20", Location(line=4, column=19, end_column=25)),
             ("django-rest-framework", "~=3.14", Location(line=5, column=21, end_column=27)),
         ]

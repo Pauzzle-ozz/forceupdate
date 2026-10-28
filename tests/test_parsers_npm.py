@@ -21,10 +21,13 @@ from forceupdate.parsers.base import (
 )
 from forceupdate.parsers.npm import (
     REASON_PATCH,
+    CatalogEntry,
+    nearest_pnpm_workspace,
     parse_overrides,
     parse_package_json,
     parse_package_lock_json,
     parse_pnpm_lock_yaml,
+    parse_pnpm_workspace,
     parse_yarn_lock,
 )
 from forceupdate.sources.local import LocalSource
@@ -1063,3 +1066,97 @@ def test_a_project_keeps_its_overrides() -> None:
 
 def test_package_json_without_overrides() -> None:
     assert parse_overrides("package.json", package_json(dependencies={"a": "1.0.0"})) == []
+
+
+# ---------------------------------------------------------------------------
+# pnpm-workspace.yaml : catalogues et versions forcées, avec leur emplacement (E10)
+# ---------------------------------------------------------------------------
+
+WORKSPACE_OVERRIDES = """\
+packages:
+  - packages/*
+catalog:
+  react: ^18.2.0
+overrides:
+  dompurify: ^3.4.13
+  "debug@<3": 3.2.7
+  express>qs: '6.11.0'
+  local: link:../local
+"""
+
+
+def test_pnpm_workspace_is_read_with_locations() -> None:
+    workspace = parse_pnpm_workspace("pnpm-workspace.yaml", CATALOG_WORKSPACE)
+    assert workspace.packages == ["packages/*"]
+    assert [(e.catalog, e.key, e.name, e.constraint, e.reason) for e in workspace.catalogs] == [
+        ("legacy", "react", "react", "^17.0.2", None),
+        ("default", "react", "react", "^18.2.0", None),
+        ("default", "my-ms", "ms", "^2.1.0", None),
+        ("default", "lib", "lib", "", REASON_GIT),
+    ]
+    for entry in workspace.catalogs:
+        if entry.reason is None:
+            assert entry.location is not None
+            assert entry.location.extract(CATALOG_WORKSPACE) == entry.constraint
+        else:
+            assert entry.location is None
+    assert workspace.catalog_entry("default", "my-ms") == CatalogEntry(
+        catalog="default",
+        key="my-ms",
+        name="ms",
+        constraint="^2.1.0",
+        location=workspace.catalogs[2].location,
+    )
+    assert workspace.catalog_entry("default", "vue") is None
+
+
+def test_pnpm_workspace_overrides() -> None:
+    found = parse_pnpm_workspace("pnpm-workspace.yaml", WORKSPACE_OVERRIDES).overrides
+    assert [(o.section, o.key, o.name, o.constraint) for o in found] == [
+        ("overrides", "dompurify", "dompurify", "^3.4.13"),
+        ("overrides", "debug@<3", "debug", "3.2.7"),
+        ("overrides", "express>qs", "qs", "6.11.0"),
+        ("overrides", "local", "local", ""),
+    ]
+    for override in found:
+        assert override.file == "pnpm-workspace.yaml"
+        if override.constraint:
+            assert override.location is not None
+            assert override.location.extract(WORKSPACE_OVERRIDES) == override.constraint
+        else:
+            assert override.location is None
+
+
+def test_pnpm_workspace_overrides_come_first() -> None:
+    """pnpm 10 fait passer celles de pnpm-workspace.yaml devant celles du package.json ; pnpm
+    11+ ne lit plus que celles-là."""
+    files = {
+        "pnpm-workspace.yaml": WORKSPACE_OVERRIDES,
+        "package.json": json.dumps(
+            {"dependencies": {"a": "1.0.0"}, "pnpm": {"overrides": {"dompurify": "^3.0.0"}}}
+        ),
+    }
+    project = parse(files)
+    assert [(o.file, o.key) for o in project.overrides] == [
+        ("pnpm-workspace.yaml", "dompurify"),
+        ("pnpm-workspace.yaml", "debug@<3"),
+        ("pnpm-workspace.yaml", "express>qs"),
+        ("pnpm-workspace.yaml", "local"),
+        ("package.json", "dompurify"),
+    ]
+    # Un membre n'a que les siennes : seules celles de la racine comptent.
+    files["packages/app/package.json"] = package_json(dependencies={"b": "1.0.0"})
+    assert parse(files, "packages/app").overrides == []
+
+
+def test_an_invalid_pnpm_workspace_yaml_gives_one_notice_for_its_overrides() -> None:
+    files = {"pnpm-workspace.yaml": "overrides: [\n", "package.json": package_json()}
+    project = parse(files)
+    assert project.overrides == []
+    assert [n.file for n in project.notices] == ["pnpm-workspace.yaml"]
+
+
+def test_nearest_pnpm_workspace() -> None:
+    files = {"pnpm-workspace.yaml": "packages: []\n", "a/b/package.json": "{}"}
+    assert nearest_pnpm_workspace("a/b", files.get) == ("pnpm-workspace.yaml", "packages: []\n")
+    assert nearest_pnpm_workspace("a/b", {}.get) is None

@@ -25,13 +25,18 @@ forceupdate scan . --offline                    # seulement le cache, sans rése
 
 Autres options : `--no-dev`, `--transitive`, `--no-cache` (`forceupdate scan --help`).
 
-`forceupdate update <dossier>` montre, pour l'instant sans rien écrire, les mises à
-jour qu'il ferait : vers quelle version, quelle contrainte réécrire (dans son style :
-`^4.17.0` devient `^4.21.2`), quel lockfile régénérer. Correctifs, mineures et
-corrections de failles sont choisis ; les majeures sont proposées à part.
+`forceupdate update <dossier>` fait les mises à jour : il montre vers quelle version
+monter et le diff des manifestes, puis, après confirmation, réécrit les contraintes
+(dans leur style : `^4.17.0` devient `^4.21.2`), sans toucher au reste du fichier.
+Correctifs, mineures et corrections de failles sont choisis ; les majeures sont
+proposées à part, comme une version qui aurait elle-même une faille connue. Il refuse
+d'écrire dans un fichier que git n'a pas en commit (sauf `--force`). Les lockfiles ne
+sont pas encore régénérés : il dit lesquels.
 
 ```bash
-forceupdate update .                     # correctifs et mineures (--level minor)
+forceupdate update . --dry-run           # le diff, sans rien écrire
+forceupdate update .                     # correctifs et mineures (--level minor), après confirmation
+forceupdate update . --yes               # sans demander
 forceupdate update . --level major       # majeures comprises
 forceupdate update . --security-only     # seulement les corrections de failles
 forceupdate update . --exclude "eslint*" --ecosystem npm

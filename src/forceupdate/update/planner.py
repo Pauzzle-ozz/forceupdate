@@ -1,6 +1,6 @@
 """Le planificateur : pour chaque paquet à mettre à jour, les versions possibles, ce qu'il faut
-toucher, et ce qui est pré-coché. Il n'écrit rien : la réécriture des manifestes est E10, celle
-des lockfiles E11.
+toucher, et ce qui est pré-coché. Il n'écrit rien : la réécriture des manifestes est dans
+``update.writers``, celle des lockfiles viendra à E11.
 
 **Les versions proposées** (``UpdateOption``), pour un paquet qui a un constat :
 
@@ -41,6 +41,11 @@ d'adapter le code. »). Une faille corrigée seulement par une majeure : propos�
 avec les deux mentions. Pour un paquet, l'option pré-cochée est, parmi celles qui ne sont pas
 majeures, celle qui corrige le plus de failles, puis la plus récente.
 
+**Les versions proposées sont vérifiées auprès d'OSV** (``audit``, une fois le plan fait : le
+moteur soumet toutes leurs versions en une requête) : une option dont la version a une faille
+que la version utilisée n'a pas (``UpdateOption.introduced``) n'est jamais pré-cochée, et un
+avertissement le dit.
+
 **La sélection est une donnée** (``Selection``) : l'identifiant de chaque ``Update`` choisie et
 sa version. ``select`` la calcule selon des règles (``Rules`` : les options de ``forceupdate
 update``) ; l'interface la modifiera case par case.
@@ -52,7 +57,8 @@ from dataclasses import dataclass
 from fnmatch import fnmatchcase
 
 from forceupdate import versions
-from forceupdate.advisories import Advisory, Query, Vulnerabilities
+from forceupdate.advisories import Advisory, OsvError, Query, Vulnerabilities
+from forceupdate.checks import vulns
 from forceupdate.checks.base import Current, current_version
 from forceupdate.models import (
     Dependency,
@@ -62,6 +68,7 @@ from forceupdate.models import (
     Finding,
     FindingKind,
     Gap,
+    Notice,
     Override,
     Project,
     Report,
@@ -129,6 +136,71 @@ def plan(
         project.updates = _plan_project(project, infos, vulnerabilities, overrides)
 
 
+def proposed_versions(report: Report) -> list[Query]:
+    """Les versions que proposent les mises à jour du rapport, à soumettre à OSV (``audit``)."""
+    return sorted(
+        {
+            (update.ecosystem, update.name, option.version)
+            for project in report.projects
+            for update in project.updates
+            for option in update.options
+        }
+    )
+
+
+def audit(report: Report, found: Mapping[Query, Vulnerabilities | OsvError]) -> None:
+    """Range dans chaque option les failles connues de sa version que la version utilisée n'a
+    pas (``UpdateOption.introduced``, avec un avertissement), d'après ce qu'OSV dit des versions
+    de ``proposed_versions`` (``found``), puis refait la pré-sélection : une telle option n'est
+    jamais pré-cochée.
+
+    Une version qu'OSV n'a pas pu examiner ne change rien à son option : une remarque du projet
+    le dit, une seule par erreur.
+    """
+    for project in report.projects:
+        errors: dict[str, tuple[str, int]] = {}
+        updates = []
+        for update in project.updates:
+            known = {
+                identifier
+                for finding in project.findings
+                if finding.kind is FindingKind.VULNERABLE
+                and finding.dependency in update.dependencies
+                for identifier in finding.identifiers
+            }
+            options = []
+            for option in update.options:
+                result = found.get((update.ecosystem, update.name, option.version))
+                if isinstance(result, OsvError):
+                    file, count = errors.get(str(result), (update.dependencies[0].file, 0))
+                    errors[str(result)] = (file, count + 1)
+                elif result is not None:
+                    option = _with_introduced(update, option, result, known)
+                options.append(option)
+            update = dataclasses.replace(update, options=tuple(options))
+            updates.append(dataclasses.replace(update, selected=choose(update)))
+        project.updates = updates
+        for error, (file, count) in errors.items():
+            versions_text = "version proposée" if count == 1 else "versions proposées"
+            message = f"Failles non vérifiées pour {count} {versions_text}. {error}"
+            project.notices.append(Notice(file=file, message=message))
+
+
+def _with_introduced(
+    update: Update, option: UpdateOption, found: Vulnerabilities, known: set[str]
+) -> UpdateOption:
+    """``option``, avec les failles de sa version qui ne sont pas parmi celles de la version
+    utilisée (``known`` : leurs identifiants)."""
+    current = Current(version=option.version)
+    findings = vulns.check(update.dependencies[0], current, found)
+    introduced = tuple(_main_id(f) for f in findings if known.isdisjoint(f.identifiers))
+    if not introduced:
+        return option
+    label = "Faille connue" if len(introduced) == 1 else "Failles connues"
+    warning = f"{label} dans cette version : {', '.join(introduced)}."
+    return dataclasses.replace(option, introduced=introduced, warnings=(*option.warnings, warning))
+
+
 def select(report: Report, rules: Rules = DEFAULT_RULES) -> Selection:
     """La sélection selon ``rules`` : pour chaque mise à jour possible, la version à cocher, s'il
     y en a une. Avec les règles par défaut, ce sont les versions pré-cochées
@@ -164,14 +236,18 @@ def chosen(report: Report, selection: Selection) -> list[tuple[Project, Update, 
 
 
 def choose(update: Update, rules: Rules = DEFAULT_RULES) -> str | None:
-    """La version que ``rules`` cochent pour ``update`` ; ``None`` pour aucune."""
+    """La version que ``rules`` cochent pour ``update`` ; ``None`` pour aucune. Jamais une option
+    à faire à la main, ni une dont la version a une faille que la version utilisée n'a pas."""
     if not _kept(update, rules):
         return None
     scheme = versions.for_ecosystem(update.ecosystem)
     eligible = [
         option
         for option in update.options
-        if option.gap is not None and option.gap.rank <= rules.level.rank and option.manual is None
+        if option.gap is not None
+        and option.gap.rank <= rules.level.rank
+        and option.manual is None
+        and not option.introduced
     ]
     if rules.security_only:
         eligible = [option for option in eligible if option.fixes]

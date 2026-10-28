@@ -27,7 +27,8 @@ champ ou une valeur d'énumération ajoutés ne le changent pas : un lecteur doi
 ignorer ce qu'il ne connaît pas. Les failles (E08) sont arrivées ainsi (champs
 `cvss_score` des constats et `audited` du résumé), puis les mises à jour
 proposées (E09 : `updates` et `overrides` des projets, `lockfile` des
-dépendances) ; les fins de vie (E27) arriveront de même, avec des constats `eol`.
+dépendances), puis les failles des versions proposées (E10 : `introduced` des
+options) ; les fins de vie (E27) arriveront de même, avec des constats `eol`.
 
 ## Le rapport
 
@@ -63,7 +64,7 @@ Un dossier qui contient au moins un manifeste ou un lockfile.
 | `manifests` | liste de chemins | ses manifestes |
 | `lockfiles` | liste de chemins | ses lockfiles, ou celui de la racine d'un workspace |
 | `dependencies` | liste de [dépendances](#dépendance) | les directes d'abord, dans l'ordre des manifestes, puis les indirectes |
-| `overrides` | liste de [versions forcées](#version-forcée) | celles de son `package.json` |
+| `overrides` | liste de [versions forcées](#version-forcée) | celles de son `pnpm-workspace.yaml`, puis de son `package.json` |
 | `findings` | liste de [constats](#constat) | **du plus grave au moins grave** (voir [l'ordre](#ordre-des-constats)) |
 | `updates` | liste de [mises à jour](#mise-à-jour) | une par paquet à mettre à jour, dans l'ordre des constats ; `[]` si les dépendances n'ont pas été vérifiées |
 | `notices` | liste de [remarques](#remarque) | ce que l'analyse n'a pas pu lire, ou pas pu vérifier |
@@ -161,9 +162,11 @@ correctif > non vérifiable > non concluant. À rang égal, par nom de paquet.
 
 ## Version forcée
 
-`overrides` (npm), `resolutions` (Yarn), `pnpm.overrides` : une version imposée à un
-paquet, quoi que demandent les paquets qui le tirent. Seules celles du `package.json`
-à la racine d'un workspace comptent.
+`overrides` (npm), `resolutions` (Yarn), `pnpm.overrides`, et `overrides` de
+`pnpm-workspace.yaml` (pnpm 10+) : une version imposée à un paquet, quoi que demandent
+les paquets qui le tirent. Seules celles de la racine d'un workspace comptent. Celles de
+`pnpm-workspace.yaml` viennent en premier : pnpm 10 les fait passer devant, et pnpm 11+
+ne lit plus celles du `package.json`.
 
 | Champ | Type | Sens |
 |---|---|---|
@@ -171,8 +174,8 @@ paquet, quoi que demandent les paquets qui le tirent. Seules celles du `package.
 | `name` | chaîne | le paquet forcé |
 | `constraint` | chaîne | la version forcée telle qu'écrite (`^3.4.13`, `$dompurify`) ; `""` pour un chemin local ou une URL |
 | `key` | chaîne | la clé telle qu'écrite : `dompurify`, `**/lodash` (Yarn), `foo@<2` ou `a>b` (pnpm) ; pour npm, les clés imbriquées séparées par `>` |
-| `section` | chaîne | `overrides`, `resolutions` ou `pnpm.overrides` |
-| `file` | chemin | le `package.json` |
+| `section` | chaîne | `overrides`, `resolutions` ou `pnpm.overrides` (`overrides` aussi dans `pnpm-workspace.yaml`) |
+| `file` | chemin | le `package.json`, ou le `pnpm-workspace.yaml` |
 | `location` | [emplacement](#emplacement) ou `null` | où est écrite `constraint` |
 
 ## Mise à jour
@@ -195,10 +198,10 @@ déclarations ; une indirecte est une version installée précise.
 | `note` | chaîne ou `null` | ce que les options ne disent pas : `Code malveillant (…) : retirer ce paquet, aucune version sûre connue.`, `Aucune version corrigée connue pour …`, `Versions publiées inconnues du registre…` |
 
 **Pré-cochée** (décision n°12 du brief) : parmi les options qui ne sont pas
-majeures, ne reviennent pas en arrière et ne sont pas à faire à la main, celle qui
-corrige le plus de failles, puis la plus récente. Une majeure n'est jamais cochée
-d'office, même quand elle seule corrige une faille. En 0.x, ce qui sort de `^` est
-une majeure.
+majeures, ne reviennent pas en arrière, ne sont pas à faire à la main et n'ont pas
+de faille que la version utilisée n'a pas (`introduced`), celle qui corrige le plus
+de failles, puis la plus récente. Une majeure n'est jamais cochée d'office, même
+quand elle seule corrige une faille. En 0.x, ce qui sort de `^` est une majeure.
 
 ### Option de mise à jour
 
@@ -209,10 +212,11 @@ une majeure.
 | `reasons` | liste de [raisons](#raisons) | pourquoi elle est proposée |
 | `fixes` | liste de chaînes | les failles qu'elle corrige : le premier identifiant de chacune (une CVE s'il y en a) |
 | `unfixed` | liste de chaînes | les failles du paquet qu'elle laisse |
+| `introduced` | liste de chaînes | les failles connues de cette version que la version utilisée n'a pas (OSV, une requête pour toutes les versions proposées) : le premier identifiant de chacune. Une telle option n'est jamais pré-cochée. `[]` aussi si OSV n'a pas pu répondre : une [remarque](#remarque) du projet le dit |
 | `edits` | liste de [réécritures](#réécriture) | les contraintes à réécrire. `[]` : la version est déjà dans la contrainte, le lockfile seul suffit |
 | `lockfile` | chemin ou `null` | le lockfile à régénérer ; `null` sans lockfile |
 | `manual` | chaîne ou `null` | pourquoi forceupdate ne sait pas l'appliquer seul (contrainte sans emplacement, style non géré) ; une telle option n'est jamais pré-cochée |
-| `warnings` | liste de chaînes | à lire avant de cocher : `Majeure : peut demander d'adapter le code.`, `Revient à une version plus ancienne.`, `Version dépréciée : …` |
+| `warnings` | liste de chaînes | à lire avant de cocher : `Majeure : peut demander d'adapter le code.`, `Revient à une version plus ancienne.`, `Version dépréciée : …`, `Faille connue dans cette version : …` |
 
 ### Réécriture
 
@@ -234,7 +238,7 @@ contrainte n'accepte plus de version concernée (`~=1.4` → `~=1.9,>=1.9.2`).
 | Champ | Type | Sens |
 |---|---|---|
 | `file` | chemin | le fichier concerné |
-| `message` | chaîne | en français : `pas lu : il faudrait l'exécuter…`, `JSON invalide…`, `Failles non vérifiées pour 5 dépendances indirectes. OSV : …` |
+| `message` | chaîne | en français : `pas lu : il faudrait l'exécuter…`, `JSON invalide…`, `Failles non vérifiées pour 5 dépendances indirectes. OSV : …`, `Failles non vérifiées pour 4 versions proposées. OSV : …` |
 
 ## Options
 
@@ -421,6 +425,7 @@ chaque constat, abrégée ici) :
               "reasons": ["replacement"],
               "fixes": [],
               "unfixed": ["CVE-2026-25645", "CVE-2024-47081"],
+              "introduced": [],
               "edits": [
                 {
                   "kind": "dependency",

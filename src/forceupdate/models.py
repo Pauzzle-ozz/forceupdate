@@ -189,7 +189,8 @@ class Dependency:
 
 @dataclass(frozen=True, kw_only=True)
 class Override:
-    """Une version forcée : ``overrides`` (npm), ``resolutions`` (Yarn), ``pnpm.overrides``.
+    """Une version forcée : ``overrides`` (npm), ``resolutions`` (Yarn), ``pnpm.overrides``,
+    ou ``overrides`` de ``pnpm-workspace.yaml`` (pnpm 10+).
 
     Elle s'impose à toutes les copies du paquet dans l'arbre (ou à celles que tire un paquet
     précis), quoi que demandent les paquets qui le tirent. Une indirecte forcée ne bouge pas
@@ -205,8 +206,10 @@ class Override:
     """La clé telle qu'écrite : ``dompurify``, ``**/lodash`` (Yarn), ``foo@<2`` ou ``a>b``
     (pnpm) ; pour npm, le chemin des clés imbriquées, séparées par ``>`` (``a>b``)."""
     section: str
-    """``overrides``, ``resolutions`` ou ``pnpm.overrides``."""
+    """``overrides``, ``resolutions`` ou ``pnpm.overrides`` (``overrides`` aussi dans
+    ``pnpm-workspace.yaml``)."""
     file: str
+    """Le ``package.json``, ou le ``pnpm-workspace.yaml``."""
     location: Location | None = None
     """Emplacement de ``constraint`` dans ``file`` ; ``None`` si on ne sait pas la réécrire."""
 
@@ -272,7 +275,8 @@ class EditKind(enum.StrEnum):
     DEPENDENCY = "dependency"
     """La contrainte d'une dépendance, dans son manifeste."""
     CATALOG = "catalog"
-    """La plage d'un catalogue pnpm, dans ``pnpm-workspace.yaml`` (E10 l'y trouve)."""
+    """La plage d'un catalogue pnpm, dans ``pnpm-workspace.yaml`` : la réécriture l'y trouve
+    (``update.writers``)."""
     OVERRIDE = "override"
     """Une version forcée (``overrides``, ``resolutions``, ``pnpm.overrides``)."""
 
@@ -281,17 +285,18 @@ class EditKind(enum.StrEnum):
 class Edit:
     """Une contrainte à réécrire : à ``location`` dans ``file``, ``old`` devient ``new``.
 
-    C'est le planificateur (E09) qui le calcule ; la réécriture (E10) vérifie que le fichier
-    contient bien ``old`` à cet endroit avant d'y écrire ``new``. La déclaration réécrite est
-    celle de ``Update.dependencies`` qui a ce fichier et cet emplacement (pour un catalogue :
-    ce fichier et ``old`` pour ``resolved_constraint``).
+    C'est le planificateur (E09) qui le calcule ; la réécriture (``update.writers``) vérifie que
+    le fichier contient bien ``old`` à cet endroit avant d'y écrire ``new``. La déclaration
+    réécrite est celle de ``Update.dependencies`` qui a ce fichier et cet emplacement (pour un
+    catalogue : ce fichier et ``old`` pour ``resolved_constraint``).
     """
 
     kind: EditKind
     file: str
     """Le manifeste ; pour un catalogue pnpm, le ``package.json`` qui y renvoie."""
     location: Location | None
-    """``None`` pour un catalogue pnpm (E10 cherche sa plage dans ``pnpm-workspace.yaml``)."""
+    """``None`` pour un catalogue pnpm (la réécriture cherche sa plage dans
+    ``pnpm-workspace.yaml``)."""
     old: str
     new: str
     override: Override | None = None
@@ -311,6 +316,9 @@ class UpdateOption:
     """Les failles qu'elle corrige : le premier identifiant de chacune (une CVE s'il y en a)."""
     unfixed: tuple[str, ...] = ()
     """Les failles qu'elle laisse."""
+    introduced: tuple[str, ...] = ()
+    """Les failles connues de cette version que la version utilisée n'a pas (OSV) : le premier
+    identifiant de chacune. Une option qui en a n'est jamais pré-cochée."""
     edits: tuple[Edit, ...] = ()
     """Les contraintes à réécrire. Vide : la version est déjà dans la contrainte, on y monte en
     régénérant le lockfile seul."""
@@ -398,8 +406,8 @@ class Project:
     dependencies: list[Dependency] = field(default_factory=list)
     """Les directes d'abord, dans l'ordre des manifestes, puis les transitives."""
     overrides: list[Override] = field(default_factory=list)
-    """Les versions forcées de son ``package.json`` (seules celles de la racine d'un workspace
-    comptent pour npm, Yarn et pnpm)."""
+    """Les versions forcées de son ``pnpm-workspace.yaml``, puis de son ``package.json`` (seules
+    celles de la racine d'un workspace comptent pour npm, Yarn et pnpm)."""
     findings: list[Finding] = field(default_factory=list)
     updates: list[Update] = field(default_factory=list)
     """Les mises à jour possibles, une par paquet à mettre à jour, dans l'ordre des constats

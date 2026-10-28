@@ -1,5 +1,6 @@
-"""Le rapport pour la console, avec ``rich`` : ``forceupdate scan``, et les mises à jour
-proposées de ``forceupdate update`` (``render_plan``).
+"""Le rapport pour la console, avec ``rich`` : ``forceupdate scan``, et pour ``forceupdate
+update`` les mises à jour proposées (``render_plan``), le diff des fichiers à réécrire
+(``render_changes``) et ce qui reste à faire (``render_outcome``).
 
 Pour ``scan``, dans l'ordre : la source, les langages, chaque projet (fichiers, un tableau de ses
 dépendances directes, le détail des constats autres que « plus récente », les remarques), les
@@ -46,6 +47,7 @@ from forceupdate.report import (
     update_subject,
 )
 from forceupdate.update.planner import DEFAULT_RULES, Rules, Selection
+from forceupdate.update.writers import Changes
 
 _STYLES = {
     FindingKind.YANKED: "bold red",
@@ -281,13 +283,54 @@ def render_plan(
     line = Text("Mises à jour choisies : ", style="bold")
     line.append(f"{count} sur {plural(len(updates), 'paquet')} à mettre à jour ({_rules(rules)}).")
     console.print(line)
-    console.print(
-        Text(
-            "Aucun fichier n'est modifié : forceupdate update montre pour l'instant ce qu'il "
-            "ferait.",
-            style="dim",
-        )
-    )
+
+
+def render_changes(changes: Changes, console: Console) -> None:
+    """Écrit ce que la mise à jour va réécrire : le diff de chaque fichier, puis les options
+    choisies qui ne seront pas appliquées, et pourquoi."""
+    console.print()
+    if changes.files:
+        console.print(Text("Fichiers à réécrire", style="bold"))
+        for change in changes.files:
+            for line in change.diff.rstrip("\n").split("\n"):
+                console.print(Text(line, style=_diff_style(line)), soft_wrap=True)
+    else:
+        console.print(Text("Aucun manifeste à réécrire.", style="bold"))
+    if changes.skipped:
+        console.print()
+        console.print(Text("Pas appliquées", style="bold"))
+        grid = _grid()
+        for item in changes.skipped:
+            name = Text(update_subject(item.update), style="bold")
+            name.append(f" {item.update.current_version} → {item.option.version}")
+            grid.add_row("", name, Text(item.reason, style="yellow"))
+        console.print(grid)
+
+
+def render_outcome(changes: Changes, console: Console, *, written: bool) -> None:
+    """Écrit la fin d'une mise à jour : les fichiers réécrits (``written``), puis les lockfiles
+    qui restent à régénérer."""
+    if written:
+        console.print()
+        paths = ", ".join(change.path for change in changes.files)
+        console.print(Text.assemble(("Fichiers réécrits : ", "bold"), f"{paths}."))
+    if changes.lockfiles:
+        line = Text("Lockfiles à régénérer ensuite : ", style="bold")
+        line.append(", ".join(changes.lockfiles))
+        line.append(" (forceupdate ne le fait pas encore).", style="dim")
+        console.print(line)
+
+
+def _diff_style(line: str) -> str:
+    if line.startswith(("--- ", "+++ ")):
+        return "bold"
+    if line.startswith("@@"):
+        return "cyan"
+    if line.startswith("+"):
+        return "green"
+    if line.startswith("-"):
+        return "red"
+    return ""
 
 
 def _print_project_plan(project: Project, selection: Selection, console: Console) -> None:

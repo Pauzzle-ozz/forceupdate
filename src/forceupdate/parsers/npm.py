@@ -25,6 +25,10 @@ Pour un projet (``parse_project``) :
 Une dépendance ``catalog:`` (pnpm) garde sa contrainte telle qu'écrite ; la plage du
 catalogue, lue dans ``pnpm-workspace.yaml``, va dans ``resolved_constraint``.
 
+Les versions forcées (``Project.overrides``) sont celles du ``pnpm-workspace.yaml`` du dossier
+(``overrides``, pnpm 10+), puis celles du ``package.json`` (``overrides``, ``resolutions``,
+``pnpm.overrides``), chacune avec son emplacement.
+
 Un alias (``"mon-ms": "npm:ms@2.0.0"``) est vérifié sous le vrai nom du paquet
 (``ms``), et sa contrainte est la partie après le ``@``. Une dépendance git, locale
 (``file:``, ``link:``…) ou membre du workspace (``workspace:``) est « non
@@ -55,7 +59,8 @@ from typing import Any
 import yaml
 
 from forceupdate.detect.manifests import match_dependency_file
-from forceupdate.models import Dependency, Ecosystem, Notice, Override, Project, Scope
+from forceupdate.models import Dependency, Ecosystem, Location, Notice, Override, Project, Scope
+from forceupdate.parsers import yaml_spans
 from forceupdate.parsers.base import (
     REASON_GIT,
     REASON_LOCAL,
@@ -77,6 +82,8 @@ from forceupdate.parsers.lockfiles import (
     relative_to,
     transitives,
 )
+from forceupdate.parsers.toml_spans import StringSpan
+from forceupdate.parsers.yaml_spans import YamlPath
 from forceupdate.versions.npm import NPM
 
 logger = logging.getLogger(__name__)
@@ -182,7 +189,7 @@ def _spec_reason(spec: str) -> str | None:
     return None
 
 
-def _catalog_name(constraint: str) -> str | None:
+def catalog_name(constraint: str) -> str | None:
     """Le catalogue pnpm que désigne une contrainte (``catalog:`` → ``default``,
     ``catalog:react17`` → ``react17``) ; ``None`` si ce n'en est pas une."""
     if not constraint.lower().startswith("catalog:"):
@@ -304,24 +311,9 @@ def _overrides(path: str, data: Mapping[str, Any], spans: Mapping[JsonPath, Any]
     found: list[Override] = []
 
     def add(name: str | None, key: str, value: Any, section: str, json_path: JsonPath) -> None:
-        if name is None or not isinstance(value, str):
-            return
-        spec = _split_spec(name, value)
-        span = spans.get(json_path)
-        location = None
-        if span is not None and spec.span is not None:
-            location = span.location(*spec.span)
-        found.append(
-            Override(
-                ecosystem=Ecosystem.NPM,
-                name=name,
-                constraint=spec.constraint,
-                key=key,
-                section=section,
-                file=path,
-                location=location,
-            )
-        )
+        override = _override(path, name, key, value, section, spans.get(json_path))
+        if override is not None:
+            found.append(override)
 
     def walk(values: Mapping[str, Any], json_path: JsonPath, parents: tuple[str, ...]) -> None:
         for key, value in values.items():
@@ -346,6 +338,28 @@ def _overrides(path: str, data: Mapping[str, Any], spans: Mapping[JsonPath, Any]
     return found
 
 
+def _override(
+    path: str, name: str | None, key: str, value: Any, section: str, span: StringSpan | None
+) -> Override | None:
+    """La version forcée ``key`` ; ``None`` si ``name`` n'est pas un paquet ou si ``value``
+    n'est pas une chaîne. ``span`` : la position de ``value`` dans ``path``."""
+    if name is None or not isinstance(value, str):
+        return None
+    spec = _split_spec(name, value)
+    location = None
+    if span is not None and spec.span is not None:
+        location = span.location(*spec.span)
+    return Override(
+        ecosystem=Ecosystem.NPM,
+        name=name,
+        constraint=spec.constraint,
+        key=key,
+        section=section,
+        file=path,
+        location=location,
+    )
+
+
 def _selector_name(key: str) -> str | None:
     """Le paquet d'une clé de version forcée, sans sa version : ``a@2`` → ``a``,
     ``@scope/a@<2`` → ``@scope/a`` ; ``None`` si ce n'est pas un nom de paquet."""
@@ -367,6 +381,112 @@ def _resolution_name(key: str) -> str | None:
 
 def _strings(value: Any) -> list[str]:
     return [item for item in value if isinstance(item, str)] if isinstance(value, list) else []
+
+
+# ---------------------------------------------------------------------------
+# pnpm-workspace.yaml
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, kw_only=True)
+class CatalogEntry:
+    """Une entrée d'un catalogue pnpm : la plage que désigne ``catalog:`` dans un
+    ``package.json``."""
+
+    catalog: str
+    """Le catalogue : ``default`` pour ``catalog`` (ou ``catalogs.default``), sinon son nom
+    sous ``catalogs``."""
+    key: str
+    """La clé telle qu'écrite : le nom que le ``package.json`` met en face de ``catalog:``."""
+    name: str
+    """Le paquet : la clé, ou le vrai paquet d'un alias ``npm:``."""
+    constraint: str
+    """La plage telle qu'écrite (après le ``@`` d'un alias) ; vide pour une valeur git ou
+    locale."""
+    location: Location | None = None
+    """Emplacement de ``constraint`` dans le ``pnpm-workspace.yaml`` ; ``None`` si on ne sait pas
+    la réécrire."""
+    reason: str | None = None
+    """Pourquoi le paquet n'est pas vérifiable (git, chemin local…)."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class PnpmWorkspace:
+    """Un ``pnpm-workspace.yaml`` lu."""
+
+    packages: list[str]
+    """Motifs des membres du workspace (``packages/*``, ``!packages/exclu``)."""
+    catalogs: list[CatalogEntry]
+    overrides: list[Override]
+    """Ses versions forcées (``overrides``, pnpm 10 et plus) : pnpm 11+ ne lit plus celles du
+    ``package.json``, et pnpm 10 fait passer celles-ci devant."""
+
+    def catalog_entry(self, catalog: str, key: str) -> CatalogEntry | None:
+        """L'entrée ``key`` du catalogue ``catalog`` ; ``None`` s'il n'y en a pas."""
+        return next((e for e in self.catalogs if e.catalog == catalog and e.key == key), None)
+
+
+def parse_pnpm_workspace(path: str, content: str) -> PnpmWorkspace:
+    """Un ``pnpm-workspace.yaml`` : ses ``packages``, ses catalogues (``catalog`` et
+    ``catalogs``) et ses versions forcées (``overrides``), avec leur emplacement.
+
+    Une valeur de catalogue est lue comme dans un ``package.json`` : un alias ``npm:`` donne le
+    vrai nom, git rend le paquet non vérifiable. ``catalog`` passe devant ``catalogs.default``.
+    Lève ``ParseError`` si le YAML est invalide.
+    """
+    data = _load_yaml(content)
+    spans = yaml_spans.string_spans(content)
+    tables: dict[str, tuple[YamlPath, dict[str, Any]]] = {
+        name: (("catalogs", name), _mapping(values))
+        for name, values in _mapping(data.get("catalogs")).items()
+    }
+    if isinstance(data.get("catalog"), dict):
+        tables["default"] = (("catalog",), data["catalog"])
+    catalogs = []
+    for catalog, (yaml_path, values) in tables.items():
+        for key, value in values.items():
+            if not isinstance(value, str):
+                continue
+            spec = _split_spec(key, value)
+            span = spans.get((*yaml_path, key))
+            location = None
+            if span is not None and spec.span is not None:
+                location = span.location(*spec.span)
+            catalogs.append(
+                CatalogEntry(
+                    catalog=catalog,
+                    key=key,
+                    name=spec.name,
+                    constraint=spec.constraint,
+                    location=location,
+                    reason=spec.reason,
+                )
+            )
+    overrides = []
+    for key, value in _mapping(data.get("overrides")).items():
+        name = _selector_name(key.rsplit(">", 1)[-1])
+        override = _override(path, name, key, value, "overrides", spans.get(("overrides", key)))
+        if override is not None:
+            overrides.append(override)
+    return PnpmWorkspace(
+        packages=_strings(data.get("packages")), catalogs=catalogs, overrides=overrides
+    )
+
+
+def nearest_pnpm_workspace(directory: str, read_text: ReadText) -> tuple[str, str] | None:
+    """Le ``pnpm-workspace.yaml`` le plus proche en remontant depuis ``directory`` (celui des
+    catalogues d'un projet), et son contenu ; ``None`` s'il n'y en a pas."""
+    while True:
+        path = join(directory, "pnpm-workspace.yaml")
+        try:
+            content = read_text(path)
+        except ValueError:
+            content = None
+        if content is not None:
+            return path, content
+        if directory == ".":
+            return None
+        directory = dirname(directory)
 
 
 # ---------------------------------------------------------------------------
@@ -970,6 +1090,8 @@ class _ProjectParser:
         directs = self._with_catalogs(directs)
         found.sort(key=lambda d: (d.file, d.name, NPM.sort_key(d.installed or "")))
         self.project.dependencies.extend(directs + found)
+        # Celles de pnpm-workspace.yaml d'abord : pnpm les fait passer devant.
+        self.project.overrides.extend(self._workspace_overrides())
         if manifest is not None:
             self.project.overrides.extend(manifest.overrides)
         self.project.notices.extend(self.notices)
@@ -1128,11 +1250,29 @@ class _ProjectParser:
         if content is None:
             return []
         try:
-            return _strings(_load_yaml(content).get("packages"))
+            return parse_pnpm_workspace(path, content).packages
         except ParseError as err:
             if directory == self.project.path:
-                self.notices.append(Notice(file=path, message=str(err)))
+                self._notice_once(Notice(file=path, message=str(err)))
             return []
+
+    def _workspace_overrides(self) -> list[Override]:
+        """Les versions forcées du ``pnpm-workspace.yaml`` du dossier du projet (pnpm 10+)."""
+        path = join(self.project.path, "pnpm-workspace.yaml")
+        content = self._read_quietly(path)
+        if content is None:
+            return []
+        try:
+            return parse_pnpm_workspace(path, content).overrides
+        except ParseError as err:
+            self._notice_once(Notice(file=path, message=str(err)))
+            return []
+
+    def _notice_once(self, notice: Notice) -> None:
+        """Ajoute une remarque, sauf si elle y est déjà (``pnpm-workspace.yaml`` est lu pour son
+        workspace, ses catalogues et ses versions forcées)."""
+        if notice not in self.notices:
+            self.notices.append(notice)
 
     # -- catalogues pnpm ----------------------------------------------------
 
@@ -1144,23 +1284,22 @@ class _ProjectParser:
         comme dans un ``package.json``. Plage introuvable : une remarque, et E07 se fiera
         à la version installée.
         """
-        if all(_catalog_name(d.constraint) is None for d in directs):
+        if all(catalog_name(d.constraint) is None for d in directs):
             return directs
-        path, catalogs = self._catalogs()
-        if catalogs is None:
+        path, workspace = self._catalogs()
+        if workspace is None:
             if path is None:
                 message = "catalog: : aucun pnpm-workspace.yaml lisible, plage inconnue."
                 self.notices.append(Notice(file=self.manifest_path or ".", message=message))
             return directs
         resolved = []
         for dependency in directs:
-            catalog = _catalog_name(dependency.constraint)
+            catalog = catalog_name(dependency.constraint)
             if catalog is None:
                 resolved.append(dependency)
                 continue
-            value = _mapping(catalogs.get(catalog)).get(dependency.name)
-            spec = _split_spec(dependency.name, value) if isinstance(value, str) else None
-            if spec is None or _catalog_name(spec.constraint) is not None:
+            entry = workspace.catalog_entry(catalog, dependency.name)
+            if entry is None or catalog_name(entry.constraint) is not None:
                 message = f"{dependency.name} absent du catalogue « {catalog} » : plage inconnue."
                 self.notices.append(Notice(file=path or ".", message=message))
                 resolved.append(dependency)
@@ -1168,38 +1307,26 @@ class _ProjectParser:
             resolved.append(
                 dataclasses.replace(
                     dependency,
-                    name=spec.name,
-                    resolved_constraint=spec.constraint if spec.reason is None else None,
-                    unverifiable_reason=spec.reason,
+                    name=entry.name,
+                    resolved_constraint=entry.constraint if entry.reason is None else None,
+                    unverifiable_reason=entry.reason,
                 )
             )
         return resolved
 
-    def _catalogs(self) -> tuple[str | None, dict[str, Any] | None]:
-        """Le ``pnpm-workspace.yaml`` le plus proche en remontant depuis le projet, et ses
-        catalogues par nom : ``catalog`` est le catalogue ``default``, comme
-        ``catalogs.default``. ``(None, None)`` s'il n'y en a pas ; ``(chemin, None)`` s'il
-        est invalide (avec une remarque)."""
-        directory = self.project.path
-        while True:
-            path = join(directory, "pnpm-workspace.yaml")
-            content = self._read_quietly(path)
-            if content is not None:
-                break
-            if directory == ".":
-                return None, None
-            directory = dirname(directory)
+    def _catalogs(self) -> tuple[str | None, PnpmWorkspace | None]:
+        """Le ``pnpm-workspace.yaml`` le plus proche en remontant depuis le projet, lu.
+        ``(None, None)`` s'il n'y en a pas ; ``(chemin, None)`` s'il est invalide (avec une
+        remarque)."""
+        found = nearest_pnpm_workspace(self.project.path, self.read_text)
+        if found is None:
+            return None, None
+        path, content = found
         try:
-            data = _load_yaml(content)
+            return path, parse_pnpm_workspace(path, content)
         except ParseError as err:
-            notice = Notice(file=path, message=str(err))
-            if notice not in self.notices:
-                self.notices.append(notice)
+            self._notice_once(Notice(file=path, message=str(err)))
             return path, None
-        catalogs = dict(_mapping(data.get("catalogs")))
-        if isinstance(data.get("catalog"), dict):
-            catalogs["default"] = data["catalog"]
-        return path, catalogs
 
     # -- lien ---------------------------------------------------------------
 

@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 import pytest
 
 from forceupdate import checks, versions
-from forceupdate.advisories import Advisory, Affected, AffectedRange, Vulnerabilities
+from forceupdate.advisories import Advisory, Affected, AffectedRange, OsvError, Vulnerabilities
 from forceupdate.checks import vulns
 from forceupdate.models import (
     Dependency,
@@ -761,3 +761,93 @@ def test_chosen_refuses_what_is_not_proposed(report: Report) -> None:
 def test_updates_follow_the_order_of_findings(report: Report) -> None:
     """La faille d'abord, puis les autres par nom, comme les constats."""
     assert [u.name for u in report.projects[0].updates] == ["vuln", "pkg", "pypkg"]
+
+
+# ---------------------------------------------------------------------------
+# Les versions proposées, vérifiées auprès d'OSV (E10)
+# ---------------------------------------------------------------------------
+
+
+def audited(project: Project, advisories: Iterable[Advisory]) -> Report:
+    """Le projet, ses versions proposées soumises à un OSV qui connaît ``advisories``."""
+    report = Report(source=".", projects=[project])
+    advisories = list(advisories)
+    found = {
+        query: Vulnerabilities(
+            advisories=tuple(a for a in advisories if a.affects(*query)), fetched_at=NOW
+        )
+        for query in planner.proposed_versions(report)
+    }
+    planner.audit(report, found)
+    return report
+
+
+def test_proposed_versions() -> None:
+    project = plan(dep("pkg", "^1.0.0", "1.0.0"), infos=[info("pkg", VERSIONS)])
+    report = Report(source=".", projects=[project])
+    assert planner.proposed_versions(report) == [
+        (NPM, "pkg", "1.0.2"),
+        (NPM, "pkg", "1.2.1"),
+        (NPM, "pkg", "2.1.0"),
+    ]
+
+
+def test_an_option_with_a_new_vulnerability_is_not_preselected() -> None:
+    """1.2.1, la dernière mineure, a une faille que 1.0.0 n'a pas : le dernier correctif est
+    pré-coché à sa place, et l'option le dit."""
+    project = plan(dep("pkg", "^1.0.0", "1.0.0"), infos=[info("pkg", VERSIONS)])
+    assert single(project).selected == "1.2.1"
+    new = advisory("NEW", "pkg", ("introduced", "1.2.0"), ("fixed", "2.0.0"))
+    report = audited(project, [new])
+    update = single(project)
+    assert [(o.version, o.introduced) for o in update.options] == [
+        ("1.0.2", ()),
+        ("1.2.1", ("CVE-NEW",)),
+        ("2.1.0", ()),
+    ]
+    assert update.option("1.2.1").warnings == ("Faille connue dans cette version : CVE-NEW.",)
+    assert update.selected == "1.0.2"
+    assert planner.select(report) == {update.id: "1.0.2"}
+    assert planner.select(report, Rules(level=MAJOR)) == {update.id: "2.1.0"}
+
+
+def test_a_vulnerability_the_current_version_already_has_is_not_new() -> None:
+    """OLD concerne 1.0.0 et 1.0.2 : 1.0.2 la laisse (``unfixed``), elle n'en introduit pas."""
+    old = advisory("OLD", "pkg", ("introduced", "0"), ("fixed", "1.1.0"))
+    project = plan(dep("pkg", "^1.0.0", "1.0.0"), infos=[info("pkg", VERSIONS)], advisories=[old])
+    audited(project, [old])
+    update = single(project)
+    patch = update.option("1.0.2")
+    assert patch is not None
+    assert patch.unfixed == ("CVE-OLD",)
+    assert all(o.introduced == () for o in update.options)
+    assert update.selected == "1.2.1"
+
+
+def test_several_new_vulnerabilities() -> None:
+    project = plan(dep("pkg", "^1.0.0", "1.0.0"), infos=[info("pkg", VERSIONS)])
+    news = [
+        advisory(name, "pkg", ("introduced", "1.0.1"), ("fixed", "1.1.0")) for name in ("A", "B")
+    ]
+    audited(project, news)
+    patch = single(project).option("1.0.2")
+    assert patch is not None
+    assert patch.introduced == ("CVE-A", "CVE-B")
+    assert patch.warnings[-1] == "Failles connues dans cette version : CVE-A, CVE-B."
+
+
+def test_proposed_versions_osv_could_not_check() -> None:
+    """OSV ne répond pas : les options ne changent pas, une remarque du projet le dit."""
+    project = plan(dep("pkg", "^1.0.0", "1.0.0"), infos=[info("pkg", VERSIONS)])
+    before = single(project)
+    report = Report(source=".", projects=[project])
+    error = OsvError("OSV : api.osv.dev injoignable (ConnectError).")
+    planner.audit(report, dict.fromkeys(planner.proposed_versions(report), error))
+    assert single(project) == before
+    assert [(n.file, n.message) for n in project.notices] == [
+        (
+            "package.json",
+            "Failles non vérifiées pour 3 versions proposées. OSV : api.osv.dev injoignable "
+            "(ConnectError).",
+        )
+    ]

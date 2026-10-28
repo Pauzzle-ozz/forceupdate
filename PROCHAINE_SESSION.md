@@ -1,40 +1,41 @@
-# Session 10 — Étape E10 : Réécriture des manifestes, commande `update`
+# Session 11 — Étape E11 : Régénération des lockfiles
 
-Contexte : E01 à E09 sont faites. L'analyse locale Python + npm est complète, et le
-planificateur (E09) sait, pour chaque paquet, vers quelles versions monter, ce qu'il faut
-réécrire (contraintes dans leur style, versions forcées) et ce qui est pré-coché :
-`forceupdate update` montre ce plan, sans rien écrire. La version 0.1.0 est publiée sur PyPI
-(voir les notes de E09). 1430 tests verts, plus 4 réseau.
+Contexte : E01 à E10 sont faites. `forceupdate update` montre le plan, le diff des manifestes,
+puis les réécrit après confirmation (`update/writers/` : seules les contraintes changent, CRLF et
+BOM gardés, fichier relu par son parseur ; garde-fou git ; `--yes`, `--dry-run`, `--force`). Les
+versions proposées sont vérifiées auprès d'OSV. Mais les lockfiles ne suivent pas : `update` dit
+seulement lesquels régénérer. 1541 tests verts, plus 4 réseau.
 
-Lis CLAUDE.md, puis l'étape E10 de PLAN.md. Lis les « Notes » de E09 (`Update`,
-`UpdateOption`, `Edit`, `Selection`, `planner.chosen`, ce qu'on touche, catalogues pnpm), de
-E03 et E04 (emplacements des contraintes : `Location`, `toml_spans`, `json_spans`, alias
-`npm:`, contrainte absente ou sans emplacement) et de E05 (catalogues pnpm,
-`resolved_constraint`). Dans docs/BRIEF.md : la décision n°11 et les pièges « Réécrire un
-manifeste sans le casser » et « Garder le style de contrainte ».
+Lis CLAUDE.md, puis l'étape E11 de PLAN.md. Lis les « Notes » de E10 (`prepare`, `write`,
+`Changes.lockfiles`, `Changes.applied`, `FileChange.before`, `--hash`, `update/git.py`), de E09
+(`UpdateOption.lockfile`, mise à jour par le lockfile seul, indirectes, versions forcées,
+`Dependency.lockfile`, fichier `-c` de pip) et de E03-E04 (formats de lockfiles, workspaces, pip-tools).
+Dans docs/BRIEF.md : la décision n°11 et les pièges « Un lockfile se régénère avec l'outil
+natif », « Régénérer un lockfile peut exécuter du code du projet », « Windows : npm s'appelle
+npm.cmd ».
 
 À faire :
-- `update/writers/` : remplacer seulement le texte de la contrainte, à l'emplacement donné par chaque `Edit` (fichier, emplacement, `old`, `new`). Si le fichier n'a pas `old` à cet endroit, ne pas y toucher et le signaler. Plusieurs réécritures dans un même fichier : de la fin vers le début. Une option `manual` n'est pas appliquée : le dire.
-- Formats : `requirements*.txt`, `pyproject.toml` (PEP 621, Poetry, `dependency-groups`), `Pipfile`, `setup.cfg`, `package.json` (l'emplacement d'un alias `npm:autre@^1.0` ne couvre que `^1.0`), et les versions forcées (`EditKind.OVERRIDE`).
-- Catalogues pnpm (`EditKind.CATALOG`, sans emplacement) : réécrire la plage dans `pnpm-workspace.yaml` (positions YAML : `yaml.compose` donne ligne et colonne de chaque nœud), sinon dire qu'elle n'est pas réécrite. Lire aussi les `overrides` de `pnpm-workspace.yaml` (pnpm 10+), avec leur position.
-- Auto-vérification : relire le fichier réécrit avec son parseur ; il doit redonner la nouvelle contrainte (la déclaration se retrouve dans `Update.dependencies` par fichier et emplacement).
-- Diff unifié de chaque fichier, calculé avant d'écrire (l'interface l'affichera en E15).
-- Commande `update <chemin>` (elle montre déjà le plan) : afficher le diff, demander confirmation (`--yes` pour ne pas demander, `--dry-run` pour s'arrêter au diff). Garde-fou : refuser si les fichiers visés ont des changements git non commités, sauf `--force`.
-- Vérifier les versions proposées auprès d'OSV (reporté de E09) : une option qui a elle-même une faille connue n'est pas pré-cochée, et un avertissement le dit ; une seule requête `querybatch`.
+- `update/lockfiles.py`, une commande par outil, vérifiée sur la version installée de chacun : `package-lock.json` (`npm install --package-lock-only --ignore-scripts`), `yarn.lock` Yarn 1 et 2+, `pnpm-lock.yaml` (`pnpm install --lockfile-only --ignore-scripts`), `uv.lock` (`uv lock`), `poetry.lock`, `Pipfile.lock`, pip-tools (`pip-compile`). Trouvée par `shutil.which`, lancée sans shell, avec un délai maximal, sans scripts du projet.
+- Mise à jour par le lockfile seul (`edits` vide) : viser le paquet (`uv lock --upgrade-package x==V`, `poetry update x`, l'équivalent npm sans toucher au `package.json`…, à vérifier par outil). Indirecte : pareil ; si elle n'atteint pas la cible, dire quel paquet la retient (graphe de `parsers/lockfiles.py`).
+- Outil absent : le manifeste est quand même modifié, et le rapport dit « lockfile à régénérer : `<commande>` ».
+- La résolution échoue (conflit) : remettre les fichiers du projet comme avant (manifestes compris : `FileChange.before`) et rapporter l'erreur.
+- Après régénération, relire le lockfile : la version installée doit être la cible.
+- Fichier de contraintes pip (`-c constraints.txt`, `Dependency.lockfile`) : y réécrire la ligne `==X` par `update.writers` (un `Target` de plus ; une ligne à `--hash` n'y est pas réécrite, le dire). Mini-projet `pip` : `numpy` n'a pas de contrainte dans `requirements.txt`, sa version vient de `numpy==1.26.4` dans `constraints.txt` (aujourd'hui, `update` n'y touche pas et dit « Lockfiles à régénérer ensuite : constraints.txt »).
+- Brancher sur `forceupdate update` : régénérer juste après `writers.write`, et remplacer « Lockfiles à régénérer ensuite … (forceupdate ne le fait pas encore) » par le résultat de chaque lockfile.
 
 Attention :
-- La réécriture ne touche que les manifestes : les lockfiles sont E11. Après E10, `update` dit quel lockfile reste à régénérer (`UpdateOption.lockfile`) sans le faire.
-- Une contrainte absente a un emplacement vide (`column == end_column`) : c'est là qu'on insère. `location=None` : ne pas réécrire (le planificateur en a déjà fait une option `manual`).
-- Les fins de ligne : un fichier en CRLF doit le rester (les parseurs comptent les lignes sur `\n`, et `Location.extract` aussi ; un `\r` reste en fin de ligne). Un BOM en tête de `package.json` compte pour les colonnes de la ligne 1.
-- Pas de logique métier dans `cli.py` : l'écriture et le diff sont dans `update/`.
-- Sous Windows : `PYTHONIOENCODING=utf-8` pour lire les accents ; un script passé par heredoc, ou un heredoc plein d'apostrophes et de backticks, peut casser (et un `\n` dans une chaîne Python d'un script écrit par heredoc devient un vrai saut de ligne) : écrire le script dans un fichier avec l'outil d'écriture. `UV_LINK_MODE=copy` fait taire « Failed to hardlink files ».
-- Les tests ne touchent ni le réseau ni le cache de l'utilisateur ; la fixture `recorded` simule PyPI (flask, requests, aioredis, jinja2, werkzeug), npm et OSV. Écrire sur des copies des mini-projets (`tmp_path`), jamais dans `tests/projects/`.
+- Pas de logique métier dans `cli.py` : la régénération est dans `update/`, l'affichage dans `report/terminal.py` (`render_outcome`).
+- Sur la machine : npm 11.6.2, pnpm 12.15.0, uv 0.10.11 sont sur le PATH ; yarn, poetry, pipenv, pip-compile n'y sont pas (les sessions d'avant les ont lancés par `npx`, `corepack` ou `uvx`). Le cas « outil absent » se voit donc pour de vrai ; demander à l'utilisateur s'il veut en installer avant de chercher ailleurs.
+- pnpm 11+ ne lit plus le champ `pnpm` du `package.json` (E10) ; pnpm 11+ écrit un premier document YAML dans `pnpm-lock.yaml` si `packageManager` est donné (E05).
+- Un workspace (uv, npm, Yarn, pnpm) a un lockfile à sa racine pour plusieurs projets : le régénérer une fois, depuis la racine.
+- Les commandes réseau des outils (npm, uv) touchent le vrai registre : en test, ne lancer les vrais outils que dans des tests marqués `network`, sur des copies (`tmp_path`), jamais dans `tests/projects/` ; le reste se teste en simulant `subprocess.run`.
+- Sous Windows : `npm` est `npm.cmd` (passer par `shutil.which`) ; `PYTHONIOENCODING=utf-8` pour lire les accents ; écrire les scripts dans un fichier (pas de heredoc). `UV_LINK_MODE=copy` fait taire « Failed to hardlink files ».
 
-Fini quand : sur les mini-projets, le diff ne touche que les contraintes ; commentaires,
-ordre et mise en forme restent intacts. Vérifier avec : `uv run pytest`,
-`uv run pytest --run-network`, `uv run ruff check`, `uv run ruff format --check`, sous 3.11
-et 3.14 (`uv run --isolated --python 3.11 --group dev pytest`), et `forceupdate update
---dry-run` sur une copie de `tests/projects/vulnerable`, de chaque mini-projet et d'Argos
-(`$HOME/Desktop/the good guy`, sur une copie), relu à la main.
+Fini quand : sur un projet npm et un projet uv, `update` donne un manifeste et un lockfile
+cohérents ; sans l'outil, le message est clair. Vérifier avec : `uv run pytest`,
+`uv run pytest --run-network`, `uv run ruff check`, `uv run ruff format --check`, sous 3.11 et 3.14
+(`uv run --isolated --python 3.11 --group dev pytest`), et `forceupdate update --yes` sur une copie
+de `tests/projects/vulnerable` (npm + pip-tools), `npm`, `uv`, `pnpm-catalog` et d'un clone d'Argos
+(`$HOME/Desktop/the good guy`), lockfiles relus à la main.
 
 En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.

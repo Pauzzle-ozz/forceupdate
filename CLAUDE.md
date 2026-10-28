@@ -70,8 +70,8 @@ Viendront plus tard : `frontend/` (l'interface, à partir de E14) et
 uv sync                          # installe l'outil et ses dépendances dans .venv
 uv run forceupdate --version     # lance l'outil (ui, scan, update)
 uv run forceupdate scan <chemin> # analyse ; --format json|md, --output, --offline, --fail-on…
-uv run forceupdate update <chemin>  # le plan des mises à jour (n'écrit rien avant E10) ;
-                                    # --level patch|minor|major, --security-only, --include…
+uv run forceupdate update <chemin>  # le plan, le diff, puis la réécriture des manifestes ;
+                                    # --dry-run, --yes, --force, --level, --security-only…
 uv run pytest                    # tests hors ligne ; reference/ n'est jamais ramassé
 uv run pytest --run-network      # avec en plus les tests marqués network (vrai réseau)
 uv run ruff check                # lint

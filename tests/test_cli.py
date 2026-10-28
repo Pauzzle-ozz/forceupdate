@@ -1,7 +1,8 @@
-"""La ligne de commande : version, ``scan``, et commandes pas encore disponibles."""
+"""La ligne de commande : version, ``scan``, ``update``, et commandes pas encore disponibles."""
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable
@@ -212,13 +213,15 @@ def test_fail_on(
 VULNERABLE = PROJECTS / "vulnerable"
 
 
-def update(*args: str) -> Result:
-    """``forceupdate update``, sans cache, sur 200 colonnes."""
-    return runner.invoke(app, ["update", *args, "--no-cache"], env={"COLUMNS": "200"})
+def update(*args: str, input: str | None = None) -> Result:
+    """``forceupdate update``, sans cache, sur 200 colonnes. Jamais d'écriture dans
+    ``tests/projects`` : sur un mini-projet, seulement avec ``--dry-run``."""
+    assert "--dry-run" in args or not args[0].startswith(str(PROJECTS))
+    return runner.invoke(app, ["update", *args, "--no-cache"], env={"COLUMNS": "200"}, input=input)
 
 
 def test_update_shows_the_default_selection(recorded: dict[str, respx.Route]) -> None:
-    result = update(str(VULNERABLE))
+    result = update(str(VULNERABLE), "--dry-run")
 
     assert result.exit_code == 0, result.output
     rows = words(result.stdout)
@@ -240,8 +243,32 @@ def test_update_shows_the_default_selection(recorded: dict[str, respx.Route]) ->
     assert "Proposées, non cochées" in lines
     assert any(line.startswith("flask 0.12 → 3.1.3") for line in lines)
     assert "Mises à jour choisies : 3 sur 4 paquets à mettre à jour (--level minor)." in lines
+    # Puis le diff des manifestes, et rien n'est écrit.
+    diff = lines[
+        lines.index("Fichiers à réécrire") + 1 : lines.index("Rien n'est écrit (--dry-run).")
+    ]
+    assert diff == [
+        "--- a/package.json",
+        "+++ b/package.json",
+        "@@ -3,6 +3,6 @@",
+        '"version": "1.0.0",',
+        '"private": true,',
+        '"dependencies": {',
+        '-    "lodash": "4.17.15"',
+        '+    "lodash": "4.18.1"',
+        "}",
+        "}",
+        "--- a/requirements.in",
+        "+++ b/requirements.in",
+        "@@ -1,2 +1,2 @@",
+        "# Une vieille application Flask ; requirements.txt est compilé avec uv pip compile.",
+        "-flask==0.12",
+        "+flask==0.12.5",
+        "",
+    ]
     assert lines[-1] == (
-        "Aucun fichier n'est modifié : forceupdate update montre pour l'instant ce qu'il ferait."
+        "Lockfiles à régénérer ensuite : requirements.txt, package-lock.json (forceupdate ne le "
+        "fait pas encore)."
     )
 
 
@@ -258,7 +285,7 @@ def test_update_shows_the_default_selection(recorded: dict[str, respx.Route]) ->
     ],
 )
 def test_update_options(recorded: dict[str, respx.Route], options: list[str], chosen: str) -> None:
-    result = update(str(VULNERABLE), *options)
+    result = update(str(VULNERABLE), *options, "--dry-run")
     assert result.exit_code == 0, result.output
     assert f"Mises à jour choisies : {chosen} paquets à mettre à jour" in result.stdout
 
@@ -268,6 +295,119 @@ def test_update_with_nothing_to_do(recorded: dict[str, respx.Route], make_tree: 
     result = update(str(root))
     assert result.exit_code == 0, result.output
     assert result.stdout.splitlines()[-1] == "Rien à mettre à jour."
+
+
+def test_update_with_nothing_chosen(recorded: dict[str, respx.Route], tmp_path: Path) -> None:
+    root = vulnerable_copy(tmp_path)
+    result = update(str(root), "--exclude", "*")
+    assert result.exit_code == 0, result.output
+    assert "Fichiers à réécrire" not in result.stdout
+    assert unchanged(root)
+
+
+def vulnerable_copy(tmp_path: Path) -> Path:
+    root = tmp_path / "vulnerable"
+    shutil.copytree(VULNERABLE, root)
+    return root
+
+
+def unchanged(root: Path) -> bool:
+    return all(
+        (root / name).read_bytes() == (VULNERABLE / name).read_bytes()
+        for name in ("package.json", "requirements.in", "requirements.txt", "package-lock.json")
+    )
+
+
+REWRITTEN = {
+    "package.json": ('"lodash": "4.17.15"', '"lodash": "4.18.1"'),
+    "requirements.in": ("flask==0.12\n", "flask==0.12.5\n"),
+}
+
+
+def rewritten(root: Path) -> bool:
+    """Vrai si les deux manifestes de ``vulnerable`` sont réécrits, et rien d'autre."""
+    for name, (old, new) in REWRITTEN.items():
+        original = (VULNERABLE / name).read_text(encoding="utf-8")
+        if (root / name).read_text(encoding="utf-8") != original.replace(old, new):
+            return False
+    lockfiles = ("requirements.txt", "package-lock.json")
+    return all((root / n).read_bytes() == (VULNERABLE / n).read_bytes() for n in lockfiles)
+
+
+def test_update_dry_run_writes_nothing(recorded: dict[str, respx.Route], tmp_path: Path) -> None:
+    root = vulnerable_copy(tmp_path)
+    result = update(str(root), "--dry-run")
+    assert result.exit_code == 0, result.output
+    assert "+flask==0.12.5" in result.stdout.splitlines()
+    assert unchanged(root)
+
+
+def test_update_yes_writes_the_manifests(
+    recorded: dict[str, respx.Route], tmp_path: Path, no_git: None
+) -> None:
+    root = vulnerable_copy(tmp_path)
+    result = update(str(root), "--yes")
+    assert result.exit_code == 0, result.output
+    assert rewritten(root)
+    lines = result.stdout.splitlines()
+    assert "Pas de dépôt git ici : rien ne permettra de revenir en arrière." in lines
+    assert "Fichiers réécrits : package.json, requirements.in." in lines
+    assert lines[-1].startswith("Lockfiles à régénérer ensuite : requirements.txt, package-lock")
+
+
+@pytest.mark.parametrize(
+    ("answer", "written"), [("o\n", True), ("oui\n", True), ("n\n", False), ("\n", False)]
+)
+def test_update_asks_before_writing(
+    recorded: dict[str, respx.Route], tmp_path: Path, answer: str, written: bool
+) -> None:
+    root = vulnerable_copy(tmp_path)
+    result = update(str(root), input=answer)
+    assert result.exit_code == 0, result.output
+    assert "Réécrire 2 fichiers ? [o/N]" in result.stdout
+    assert rewritten(root) is written
+    assert unchanged(root) is not written
+    if not written:
+        assert "Rien n'est écrit." in result.stdout.splitlines()
+
+
+def test_update_without_an_answer(recorded: dict[str, respx.Route], tmp_path: Path) -> None:
+    root = vulnerable_copy(tmp_path)
+    result = update(str(root))
+    assert result.exit_code == EXIT_ERROR
+    assert "forceupdate update : pas de réponse, rien n'est écrit." in result.stderr
+    assert unchanged(root)
+
+
+def git(root: Path, *args: str) -> None:
+    command = ["git", "-c", "user.name=t", "-c", "user.email=t@example.com"]
+    command += ["-c", "commit.gpgsign=false", "-c", "core.autocrlf=false", *args]
+    subprocess.run(command, cwd=root, check=True, capture_output=True, timeout=60)
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git absent")
+def test_update_refuses_uncommitted_manifests(
+    recorded: dict[str, respx.Route], tmp_path: Path
+) -> None:
+    root = vulnerable_copy(tmp_path)
+    git(root, "init", "-q")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "départ")
+    with (root / "requirements.in").open("a", encoding="utf-8", newline="") as file:
+        file.write("# en cours\n")
+    result = update(str(root), "--yes")
+    assert result.exit_code == EXIT_ERROR
+    assert result.stderr == (
+        "forceupdate update : requirements.in : des changements que git n'a pas en commit. Les "
+        "commiter (ou les mettre de côté) d'abord, ou relancer avec --force.\n"
+    )
+    assert (root / "package.json").read_bytes() == (VULNERABLE / "package.json").read_bytes()
+    # --force écrit quand même ; et un dépôt propre ne bloque rien.
+    assert update(str(root), "--yes", "--force").exit_code == 0
+    assert "flask==0.12.5" in (root / "requirements.in").read_text(encoding="utf-8")
+    git(root, "commit", "-q", "-am", "mise à jour")
+    assert update(str(root), "--yes", "--level", "major").exit_code == 0
+    assert "flask==3.1.3" in (root / "requirements.in").read_text(encoding="utf-8")
 
 
 def test_update_missing_path(tmp_path: Path) -> None:

@@ -1,8 +1,9 @@
 """Ligne de commande : ``forceupdate ui``, ``scan`` et ``update``.
 
-Pas de logique métier ici : chaque commande appelle le moteur, et les rapports (``report/``)
-mettent le résultat en forme. Codes de retour : 0 rien à signaler, 1 seuil ``--fail-on``
-atteint, 2 erreur.
+Pas de logique métier ici : chaque commande appelle le moteur (et ``update/`` pour la
+réécriture), et les rapports (``report/``) mettent le résultat en forme. Codes de retour : 0
+rien à signaler, 1 seuil ``--fail-on`` atteint, 2 erreur (dont un refus du garde-fou de
+``update``).
 
 Le JSON et le Markdown sortent toujours en UTF-8, sur la sortie standard comme dans un fichier.
 Sous Windows, une sortie redirigée serait sinon écrite dans le codage de la console (cp1252) :
@@ -18,15 +19,16 @@ from typing import Annotated, NoReturn
 import typer
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
+from rich.text import Text
 
 from forceupdate import __version__, checks, engine
 from forceupdate.checks import FailOn
 from forceupdate.models import Ecosystem, Event, EventKind, Gap, ScanOptions
 from forceupdate.report import json as json_report
-from forceupdate.report import markdown, terminal
+from forceupdate.report import markdown, plural, terminal
 from forceupdate.sources.base import SourceError
 from forceupdate.sources.local import LocalSource
-from forceupdate.update import planner
+from forceupdate.update import git, planner, writers
 
 EXIT_FAIL_ON = 1
 EXIT_ERROR = 2
@@ -241,10 +243,26 @@ def update(
         bool,
         typer.Option("--no-cache", help="Ne lit ni n'écrit le cache disque."),
     ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Montre le diff, sans rien écrire."),
+    ] = False,
+    yes: Annotated[
+        bool,
+        typer.Option("--yes", "-y", help="Écrit sans demander de confirmation."),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help="Écrit même si les fichiers visés ont des changements que git n'a pas en commit.",
+        ),
+    ] = False,
 ) -> None:
     """Met à jour les dépendances d'un dossier ou d'un fichier.
 
-    Pour l'instant, montre les mises à jour choisies, sans rien écrire.
+    Montre les mises à jour choisies et le diff des manifestes, puis les réécrit après
+    confirmation. Les lockfiles ne sont pas encore régénérés : la commande dit lesquels.
     """
     try:
         source = LocalSource(path)
@@ -260,8 +278,57 @@ def update(
         exclude=tuple(exclude or ()),
         ecosystems=frozenset(ecosystem or ()),
     )
+    selection = planner.select(report, rules)
     _utf8_stdout()
-    terminal.render_plan(report, planner.select(report, rules), Console(highlight=False), rules)
+    console = Console(highlight=False)
+    terminal.render_plan(report, selection, console, rules)
+    if not selection:
+        return
+    changes = writers.prepare(source.root, planner.chosen(report, selection))
+    terminal.render_changes(changes, console)
+    if not changes.files or dry_run:
+        if changes.files:
+            console.print()
+            console.print(Text("Rien n'est écrit (--dry-run).", style="dim"))
+        terminal.render_outcome(changes, console, written=False)
+        return
+    if not force:
+        dirty = git.uncommitted(source.root, [change.path for change in changes.files])
+        if dirty:
+            _fail(
+                "update",
+                f"{', '.join(dirty)} : des changements que git n'a pas en commit. Les commiter "
+                "(ou les mettre de côté) d'abord, ou relancer avec --force.",
+            )
+        if dirty is None:
+            console.print(
+                Text("Pas de dépôt git ici : rien ne permettra de revenir en arrière.", style="dim")
+            )
+    count = plural(len(changes.files), "fichier")
+    if not yes and not _confirm(f"Réécrire {count} ?"):
+        console.print(Text("Rien n'est écrit.", style="dim"))
+        return
+    try:
+        writers.write(source.root, changes)
+    except writers.WriteError as err:
+        _fail("update", str(err))
+    terminal.render_outcome(changes, console, written=True)
+
+
+def _confirm(question: str) -> bool:
+    """Pose ``question`` ; vrai pour « o », « oui », « y » ou « yes ». Sans réponse possible
+    (pas de terminal), sort en erreur."""
+    try:
+        answer = typer.prompt(
+            f"{question} [o/N]", default="", show_default=False, prompt_suffix=" "
+        )
+    except typer.Abort:
+        _fail(
+            "update",
+            "pas de réponse, rien n'est écrit. Hors d'un terminal : --yes pour écrire sans "
+            "demander, --dry-run pour voir le diff.",
+        )
+    return answer.strip().lower() in {"o", "oui", "y", "yes"}
 
 
 def _utf8_stdout() -> None:

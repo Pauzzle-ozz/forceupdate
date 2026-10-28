@@ -180,7 +180,15 @@ chaque fois) :
   citent pas.
 - **Réécrire un manifeste sans le casser** : re-sérialiser un JSON, un TOML ou un
   XML change toute sa mise en forme et perd les commentaires. Il faut remplacer
-  seulement le texte de la contrainte, à l'endroit exact où elle est écrite.
+  seulement le texte de la contrainte, à l'endroit exact où elle est écrite. Fait à
+  E10, avec ce qui va autour : relire le fichier réécrit avec son parseur, garder les
+  fins de ligne CRLF et le BOM, et ne pas réécrire une ligne de `requirements` qui
+  porte des `--hash` (ce sont les empreintes de l'ancienne version : pip refuserait
+  d'installer la nouvelle).
+- **pnpm 11+ ne lit plus le champ `pnpm` du `package.json`** (constaté avec pnpm
+  12.15 : « The "pnpm" field in package.json is no longer read ») : ses versions
+  forcées sont dans `pnpm-workspace.yaml` (`overrides`), que pnpm 10 faisait déjà
+  passer devant.
 - **Garder le style de contrainte** : `^4.17.0` devient `^4.21.2`, pas `4.21.2`.
 - **Un lockfile se régénère avec l'outil natif** (npm, uv, cargo…). S'il n'est pas
   installé, on ne peut que modifier le manifeste et dire quelle commande lancer.

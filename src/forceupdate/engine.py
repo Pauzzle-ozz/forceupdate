@@ -127,6 +127,9 @@ async def check(
     un « non concluant » ; toute autre exception est un bug, et remonte. Si OSV ne répond pas,
     une dépendance vérifiée a un constat « non concluant » ; pour les autres indirectes, une
     remarque du projet le dit.
+
+    Puis les mises à jour possibles (``planner.plan``) ; les versions qu'elles proposent sont à
+    leur tour soumises à OSV, toutes en une requête (``planner.audit``).
     """
     options = options or ScanOptions()
     emit = on_event or _ignore
@@ -183,9 +186,10 @@ async def check(
         )
         progress = _Progress(emit, total=len(packages) + (1 if queries else 0))
         emit(Event(kind=EventKind.CHECKING, total=progress.total))
+        osv = Osv(http, cache)
         outcomes, found = await asyncio.gather(
             _lookup_all(clients, packages, progress),
-            _vulnerabilities(Osv(http, cache), queries, progress),
+            _vulnerabilities(osv, queries, progress),
         )
         # Les versions publiées des indirectes en faille, pour choisir celle qui corrige.
         vulnerable = {
@@ -196,7 +200,43 @@ async def check(
             and result.advisories
         }
         outcomes |= await _lookup_all(clients, sorted(vulnerable - set(outcomes)), None)
+        _record_findings(report, options, to_check, audited, clients, unsupported, outcomes, found)
+        infos = {
+            (dependency.ecosystem, dependency.name): outcome
+            for project in report.projects
+            for dependency in project.dependencies
+            if dependency.ecosystem in clients
+            and isinstance(
+                outcome := outcomes.get(
+                    (dependency.ecosystem, clients[dependency.ecosystem].normalize(dependency.name))
+                ),
+                PackageInfo,
+            )
+        }
+        known = {q: v for q, v in found.items() if isinstance(v, Vulnerabilities)}
+        planner.plan(report, infos, known)
+        # Les versions proposées ont-elles elles-mêmes des failles ? Une requête pour toutes.
+        proposed = [q for q in planner.proposed_versions(report) if q not in found]
+        found |= await osv.vulnerabilities(proposed) if proposed else {}
+        planner.audit(report, found)
 
+    dates = [o.fetched_at for o in outcomes.values() if isinstance(o, PackageInfo)]
+    dates += [f.fetched_at for f in found.values() if isinstance(f, Vulnerabilities)]
+    report.oldest_data = min(dates, default=None)
+
+
+def _record_findings(
+    report: Report,
+    options: ScanOptions,
+    to_check: list[tuple[Project, Dependency]],
+    audited: list[tuple[Project, Dependency, Current]],
+    clients: dict[Ecosystem, Registry],
+    unsupported: dict[Ecosystem, str],
+    outcomes: dict[tuple[Ecosystem, str], _Outcome],
+    found: dict[Query, _Found],
+) -> None:
+    """Range dans chaque projet les constats tirés des registres et d'OSV, du plus grave au
+    moins grave."""
     for project, dependency in to_check:
         client = clients.get(dependency.ecosystem)
         if client is None:
@@ -223,22 +263,6 @@ async def check(
                 message = f"Failles non vérifiées pour {count} {indirect}. {error}"
                 project.notices.append(Notice(file=file, message=message))
         project.findings = checks.sort_findings(project.findings)
-    infos = {
-        (dependency.ecosystem, dependency.name): outcome
-        for project in report.projects
-        for dependency in project.dependencies
-        if dependency.ecosystem in clients
-        and isinstance(
-            outcome := outcomes.get(
-                (dependency.ecosystem, clients[dependency.ecosystem].normalize(dependency.name))
-            ),
-            PackageInfo,
-        )
-    }
-    planner.plan(report, infos, {q: v for q, v in found.items() if isinstance(v, Vulnerabilities)})
-    dates = [o.fetched_at for o in outcomes.values() if isinstance(o, PackageInfo)]
-    dates += [f.fetched_at for f in found.values() if isinstance(f, Vulnerabilities)]
-    report.oldest_data = min(dates, default=None)
 
 
 def _query(dependency: Dependency, current: Current) -> Query:
