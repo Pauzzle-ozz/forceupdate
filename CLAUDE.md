@@ -51,6 +51,11 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 ├── pyproject.toml          ← le paquet, ses dépendances, la config ruff et pytest
 ├── uv.lock                 ← les versions figées des dépendances (versionné)
 ├── .github/workflows/      ← ci.yml : ruff + pytest, Ubuntu et Windows, Python 3.11 et 3.14
+├── design-system/          ← produit à E13 avec le skill ui-ux-pro-max
+│   ├── MASTER.md           ← les règles de l'interface : tokens, typo, composants, accessibilité
+│   ├── ECRANS.md           ← les 9 écrans : contenu, appels à l'API, états, adresses
+│   ├── pages/              ← les écarts au MASTER, par écran
+│   └── mockups/            ← maquettes HTML statiques (ouvrir index.html), tokens de référence
 ├── docs/
 │   ├── BRIEF.md            ← l'idée, les décisions prises, les pièges, les sources de données
 │   └── JSON_FORMAT.md      ← le format du rapport JSON (scan --format json), et l'API de ui
@@ -62,8 +67,7 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
     └── projects/           ← mini-projets par outil, lockfiles produits par les vrais outils
 ```
 
-Viendront plus tard : `frontend/` (l'interface, à partir de E14) et
-`design-system/` (produit à E13 avec le skill `ui-ux-pro-max`).
+Viendra plus tard : `frontend/` (l'interface, à partir de E14).
 
 ## Commandes
 
@@ -117,7 +121,12 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
 - **Avant d'écrire ou de modifier quoi que ce soit dans l'interface, charger le
   skill `ui-ux-pro-max`**
   (source : https://github.com/nextlevelbuilder/ui-ux-pro-max-skill), puis lire
-  `design-system/MASTER.md` et, s'il existe, `design-system/pages/<écran>.md`.
+  `design-system/MASTER.md`, l'écran dans `design-system/ECRANS.md` et, s'il existe,
+  `design-system/pages/<écran>.md`. Les maquettes (`design-system/mockups/`) donnent le
+  rendu attendu et les tokens exacts (`mockups/assets/mockups.css`).
+- Le skill sous Windows : ses dossiers `scripts/` et `data/` sont des liens git non
+  résolus ; lancer `python ~/.claude/skills/ui-ux-pro-max/src/ui-ux-pro-max/scripts/search.py`
+  (avec `PYTHONIOENCODING=utf-8`).
 - L'interface et la ligne de commande ne contiennent pas de logique métier : elles
   appellent le moteur.
 - Les tokens des forges ne vont jamais au navigateur.

@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mes dépôts · forceupdate (maquette)</title>
+  <link rel="stylesheet" href="assets/mockups.css">
+  <script src="assets/mockups.js"></script>
+</head>
+<body>
+<script src="assets/icons.js"></script>
+<a class="skip-link" href="#contenu">Aller au contenu</a>
+
+<div class="mock-bar" role="region" aria-label="Commandes de la maquette">
+  <strong>MAQUETTE</strong>
+  <span>Écran 7 · Mes dépôts · <em>données fictives (forges : E16 à E20)</em></span>
+  <label>État
+    <select id="mock-state">
+      <option value="normal">Normal</option>
+      <option value="analyse">Analyse groupée en cours</option>
+      <option value="vide">Vide : aucun compte connecté</option>
+      <option value="chargement">Chargement de la liste</option>
+      <option value="erreur">Erreur : token révoqué</option>
+      <option value="hors-ligne">Hors ligne</option>
+      <option value="non-concluant">Non concluant</option>
+    </select>
+  </label>
+  <span class="segmented" role="group" aria-label="Thème de la maquette">
+    <button type="button" data-theme-choice="light">Clair</button>
+    <button type="button" data-theme-choice="dark">Sombre</button>
+    <button type="button" data-theme-choice="system">Système</button>
+  </span>
+  <a href="index.html">Toutes les maquettes</a>
+</div>
+
+<header class="app-header">
+  <button type="button" class="btn btn--ghost btn--icon menu-button" aria-expanded="false" aria-controls="nav" aria-label="Menu">
+    <svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg>
+  </button>
+  <a class="brand" href="accueil.html" aria-label="forceupdate, accueil">
+    <span class="brand-blade" aria-hidden="true"></span><span><b>force</b>update</span>
+  </a>
+  <nav id="nav" class="nav" aria-label="Navigation principale">
+    <a href="accueil.html"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Analyser</a>
+    <a href="depots.html" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-folder-git-2"/></svg>Dépôts</a>
+    <a href="index.html#ecran-6"><svg class="icon" aria-hidden="true"><use href="#i-key-round"/></svg>Comptes</a>
+    <a href="index.html#ecran-9"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>Réglages</a>
+  </nav>
+  <div class="header-end">
+    <span class="net-status net-status--offline" data-show="hors-ligne">
+      <svg class="icon icon--sm" aria-hidden="true"><use href="#i-wifi-off"/></svg>Hors ligne
+    </span>
+    <button type="button" class="btn btn--ghost btn--icon" aria-label="Thème : celui du système. Changer">
+      <svg class="icon" aria-hidden="true"><use href="#i-monitor"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="contenu" tabindex="-1" class="container">
+  <div class="page-head">
+    <div class="stack-sm">
+      <h1>Mes dépôts</h1>
+      <p class="muted" data-show="normal analyse chargement erreur hors-ligne non-concluant">34 dépôts sur 2 comptes. Analysés par l'API, sans les cloner.</p>
+    </div>
+    <div class="page-actions" data-show="normal non-concluant hors-ligne">
+      <a class="btn btn--secondary" href="index.html#ecran-6"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-key-round"/></svg>Comptes</a>
+      <button type="button" class="btn btn--secondary"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-refresh-cw"/></svg>Analyser tous les dépôts</button>
+    </div>
+  </div>
+
+  <!-- ===== Vide : aucun compte ===== -->
+  <div class="card empty" data-show="vide">
+    <svg class="icon icon--xl" aria-hidden="true"><use href="#i-plug"/></svg>
+    <h2 class="h3">Aucun compte connecté</h2>
+    <p>Connecter un compte GitHub, GitLab ou Bitbucket : forceupdate liste alors tous ses dépôts (les siens, ceux où il collabore, ceux de ses organisations) et les analyse sans les cloner. Le token reste dans le trousseau de l'ordinateur.</p>
+    <a class="btn btn--primary" href="index.html#ecran-6"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-plug"/></svg>Connecter un compte</a>
+  </div>
+
+  <!-- ===== Bandeaux ===== -->
+  <div class="stack" style="margin-bottom: 24px" data-show="erreur hors-ligne non-concluant analyse normal">
+    <div class="alert alert--danger" role="alert" data-show="erreur">
+      <svg class="icon" aria-hidden="true"><use href="#i-key-round"/></svg>
+      <p class="alert-title">GitHub refuse le token de ada-dev</p>
+      <div class="alert-body"><p>Il a été révoqué ou a expiré (réponse 401). Les dépôts GitLab restent disponibles.</p></div>
+      <div class="alert-actions"><a class="btn btn--primary btn--sm" href="index.html#ecran-6">Reconnecter GitHub</a></div>
+    </div>
+    <div class="alert alert--warning" role="status" data-show="hors-ligne">
+      <svg class="icon" aria-hidden="true"><use href="#i-wifi-off"/></svg>
+      <p class="alert-title">Pas de réseau</p>
+      <div class="alert-body"><p>La liste affichée est celle du dernier chargement (il y a 25 min). Les analyses et les PR attendront le réseau.</p></div>
+    </div>
+    <div class="alert alert--inconclusive" role="status" data-show="non-concluant">
+      <svg class="icon" aria-hidden="true"><use href="#i-circle-help"/></svg>
+      <p class="alert-title">2 dépôts non concluants</p>
+      <div class="alert-body"><p>Leur analyse n'a pas pu tout vérifier (registre injoignable, limite d'API atteinte). Ils ne sont pas « à jour » : les relancer.</p></div>
+      <div class="alert-actions"><button type="button" class="btn btn--secondary btn--sm">Relancer ces 2 dépôts</button></div>
+    </div>
+    <div class="alert alert--info" data-show="normal analyse non-concluant">
+      <svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>
+      <p class="alert-title">L'organisation atelier-nord limite l'accès des applications</p>
+      <div class="alert-body"><p>Ses dépôts privés n'apparaîtront qu'après l'accord d'un de ses propriétaires sur GitHub. Ses dépôts publics sont listés.</p></div>
+      <div class="alert-actions"><a class="btn btn--ghost btn--sm" href="#">Demander l'accès sur GitHub<svg class="icon icon--sm" aria-hidden="true"><use href="#i-external-link"/></svg><span class="sr-only"> (nouvel onglet)</span></a></div>
+    </div>
+  </div>
+
+  <div data-show="normal analyse chargement erreur hors-ligne non-concluant">
+    <!-- Comptes -->
+    <section class="section" aria-labelledby="comptes-titre">
+      <h2 id="comptes-titre" class="sr-only">Comptes connectés</h2>
+      <ul class="chips">
+        <li class="chip"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-git-branch"/></svg><b>GitHub</b><span class="mono">ada-dev</span>
+          <span class="badge badge--success" data-show="normal analyse chargement hors-ligne non-concluant">lecture et PR</span>
+          <span class="badge badge--danger" data-show="erreur"><svg class="icon" aria-hidden="true"><use href="#i-circle-x"/></svg>token refusé</span></li>
+        <li class="chip"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-git-branch"/></svg><b>GitLab</b><span class="mono">ada-dev</span><span class="small muted">gitlab.com</span><span class="badge badge--success">lecture et MR</span></li>
+        <li><a class="chip" href="index.html#ecran-6"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-plug"/></svg>Connecter Bitbucket</a></li>
+      </ul>
+    </section>
+
+    <!-- Synthèse multi-dépôts -->
+    <section class="section" aria-labelledby="synth-titre" data-show="normal analyse hors-ligne non-concluant erreur">
+      <div class="section-head">
+        <h2 id="synth-titre">Synthèse</h2>
+        <p class="small muted">API GitHub : 4 210 requêtes restantes sur 5 000, remise à zéro à 19:00</p>
+      </div>
+      <div class="grid grid--stats">
+        <div class="stat"><span class="stat-label"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-folder-git-2"/></svg>Dépôts</span><span class="stat-value">34</span><span class="stat-detail">28 analysés · 6 sautés</span></div>
+        <button type="button" class="stat stat--danger" aria-pressed="false"><span class="stat-label"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-shield-alert"/></svg>Failles</span><span class="stat-value">63</span><span class="stat-detail">dont 4 critiques · dans 11 dépôts</span></button>
+        <button type="button" class="stat" aria-pressed="false"><span class="stat-label"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-list-checks"/></svg>À mettre à jour</span><span class="stat-value">17</span><span class="stat-detail">dépôts</span></button>
+        <button type="button" class="stat stat--success" aria-pressed="false"><span class="stat-label"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-circle-check"/></svg>À jour</span><span class="stat-value">9</span><span class="stat-detail">dépôts</span></button>
+        <button type="button" class="stat stat--inconclusive" aria-pressed="false"><span class="stat-label"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-circle-help"/></svg>Non concluants</span><span class="stat-value">2</span><span class="stat-detail">à relancer</span></button>
+        <div class="stat"><span class="stat-label"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-git-pull-request"/></svg>PR et MR ouvertes</span><span class="stat-value">5</span><span class="stat-detail">par forceupdate</span></div>
+      </div>
+    </section>
+
+    <!-- Analyse groupée en cours -->
+    <section class="card stack-sm" data-show="analyse" aria-labelledby="ana-titre" style="margin-top: 24px">
+      <div class="row-between">
+        <h2 id="ana-titre" class="h4">Analyse de 28 dépôts : 12 terminés</h2>
+        <button type="button" class="btn btn--secondary btn--sm"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-circle-stop"/></svg>Annuler</button>
+      </div>
+      <div class="lame lame--wrap" role="progressbar" aria-label="Dépôts analysés" aria-valuemin="0" aria-valuemax="28" aria-valuenow="12" style="--value: 43%"><span></span></div>
+      <p class="small muted">4 à la fois · registres en cache partagés · 312 requêtes d'API utilisées</p>
+    </section>
+
+    <!-- Liste -->
+    <section class="section section-gap" aria-labelledby="liste-titre">
+      <div class="section-head">
+        <h2 id="liste-titre">Dépôts</h2>
+        <p class="small muted">28 affichés · 6 masqués (3 archivés, 2 forks, 1 vide) <button type="button" class="btn btn--ghost btn--sm">Les afficher</button></p>
+      </div>
+      <div class="toolbar" role="search" aria-label="Filtrer les dépôts">
+        <div class="input-icon">
+          <svg class="icon icon--sm" aria-hidden="true"><use href="#i-search"/></svg>
+          <label for="f-repo" class="sr-only">Filtrer par nom</label>
+          <input id="f-repo" class="input" placeholder="Filtrer par nom" autocomplete="off">
+        </div>
+        <label class="sr-only" for="f-forge">Forge</label>
+        <select id="f-forge" class="select"><option>Toutes les forges</option><option>GitHub</option><option>GitLab</option></select>
+        <label class="sr-only" for="f-owner">Propriétaire</label>
+        <select id="f-owner" class="select"><option>Tous les propriétaires</option><option>ada-dev</option><option>atelier-nord</option><option>outils-internes</option></select>
+        <label class="sr-only" for="f-etat">État</label>
+        <select id="f-etat" class="select"><option>Tous les états</option><option>À mettre à jour</option><option>À jour</option><option>Non concluants</option><option>Pas encore analysés</option></select>
+      </div>
+
+      <div class="table-wrap" data-show="chargement" aria-busy="true" aria-label="Chargement des dépôts" style="padding: 16px">
+        <div class="stack-sm"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton" style="width: 85%"></div><div class="skeleton" style="width: 70%"></div></div>
+      </div>
+
+      <div class="table-wrap" data-show="normal analyse erreur hors-ligne non-concluant">
+        <table class="table table--stack">
+          <caption class="sr-only">Dépôts des comptes connectés</caption>
+          <thead>
+            <tr>
+              <th scope="col"><input type="checkbox" class="box" aria-label="Tout sélectionner"></th>
+              <th scope="col">Dépôt</th>
+              <th scope="col">Forge</th>
+              <th scope="col">Langages</th>
+              <th scope="col" aria-sort="descending"><button type="button" class="sort">Dernier push<svg class="icon" aria-hidden="true"><use href="#i-arrow-down"/></svg></button></th>
+              <th scope="col">Analyse</th>
+              <th scope="col">PR / MR</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="is-selected">
+              <td data-label="Choisir"><input type="checkbox" class="box" checked aria-label="Sélectionner ada-dev/boutique-en-ligne"></td>
+              <td class="td-main" data-label="Dépôt"><a class="repo-name" href="rapport.html"><span class="repo-owner">ada-dev/</span>boutique-en-ligne</a> <svg class="icon icon--sm" aria-label="privé" role="img" style="vertical-align: -3px; color: var(--text-muted)"><use href="#i-lock"/></svg></td>
+              <td data-label="Forge">GitHub</td>
+              <td data-label="Langages"><span class="small">TypeScript, Python</span></td>
+              <td data-label="Dernier push"><span class="small">il y a 2 h</span></td>
+              <td data-label="Analyse"><div class="row"><span class="badge badge--critical"><svg class="icon" aria-hidden="true"><use href="#i-octagon-alert"/></svg>1 critique</span><span class="badge badge--high">3 failles</span><span class="badge badge--outline">12 à mettre à jour</span></div></td>
+              <td data-label="PR / MR"><a href="#" class="small">#41 ouverte<span class="sr-only"> (nouvel onglet)</span></a></td>
+            </tr>
+            <tr class="is-selected">
+              <td data-label="Choisir"><input type="checkbox" class="box" checked aria-label="Sélectionner atelier-nord/api-facturation"></td>
+              <td class="td-main" data-label="Dépôt"><a class="repo-name" href="rapport.html"><span class="repo-owner">atelier-nord/</span>api-facturation</a></td>
+              <td data-label="Forge">GitHub</td>
+              <td data-label="Langages"><span class="small">Python</span></td>
+              <td data-label="Dernier push"><span class="small">il y a 1 j</span></td>
+              <td data-label="Analyse"><div class="row"><span class="badge badge--high">7 failles</span><span class="badge badge--outline">4 à mettre à jour</span></div></td>
+              <td data-label="PR / MR"><span class="small muted">aucune</span></td>
+            </tr>
+            <tr class="is-selected">
+              <td data-label="Choisir"><input type="checkbox" class="box" checked aria-label="Sélectionner outils-internes/tableau-de-bord"></td>
+              <td class="td-main" data-label="Dépôt"><a class="repo-name" href="rapport.html"><span class="repo-owner">outils-internes/</span>tableau-de-bord</a> <svg class="icon icon--sm" aria-label="privé" role="img" style="vertical-align: -3px; color: var(--text-muted)"><use href="#i-lock"/></svg></td>
+              <td data-label="Forge">GitLab</td>
+              <td data-label="Langages"><span class="small">Vue, TypeScript</span></td>
+              <td data-label="Dernier push"><span class="small">il y a 4 j</span></td>
+              <td data-label="Analyse"><div class="row"><span class="badge badge--medium">2 failles</span><span class="badge badge--outline">5 à mettre à jour</span></div></td>
+              <td data-label="PR / MR"><a href="#" class="small">!12 ouverte<span class="sr-only"> (nouvel onglet)</span></a></td>
+            </tr>
+            <tr>
+              <td data-label="Choisir"><input type="checkbox" class="box" aria-label="Sélectionner atelier-nord/site-vitrine"></td>
+              <td class="td-main" data-label="Dépôt"><a class="repo-name" href="#"><span class="repo-owner">atelier-nord/</span>site-vitrine</a></td>
+              <td data-label="Forge">GitHub</td>
+              <td data-label="Langages"><span class="small">JavaScript</span></td>
+              <td data-label="Dernier push"><span class="small">il y a 3 sem.</span></td>
+              <td data-label="Analyse">
+                <div data-show="analyse" style="min-width: 160px"><span class="small">18 sur 45 paquets</span><div class="lame" role="progressbar" aria-label="Analyse de site-vitrine" aria-valuemin="0" aria-valuemax="45" aria-valuenow="18" style="--value: 40%; margin-top: 4px"><span></span></div></div>
+                <div class="row" data-show="normal erreur hors-ligne non-concluant"><span class="badge badge--success"><svg class="icon" aria-hidden="true"><use href="#i-circle-check"/></svg>à jour</span></div>
+              </td>
+              <td data-label="PR / MR"><span class="small muted">aucune</span></td>
+            </tr>
+            <tr>
+              <td data-label="Choisir"><input type="checkbox" class="box" aria-label="Sélectionner outils-internes/scripts-deploiement"></td>
+              <td class="td-main" data-label="Dépôt"><a class="repo-name" href="#"><span class="repo-owner">outils-internes/</span>scripts-deploiement</a></td>
+              <td data-label="Forge">GitLab</td>
+              <td data-label="Langages"><span class="small">Python, Shell</span></td>
+              <td data-label="Dernier push"><span class="small">il y a 2 mois</span></td>
+              <td data-label="Analyse"><div class="row"><span class="badge badge--inconclusive"><svg class="icon" aria-hidden="true"><use href="#i-circle-help"/></svg>non concluant</span><span class="small muted">PyPI injoignable</span></div></td>
+              <td data-label="PR / MR"><span class="small muted">aucune</span></td>
+            </tr>
+            <tr>
+              <td data-label="Choisir"><input type="checkbox" class="box" aria-label="Sélectionner atelier-nord/design-tokens"></td>
+              <td class="td-main" data-label="Dépôt"><a class="repo-name" href="#"><span class="repo-owner">atelier-nord/</span>design-tokens</a></td>
+              <td data-label="Forge">GitHub</td>
+              <td data-label="Langages"><span class="small">TypeScript</span></td>
+              <td data-label="Dernier push"><span class="small">il y a 1 mois</span></td>
+              <td data-label="Analyse"><div class="row"><span class="badge badge--outline">2 à mettre à jour</span><span class="badge badge--neutral"><svg class="icon" aria-hidden="true"><use href="#i-eye-off"/></svg>lecture seule</span></div></td>
+              <td data-label="PR / MR"><span class="small muted">pas de droit de push</span></td>
+            </tr>
+            <tr>
+              <td data-label="Choisir"><input type="checkbox" class="box" aria-label="Sélectionner ada-dev/notes"></td>
+              <td class="td-main" data-label="Dépôt"><a class="repo-name" href="#"><span class="repo-owner">ada-dev/</span>notes</a></td>
+              <td data-label="Forge">GitHub</td>
+              <td data-label="Langages"><span class="small">Markdown</span></td>
+              <td data-label="Dernier push"><span class="small">il y a 2 mois</span></td>
+              <td data-label="Analyse"><span class="small muted">aucun fichier de dépendances</span></td>
+              <td data-label="PR / MR"><span class="small muted">—</span></td>
+            </tr>
+            <tr>
+              <td data-label="Choisir"><input type="checkbox" class="box" aria-label="Sélectionner ada-dev/app-mobile"></td>
+              <td class="td-main" data-label="Dépôt"><a class="repo-name" href="#"><span class="repo-owner">ada-dev/</span>app-mobile</a></td>
+              <td data-label="Forge">GitHub</td>
+              <td data-label="Langages"><span class="small">Kotlin</span></td>
+              <td data-label="Dernier push"><span class="small">il y a 5 mois</span></td>
+              <td data-label="Analyse"><span class="badge badge--neutral">pas encore analysé</span></td>
+              <td data-label="PR / MR"><span class="small muted">—</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="bulkbar" data-show="normal non-concluant" role="region" aria-label="Actions sur la sélection">
+        <span class="grow"><b>3 dépôts sélectionnés</b> <span class="small muted">· 21 mises à jour cochées par défaut</span></span>
+        <button type="button" class="btn btn--secondary"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-refresh-cw"/></svg>Analyser de nouveau</button>
+        <a class="btn btn--primary" href="index.html#ecran-8"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-git-pull-request"/></svg>Préparer 2 PR et 1 MR</a>
+      </div>
+    </section>
+  </div>
+</main>
+
+<div id="live" class="sr-only" aria-live="polite"></div>
+</body>
+</html>

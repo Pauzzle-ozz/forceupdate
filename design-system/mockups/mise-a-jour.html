@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mise à jour · vulnerable · forceupdate (maquette)</title>
+  <link rel="stylesheet" href="assets/mockups.css">
+  <script src="assets/mockups.js"></script>
+</head>
+<body>
+<script src="assets/icons.js"></script>
+<a class="skip-link" href="#contenu">Aller au contenu</a>
+
+<div class="mock-bar" role="region" aria-label="Commandes de la maquette">
+  <strong>MAQUETTE</strong>
+  <span>Écran 5 · Mise à jour</span>
+  <label>État
+    <select id="mock-state">
+      <optgroup label="1. Choisir">
+        <option value="choisir" data-step="1">Choisir (données réelles)</option>
+        <option value="cas-particuliers" data-step="1">Cas particuliers (fictifs)</option>
+        <option value="non-concluant" data-step="1">Non concluant</option>
+        <option value="vide" data-step="1">Vide : rien à mettre à jour</option>
+      </optgroup>
+      <optgroup label="2. Vérifier">
+        <option value="chargement" data-step="2">Plan en préparation</option>
+        <option value="verifier" data-step="2">Vérifier le plan (réel)</option>
+        <option value="garde-fou" data-step="2">Garde-fou git</option>
+        <option value="hors-git" data-step="2">Hors d'un dépôt git</option>
+        <option value="outil-absent" data-step="2">Outil absent</option>
+        <option value="hors-ligne" data-step="2">Hors ligne</option>
+        <option value="erreur" data-step="2">Erreur : fichier changé</option>
+        <option value="fichier-envoye" data-step="2">Fichier envoyé</option>
+      </optgroup>
+      <optgroup label="3. Appliquer">
+        <option value="appliquer" data-step="3">Application en cours</option>
+      </optgroup>
+      <optgroup label="4. Résultat">
+        <option value="resultat" data-step="4">Résultat (réel)</option>
+        <option value="resultat-outil-absent" data-step="4">Résultat : commande à lancer</option>
+        <option value="echec" data-step="4">Échec d'un outil</option>
+      </optgroup>
+    </select>
+  </label>
+  <span class="segmented" role="group" aria-label="Thème de la maquette">
+    <button type="button" data-theme-choice="light">Clair</button>
+    <button type="button" data-theme-choice="dark">Sombre</button>
+    <button type="button" data-theme-choice="system">Système</button>
+  </span>
+  <a href="index.html">Toutes les maquettes</a>
+</div>
+
+<header class="app-header">
+  <button type="button" class="btn btn--ghost btn--icon menu-button" aria-expanded="false" aria-controls="nav" aria-label="Menu">
+    <svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg>
+  </button>
+  <a class="brand" href="accueil.html" aria-label="forceupdate, accueil">
+    <span class="brand-blade" aria-hidden="true"></span><span><b>force</b>update</span>
+  </a>
+  <nav id="nav" class="nav" aria-label="Navigation principale">
+    <a href="accueil.html" aria-current="true"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Analyser</a>
+    <a href="depots.html"><svg class="icon" aria-hidden="true"><use href="#i-folder-git-2"/></svg>Dépôts</a>
+    <a href="index.html#ecran-6"><svg class="icon" aria-hidden="true"><use href="#i-key-round"/></svg>Comptes</a>
+    <a href="index.html#ecran-9"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>Réglages</a>
+  </nav>
+  <div class="header-end">
+    <span class="net-status net-status--offline" data-show="hors-ligne">
+      <svg class="icon icon--sm" aria-hidden="true"><use href="#i-wifi-off"/></svg>Hors ligne
+    </span>
+    <button type="button" class="btn btn--ghost btn--icon" aria-label="Thème : celui du système. Changer">
+      <svg class="icon" aria-hidden="true"><use href="#i-monitor"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="contenu" tabindex="-1" class="container">
+  <nav class="breadcrumb" aria-label="Fil d'Ariane">
+    <a href="accueil.html">Analyser</a>
+    <svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg>
+    <a href="rapport.html" class="mono">vulnerable</a>
+    <svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg>
+    <span aria-current="page">Mise à jour</span>
+  </nav>
+
+  <div class="page-head">
+    <div class="stack-sm">
+      <h1>Mettre à jour <span class="mono">vulnerable</span></h1>
+      <ol class="stepper" aria-label="Étapes">
+        <li><span class="step-num">1</span>Choisir</li>
+        <li><span class="step-num">2</span>Vérifier</li>
+        <li data-hide-upload><span class="step-num">3</span>Appliquer</li>
+        <li data-hide-upload><span class="step-num">4</span>Résultat</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- =============================== 1. CHOISIR =============================== -->
+  <div class="layout-aside" data-show="choisir cas-particuliers non-concluant">
+    <div class="stack">
+      <div class="alert alert--inconclusive" role="status" data-show="non-concluant">
+        <svg class="icon" aria-hidden="true"><use href="#i-circle-help"/></svg>
+        <p class="alert-title">Analyse en partie non concluante</p>
+        <div class="alert-body">
+          <p><span class="mono">lodash</span> n'a pas de mise à jour proposée : sa dernière version n'est pas connue (registre npm injoignable).</p>
+          <p>Failles non vérifiées pour 4 versions proposées (OSV : délai dépassé) : l'une d'elles pourrait avoir une faille connue.</p>
+        </div>
+        <div class="alert-actions"><a class="btn btn--secondary btn--sm" href="rapport.html"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-refresh-cw"/></svg>Relancer l'analyse d'abord</a></div>
+      </div>
+
+      <div class="row-between">
+        <p class="small muted">Correctifs, mineures et corrections de failles sont pré-cochés. Les majeures sont proposées, jamais cochées d'office.</p>
+        <div class="row">
+          <button type="button" class="btn btn--ghost btn--sm" data-action="reset"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-rotate-ccw"/></svg>Sélection proposée</button>
+          <button type="button" class="btn btn--ghost btn--sm" data-action="none">Tout décocher</button>
+        </div>
+      </div>
+
+      <!-- Groupe npm -->
+      <section class="stack-sm" aria-labelledby="g-npm" data-show="choisir cas-particuliers">
+        <h2 id="g-npm" class="h4 row"><span class="badge badge--neutral">npm</span><span class="mono small">package-lock.json</span><span class="small muted">régénéré par npm</span></h2>
+        <article class="update" data-update="lodash" data-vulns="6" aria-labelledby="u-lodash">
+          <div class="update-head">
+            <label class="check"><input type="checkbox" class="update-toggle" checked aria-describedby="u-lodash-sub"><span id="u-lodash" class="update-name">lodash</span></label>
+            <span class="badge badge--outline">directe</span>
+            <span id="u-lodash-sub" class="small muted">utilisée <span class="ver">4.17.15</span> · <span class="badge badge--high"><svg class="icon" aria-hidden="true"><use href="#i-shield-alert"/></svg>6 failles</span></span>
+          </div>
+          <div class="options" role="radiogroup" aria-label="Version visée pour lodash">
+            <label class="option">
+              <span class="check"><input type="radio" name="lodash" value="4.17.23" data-fixes="4" data-gap="patch" data-files="package.json" data-lock="package-lock.json"></span>
+              <span class="option-line"><span class="ver"><b>4.17.23</b></span><span class="badge badge--outline">Correctif</span><span class="small">dernier correctif</span></span>
+              <span class="option-meta">
+                <span class="fixes">Corrige 4 failles sur 6, en laisse 2</span>
+                <span class="mono small">package.json : 4.17.15 → 4.17.23</span>
+              </span>
+            </label>
+            <label class="option">
+              <span class="check"><input type="radio" name="lodash" value="4.18.1" checked data-default data-fixes="6" data-gap="minor" data-files="package.json" data-lock="package-lock.json"></span>
+              <span class="option-line"><span class="ver"><b>4.18.1</b></span><span class="badge badge--outline">Mineure</span><span class="small">dernière mineure · corrige les failles</span><span class="badge badge--primary">proposée</span></span>
+              <span class="option-meta">
+                <span class="fixes fixes--ok"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-shield-check"/></svg>Corrige les 6 failles</span>
+                <span class="mono small">package.json : 4.17.15 → 4.18.1</span>
+              </span>
+            </label>
+          </div>
+        </article>
+      </section>
+
+      <!-- Groupe PyPI -->
+      <section class="stack-sm" aria-labelledby="g-pypi">
+        <h2 id="g-pypi" class="h4 row"><span class="badge badge--neutral">PyPI</span><span class="mono small">requirements.txt</span><span class="small muted">régénéré par uv pip compile</span></h2>
+
+        <article class="update" data-update="flask" data-vulns="4" aria-labelledby="u-flask">
+          <div class="update-head">
+            <label class="check"><input type="checkbox" class="update-toggle" checked><span id="u-flask" class="update-name">flask</span></label>
+            <span class="badge badge--outline">directe</span>
+            <span class="small muted">utilisée <span class="ver">0.12</span> · <span class="badge badge--high"><svg class="icon" aria-hidden="true"><use href="#i-shield-alert"/></svg>4 failles</span></span>
+          </div>
+          <div class="options" role="radiogroup" aria-label="Version visée pour flask">
+            <label class="option">
+              <span class="check"><input type="radio" name="flask" value="0.12.5" checked data-default data-fixes="1" data-gap="patch" data-files="requirements.in" data-lock="requirements.txt"></span>
+              <span class="option-line"><span class="ver"><b>0.12.5</b></span><span class="badge badge--outline">Correctif</span><span class="small">dernier correctif</span><span class="badge badge--primary">proposée</span></span>
+              <span class="option-meta">
+                <span class="fixes">Corrige 1 faille sur 4, en laisse 3</span>
+                <span class="mono small">requirements.in : ==0.12 → ==0.12.5</span>
+              </span>
+            </label>
+            <label class="option">
+              <span class="check"><input type="radio" name="flask" value="3.1.3" data-fixes="4" data-gap="major" data-files="requirements.in" data-lock="requirements.txt"></span>
+              <span class="option-line"><span class="ver"><b>3.1.3</b></span><span class="badge badge--warning"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Majeure</span><span class="small">dernière version · corrige les failles</span></span>
+              <span class="option-meta">
+                <span class="fixes fixes--ok"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-shield-check"/></svg>Corrige les 4 failles</span>
+                <span class="option-warn"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Majeure : peut demander d'adapter le code.</span>
+                <span class="mono small">requirements.in : ==0.12 → ==3.1.3</span>
+              </span>
+            </label>
+          </div>
+        </article>
+
+        <article class="update" data-update="jinja2" data-vulns="6" aria-labelledby="u-jinja2">
+          <div class="update-head">
+            <label class="check"><input type="checkbox" class="update-toggle" checked><span id="u-jinja2" class="update-name">jinja2</span></label>
+            <span class="badge badge--outline">indirecte</span>
+            <span class="small muted">utilisée <span class="ver">2.10</span> · <span class="badge badge--high"><svg class="icon" aria-hidden="true"><use href="#i-shield-alert"/></svg>6 failles</span> · par le lockfile seul</span>
+          </div>
+          <div class="options" role="radiogroup" aria-label="Version visée pour jinja2">
+            <label class="option">
+              <span class="check"><input type="radio" name="jinja2" value="2.10.3" data-fixes="1" data-gap="patch" data-lock="requirements.txt"></span>
+              <span class="option-line"><span class="ver"><b>2.10.3</b></span><span class="badge badge--outline">Correctif</span><span class="small">dernier correctif</span></span>
+              <span class="option-meta"><span class="fixes">Corrige 1 faille sur 6, en laisse 5</span><span class="small">aucun manifeste réécrit : requirements.txt seul</span></span>
+            </label>
+            <label class="option">
+              <span class="check"><input type="radio" name="jinja2" value="2.11.3" checked data-default data-fixes="2" data-gap="minor" data-lock="requirements.txt"></span>
+              <span class="option-line"><span class="ver"><b>2.11.3</b></span><span class="badge badge--outline">Mineure</span><span class="small">dernière mineure</span><span class="badge badge--primary">proposée</span></span>
+              <span class="option-meta"><span class="fixes">Corrige 2 failles sur 6, en laisse 4</span><span class="small">aucun manifeste réécrit : requirements.txt seul</span></span>
+            </label>
+            <label class="option">
+              <span class="check"><input type="radio" name="jinja2" value="3.1.6" data-fixes="6" data-gap="major" data-lock="requirements.txt"></span>
+              <span class="option-line"><span class="ver"><b>3.1.6</b></span><span class="badge badge--warning"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Majeure</span><span class="small">corrige les failles</span></span>
+              <span class="option-meta">
+                <span class="fixes fixes--ok"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-shield-check"/></svg>Corrige les 6 failles</span>
+                <span class="option-warn"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Majeure : peut demander d'adapter le code.</span>
+                <span class="option-warn"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Dépendance indirecte : le paquet qui la tire devra peut-être monter aussi.</span>
+              </span>
+            </label>
+          </div>
+        </article>
+
+        <article class="update" data-update="werkzeug" data-vulns="12" aria-labelledby="u-werkzeug">
+          <div class="update-head">
+            <label class="check"><input type="checkbox" class="update-toggle"><span id="u-werkzeug" class="update-name">werkzeug</span></label>
+            <span class="badge badge--outline">indirecte</span>
+            <span class="small muted">utilisée <span class="ver">0.14.1</span> · <span class="badge badge--high"><svg class="icon" aria-hidden="true"><use href="#i-shield-alert"/></svg>12 failles</span> · par le lockfile seul</span>
+          </div>
+          <div class="options" role="radiogroup" aria-label="Version visée pour werkzeug">
+            <label class="option">
+              <span class="check"><input type="radio" name="werkzeug" value="3.1.9" data-fixes="12" data-gap="major" data-lock="requirements.txt"></span>
+              <span class="option-line"><span class="ver"><b>3.1.9</b></span><span class="badge badge--warning"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Majeure</span><span class="small">corrige les failles</span></span>
+              <span class="option-meta">
+                <span class="fixes fixes--ok"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-shield-check"/></svg>Corrige les 12 failles</span>
+                <span class="option-warn"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Majeure : peut demander d'adapter le code.</span>
+                <span class="option-warn"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Dépendance indirecte : le paquet qui la tire devra peut-être monter aussi.</span>
+              </span>
+            </label>
+          </div>
+        </article>
+      </section>
+
+      <!-- Cas particuliers (données fictives) : option manuelle, faille apportée, note -->
+      <section class="stack-sm" aria-labelledby="g-cas" data-show="cas-particuliers">
+        <h2 id="g-cas" class="h4 row"><span class="badge badge--neutral">exemples fictifs</span><span class="small muted">les autres champs d'une mise à jour</span></h2>
+        <article class="update" data-update="requests" data-vulns="2" aria-labelledby="u-requests">
+          <div class="update-head">
+            <label class="check"><input type="checkbox" class="update-toggle" checked><span id="u-requests" class="update-name">requests</span></label>
+            <span class="badge badge--outline">directe</span>
+            <span class="small muted">utilisée <span class="ver">2.25.1</span> · <span class="badge badge--medium"><svg class="icon" aria-hidden="true"><use href="#i-shield-alert"/></svg>2 failles</span></span>
+          </div>
+          <div class="options" role="radiogroup" aria-label="Version visée pour requests">
+            <label class="option is-manual">
+              <span class="check"><input type="radio" name="requests" value="2.31.0" disabled aria-describedby="m-req"></span>
+              <span class="option-line"><span class="ver"><b>2.31.0</b></span><span class="badge badge--outline">Mineure</span><span class="badge badge--neutral"><svg class="icon" aria-hidden="true"><use href="#i-ban"/></svg>à faire à la main</span></span>
+              <span class="option-meta"><span id="m-req">forceupdate ne sait pas réécrire la contrainte <span class="mono">requests&gt;=2.25,!=2.28.*</span> de <span class="mono">setup.cfg</span> : la modifier soi-même.</span></span>
+            </label>
+            <label class="option">
+              <span class="check"><input type="radio" name="requests" value="2.32.0" data-fixes="1" data-gap="minor" data-files="pyproject.toml"></span>
+              <span class="option-line"><span class="ver"><b>2.32.0</b></span><span class="badge badge--outline">Mineure</span></span>
+              <span class="option-meta">
+                <span class="fixes">Corrige 1 faille sur 2</span>
+                <span class="option-warn" style="color: var(--danger)"><svg class="icon" aria-hidden="true"><use href="#i-shield-alert"/></svg>Apporte une faille que 2.25.1 n'a pas : CVE-2024-47081. Jamais pré-cochée.</span>
+              </span>
+            </label>
+            <label class="option">
+              <span class="check"><input type="radio" name="requests" value="2.32.4" checked data-default data-fixes="2" data-gap="minor" data-files="pyproject.toml"></span>
+              <span class="option-line"><span class="ver"><b>2.32.4</b></span><span class="badge badge--outline">Mineure</span><span class="small">corrige les failles</span><span class="badge badge--primary">proposée</span></span>
+              <span class="option-meta"><span class="fixes fixes--ok"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-shield-check"/></svg>Corrige les 2 failles</span><span class="mono small">pyproject.toml : &gt;=2.25 → &gt;=2.32.4</span></span>
+            </label>
+          </div>
+        </article>
+        <article class="update" aria-labelledby="u-piege">
+          <div class="update-head">
+            <input type="checkbox" class="box" disabled aria-labelledby="u-piege">
+            <span id="u-piege" class="update-name">paquet-piege</span>
+            <span class="badge badge--outline">indirecte</span>
+            <span class="badge badge--critical"><svg class="icon" aria-hidden="true"><use href="#i-octagon-alert"/></svg>Critique</span>
+          </div>
+          <div class="options">
+            <p class="option-warn" style="padding: 12px 16px; color: var(--danger)"><svg class="icon" aria-hidden="true"><use href="#i-octagon-alert"/></svg>Code malveillant (MAL-…) : retirer ce paquet, aucune version sûre connue.</p>
+          </div>
+        </article>
+      </section>
+    </div>
+
+    <aside class="aside-sticky" aria-labelledby="recap-titre">
+      <div class="card stack">
+        <h2 id="recap-titre" class="h3">Récapitulatif</h2>
+        <ul class="summary-list" aria-live="polite">
+          <li><span>Mises à jour cochées</span><b><span data-sum="count">3</span> sur <span data-sum="total">4</span></b></li>
+          <li><span>Failles corrigées</span><b><span data-sum="fixes">9</span> sur <span data-sum="vulns">28</span></b></li>
+          <li><span>Failles laissées</span><b data-sum="left">19</b></li>
+          <li><span>Majeures cochées</span><b data-sum="majors">0</b></li>
+          <li><span>Fichiers réécrits</span><b data-sum="files">2</b></li>
+          <li class="small muted mono" style="justify-content: flex-start" data-sum="file-list">package.json, requirements.in</li>
+          <li><span>Lockfiles régénérés</span><b data-sum="locks">2</b></li>
+          <li class="small muted mono" style="justify-content: flex-start" data-sum="lock-list">package-lock.json, requirements.txt</li>
+        </ul>
+        <div class="alert alert--warning" id="major-warning" hidden>
+          <svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>
+          <p class="alert-title">Une majeure est cochée</p>
+          <div class="alert-body"><p>Relire ses notes de version : le code devra peut-être changer.</p></div>
+        </div>
+        <button type="button" class="btn btn--primary btn--block only-large" data-needs-selection data-go-state="verifier">Vérifier le plan<svg class="icon icon--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
+        <p class="small muted">Rien n'est écrit à cette étape : le plan montre d'abord le diff.</p>
+      </div>
+    </aside>
+    <div class="bulkbar only-small" role="region" aria-label="Sélection">
+      <span class="grow small"><b><span data-sum="count">3</span> cochées</b> · <span data-sum="fixes">9</span> failles corrigées</span>
+      <button type="button" class="btn btn--primary" data-needs-selection data-go-state="verifier">Vérifier le plan<svg class="icon icon--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
+    </div>
+  </div>
+
+  <!-- Vide -->
+  <div class="card empty" data-show="vide">
+    <svg class="icon icon--xl" aria-hidden="true"><use href="#i-circle-check"/></svg>
+    <h2 class="h3">Rien à mettre à jour</h2>
+    <p>Ce rapport ne propose aucune mise à jour : pas de faille connue, pas de version plus récente.</p>
+    <a class="btn btn--secondary" href="rapport.html">Retour au rapport</a>
+  </div>
+
+  <!-- =============================== 2. VÉRIFIER =============================== -->
+  <div class="layout-aside" data-show="verifier garde-fou hors-git outil-absent hors-ligne erreur fichier-envoye chargement">
+    <div class="stack-lg">
+
+      <!-- Bandeaux du plan -->
+      <div class="alert alert--danger" role="alert" data-show="erreur">
+        <svg class="icon" aria-hidden="true"><use href="#i-circle-x"/></svg>
+        <p class="alert-title">Rien n'a été écrit</p>
+        <div class="alert-body"><p><span class="mono">requirements.in</span> a changé depuis l'analyse : le diff ne correspond plus au fichier. Relancer l'analyse pour repartir du fichier actuel.</p></div>
+        <div class="alert-actions"><button type="button" class="btn btn--primary btn--sm"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-refresh-cw"/></svg>Relancer l'analyse</button></div>
+      </div>
+      <div class="alert alert--warning" role="status" data-show="hors-ligne">
+        <svg class="icon" aria-hidden="true"><use href="#i-wifi-off"/></svg>
+        <p class="alert-title">Pas de réseau</p>
+        <div class="alert-body"><p>npm et uv en ont besoin pour régénérer les lockfiles : ils échoueront, et leurs fichiers seront remis comme avant (manifestes compris). Attendre le réseau pour appliquer.</p></div>
+      </div>
+      <div class="alert alert--info" role="status" data-show="fichier-envoye">
+        <svg class="icon" aria-hidden="true"><use href="#i-file"/></svg>
+        <p class="alert-title">Fichier envoyé : rien ne s'écrit sur le disque</p>
+        <div class="alert-body"><p>Le navigateur ne laisse pas réécrire le fichier d'origine : sa version mise à jour se télécharge. Aucun lockfile n'est régénéré ; après avoir remplacé le fichier, relancer l'outil du projet (par exemple <code>uv pip compile</code>).</p></div>
+      </div>
+
+      <section class="stack-sm" aria-labelledby="plan-quoi" data-show="verifier garde-fou hors-git outil-absent hors-ligne erreur">
+        <h2 id="plan-quoi" class="h3">Ce qui sera fait</h2>
+        <ul class="list">
+          <li style="grid-template-columns: auto minmax(0,1fr) auto"><svg class="icon" aria-hidden="true" style="color: var(--success)"><use href="#i-check"/></svg><span><b class="mono">lodash</b> <span class="ver-arrow ver">4.17.15<svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg>4.18.1</span></span><span class="small muted">package.json, package-lock.json</span></li>
+          <li style="grid-template-columns: auto minmax(0,1fr) auto"><svg class="icon" aria-hidden="true" style="color: var(--success)"><use href="#i-check"/></svg><span><b class="mono">flask</b> <span class="ver-arrow ver">0.12<svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg>0.12.5</span></span><span class="small muted">requirements.in, requirements.txt</span></li>
+          <li style="grid-template-columns: auto minmax(0,1fr) auto"><svg class="icon" aria-hidden="true" style="color: var(--success)"><use href="#i-check"/></svg><span><b class="mono">jinja2</b> <span class="ver-arrow ver">2.10<svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg>2.11.3</span></span><span class="small muted">requirements.txt seul</span></li>
+        </ul>
+      </section>
+
+      <section class="stack-sm" aria-labelledby="plan-diffs" data-show="verifier garde-fou hors-git outil-absent hors-ligne erreur fichier-envoye">
+        <div class="section-head"><h2 id="plan-diffs" class="h3">Fichiers réécrits</h2><span class="small muted" data-show="verifier garde-fou hors-git outil-absent hors-ligne erreur">2 fichiers · seules les contraintes changent</span></div>
+
+        <div class="table-wrap" data-show="verifier garde-fou hors-git outil-absent hors-ligne erreur">
+          <div class="file-head"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-file-diff"/></svg><span class="path">package.json</span><span class="grow"></span><span class="small"><span style="color: var(--diff-add)">+1</span> <span style="color: var(--diff-del)">−1</span></span></div>
+          <div class="diff" role="region" aria-label="Diff de package.json" tabindex="0">
+            <table>
+              <tr class="hunk"><td class="ln"></td><td class="ln"></td><td colspan="2">@@ -3,6 +3,6 @@</td></tr>
+              <tr><td class="ln">3</td><td class="ln">3</td><td class="mk"> </td><td>  "version": "1.0.0",</td></tr>
+              <tr><td class="ln">4</td><td class="ln">4</td><td class="mk"> </td><td>  "private": true,</td></tr>
+              <tr><td class="ln">5</td><td class="ln">5</td><td class="mk"> </td><td>  "dependencies": {</td></tr>
+              <tr class="del"><td class="ln">6</td><td class="ln"></td><td class="mk">-</td><td>    "lodash": "4.17.15"</td></tr>
+              <tr class="add"><td class="ln"></td><td class="ln">6</td><td class="mk">+</td><td>    "lodash": "4.18.1"</td></tr>
+              <tr><td class="ln">7</td><td class="ln">7</td><td class="mk"> </td><td>  }</td></tr>
+              <tr><td class="ln">8</td><td class="ln">8</td><td class="mk"> </td><td>}</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <div class="file-head"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-file-diff"/></svg><span class="path">requirements.in</span><span class="grow"></span><span class="small"><span style="color: var(--diff-add)">+1</span> <span style="color: var(--diff-del)">−1</span></span></div>
+          <div class="diff" role="region" aria-label="Diff de requirements.in" tabindex="0">
+            <table>
+              <tr class="hunk"><td class="ln"></td><td class="ln"></td><td colspan="2">@@ -1,2 +1,2 @@</td></tr>
+              <tr><td class="ln">1</td><td class="ln">1</td><td class="mk"> </td><td># Une vieille application Flask ; requirements.txt est compilé avec uv pip compile.</td></tr>
+              <tr class="del"><td class="ln">2</td><td class="ln"></td><td class="mk">-</td><td>flask==0.12</td></tr>
+              <tr class="add"><td class="ln"></td><td class="ln">2</td><td class="mk">+</td><td>flask==0.12.5</td></tr>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="stack-sm" aria-labelledby="plan-locks" data-show="verifier garde-fou hors-git outil-absent hors-ligne erreur">
+        <div class="section-head"><h2 id="plan-locks" class="h3">Lockfiles régénérés</h2><span class="small muted">dans l'ordre, après la réécriture, sans les scripts du projet</span></div>
+        <div class="card stack-sm">
+          <div class="row-between">
+            <div class="row"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg><span class="mono"><b>package-lock.json</b></span><span class="small muted">lodash 4.18.1</span></div>
+            <span class="badge badge--success"><svg class="icon" aria-hidden="true"><use href="#i-circle-check"/></svg>npm trouvé</span>
+          </div>
+          <div class="cmd"><code>npm install --package-lock-only --ignore-scripts</code><button type="button" class="btn btn--ghost btn--sm" data-copy="npm install --package-lock-only --ignore-scripts"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-copy"/></svg><span class="label">Copier</span></button></div>
+        </div>
+        <div class="card stack-sm">
+          <div class="row-between">
+            <div class="row"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg><span class="mono"><b>requirements.txt</b></span><span class="small muted">flask 0.12.5, jinja2 2.11.3</span></div>
+            <span class="badge badge--success" data-show="verifier garde-fou hors-git hors-ligne erreur"><svg class="icon" aria-hidden="true"><use href="#i-circle-check"/></svg>uv trouvé</span>
+            <span class="badge badge--warning" data-show="outil-absent"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>uv absent</span>
+          </div>
+          <p class="small" data-show="outil-absent">uv n'est pas installé : <span class="mono">requirements.txt</span> ne sera pas régénéré. <span class="mono">requirements.in</span> sera quand même réécrit ; lancer ensuite cette commande dans le dossier du projet :</p>
+          <div class="cmd"><code>uv pip compile requirements.in -o requirements.txt --python-version 3.7 -P flask==0.12.5 -P jinja2==2.11.3</code><button type="button" class="btn btn--ghost btn--sm" data-copy="uv pip compile requirements.in -o requirements.txt --python-version 3.7 -P flask==0.12.5 -P jinja2==2.11.3"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-copy"/></svg><span class="label">Copier</span></button></div>
+          <ul class="stack-sm small">
+            <li class="option-warn"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>Pas repris de l'en-tête de requirements.txt : --exclude-newer 2019-01-01, qui écarterait les versions choisies.</li>
+            <li class="option-warn"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>uv construit les paquets publiés sans wheel dont il lit les dépendances, et le projet si elles sont dynamiques : leur code de construction s'exécute.</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Plan en préparation -->
+      <div class="stack" data-show="chargement" aria-busy="true" aria-label="Préparation du plan">
+        <p class="row muted"><svg class="icon spin" aria-hidden="true" style="animation: spin 1s linear infinite"><use href="#i-loader-circle"/></svg>Préparation du plan : réécriture à blanc, vérification par les parseurs…</p>
+        <div class="table-wrap"><div class="file-head"><div class="skeleton" style="width: 140px"></div></div><div class="stack-sm" style="padding: 12px 16px"><div class="skeleton"></div><div class="skeleton" style="width: 80%"></div><div class="skeleton" style="width: 60%"></div></div></div>
+        <div class="table-wrap"><div class="file-head"><div class="skeleton" style="width: 120px"></div></div><div class="stack-sm" style="padding: 12px 16px"><div class="skeleton"></div><div class="skeleton" style="width: 70%"></div></div></div>
+      </div>
+    </div>
+
+    <aside class="aside-sticky" aria-labelledby="appliquer-titre" data-show="verifier garde-fou hors-git outil-absent hors-ligne erreur fichier-envoye chargement">
+      <div class="card stack">
+        <h2 id="appliquer-titre" class="h3" data-show="verifier garde-fou hors-git outil-absent hors-ligne erreur chargement">Appliquer</h2>
+        <h2 class="h3" data-show="fichier-envoye">Télécharger</h2>
+
+        <div class="alert alert--success" data-show="verifier outil-absent hors-ligne erreur">
+          <svg class="icon" aria-hidden="true"><use href="#i-git-commit-horizontal"/></svg>
+          <p class="alert-title">Git peut tout défaire</p>
+          <div class="alert-body"><p>Les fichiers à écrire n'ont pas de changements en attente.</p></div>
+        </div>
+        <div class="alert alert--warning" data-show="garde-fou" role="alert">
+          <svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>
+          <p class="alert-title">Changements pas encore commités</p>
+          <div class="alert-body"><p><span class="mono">package.json</span> a des changements que git n'a pas en commit : la mise à jour s'y mêlerait. Les commiter d'abord, puis vérifier de nouveau.</p></div>
+        </div>
+        <div class="alert alert--warning" data-show="hors-git">
+          <svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>
+          <p class="alert-title">Hors d'un dépôt git</p>
+          <div class="alert-body"><p>Rien ne permettra de revenir en arrière. Faire une copie du dossier avant d'appliquer.</p></div>
+        </div>
+
+        <ul class="summary-list" data-show="verifier garde-fou hors-git outil-absent hors-ligne erreur chargement">
+          <li><span>Mises à jour</span><b>3</b></li>
+          <li><span>Fichiers réécrits</span><b>2</b></li>
+          <li><span>Lockfiles régénérés</span><b data-show="verifier garde-fou hors-git hors-ligne erreur chargement">2</b><b data-show="outil-absent">1 (et 1 commande)</b></li>
+        </ul>
+
+        <button type="button" class="btn btn--primary btn--block" data-show="verifier hors-git outil-absent hors-ligne" data-go-state="appliquer"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-play"/></svg>Appliquer</button>
+        <button type="button" class="btn btn--primary btn--block" data-show="chargement erreur" disabled><svg class="icon icon--sm" aria-hidden="true"><use href="#i-play"/></svg>Appliquer</button>
+        <button type="button" class="btn btn--danger btn--block" data-show="garde-fou" data-open="confirm-force">Appliquer quand même…</button>
+        <a class="btn btn--primary btn--block" data-show="fichier-envoye" href="#"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-download"/></svg>Télécharger requirements.in</a>
+        <button type="button" class="btn btn--secondary btn--block" data-go-state="choisir">Modifier la sélection</button>
+        <p class="small muted" data-show="verifier garde-fou hors-git outil-absent hors-ligne erreur chargement">Une mise à jour lancée ne s'interrompt pas. Si un outil échoue, ses fichiers sont remis comme avant.</p>
+      </div>
+    </aside>
+  </div>
+
+  <!-- =============================== 3. APPLIQUER =============================== -->
+  <section class="card stack" data-show="appliquer" aria-labelledby="app-titre" style="max-width: 760px">
+    <h2 id="app-titre" class="h3">Application en cours</h2>
+    <div class="lame lame--wrap" role="progressbar" aria-label="Lockfiles régénérés" aria-valuemin="0" aria-valuemax="2" aria-valuenow="1" aria-valuetext="1 lockfile sur 2" style="--value: 50%"><span></span></div>
+    <ol class="tasklist" aria-live="polite">
+      <li class="task is-done"><svg class="icon" aria-hidden="true"><use href="#i-circle-check"/></svg><span>Manifestes réécrits : <span class="mono">package.json</span>, <span class="mono">requirements.in</span></span><span class="small muted">0,1 s</span></li>
+      <li class="task is-done"><svg class="icon" aria-hidden="true"><use href="#i-circle-check"/></svg><span><span class="mono">package-lock.json</span> régénéré par npm</span><span class="small muted">6,8 s</span></li>
+      <li class="task is-running"><svg class="icon" aria-hidden="true"><use href="#i-loader-circle"/></svg><span><span class="mono">requirements.txt</span> : uv pip compile…</span><span class="small muted">2 sur 2</span></li>
+    </ol>
+    <p class="small muted">La mise à jour continue même si la page est fermée, et ne s'interrompt pas. Un outil peut prendre quelques minutes (10 au plus par commande).</p>
+  </section>
+
+  <!-- =============================== 4. RÉSULTAT =============================== -->
+  <div class="stack" data-show="resultat resultat-outil-absent echec" style="max-width: 860px">
+    <div class="alert alert--success" role="status" data-show="resultat">
+      <svg class="icon" aria-hidden="true"><use href="#i-circle-check"/></svg>
+      <p class="alert-title">Mise à jour appliquée</p>
+      <div class="alert-body"><p>3 mises à jour, toutes à la version demandée. Relire avec <code>git diff</code>, lancer les tests, puis commiter.</p></div>
+    </div>
+    <div class="alert alert--warning" role="status" data-show="resultat-outil-absent">
+      <svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg>
+      <p class="alert-title">Appliquée, une commande reste à lancer</p>
+      <div class="alert-body"><p>Les manifestes sont réécrits ; <span class="mono">requirements.txt</span> attend sa régénération (uv n'est pas installé).</p></div>
+    </div>
+    <div class="alert alert--danger" role="alert" data-show="echec">
+      <svg class="icon" aria-hidden="true"><use href="#i-circle-x"/></svg>
+      <p class="alert-title">uv pip compile a échoué : ses fichiers sont remis comme avant</p>
+      <div class="alert-body"><p><span class="mono">requirements.in</span> et <span class="mono">requirements.txt</span> sont revenus à leur état d'avant. <span class="mono">package-lock.json</span>, qui ne dépend pas d'eux, est bien mis à jour.</p></div>
+    </div>
+
+    <article class="card stack-sm">
+      <div class="row-between">
+        <div class="row"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg><span class="mono"><b>package-lock.json</b></span><span class="small muted">npm</span></div>
+        <span class="badge badge--success"><svg class="icon" aria-hidden="true"><use href="#i-circle-check"/></svg>régénéré</span>
+      </div>
+      <ul class="summary-list">
+        <li><span><b class="mono">lodash</b> <span class="ver-arrow ver">4.17.15<svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg>4.18.1</span></span><span class="badge badge--success"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>version exacte</span></li>
+      </ul>
+      <p class="small muted">Rien d'autre n'a changé dans le lockfile.</p>
+    </article>
+
+    <article class="card stack-sm">
+      <div class="row-between">
+        <div class="row"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg><span class="mono"><b>requirements.txt</b></span><span class="small muted">uv pip compile</span></div>
+        <span class="badge badge--success" data-show="resultat"><svg class="icon" aria-hidden="true"><use href="#i-circle-check"/></svg>régénéré</span>
+        <span class="badge badge--warning" data-show="resultat-outil-absent"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg>commande à lancer</span>
+        <span class="badge badge--danger" data-show="echec"><svg class="icon" aria-hidden="true"><use href="#i-circle-x"/></svg>échec, fichiers remis</span>
+      </div>
+      <ul class="summary-list" data-show="resultat">
+        <li><span><b class="mono">flask</b> <span class="ver-arrow ver">0.12<svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg>0.12.5</span></span><span class="badge badge--success"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>version exacte</span></li>
+        <li><span><b class="mono">jinja2</b> <span class="ver-arrow ver">2.10<svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg>2.11.3</span></span><span class="badge badge--success"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>version exacte</span></li>
+      </ul>
+      <p class="small muted" data-show="resultat">Rien d'autre n'a changé dans le lockfile.</p>
+      <div class="stack-sm" data-show="resultat-outil-absent">
+        <p class="small">Dans <span class="mono">C:/…/vulnerable</span>, lancer :</p>
+        <div class="cmd"><code>uv pip compile requirements.in -o requirements.txt --python-version 3.7 -P flask==0.12.5 -P jinja2==2.11.3</code><button type="button" class="btn btn--ghost btn--sm" data-copy="uv pip compile requirements.in -o requirements.txt --python-version 3.7 -P flask==0.12.5 -P jinja2==2.11.3"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-copy"/></svg><span class="label">Copier</span></button></div>
+      </div>
+      <div class="stack-sm" data-show="echec">
+        <p class="small">Ce qu'a dit l'outil (dernières lignes) :</p>
+        <pre class="cmd" style="margin: 0; overflow-x: auto"><code style="white-space: pre">error: Failed to fetch: `https://pypi.org/simple/flask/`
+  Caused by: Request failed after 3 retries
+  Caused by: error sending request for url (https://pypi.org/simple/flask/)
+  Caused by: dns error: Hôte inconnu.</code></pre>
+        <p class="small">Fichiers remis comme avant : <span class="mono">requirements.in</span>, <span class="mono">requirements.txt</span></p>
+      </div>
+    </article>
+
+    <div class="row">
+      <a class="btn btn--primary" href="rapport.html"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-refresh-cw"/></svg>Relancer l'analyse</a>
+      <a class="btn btn--secondary" href="rapport.html">Revoir l'ancien rapport</a>
+      <button type="button" class="btn btn--secondary" data-show="echec" data-go-state="choisir">Réessayer</button>
+    </div>
+  </div>
+</main>
+
+<!-- Confirmation : appliquer malgré le garde-fou -->
+<div class="scrim scrim--dialog" id="confirm-force-scrim" hidden></div>
+<div class="dialog" id="confirm-force" role="alertdialog" aria-modal="true" aria-labelledby="cf-titre" aria-describedby="cf-texte" hidden>
+  <h2 id="cf-titre" class="h3" tabindex="-1" data-autofocus>Appliquer malgré les changements non commités ?</h2>
+  <p id="cf-texte">La mise à jour s'écrira par-dessus les changements en attente de <span class="mono">package.json</span>. Git ne permettra plus de séparer les deux.</p>
+  <div class="dialog-actions">
+    <button type="button" class="btn btn--secondary" data-close>Annuler</button>
+    <button type="button" class="btn btn--danger" data-go-state="appliquer" data-close>Appliquer quand même</button>
+  </div>
+</div>
+
+<div id="live" class="sr-only" aria-live="polite"></div>
+</body>
+</html>

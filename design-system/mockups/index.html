@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Maquettes · forceupdate</title>
+  <link rel="stylesheet" href="assets/mockups.css">
+  <script src="assets/mockups.js"></script>
+  <style>
+    .swatch { display: flex; align-items: center; gap: 12px; }
+    .swatch i { width: 40px; height: 40px; border-radius: 8px; border: 1px solid var(--border); flex: none; }
+    .screens li { display: grid; grid-template-columns: 2.5em minmax(0, 1fr) auto; gap: 4px 12px; align-items: start; }
+    .screens .num { font-family: var(--font-mono); color: var(--text-muted); padding-top: 2px; }
+  </style>
+</head>
+<body>
+<script src="assets/icons.js"></script>
+<a class="skip-link" href="#contenu">Aller au contenu</a>
+
+<div class="mock-bar" role="region" aria-label="Commandes de la maquette">
+  <strong>MAQUETTE</strong>
+  <span>Index et aperçu du design system</span>
+  <span class="segmented" role="group" aria-label="Thème de la maquette">
+    <button type="button" data-theme-choice="light">Clair</button>
+    <button type="button" data-theme-choice="dark">Sombre</button>
+    <button type="button" data-theme-choice="system">Système</button>
+  </span>
+</div>
+
+<header class="app-header">
+  <a class="brand" href="accueil.html" aria-label="forceupdate, maquette de l'accueil">
+    <span class="brand-blade" aria-hidden="true"></span><span><b>force</b>update</span>
+  </a>
+  <span class="small muted">design system · E13</span>
+</header>
+
+<main id="contenu" tabindex="-1" class="container container--narrow stack-lg">
+  <div class="stack-sm">
+    <h1>Maquettes de l'interface</h1>
+    <p class="muted">Fichiers statiques, sans appel à l'API ni ressource extérieure. Chaque maquette a une barre « MAQUETTE » : l'état affiché (vide, chargement, erreur, hors ligne, non concluant…) et le thème. Les données des écrans 1, 4 et 5 sont celles du mini-projet <span class="mono">tests/projects/vulnerable</span>, telles que les rend l'API (le 28 oct. 2026) ; celles de l'écran 7 sont fictives. Règles : <span class="mono">design-system/MASTER.md</span> ; écrans et états : <span class="mono">design-system/ECRANS.md</span>.</p>
+  </div>
+
+  <section class="stack" aria-labelledby="ecrans-titre" id="ecrans">
+    <h2 id="ecrans-titre">Les 9 écrans</h2>
+    <ul class="list screens">
+      <li id="ecran-1"><span class="num">1</span><span><b>Accueil</b><br><span class="small muted">Choisir une source : dossier, fichier, compte connecté. Analyses récentes.</span></span><a class="btn btn--primary btn--sm" href="accueil.html">Maquette</a></li>
+      <li id="ecran-2"><span class="num">2</span><span><b>Choisir un dossier ou un fichier</b><br><span class="small muted">Navigateur de dossiers de l'ordinateur (GET /api/fs), dossiers récents, glisser-déposer. Décrit dans ECRANS.md.</span></span><span class="badge badge--outline">décrit</span></li>
+      <li id="ecran-3"><span class="num">3</span><span><b>Analyse en cours</b><br><span class="small muted">Progression par étape, paquet en cours, annuler. Décrit dans ECRANS.md et pages/analyse-en-cours.md.</span></span><span class="badge badge--outline">décrit</span></li>
+      <li id="ecran-4"><span class="num">4</span><span><b>Rapport</b><br><span class="small muted">Synthèse, langages, projets, dépendances filtrables, détail d'une dépendance, fichiers écartés.</span></span><a class="btn btn--primary btn--sm" href="rapport.html">Maquette</a></li>
+      <li id="ecran-5"><span class="num">5</span><span><b>Mise à jour</b><br><span class="small muted">Choisir, vérifier (diffs, lockfiles, garde-fou git), appliquer, résultat.</span></span><a class="btn btn--primary btn--sm" href="mise-a-jour.html">Maquette</a></li>
+      <li id="ecran-6"><span class="num">6</span><span><b>Comptes</b><br><span class="small muted">Connecter ou déconnecter GitHub, GitLab, Bitbucket ; qui est connecté, avec quels droits. Décrit dans ECRANS.md.</span></span><span class="badge badge--outline">décrit</span></li>
+      <li id="ecran-7"><span class="num">7</span><span><b>Mes dépôts</b><br><span class="small muted">Toutes les forges, filtres, sélection, analyse groupée, synthèse multi-dépôts.</span></span><a class="btn btn--primary btn--sm" href="depots.html">Maquette</a></li>
+      <li id="ecran-8"><span class="num">8</span><span><b>PR / MR</b><br><span class="small muted">Récapitulatif avant envoi, puis résultat avec les liens. Décrit dans ECRANS.md.</span></span><span class="badge badge--outline">décrit</span></li>
+      <li id="ecran-9"><span class="num">9</span><span><b>Réglages</b><br><span class="small muted">Sélection par défaut, paquets ignorés, dépôts exclus, cache, thème. Décrit dans ECRANS.md.</span></span><span class="badge badge--outline">décrit</span></li>
+    </ul>
+  </section>
+
+  <section class="stack" aria-labelledby="couleurs-titre">
+    <h2 id="couleurs-titre">Couleurs</h2>
+    <p class="small muted">Une seule couleur d'accent (le bleu, celui de la « lame »). Le rouge, l'orange, le jaune, le vert et le violet sont réservés au sens, toujours avec une icône et un mot. Contrastes vérifiés : texte 4,5:1 au moins, composants 3:1, dans les deux thèmes.</p>
+    <div class="grid grid--3">
+      <div class="swatch"><i style="background: var(--bg)"></i><span><b>Fond</b><br><span class="mono small muted">--bg</span></span></div>
+      <div class="swatch"><i style="background: var(--surface)"></i><span><b>Surface</b><br><span class="mono small muted">--surface</span></span></div>
+      <div class="swatch"><i style="background: var(--surface-2)"></i><span><b>Surface 2</b><br><span class="mono small muted">--surface-2</span></span></div>
+      <div class="swatch"><i style="background: var(--text)"></i><span><b>Texte</b><br><span class="mono small muted">--text</span></span></div>
+      <div class="swatch"><i style="background: var(--text-muted)"></i><span><b>Texte atténué</b><br><span class="mono small muted">--text-muted</span></span></div>
+      <div class="swatch"><i style="background: var(--primary); box-shadow: var(--blade-glow)"></i><span><b>Accent, lame</b><br><span class="mono small muted">--primary · --blade</span></span></div>
+    </div>
+  </section>
+
+  <section class="stack" aria-labelledby="sens-titre">
+    <h2 id="sens-titre">Gravités, types, écarts, états</h2>
+    <div class="row"><span class="badge badge--critical"><svg class="icon" aria-hidden="true"><use href="#i-octagon-alert"/></svg>Critique</span><span class="badge badge--high"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Élevée</span><span class="badge badge--medium"><svg class="icon" aria-hidden="true"><use href="#i-circle-alert"/></svg>Moyenne</span><span class="badge badge--low"><svg class="icon" aria-hidden="true"><use href="#i-circle-dot"/></svg>Faible</span><span class="badge badge--info"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>Information</span></div>
+    <div class="row"><span class="badge badge--neutral"><svg class="icon" aria-hidden="true"><use href="#i-shield-alert"/></svg>Faille</span><span class="badge badge--neutral"><svg class="icon" aria-hidden="true"><use href="#i-hourglass"/></svg>Fin de vie</span><span class="badge badge--neutral"><svg class="icon" aria-hidden="true"><use href="#i-package-x"/></svg>Retirée</span><span class="badge badge--neutral"><svg class="icon" aria-hidden="true"><use href="#i-archive"/></svg>Dépréciée</span><span class="badge badge--neutral"><svg class="icon" aria-hidden="true"><use href="#i-circle-arrow-up"/></svg>Plus récente</span><span class="badge badge--neutral"><svg class="icon" aria-hidden="true"><use href="#i-link-2-off"/></svg>Non vérifiable</span><span class="badge badge--inconclusive"><svg class="icon" aria-hidden="true"><use href="#i-circle-help"/></svg>Non concluant</span></div>
+    <div class="row"><span class="badge badge--outline">Correctif</span><span class="badge badge--outline">Mineure</span><span class="badge badge--warning"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Majeure</span><span class="badge badge--primary">proposée</span><span class="badge badge--success"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>version exacte</span><span class="badge badge--neutral"><svg class="icon" aria-hidden="true"><use href="#i-ban"/></svg>à faire à la main</span></div>
+    <div class="stack-sm">
+      <div class="alert alert--info"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg><p class="alert-title">Information</p><div class="alert-body"><p>Un fait utile, sans urgence.</p></div></div>
+      <div class="alert alert--warning"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg><p class="alert-title">Avertissement</p><div class="alert-body"><p>À lire avant d'agir : majeure, hors de git, hors ligne.</p></div></div>
+      <div class="alert alert--danger"><svg class="icon" aria-hidden="true"><use href="#i-circle-x"/></svg><p class="alert-title">Erreur</p><div class="alert-body"><p>Ce qui s'est passé, puis quoi faire.</p></div></div>
+      <div class="alert alert--success"><svg class="icon" aria-hidden="true"><use href="#i-circle-check"/></svg><p class="alert-title">Réussite</p><div class="alert-body"><p>Fait, et vérifié.</p></div></div>
+      <div class="alert alert--inconclusive"><svg class="icon" aria-hidden="true"><use href="#i-circle-help"/></svg><p class="alert-title">Non concluant</p><div class="alert-body"><p>On ne sait pas : jamais confondu avec « à jour ».</p></div></div>
+    </div>
+  </section>
+
+  <section class="stack" aria-labelledby="commandes-titre">
+    <h2 id="commandes-titre">Boutons, champs, progression</h2>
+    <div class="row"><button type="button" class="btn btn--primary">Action principale</button><button type="button" class="btn btn--secondary">Secondaire</button><button type="button" class="btn btn--ghost">Discrète</button><button type="button" class="btn btn--danger">Appliquer quand même…</button><button type="button" class="btn btn--primary" disabled>Indisponible</button></div>
+    <div class="row"><label class="check"><input type="checkbox" checked> Case cochée</label><label class="check"><input type="radio" name="demo" checked> Option choisie</label><label class="check"><input type="radio" name="demo"> Autre option</label><label class="switch"><input type="checkbox" checked> Interrupteur</label></div>
+    <div class="stack-sm" style="max-width: 480px">
+      <span class="small muted">La « lame » : progression déterminée, puis indéterminée (en sombre, elle luit ; avec « réduire les animations », elle ne bouge pas).</span>
+      <div class="lame lame--wrap" style="--value: 62%"><span></span></div>
+      <div class="lame lame--wrap lame--indeterminate"><span></span></div>
+    </div>
+  </section>
+
+  <section class="stack" aria-labelledby="typo-titre">
+    <h2 id="typo-titre">Typographie</h2>
+    <p><b>IBM Plex Sans</b> pour le texte : « Les correctifs, les mineures et les corrections de failles sont pré-cochés. »</p>
+    <p class="mono"><b>JetBrains Mono</b>, sans ligatures, pour ce qui se copie : lodash 4.17.15 → 4.18.1 · flask==0.12.5 · npm install --package-lock-only</p>
+    <p class="small muted">Embarquées (fontsource, licence OFL), jamais chargées d'un CDN : l'interface marche hors ligne et sous la CSP <span class="mono">default-src 'self'</span>.</p>
+  </section>
+</main>
+
+<footer class="app-footer">
+  <span>Icônes : Lucide (ISC). Polices : IBM Plex Sans, JetBrains Mono (OFL).</span>
+  <span class="tagline">Que la Force soit avec tes dépendances.</span>
+</footer>
+</body>
+</html>

@@ -78,7 +78,7 @@ Une `Dependency` garde au moins :
 
   Toute autre dépendance : la justifier dans les notes de l'étape.
 - Front :
-  - React + TypeScript + Vite + Tailwind + shadcn/ui, à confirmer à E13 ;
+  - React + TypeScript + Vite + Tailwind 4 + shadcn/ui, icônes Lucide : confirmé à E13. Polices IBM Plex Sans et JetBrains Mono, embarquées (fontsource) ;
   - types TypeScript générés depuis le schéma OpenAPI de l'API ;
   - tests : Vitest + Testing Library, Playwright pour le bout en bout ;
   - node sert à développer et à construire le front, pas à utiliser l'outil.
@@ -106,7 +106,7 @@ Statuts : `à faire`, `en cours`, `fait`.
 | E10 | C | Réécriture des manifestes, commande `update` | fait |
 | E11 | C | Régénération des lockfiles | fait |
 | E12 | D. Interface web | Serveur local et API | fait |
-| E13 | D | Conception de l'interface (skill ui-ux-pro-max) | à faire |
+| E13 | D | Conception de l'interface (skill ui-ux-pro-max) | fait |
 | E14 | D | Front : socle et analyse locale | à faire |
 | E15 | D | Front : mise à jour locale | à faire |
 | E16 | E. Forges | Interface `Forge` commune, connexion GitHub | à faire |
@@ -902,14 +902,14 @@ jeton ; rien ne marche sans lui.
 **But** : savoir exactement à quoi ressemble l'interface avant de la coder, et la
 faire valider par l'utilisateur.
 
-- [ ] Charger le skill `ui-ux-pro-max` et suivre son déroulé :
+- [x] Charger le skill `ui-ux-pro-max` et suivre son déroulé :
   - analyser le besoin (produit : outil de développeur, tableau de bord, sobre et lisible) ;
   - générer le design system avec `--design-system --persist -p "forceupdate"` → `design-system/MASTER.md`, versionné ;
   - le nom invite à un clin d'œil à Star Wars : à doser (un détail, un message de chargement), sans nuire à la lisibilité ni reprendre de logo ou d'image protégés ;
   - une page `design-system/pages/<écran>.md` pour chaque écran qui s'écarte du master.
 
   Sous Windows, lancer les scripts du skill avec `python`, pas `python3`.
-- [ ] Les écrans :
+- [x] Les écrans :
 
   | # | Écran | Contenu |
   |---|---|---|
@@ -922,12 +922,32 @@ faire valider par l'utilisateur.
   | 7 | Mes dépôts | Liste de toutes les forges, filtres, sélection, analyse groupée, synthèse multi-dépôts |
   | 8 | PR / MR | Récapitulatif avant envoi (N dépôts, M PR), résultat avec les liens |
   | 9 | Réglages | Sélection par défaut, paquets ignorés, dépôts exclus, cache |
-- [ ] Pour chaque écran, les états : vide, chargement, erreur, hors ligne, « non concluant ». Clair et sombre. Accessibilité : les règles de priorité 1 du skill.
-- [ ] Maquettes HTML statiques des écrans 1, 4, 5 et 7, dans `design-system/mockups/`, ouvrables dans le navigateur. Les montrer à l'utilisateur.
-- [ ] Confirmer la pile du front (proposition : React + TypeScript + Vite + Tailwind + shadcn/ui) et les icônes (SVG, pas d'emoji).
-- [ ] Depuis E12, ce que l'API permet, à refléter dans les écrans : la progression par étape (`reading`, `projects_found`, `checking`, `package_checked` avec le paquet, `vulnerabilities_checked`) et par lockfile pendant une mise à jour (`written`, `regenerating`) ; l'annulation d'une analyse (pas d'une mise à jour, qui ne s'annule pas) ; « Analyses récentes » de l'écran 1 : l'API garde les chemins récents d'une session à l'autre (`recent`) et les analyses de la session seulement (`GET /api/scans`), pas les rapports ; le garde-fou git (`uncommitted`, puis « appliquer quand même » : `force`) ; un fichier envoyé se télécharge réécrit, il ne s'applique pas. Voir `docs/JSON_FORMAT.md`, « L'API de l'interface web ».
+- [x] Pour chaque écran, les états : vide, chargement, erreur, hors ligne, « non concluant ». Clair et sombre. Accessibilité : les règles de priorité 1 du skill.
+- [x] Maquettes HTML statiques des écrans 1, 4, 5 et 7, dans `design-system/mockups/`, ouvrables dans le navigateur. Les montrer à l'utilisateur.
+- [x] Confirmer la pile du front (proposition : React + TypeScript + Vite + Tailwind + shadcn/ui) et les icônes (SVG, pas d'emoji).
+- [x] Depuis E12, ce que l'API permet, à refléter dans les écrans : la progression par étape (`reading`, `projects_found`, `checking`, `package_checked` avec le paquet, `vulnerabilities_checked`) et par lockfile pendant une mise à jour (`written`, `regenerating`) ; l'annulation d'une analyse (pas d'une mise à jour, qui ne s'annule pas) ; « Analyses récentes » de l'écran 1 : l'API garde les chemins récents d'une session à l'autre (`recent`) et les analyses de la session seulement (`GET /api/scans`), pas les rapports ; le garde-fou git (`uncommitted`, puis « appliquer quand même » : `force`) ; un fichier envoyé se télécharge réécrit, il ne s'applique pas. Voir `docs/JSON_FORMAT.md`, « L'API de l'interface web ».
+
+- [x] Ajoutés en route : `design-system/ECRANS.md` (les 9 écrans, leurs états, leurs adresses, ce que l'API n'a pas encore), un aperçu du design system dans `mockups/index.html`, des cases ajoutées à E14 à E18 (voir les notes).
 
 **Fini quand** : l'utilisateur a validé le design system et les maquettes.
+
+**Notes** (session 13) :
+
+- **Commit d'abord** : E11 et E12 commités ensemble (`f23eab6`), avec l'accord de l'utilisateur.
+- **Ce qui est produit** (tout dans `design-system/`, rien dans `src/`) :
+  - `MASTER.md` : provenance (la commande du skill, ce qui a été changé et pourquoi), principes, tokens clair et sombre, typographie, mouvement, mise en page, icônes, composants, textes, le clin d'œil, accessibilité, correspondance avec shadcn/ui et Tailwind 4, anti-motifs, checklist ;
+  - `ECRANS.md` : les 9 écrans (contenu, action principale, appels à l'API, états vide / chargement / erreur / hors ligne / non concluant), les états de la coquille (serveur arrêté, session terminée, hors ligne, page introuvable), les adresses du front, ce que l'API n'a pas encore ;
+  - `pages/` : `analyse-en-cours.md`, `rapport.md`, `mise-a-jour.md`, `depots.md` (les écrans qui s'écartent du master) ;
+  - `mockups/` : `index.html` (les 9 écrans, aperçu des couleurs et composants), `accueil.html`, `rapport.html`, `mise-a-jour.html`, `depots.html`, et `assets/` (feuille de style aux tokens, petit script pour l'état et le thème, 76 icônes Lucide en sprite, 2 polices, licences). Chaque maquette a une barre « MAQUETTE » pour choisir l'état et le thème (aussi par l'adresse : `?state=…&theme=dark`).
+- **Données réelles** : `vulnerable` analysé par l'API (`forceupdate ui` et curl, sur une copie dans le scratchpad) : 28 failles (13 élevées, 14 moyennes, 1 faible), 2 plus récentes, 4 mises à jour (lodash 4.18.1, flask 0.12.5 et jinja2 2.11.3 pré-cochées ; flask 3.1.3 et werkzeug 3.1.9 majeures), le plan (deux diffs, `npm` et `uv pip compile` trouvés, deux avertissements d'uv, `uncommitted: []`), puis appliqué sur la copie : versions exactes. L'écran 7 est fictif (forges à venir), et le dit.
+- **Tranché avec le skill** (détail dans MASTER, « Provenance ») : style « Data-Dense Dashboard », clair et sombre. Rejeté de la proposition : l'accent vert (blanc dessus : 2,3:1 ; et le vert veut dire « à jour »), le sombre seul, Google Fonts (interdit par la CSP, et hors ligne), le motif de page « landing ». **Accent bleu**, couleurs de sens réservées (gravités, succès, avertissement, erreur, violet pour « non concluant », toujours avec icône et mot). **IBM Plex Sans + JetBrains Mono** (paire « Developer Mono » du skill), polices variables de fontsource (OFL), embarquées. Contrastes de toutes les paires calculés : texte ≥ 4,5:1, composants ≥ 3:1, dans les deux thèmes.
+- **Trouvé** : les ligatures de JetBrains Mono changent `--package-lock-only` en tiret long et `==` en signe double : coupées partout où il y a du code (une commande lue doit être celle à taper). Lucide 1.x n'a plus de logos de marque (GitHub, GitLab) : choix reporté à E16. Le sous-ensemble latin des polices n'a pas `→` : icône `arrow-right` dans les tableaux.
+- **Pile confirmée par l'utilisateur** : React + TypeScript + Vite + Tailwind 4 + shadcn/ui, icônes Lucide (décision n°17 du brief).
+- **Le clin d'œil (validé)** : la « lame » (un trait bleu devant `forceupdate`, et la barre de progression, qui luisent en sombre), la devise du brief en pied de page, un message pendant la recherche des failles (« Recherche d'une perturbation dans la Force… », sous la ligne fonctionnelle, hors de la zone annoncée), la page introuvable (« Ce n'est pas la page que vous cherchez. »). Jamais dans une erreur ou un résultat ; aucun logo ni image repris.
+- **Ce que l'API permet, reflété** : progression par étape (`reading`… `vulnerabilities_checked`, paquet en cours) et par lockfile (`written`, `regenerating`) ; annuler une analyse, pas une mise à jour (l'écran 5 le dit, sans bouton) ; « Cette session » (`GET /api/scans`) et « Chemins récents » (`recent`) séparés, avec la phrase « les rapports ne vivent que le temps de la session » ; garde-fou git (vert, `null` : hors de git, liste : « Appliquer quand même… » et confirmation, `force`) ; fichier envoyé : deux étapes, « Télécharger », pas de lockfile.
+- **Ce que l'API n'a pas** (ajouté au plan, l'API n'a pas bougé) : les chiffres d'une analyse dans `GET /api/scans` et la nature d'un chemin récent (E14) ; comptes, dépôts, synthèse multi-dépôts calculée par le serveur, récapitulatif des PR (E16 à E18). La progression « par projet » de l'écran 3 n'existe pas dans l'API et n'est pas nécessaire : nombre de projets, puis progression par paquet.
+- **Vérifié** : chaque maquette en clair et en sombre, à 1440 et à 375 px, chaque état de l'écran 5 et les principaux des autres (captures d'Edge sans fenêtre ; **sous Windows, sa fenêtre ne descend pas sous 492 px** : les captures à 375 px passent par un cadre `iframe` de 375 px). Un contrôle d'accessibilité statique des 5 pages (boutons et liens nommés, champs étiquetés, icônes cachées ou nommées, titres sans saut, un seul `h1`, `lang`, lien d'évitement, références `aria-*` existantes) : aucun problème. `uv run pytest` (1706 verts) et `uv run ruff check` inchangés.
+- **Le skill sous Windows** : ses dossiers `scripts/` et `data/` sont des liens git non résolus (des fichiers texte) ; le script est dans `~/.claude/skills/ui-ux-pro-max/src/ui-ux-pro-max/scripts/search.py`. `--persist` écrit dans `design-system/<projet>/MASTER.md` (`-o` pour le dossier de sortie) : le fichier a été repris, adapté et rangé à `design-system/MASTER.md`. Le générateur de pages (`--page`) produit un gabarit de page commerciale : les pages ont été écrites à la main.
 
 ### E14 — Front : socle et analyse locale
 
@@ -943,6 +963,13 @@ faire valider par l'utilisateur.
   - **en dev, le proxy de Vite** : le garde refuse une `Origin` ou un `Host` qui ne sont pas ceux du serveur (`http://localhost:5173` le serait). Le proxy doit réécrire `Host` (`changeOrigin`) et `Origin` vers l'adresse du serveur, et porter le jeton (`Authorization: Bearer`, lu dans une variable d'environnement de dev) ; ne jamais affaiblir le garde pour le dev ;
   - SSE : fermer l'`EventSource` à l'événement `end` (sinon il se rebranche) ; les cookies passent tout seuls (même origine).
 - [ ] Écrans 1 à 4 (accueil, choisir un dossier ou un fichier, analyse en cours, rapport).
+- [ ] Depuis E13 :
+  - pile : React + TypeScript + Vite + Tailwind 4 + shadcn/ui + `lucide-react` ; polices `@fontsource-variable/ibm-plex-sans` et `@fontsource-variable/jetbrains-mono`, embarquées, **ligatures coupées** dans tout ce qui est code ;
+  - tokens : ceux de `design-system/mockups/assets/mockups.css` (la référence exacte), dans `frontend/src/styles/tokens.css`, sous `:root` et `.dark` ; correspondance avec les variables de shadcn/ui : MASTER, « Pour E14 » ; thème clair, sombre ou système, gardé dans le `localStorage` ;
+  - écrans 1 à 4 selon `design-system/ECRANS.md`, `pages/analyse-en-cours.md`, `pages/rapport.md` et les maquettes `accueil.html`, `rapport.html` (tous leurs états) ; la coquille et ses états communs (serveur arrêté : `fetch` qui échoue ; session terminée : `401` ; hors ligne : `navigator.onLine` ; page introuvable) ; les adresses de ECRANS.md (« Adresses ») ;
+  - **API à compléter d'abord** (petit) : `summary` du rapport (ou `null`) dans `ScanSummary` (`GET /api/scans`), pour les chiffres des « Analyses récentes » ; `recent` en `{path, kind}` (dossier ou fichier). Refaire `web/openapi.json`, `docs/JSON_FORMAT.md` et les tests ;
+  - le tableau des dépendances sous 768 px : une vraie liste de cartes (un tableau restylé en blocs perd sa sémantique) ; virtualisé au-delà de 50 lignes ;
+  - annonces : l'étape en cours en `aria-live`, le nom du paquet au plus toutes les 5 s.
 - [ ] Tests : Vitest + Testing Library pour les composants ; un test Playwright de bout en bout (choisir un mini-projet, voir le bon rapport).
 - [ ] Revue avec la checklist du skill : accessibilité, états, clair et sombre.
 
@@ -961,6 +988,7 @@ conforme aux maquettes.
 - [ ] Glisser-déposer d'un fichier : analyse, puis téléchargement du fichier mis à jour.
 - [ ] Depuis E12 : plan `POST /api/updates/plan` (`files`, `skipped`, `lockfiles`, `uncommitted`, `applicable`) ; appliquer `POST /api/updates/apply` (409 avec les fichiers si git n'a pas leurs changements en commit : proposer d'appliquer quand même, `force`) ; suivre `GET /api/updates/{id}/events` ; résultat dans `results`. Glisser-déposer : `POST /api/files?name=…` (le contenu en corps), puis le même écran de rapport, le plan, et `GET /api/updates/{id}/files/{nom}` pour télécharger.
 - [ ] Garde-fous visibles : changements git non commités, outil natif absent, échec de résolution (fichiers restaurés).
+- [ ] Depuis E13 : écran 5 selon `design-system/pages/mise-a-jour.md` et la maquette `mise-a-jour.html`, avec toutes ses variantes (garde-fou, hors de git, outil absent, hors ligne, plan périmé, échec d'un outil, fichier envoyé, option `manual`, faille apportée, `note`) ; récapitulatif en colonne collante, barre collante en bas sous 1024 px ; `AlertDialog` pour « Appliquer quand même… » ; adresses `/analyses/{id}/mise-a-jour` et `/plans/{id}`.
 - [ ] Tests : composants, et un test de bout en bout qui applique une mise à jour sur une copie d'un mini-projet.
 
 **Fini quand** : choisir → analyser → cocher → voir le diff → appliquer, sans
@@ -994,6 +1022,7 @@ reste de l'outil ne connaissent que cette interface.
   - client REST (pagination `Link`, limites de débit, messages clairs pour 401, 403 et 404) ;
   - `whoami`, avec ce que le token permet (lecture seule, ou écriture et PR).
 - [ ] Écran 6 (Comptes) pour GitHub.
+- [ ] Depuis E13 : écran 6 selon `design-system/ECRANS.md` (états compris, device flow en grand avec « Copier ») ; l'API des comptes : lister, connecter (OAuth, device flow, token collé, `gh`), déconnecter, droits du token. Logos des forges : Lucide n'en a plus ; le nom en texte avec une icône neutre, ou leurs logos officiels (Simple Icons, CC0) dans le respect des chartes de chaque marque : trancher avec l'utilisateur.
 
 **À reprendre** : `sechunter/dashboard/api/routes/oauth_sso.py` d'Argos (flux OAuth, `state` en cookie).
 
@@ -1020,6 +1049,7 @@ GitHub, le voit dans « Comptes », puis se déconnecte.
 - [ ] Concurrence bornée entre dépôts ; cache des registres partagé ; nombre de requêtes API consommées affiché.
 - [ ] Analyser un dépôt public d'un autre compte : champ « `owner/repo` ou URL ».
 - [ ] Écran 7 (Mes dépôts : liste, filtres, sélection, synthèse) ; le rapport d'un dépôt réutilise l'écran 4.
+- [ ] Depuis E13 : écran 7 selon `design-system/pages/depots.md` et la maquette `depots.html`. L'API doit rendre : les drapeaux de chaque dépôt (archivé, fork, vide, privé, droit de push), les organisations qui restreignent l'accès, les requêtes d'API restantes ; des analyses groupées avec la progression par dépôt et l'annulation ; **la synthèse multi-dépôts, calculée par le serveur** (compteurs par type et gravité, dépôts à jour, à mettre à jour, non concluants, sautés, PR ouvertes) : pas de logique métier dans le front.
 - [ ] Depuis E12 : `web.jobs.Jobs.start_scan` prend une `LocalSource` ; l'ouvrir à la source d'un dépôt (et `ScanSummary.kind` à `repository`), les analyses de dépôts passant par le même `Worker` (client et cache partagés, concurrence bornée).
 
 **Fini quand** : dans l'interface, tous les dépôts du compte sont listés et
@@ -1046,6 +1076,7 @@ analysés ; le rapport est vérifié à la main sur 2 ou 3 dépôts.
   - dépôts archivés ou sans droit de push : sautés et signalés ;
   - un récapitulatif avant d'envoyer (N dépôts, M PR, le détail par dépôt), et rien n'est poussé sans validation.
 - [ ] Écran 8 (récapitulatif, puis résultat avec les liens des PR).
+- [ ] Depuis E13 : écran 8 selon `design-system/ECRANS.md` : récapitulatif par dépôt (PR existante mise à jour ou nouvelle, sélection, lockfiles et commandes, dépôts sautés et pourquoi), envoi suivi dépôt par dépôt, résultat avec les liens ; `#41` sur GitHub et Bitbucket, `!12` sur GitLab.
 
 **À reprendre** : `~/Desktop/the good guy/sechunter/core/repo/git_client.py`,
 `workspace.py`, et `github_app.py` (`create_pull_request`, pour les appels REST).
@@ -1244,7 +1275,7 @@ seulement des imports) donnent un rapport juste.
   - de fixer la sélection par défaut par écosystème ;
   - d'exclure des dossiers ;
   - d'analyser aussi les projets rangés dans des dossiers de tests ou d'exemples, écartés par défaut depuis E02 (`engine.scan(include_tests=True)`).
-- [ ] Réglages de l'utilisateur (`platformdirs`) : sélection par défaut, dépôts exclus, cache (le vider : `Cache.clear`, E06). Écran 9 (Réglages) pour les modifier.
+- [ ] Réglages de l'utilisateur (`platformdirs`) : sélection par défaut, dépôts exclus, cache (le vider : `Cache.clear`, E06). Écran 9 (Réglages) pour les modifier, selon `design-system/ECRANS.md` (le thème y figure aussi).
 - [ ] `requirements.txt` générés sans `.in` à côté (`uv export`, `poetry export`, `pdm export`, `pip-compile pyproject.toml`) : depuis E03, ils restent des manifestes et tous leurs paquets sortent comme directes. Les reconnaître (en-tête « autogenerated by pip-compile / uv », commentaires `# via`) et les traiter comme des lockfiles du manifeste du projet.
 - [ ] Une ligne de `requirements` à empreintes (`--hash`) : depuis E10, la réécriture la refuse, mais le planificateur ne le sait pas et pré-coche quand même l'option. Le marquer à l'analyse, pour que l'option soit `manual` (jamais pré-cochée, avec la raison).
 - [ ] Robustesse :
@@ -1343,3 +1374,4 @@ En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.
 | 10 | 2026-10-28 | E10 | Fait. `update/writers/` : `prepare` (chaque `Edit` situé et vérifié, une option appliquée en entier ou pas, conflits entre options, réécritures de la fin vers le début, auto-vérification par le parseur de l'analyse, diff unifié) et `write` (rien si un fichier a changé depuis le diff, fichier temporaire puis `os.replace`, remise en état si une écriture échoue) ; CRLF et BOM gardés. `parsers/yaml_spans.py` et `parse_pnpm_workspace` : catalogues et `overrides` de `pnpm-workspace.yaml` avec leur position (pnpm 11+ ne lit plus le champ `pnpm` du `package.json`, vérifié avec pnpm 12.15). `update/git.py` : garde-fou (`--force`). `forceupdate update` : diff, confirmation `[o/N]`, `--yes`, `--dry-run`. Versions proposées soumises à OSV en une requête (`planner.audit`, `UpdateOption.introduced`), jamais pré-cochées si elles apportent une faille. Trouvé et traité : une ligne `requirements` à `--hash` n'est pas réécrite ; l'emplacement vide est collé au nom. Vérifié à la main sur `vulnerable`, les 12 autres mini-projets et un clone d'Argos (garde-fou compris) : seules les contraintes changent. 1541 tests verts (plus 4 réseau) sous 3.11, 3.12 et 3.14. Cases ajoutées à E11, E12, E15, E29 |
 | 11 | 2026-10-28 | E11 | Fait. Commit de E10 d'abord (accord de l'utilisateur). `update/lockfiles.py` : `plan` (un `Job` par lockfile : outil, commande à lancer à la main, avertissements) et `regenerate` (lancé après `writers.write`, sans shell, délai de 600 s, sans scripts du projet), un pilote par outil — npm, pnpm, Yarn 1 et 2+, uv, Poetry 1 et 2, PDM (ajouté), pipenv, pip-tools et `uv pip compile` d'après l'en-tête —, chacun vérifié sur sa version actuelle (par `npx`, `corepack`, `uvx` pour ceux qui ne sont pas installés). Tranché : la version choisie est visée par `-P x==V` (uv, pip-compile) ou épinglée le temps d'un passage (npm, pnpm, Poetry, PDM) ; Yarn et pipenv prennent la plus haute permise ; `uv --no-build` écarté (il change la résolution, Argos échouait). Relu ensuite : version obtenue, ce qui retient une indirecte, ce qui a changé d'autre. Échec ou Ctrl-C : le groupe de fichiers remis comme avant, manifestes compris. Fichier de contraintes de pip réécrit par `writers`. `.txt` de pip-tools qui en cite un autre recompilé après lui. Garde-fou des tests : aucun vrai outil hors `network` (`FakeTools`). Vérifié à la main sur `vulnerable`, `npm`, `uv`, `pnpm-catalog`, `pip` et un clone d'Argos (10 mises à jour exactes) ; lockfiles stables quand on relance l'outil. 1590 tests verts (plus 8 réseau) sous 3.11, 3.12 et 3.14. Cases ajoutées à E12, E15, E18, E29, phase F |
 | 12 | 2026-10-28 | E12 | Fait. `web/` : FastAPI servi par uvicorn sur `127.0.0.1` (port libre), `forceupdate ui` (`--port`, `--no-browser`, Ctrl+C). Sécurité : jeton de session aléatoire (l'adresse affichée pose un cookie `HttpOnly`, `SameSite=Strict`, au nom portant le port, puis renvoie sans le jeton ; ou `Authorization: Bearer`), `Host`, `Origin` et `Sec-Fetch-Site` vérifiés, pas de CORS, en-têtes (`no-store`, `no-referrer`, CSP). Routes : dossiers (noms seulement, sans liens ni jonctions), analyses en tâche de fond avec progression SSE et annulation, plans (diffs, lockfiles, garde-fou git) appliqués par leur identifiant avec la progression par outil, fichier envoyé (analysé, téléchargé réécrit, jamais appliqué). Tranché : analyses dans une boucle à elles (client et cache partagés), mises à jour dans un thread à part une à la fois, état tenu dans la boucle du serveur ; l'API désigne les mises à jour par identifiant et version au lieu de les recopier. Ajouté : `update/local.py` (l'enchaînement de `cli.update`, partagé), progression de `lockfiles.regenerate`, abandon d'un hôte limité à 60 s, `report.json.Document`, schéma OpenAPI exporté (`web/openapi.json`, champs des réponses requis, vérifié contre les vraies réponses), `httpx2` en dev pour le client de test de Starlette. Trouvé : `SameSite` ne protège pas d'un autre port de 127.0.0.1 ; sous Windows, la boucle des analyses volait le réveil sur Ctrl+C à celle du serveur. Vérifié à la main avec curl (jeton, puis sans) : `vulnerable` analysé et planifié, application sur une copie avec les vrais npm et uv (versions exactes), annulation, fichier envoyé ; arrêt en 0,2 s. 1706 tests verts (plus 8 réseau) sous 3.11, 3.12 et 3.14. Pas de commit (E11 non plus) : à proposer. Cases ajoutées à E13, E14, E15, E17, E29 |
+| 13 | 2026-10-28 | E13 | Fait, validé par l'utilisateur. Commit de E11 et E12 d'abord (accord de l'utilisateur). Avec le skill `ui-ux-pro-max` : `design-system/MASTER.md` (style « Data-Dense Dashboard », clair et sombre, accent bleu, couleurs de sens réservées et toujours doublées d'une icône et d'un mot, IBM Plex Sans + JetBrains Mono embarquées et sans ligatures, contrastes calculés dans les deux thèmes, composants shadcn/ui, accessibilité), `ECRANS.md` (les 9 écrans, leurs états, leurs adresses), 4 pages d'écran, maquettes statiques des écrans 1, 4, 5 et 7 (`mockups/`, sans ressource extérieure, état et thème au choix) avec les données réelles de `vulnerable` passées par l'API (analyse, plan, puis application sur une copie). Tranché : pile React + TypeScript + Vite + Tailwind 4 + shadcn/ui + Lucide (confirmée) ; clin d'œil limité à la « lame », la devise, un message de chargement et la page introuvable. Trouvé : les ligatures de JetBrains Mono déforment les commandes ; Lucide n'a plus de logos de marque ; Edge sans fenêtre ne descend pas sous 492 px. Vérifié : captures en clair et en sombre, 1440 et 375 px, contrôle d'accessibilité des 5 pages ; rien dans `src/`, 1706 tests verts, ruff propre. Cases ajoutées à E14, E15, E16, E17, E18, E29 |

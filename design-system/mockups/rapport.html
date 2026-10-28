@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rapport · vulnerable · forceupdate (maquette)</title>
+  <link rel="stylesheet" href="assets/mockups.css">
+  <script src="assets/mockups.js"></script>
+</head>
+<body>
+<script src="assets/icons.js"></script>
+<a class="skip-link" href="#contenu">Aller au contenu</a>
+
+<div class="mock-bar" role="region" aria-label="Commandes de la maquette">
+  <strong>MAQUETTE</strong>
+  <span>Écran 4 · Rapport</span>
+  <label>État
+    <select id="mock-state">
+      <option value="normal">Normal (données réelles)</option>
+      <option value="detail" data-open-sheet="detail-flask">Détail d'une dépendance</option>
+      <option value="a-jour">Vide : rien à mettre à jour</option>
+      <option value="vide">Vide : aucun projet</option>
+      <option value="chargement">Chargement</option>
+      <option value="erreur">Erreur : analyse échouée</option>
+      <option value="introuvable">Erreur : analyse introuvable</option>
+      <option value="annulee">Analyse annulée</option>
+      <option value="hors-ligne">Hors ligne (cache)</option>
+      <option value="non-concluant">Non concluant</option>
+    </select>
+  </label>
+  <span class="segmented" role="group" aria-label="Thème de la maquette">
+    <button type="button" data-theme-choice="light">Clair</button>
+    <button type="button" data-theme-choice="dark">Sombre</button>
+    <button type="button" data-theme-choice="system">Système</button>
+  </span>
+  <a href="index.html">Toutes les maquettes</a>
+</div>
+
+<header class="app-header">
+  <button type="button" class="btn btn--ghost btn--icon menu-button" aria-expanded="false" aria-controls="nav" aria-label="Menu">
+    <svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg>
+  </button>
+  <a class="brand" href="accueil.html" aria-label="forceupdate, accueil">
+    <span class="brand-blade" aria-hidden="true"></span><span><b>force</b>update</span>
+  </a>
+  <nav id="nav" class="nav" aria-label="Navigation principale">
+    <a href="accueil.html" aria-current="true"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Analyser</a>
+    <a href="depots.html"><svg class="icon" aria-hidden="true"><use href="#i-folder-git-2"/></svg>Dépôts</a>
+    <a href="index.html#ecran-6"><svg class="icon" aria-hidden="true"><use href="#i-key-round"/></svg>Comptes</a>
+    <a href="index.html#ecran-9"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>Réglages</a>
+  </nav>
+  <div class="header-end">
+    <span class="net-status net-status--offline" data-show="hors-ligne">
+      <svg class="icon icon--sm" aria-hidden="true"><use href="#i-wifi-off"/></svg>Hors ligne
+    </span>
+    <button type="button" class="btn btn--ghost btn--icon" aria-label="Thème : celui du système. Changer">
+      <svg class="icon" aria-hidden="true"><use href="#i-monitor"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="contenu" tabindex="-1" class="container">
+  <nav class="breadcrumb" aria-label="Fil d'Ariane">
+    <a href="accueil.html">Analyser</a>
+    <svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg>
+    <span aria-current="page" class="mono">vulnerable</span>
+  </nav>
+
+  <div class="page-head">
+    <div class="stack-sm">
+      <h1><span class="mono">vulnerable</span></h1>
+      <p class="mono small muted break">C:/Users/pauzzle/Desktop/update-checker/tests/projects/vulnerable</p>
+      <p class="small muted" data-show="normal detail non-concluant a-jour">Analysé le 28 oct. 2026 à 18:30, en 0,9 s · registres et OSV interrogés à 18:30</p>
+      <p class="small muted" data-show="hors-ligne">Analysé hors ligne le 28 oct. 2026 à 18:30 · données du cache, la plus ancienne du 21 oct. 2026</p>
+      <div class="row" data-show="normal detail non-concluant hors-ligne a-jour">
+        <span class="badge badge--outline">dépendances de dev comprises</span>
+        <span class="badge badge--outline">indirectes : failles seulement</span>
+        <span class="badge badge--warning" data-show="hors-ligne"><svg class="icon" aria-hidden="true"><use href="#i-wifi-off"/></svg>hors ligne</span>
+      </div>
+    </div>
+    <div class="page-actions" data-show="normal detail non-concluant hors-ligne">
+      <button type="button" class="btn btn--secondary"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-refresh-cw"/></svg>Relancer l'analyse</button>
+      <a class="btn btn--primary" href="mise-a-jour.html"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-list-checks"/></svg>Mettre à jour<span class="badge badge--primary" style="margin-left: 4px" data-show="normal detail hors-ligne">3 cochées</span><span class="badge badge--primary" style="margin-left: 4px" data-show="non-concluant">2 cochées</span></a>
+    </div>
+  </div>
+
+  <!-- ===================== Bandeaux selon l'état ===================== -->
+  <div class="stack" style="margin-bottom: 24px" data-show="hors-ligne non-concluant">
+    <div class="alert alert--warning" role="status" data-show="hors-ligne">
+      <svg class="icon" aria-hidden="true"><use href="#i-wifi-off"/></svg>
+      <p class="alert-title">Analyse hors ligne : données du cache</p>
+      <div class="alert-body"><p>Les versions et les failles viennent du cache ; la plus ancienne donnée date du 21 oct. 2026 à 09:12 (il y a 7 jours). Des versions ou des failles publiées depuis peuvent manquer.</p></div>
+      <div class="alert-actions"><button type="button" class="btn btn--secondary btn--sm">Relancer en ligne</button></div>
+    </div>
+    <div class="alert alert--inconclusive" role="status" data-show="non-concluant">
+      <svg class="icon" aria-hidden="true"><use href="#i-circle-help"/></svg>
+      <p class="alert-title">2 constats non concluants</p>
+      <div class="alert-body"><p>Pour <span class="mono">lodash</span>, le registre npm et OSV n'ont pas répondu : ni sa dernière version ni ses failles ne sont connues. Ce n'est pas « à jour » : relancer l'analyse quand le réseau sera revenu.</p></div>
+      <div class="alert-actions"><button type="button" class="btn btn--secondary btn--sm"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-refresh-cw"/></svg>Relancer l'analyse</button><button type="button" class="btn btn--ghost btn--sm">Voir les non concluants</button></div>
+    </div>
+  </div>
+
+  <!-- ===================== Rapport ===================== -->
+  <div data-show="normal detail hors-ligne non-concluant">
+
+    <section class="section" aria-labelledby="synthese-titre">
+      <div class="section-head">
+        <h2 id="synthese-titre">Synthèse</h2>
+        <p class="small muted">2 directes, 5 indirectes · 2 vérifiées auprès des registres · 7 auditées par OSV</p>
+      </div>
+      <div class="grid grid--stats" role="group" aria-label="Constats par type ; choisir un type filtre le tableau">
+        <button type="button" class="stat stat--danger" aria-pressed="false">
+          <span class="stat-label"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-shield-alert"/></svg>Failles</span>
+          <span class="stat-value" data-show="normal detail hors-ligne">28</span><span class="stat-value" data-show="non-concluant">22</span>
+          <span class="stat-detail" data-show="normal detail hors-ligne">13 élevées · 14 moyennes · 1 faible</span>
+          <span class="stat-detail" data-show="non-concluant">10 élevées · 11 moyennes · 1 faible</span>
+        </button>
+        <button type="button" class="stat" aria-pressed="false">
+          <span class="stat-label"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-circle-arrow-up"/></svg>Plus récentes</span>
+          <span class="stat-value" data-show="normal detail hors-ligne">2</span><span class="stat-value" data-show="non-concluant">1</span>
+          <span class="stat-detail" data-show="normal detail hors-ligne">1 majeure · 1 mineure</span><span class="stat-detail" data-show="non-concluant">1 majeure</span>
+        </button>
+        <div class="stat stat--zero"><span class="stat-label"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-hourglass"/></svg>Fins de vie</span><span class="stat-value">0</span></div>
+        <div class="stat stat--zero"><span class="stat-label"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-package-x"/></svg>Retirées</span><span class="stat-value">0</span></div>
+        <div class="stat stat--zero"><span class="stat-label"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-archive"/></svg>Dépréciées</span><span class="stat-value">0</span></div>
+        <div class="stat stat--zero"><span class="stat-label"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-link-2-off"/></svg>Non vérifiables</span><span class="stat-value">0</span></div>
+        <div class="stat stat--zero" data-show="normal detail hors-ligne"><span class="stat-label"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-circle-help"/></svg>Non concluants</span><span class="stat-value">0</span></div>
+        <button type="button" class="stat stat--inconclusive" aria-pressed="false" data-show="non-concluant"><span class="stat-label"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-circle-help"/></svg>Non concluants</span><span class="stat-value">2</span><span class="stat-detail">registre ou OSV muet</span></button>
+      </div>
+
+      <div class="card stack-sm" data-show="normal detail hors-ligne">
+        <div class="row-between">
+          <h3 class="h4">Gravité des 30 constats</h3>
+          <span class="small muted">du plus grave au moins grave</span>
+        </div>
+        <div class="sevbar" role="img" aria-label="Gravité des 30 constats : 0 critique, 13 élevées, 14 moyennes, 2 faibles, 1 information">
+          <span class="s-high" style="width: 43.3%"></span><span class="s-medium" style="width: 46.7%"></span><span class="s-low" style="width: 6.7%"></span><span class="s-info" style="width: 3.3%"></span>
+        </div>
+        <ul class="legend" aria-hidden="true">
+          <li><span class="sw" style="background: var(--chart-critical)"></span>Critique <b class="tabular">0</b></li>
+          <li><span class="sw" style="background: var(--chart-high)"></span>Élevée <b class="tabular">13</b></li>
+          <li><span class="sw" style="background: var(--chart-medium)"></span>Moyenne <b class="tabular">14</b></li>
+          <li><span class="sw" style="background: var(--chart-low)"></span>Faible <b class="tabular">2</b></li>
+          <li><span class="sw" style="background: var(--chart-info)"></span>Information <b class="tabular">1</b></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="projets-titre">
+      <h2 id="projets-titre" class="sr-only">Langages et projets</h2>
+      <div class="grid grid--3">
+        <div class="card stack-sm">
+          <h3 class="h4 card-title"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-file-code"/></svg>Langages</h3>
+          <p class="small muted">Aucun code source reconnu : le dossier ne contient que des fichiers de dépendances.</p>
+          <div class="row"><span class="badge badge--neutral">PyPI</span><span class="badge badge--neutral">npm</span></div>
+        </div>
+        <div class="card stack-sm span-2">
+          <div class="row-between">
+            <h3 class="h4 card-title"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-boxes"/></svg>1 projet</h3>
+            <span class="small muted">un dossier avec au moins un manifeste</span>
+          </div>
+          <dl class="dl">
+            <dt>Dossier</dt><dd><span class="mono">.</span> <span class="muted">(la racine)</span></dd>
+            <dt>Manifestes</dt><dd class="mono small">package.json · requirements.in</dd>
+            <dt>Lockfiles</dt><dd class="mono small">package-lock.json · requirements.txt <span class="muted" style="font-family: var(--font-sans)">(uv pip compile)</span></dd>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="deps-titre">
+      <div class="section-head">
+        <h2 id="deps-titre">Dépendances</h2>
+        <p class="small muted" data-count="deps" aria-live="polite">7 dépendances</p>
+      </div>
+      <div class="toolbar" role="search" aria-label="Filtrer les dépendances">
+        <div class="input-icon">
+          <svg class="icon icon--sm" aria-hidden="true"><use href="#i-search"/></svg>
+          <label for="filtre" class="sr-only">Filtrer par nom</label>
+          <input id="filtre" class="input" placeholder="Filtrer par nom" data-filter="deps" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="segmented" role="group" aria-label="Directes ou indirectes" data-filters="deps">
+          <button type="button" aria-pressed="true" data-value="all">Toutes</button>
+          <button type="button" aria-pressed="false" data-value="direct">Directes</button>
+          <button type="button" aria-pressed="false" data-value="indirect">Indirectes</button>
+        </div>
+        <label class="sr-only" for="f-eco">Écosystème</label>
+        <select id="f-eco" class="select"><option>Tous les écosystèmes</option><option>PyPI</option><option>npm</option></select>
+        <label class="sr-only" for="f-type">Type de constat</label>
+        <select id="f-type" class="select"><option>Tous les constats</option><option>Failles</option><option>Plus récentes</option><option>Sans constat</option></select>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table table--stack" id="deps">
+          <caption class="sr-only">Dépendances du projet, triées par gravité décroissante</caption>
+          <thead>
+            <tr>
+              <th scope="col"><button type="button" class="sort">Paquet<svg class="icon" aria-hidden="true"><use href="#i-arrow-up-down"/></svg></button></th>
+              <th scope="col">Utilisée</th>
+              <th scope="col">Contrainte</th>
+              <th scope="col">Constats</th>
+              <th scope="col" aria-sort="descending"><button type="button" class="sort">Gravité<svg class="icon" aria-hidden="true"><use href="#i-arrow-down"/></svg></button></th>
+              <th scope="col">Mise à jour proposée</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr data-name="flask" data-kind="direct">
+              <td class="td-main" data-label="Paquet">
+                <button type="button" class="pkg" data-open="detail-flask">flask</button>
+                <span class="cell-sub"><span class="badge badge--neutral">PyPI</span> directe</span>
+              </td>
+              <td data-label="Utilisée"><span class="ver">0.12</span><span class="cell-sub">requirements.txt</span></td>
+              <td data-label="Contrainte"><span class="ver">==0.12</span><span class="cell-sub">requirements.in, ligne 2</span></td>
+              <td data-label="Constats">
+                <div class="row" data-show="normal detail hors-ligne non-concluant">
+                  <span class="badge badge--high"><svg class="icon" aria-hidden="true"><use href="#i-shield-alert"/></svg>4 failles</span>
+                  <span class="badge badge--warning"><svg class="icon" aria-hidden="true"><use href="#i-circle-arrow-up"/></svg>3.1.3 majeure</span>
+                </div>
+              </td>
+              <td data-label="Gravité"><span class="badge badge--high"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Élevée</span></td>
+              <td data-label="Mise à jour"><span class="ver-arrow ver">0.12<svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg>0.12.5</span><span class="cell-sub">correctif · corrige 1 faille sur 4</span></td>
+            </tr>
+            <tr data-name="lodash" data-kind="direct">
+              <td class="td-main" data-label="Paquet">
+                <button type="button" class="pkg">lodash</button>
+                <span class="cell-sub"><span class="badge badge--neutral">npm</span> directe</span>
+              </td>
+              <td data-label="Utilisée"><span class="ver">4.17.15</span><span class="cell-sub">package-lock.json</span></td>
+              <td data-label="Contrainte"><span class="ver">4.17.15</span><span class="cell-sub">package.json, ligne 6</span></td>
+              <td data-label="Constats">
+                <div class="row" data-show="normal detail hors-ligne">
+                  <span class="badge badge--high"><svg class="icon" aria-hidden="true"><use href="#i-shield-alert"/></svg>6 failles</span>
+                  <span class="badge badge--outline"><svg class="icon" aria-hidden="true"><use href="#i-circle-arrow-up"/></svg>4.18.1 mineure</span>
+                </div>
+                <div class="row" data-show="non-concluant">
+                  <span class="badge badge--inconclusive"><svg class="icon" aria-hidden="true"><use href="#i-circle-help"/></svg>failles non vérifiées</span>
+                  <span class="badge badge--inconclusive"><svg class="icon" aria-hidden="true"><use href="#i-circle-help"/></svg>dernière version inconnue</span>
+                </div>
+              </td>
+              <td data-label="Gravité">
+                <span class="badge badge--high" data-show="normal detail hors-ligne"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Élevée</span>
+                <span class="badge badge--inconclusive" data-show="non-concluant"><svg class="icon" aria-hidden="true"><use href="#i-circle-help"/></svg>Inconnue</span>
+              </td>
+              <td data-label="Mise à jour">
+                <span data-show="normal detail hors-ligne"><span class="ver-arrow ver">4.17.15<svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg>4.18.1</span><span class="cell-sub">mineure · corrige les 6 failles</span></span>
+                <span class="muted small" data-show="non-concluant">aucune tant que la dernière version n'est pas connue</span>
+              </td>
+            </tr>
+            <tr data-name="jinja2" data-kind="indirect">
+              <td class="td-main" data-label="Paquet">
+                <button type="button" class="pkg">jinja2</button>
+                <span class="cell-sub"><span class="badge badge--neutral">PyPI</span> indirecte</span>
+              </td>
+              <td data-label="Utilisée"><span class="ver">2.10</span><span class="cell-sub">requirements.txt</span></td>
+              <td data-label="Contrainte"><span class="muted small">aucune : vient du lockfile</span></td>
+              <td data-label="Constats"><span class="badge badge--high"><svg class="icon" aria-hidden="true"><use href="#i-shield-alert"/></svg>6 failles</span></td>
+              <td data-label="Gravité"><span class="badge badge--high"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Élevée</span></td>
+              <td data-label="Mise à jour"><span class="ver-arrow ver">2.10<svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg>2.11.3</span><span class="cell-sub">mineure · lockfile seul · corrige 2 failles sur 6</span></td>
+            </tr>
+            <tr data-name="werkzeug" data-kind="indirect">
+              <td class="td-main" data-label="Paquet">
+                <button type="button" class="pkg">werkzeug</button>
+                <span class="cell-sub"><span class="badge badge--neutral">PyPI</span> indirecte</span>
+              </td>
+              <td data-label="Utilisée"><span class="ver">0.14.1</span><span class="cell-sub">requirements.txt</span></td>
+              <td data-label="Contrainte"><span class="muted small">aucune : vient du lockfile</span></td>
+              <td data-label="Constats"><span class="badge badge--high"><svg class="icon" aria-hidden="true"><use href="#i-shield-alert"/></svg>12 failles</span></td>
+              <td data-label="Gravité"><span class="badge badge--high"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Élevée</span></td>
+              <td data-label="Mise à jour"><span class="ver-arrow ver">0.14.1<svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg>3.1.9</span><span class="cell-sub"><span class="badge badge--warning">Majeure</span> proposée, pas cochée</span></td>
+            </tr>
+            <tr data-name="click" data-kind="indirect">
+              <td class="td-main" data-label="Paquet"><button type="button" class="pkg">click</button><span class="cell-sub"><span class="badge badge--neutral">PyPI</span> indirecte</span></td>
+              <td data-label="Utilisée"><span class="ver">7.0</span><span class="cell-sub">requirements.txt</span></td>
+              <td data-label="Contrainte"><span class="muted small">aucune : vient du lockfile</span></td>
+              <td data-label="Constats"><span class="small"><svg class="icon icon--sm" aria-hidden="true" style="vertical-align: -3px; color: var(--success)"><use href="#i-shield-check"/></svg> Aucune faille connue</span><span class="cell-sub">version non vérifiée (indirecte)</span></td>
+              <td data-label="Gravité"><span class="muted small">—</span></td>
+              <td data-label="Mise à jour"><span class="muted small">—</span></td>
+            </tr>
+            <tr data-name="itsdangerous" data-kind="indirect">
+              <td class="td-main" data-label="Paquet"><button type="button" class="pkg">itsdangerous</button><span class="cell-sub"><span class="badge badge--neutral">PyPI</span> indirecte</span></td>
+              <td data-label="Utilisée"><span class="ver">1.1.0</span><span class="cell-sub">requirements.txt</span></td>
+              <td data-label="Contrainte"><span class="muted small">aucune : vient du lockfile</span></td>
+              <td data-label="Constats"><span class="small"><svg class="icon icon--sm" aria-hidden="true" style="vertical-align: -3px; color: var(--success)"><use href="#i-shield-check"/></svg> Aucune faille connue</span><span class="cell-sub">version non vérifiée (indirecte)</span></td>
+              <td data-label="Gravité"><span class="muted small">—</span></td>
+              <td data-label="Mise à jour"><span class="muted small">—</span></td>
+            </tr>
+            <tr data-name="markupsafe" data-kind="indirect">
+              <td class="td-main" data-label="Paquet"><button type="button" class="pkg">markupsafe</button><span class="cell-sub"><span class="badge badge--neutral">PyPI</span> indirecte</span></td>
+              <td data-label="Utilisée"><span class="ver">1.1.0</span><span class="cell-sub">requirements.txt</span></td>
+              <td data-label="Contrainte"><span class="muted small">aucune : vient du lockfile</span></td>
+              <td data-label="Constats"><span class="small"><svg class="icon icon--sm" aria-hidden="true" style="vertical-align: -3px; color: var(--success)"><use href="#i-shield-check"/></svg> Aucune faille connue</span><span class="cell-sub">version non vérifiée (indirecte)</span></td>
+              <td data-label="Gravité"><span class="muted small">—</span></td>
+              <td data-label="Mise à jour"><span class="muted small">—</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="ecartes-titre">
+      <details class="disclosure">
+        <summary><svg class="icon icon--sm" aria-hidden="true"><use href="#i-chevron-right"/></svg><span id="ecartes-titre">Fichiers écartés (0)</span></summary>
+        <p class="small muted" style="padding-left: 24px">Aucun manifeste écarté. Ceux des dossiers de tests, de fixtures ou d'exemples seraient listés ici, avec de quoi relancer l'analyse en les gardant.</p>
+      </details>
+    </section>
+  </div>
+
+  <!-- ===================== Vide : rien à mettre à jour ===================== -->
+  <div class="stack" data-show="a-jour">
+    <div class="alert alert--success" role="status">
+      <svg class="icon" aria-hidden="true"><use href="#i-circle-check"/></svg>
+      <p class="alert-title">Rien à mettre à jour</p>
+      <div class="alert-body"><p>Les 2 dépendances directes sont à leur dernière version, et aucune des 7 dépendances n'a de faille connue d'OSV. Les versions des 5 indirectes n'ont pas été comparées aux registres (option « indirectes »).</p></div>
+      <div class="alert-actions"><button type="button" class="btn btn--secondary btn--sm">Relancer avec les indirectes</button></div>
+    </div>
+    <div class="grid grid--stats">
+      <div class="stat stat--success"><span class="stat-label"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-shield-check"/></svg>Failles</span><span class="stat-value">0</span><span class="stat-detail">7 dépendances auditées</span></div>
+      <div class="stat stat--zero"><span class="stat-label"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-circle-arrow-up"/></svg>Plus récentes</span><span class="stat-value">0</span></div>
+      <div class="stat stat--zero"><span class="stat-label"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-circle-help"/></svg>Non concluants</span><span class="stat-value">0</span></div>
+    </div>
+  </div>
+
+  <!-- ===================== Vide : aucun projet ===================== -->
+  <div class="card empty" data-show="vide">
+    <svg class="icon icon--xl" aria-hidden="true"><use href="#i-folder-open"/></svg>
+    <h2 class="h3">Aucun fichier de dépendances dans ce dossier</h2>
+    <p>forceupdate cherche des manifestes et des lockfiles (<code>package.json</code>, <code>pyproject.toml</code>, <code>requirements.txt</code>, <code>uv.lock</code>…). 3 manifestes rangés dans des dossiers de tests ont été écartés.</p>
+    <div class="row" style="justify-content: center">
+      <button type="button" class="btn btn--primary">Analyser aussi les dossiers de tests</button>
+      <a class="btn btn--secondary" href="accueil.html">Choisir un autre dossier</a>
+    </div>
+  </div>
+
+  <!-- ===================== Chargement ===================== -->
+  <div class="stack" data-show="chargement" aria-busy="true" aria-label="Chargement du rapport">
+    <div class="grid grid--stats">
+      <div class="stat"><div class="skeleton" style="width: 60%"></div><div class="skeleton" style="width: 40%; height: 30px"></div></div>
+      <div class="stat"><div class="skeleton" style="width: 60%"></div><div class="skeleton" style="width: 40%; height: 30px"></div></div>
+      <div class="stat"><div class="skeleton" style="width: 60%"></div><div class="skeleton" style="width: 40%; height: 30px"></div></div>
+      <div class="stat"><div class="skeleton" style="width: 60%"></div><div class="skeleton" style="width: 40%; height: 30px"></div></div>
+    </div>
+    <div class="card stack-sm"><div class="skeleton" style="width: 30%"></div><div class="skeleton" style="height: 12px"></div></div>
+    <div class="table-wrap" style="padding: 16px"><div class="stack-sm">
+      <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton" style="width: 70%"></div>
+    </div></div>
+  </div>
+
+  <!-- ===================== Erreurs ===================== -->
+  <div class="alert alert--danger" role="alert" data-show="erreur">
+    <svg class="icon" aria-hidden="true"><use href="#i-circle-x"/></svg>
+    <p class="alert-title">L'analyse a échoué</p>
+    <div class="alert-body">
+      <p>Lecture impossible de <span class="mono">C:/Users/pauzzle/Desktop/update-checker/tests/projects/vulnerable</span> : accès refusé.</p>
+      <p class="muted">Vérifier que le dossier existe et qu'il est lisible, puis relancer.</p>
+    </div>
+    <div class="alert-actions">
+      <button type="button" class="btn btn--primary btn--sm"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-refresh-cw"/></svg>Relancer l'analyse</button>
+      <a class="btn btn--secondary btn--sm" href="accueil.html">Choisir un autre dossier</a>
+    </div>
+  </div>
+  <div class="card empty" data-show="introuvable">
+    <svg class="icon icon--xl" aria-hidden="true"><use href="#i-history"/></svg>
+    <h2 class="h3">Cette analyse n'existe plus</h2>
+    <p>Le serveur ne garde les analyses que le temps de sa session (les 20 plus récentes). Il a peut-être redémarré. Les chemins récents, eux, sont gardés : relancer depuis l'accueil.</p>
+    <a class="btn btn--primary" href="accueil.html">Retour à l'accueil</a>
+  </div>
+  <div class="card empty" data-show="annulee">
+    <svg class="icon icon--xl" aria-hidden="true"><use href="#i-circle-stop"/></svg>
+    <h2 class="h3">Analyse annulée</h2>
+    <p>Arrêtée à l'étape « vérification des paquets » (41 sur 64). Aucun rapport partiel n'est gardé.</p>
+    <button type="button" class="btn btn--primary"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-refresh-cw"/></svg>Relancer l'analyse</button>
+  </div>
+</main>
+
+<!-- ===================== Panneau : détail de flask ===================== -->
+<div class="scrim" id="detail-flask-scrim" hidden></div>
+<section class="sheet" id="detail-flask" role="dialog" aria-modal="true" aria-labelledby="detail-flask-titre" hidden>
+  <div class="sheet-head">
+    <div class="grow stack-sm">
+      <h2 id="detail-flask-titre" class="mono" tabindex="-1" data-autofocus>flask</h2>
+      <div class="row"><span class="badge badge--neutral">PyPI</span><span class="badge badge--outline">directe</span><span class="badge badge--outline">runtime</span></div>
+    </div>
+    <button type="button" class="btn btn--ghost btn--icon" data-close aria-label="Fermer le détail"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+  </div>
+  <div class="sheet-body">
+    <section class="stack-sm" aria-labelledby="d-versions">
+      <h3 id="d-versions" class="h4">Versions</h3>
+      <dl class="dl">
+        <dt>Utilisée</dt><dd><span class="ver">0.12</span> <span class="muted">lue dans requirements.txt</span></dd>
+        <dt>Contrainte</dt><dd><span class="ver">==0.12</span> <span class="muted">requirements.in, ligne 2</span></dd>
+        <dt>Dernière</dt><dd><span class="ver">3.1.3</span> <span class="badge badge--warning">Majeure</span></dd>
+      </dl>
+    </section>
+    <section class="stack-sm" aria-labelledby="d-constats">
+      <h3 id="d-constats" class="h4">5 constats</h3>
+      <ul>
+        <li class="finding">
+          <span class="badge badge--high"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Élevée</span>
+          <div class="finding-main">
+            <p class="finding-title" lang="en">Flask is vulnerable to Denial of Service via incorrect encoding of JSON data</p>
+            <div class="finding-ids"><span>CVE-2018-1000656</span><span>GHSA-562c-5r94-xh97</span><span>PYSEC-2018-66</span></div>
+            <p class="small muted">CVSS 7,5 · corrigée en <span class="ver">0.12.3</span> · <a href="https://osv.dev/vulnerability/GHSA-562c-5r94-xh97" target="_blank" rel="noreferrer">avis sur osv.dev<svg class="icon icon--sm" aria-hidden="true" style="vertical-align: -3px"><use href="#i-external-link"/></svg><span class="sr-only"> (nouvel onglet)</span></a></p>
+          </div>
+        </li>
+        <li class="finding">
+          <span class="badge badge--high"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Élevée</span>
+          <div class="finding-main">
+            <p class="finding-title" lang="en">Pallets Project Flask is vulnerable to Denial of Service via Unexpected memory usage</p>
+            <div class="finding-ids"><span>CVE-2019-1010083</span><span>GHSA-5wv5-4vpf-pj6m</span><span>PYSEC-2019-179</span></div>
+            <p class="small muted">CVSS 7,5 · corrigée en <span class="ver">1.0</span> · <a href="https://osv.dev/vulnerability/GHSA-5wv5-4vpf-pj6m" target="_blank" rel="noreferrer">avis sur osv.dev<span class="sr-only"> (nouvel onglet)</span></a></p>
+          </div>
+        </li>
+        <li class="finding">
+          <span class="badge badge--high"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Élevée</span>
+          <div class="finding-main">
+            <p class="finding-title" lang="en">Flask vulnerable to possible disclosure of permanent session cookie due to missing Vary: Cookie header</p>
+            <div class="finding-ids"><span>CVE-2023-30861</span><span>GHSA-m2qf-hxjv-5gpq</span><span>PYSEC-2023-62</span></div>
+            <p class="small muted">CVSS 7,5 · corrigée en <span class="ver">2.2.5</span> · <a href="https://osv.dev/vulnerability/GHSA-m2qf-hxjv-5gpq" target="_blank" rel="noreferrer">avis sur osv.dev<span class="sr-only"> (nouvel onglet)</span></a></p>
+          </div>
+        </li>
+        <li class="finding">
+          <span class="badge badge--medium"><svg class="icon" aria-hidden="true"><use href="#i-circle-alert"/></svg>Moyenne</span>
+          <div class="finding-main">
+            <p class="finding-title" lang="en">Flask session does not add <code>Vary: Cookie</code> header when accessed in some ways</p>
+            <div class="finding-ids"><span>CVE-2026-27205</span><span>GHSA-68rp-wp8r-4726</span><span>PYSEC-2026-2151</span></div>
+            <p class="small muted">CVSS 4,3 · corrigée en <span class="ver">3.1.3</span> · <a href="https://osv.dev/vulnerability/GHSA-68rp-wp8r-4726" target="_blank" rel="noreferrer">avis sur osv.dev<span class="sr-only"> (nouvel onglet)</span></a></p>
+          </div>
+        </li>
+        <li class="finding">
+          <span class="badge badge--low"><svg class="icon" aria-hidden="true"><use href="#i-circle-arrow-up"/></svg>Faible</span>
+          <div class="finding-main">
+            <p class="finding-title">Version 3.1.3 disponible (majeure) ; utilisée : 0.12.</p>
+            <p class="small muted"><a href="https://pypi.org/project/flask/" target="_blank" rel="noreferrer">flask sur pypi.org<span class="sr-only"> (nouvel onglet)</span></a></p>
+          </div>
+        </li>
+      </ul>
+    </section>
+    <section class="stack-sm" aria-labelledby="d-maj">
+      <h3 id="d-maj" class="h4">Mises à jour possibles</h3>
+      <ul class="list">
+        <li style="grid-template-columns: minmax(0, 1fr) auto">
+          <div><span class="ver-arrow ver">0.12<svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg><b>0.12.5</b></span> <span class="badge badge--outline">Correctif</span> <span class="badge badge--primary">pré-cochée</span>
+            <p class="small muted">Dernier correctif · corrige 1 faille, en laisse 3</p></div>
+        </li>
+        <li style="grid-template-columns: minmax(0, 1fr) auto">
+          <div><span class="ver-arrow ver">0.12<svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg><b>3.1.3</b></span> <span class="badge badge--warning"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Majeure</span>
+            <p class="small muted">Dernière version · corrige les 4 failles · peut demander d'adapter le code</p></div>
+        </li>
+      </ul>
+    </section>
+  </div>
+  <div class="sheet-foot">
+    <button type="button" class="btn btn--secondary" data-close>Fermer</button>
+    <a class="btn btn--primary" href="mise-a-jour.html">Choisir la version de flask</a>
+  </div>
+</section>
+
+<div id="live" class="sr-only" aria-live="polite"></div>
+</body>
+</html>

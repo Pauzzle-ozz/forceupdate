@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Accueil · forceupdate (maquette)</title>
+  <link rel="stylesheet" href="assets/mockups.css">
+  <script src="assets/mockups.js"></script>
+</head>
+<body>
+<script src="assets/icons.js"></script>
+<a class="skip-link" href="#contenu">Aller au contenu</a>
+
+<div class="mock-bar" role="region" aria-label="Commandes de la maquette">
+  <strong>MAQUETTE</strong>
+  <span>Écran 1 · Accueil</span>
+  <label>État
+    <select id="mock-state">
+      <option value="normal">Normal</option>
+      <option value="vide">Vide (premier lancement)</option>
+      <option value="chargement">Chargement</option>
+      <option value="erreur">Erreur : serveur arrêté</option>
+      <option value="session">Erreur : session terminée</option>
+      <option value="hors-ligne">Hors ligne</option>
+      <option value="non-concluant">Non concluant</option>
+      <option value="depot">Fichier glissé sur la page</option>
+    </select>
+  </label>
+  <span class="segmented" role="group" aria-label="Thème de la maquette">
+    <button type="button" data-theme-choice="light">Clair</button>
+    <button type="button" data-theme-choice="dark">Sombre</button>
+    <button type="button" data-theme-choice="system">Système</button>
+  </span>
+  <a href="index.html">Toutes les maquettes</a>
+</div>
+
+<header class="app-header">
+  <button type="button" class="btn btn--ghost btn--icon menu-button" aria-expanded="false" aria-controls="nav" aria-label="Menu">
+    <svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg>
+  </button>
+  <a class="brand" href="accueil.html" aria-label="forceupdate, accueil">
+    <span class="brand-blade" aria-hidden="true"></span><span><b>force</b>update</span>
+  </a>
+  <nav id="nav" class="nav" aria-label="Navigation principale">
+    <a href="accueil.html" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Analyser</a>
+    <a href="depots.html"><svg class="icon" aria-hidden="true"><use href="#i-folder-git-2"/></svg>Dépôts</a>
+    <a href="index.html#ecran-6"><svg class="icon" aria-hidden="true"><use href="#i-key-round"/></svg>Comptes</a>
+    <a href="index.html#ecran-9"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>Réglages</a>
+  </nav>
+  <div class="header-end">
+    <span class="net-status net-status--offline" data-show="hors-ligne">
+      <svg class="icon icon--sm" aria-hidden="true"><use href="#i-wifi-off"/></svg>Hors ligne
+    </span>
+    <button type="button" class="btn btn--ghost btn--icon" aria-label="Thème : celui du système. Changer">
+      <svg class="icon" aria-hidden="true"><use href="#i-monitor"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- Bandeaux globaux : sous l'en-tête, au-dessus du contenu -->
+<div class="alert alert--danger banner" role="alert" data-show="erreur">
+  <svg class="icon" aria-hidden="true"><use href="#i-server-off"/></svg>
+  <p class="alert-title">Le serveur local ne répond plus</p>
+  <div class="alert-body">
+    <p>Il a sans doute été arrêté (Ctrl+C dans le terminal). Le relancer avec <code>forceupdate ui</code>, puis ouvrir l'adresse qu'il affiche.</p>
+  </div>
+  <div class="alert-actions"><button type="button" class="btn btn--secondary btn--sm"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-refresh-cw"/></svg>Réessayer</button></div>
+</div>
+<div class="alert alert--warning banner" role="alert" data-show="session">
+  <svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>
+  <p class="alert-title">Session terminée</p>
+  <div class="alert-body">
+    <p>Le serveur a redémarré : son jeton a changé. Ouvrir l'adresse que <code>forceupdate ui</code> affiche dans le terminal (elle contient le nouveau jeton). Les analyses de la session précédente sont perdues ; les chemins récents restent.</p>
+  </div>
+</div>
+<div class="alert alert--warning banner" role="status" data-show="hors-ligne">
+  <svg class="icon" aria-hidden="true"><use href="#i-wifi-off"/></svg>
+  <p class="alert-title">Pas de réseau</p>
+  <div class="alert-body">
+    <p>L'analyse n'utilisera que le cache : ses données peuvent dater de plusieurs jours, et ce qui n'y est pas sortira « non concluant ». L'option « Hors ligne » est cochée.</p>
+  </div>
+</div>
+
+<main id="contenu" tabindex="-1" class="container container--narrow">
+
+  <div class="page-head">
+    <div>
+      <h1>Analyser du code</h1>
+      <p class="muted">Un dossier ou un fichier de l'ordinateur, ou les dépôts d'un compte connecté. Rien n'est modifié sans validation.</p>
+    </div>
+  </div>
+
+  <section class="section" aria-labelledby="sources-titre">
+    <h2 id="sources-titre" class="sr-only">Choisir une source</h2>
+    <div class="grid grid--3">
+      <article class="card source-card">
+        <span class="icon-tile" aria-hidden="true"><svg class="icon icon--lg" aria-hidden="true"><use href="#i-folder-open"/></svg></span>
+        <h3>Un dossier</h3>
+        <p>Tout le dossier est parcouru (sans <code>node_modules</code>, <code>.venv</code>, ni ce que <code>.gitignore</code> écarte). Un monorepo donne plusieurs projets.</p>
+        <div class="actions"><a class="btn btn--primary" href="index.html#ecran-2"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-folder-open"/></svg>Choisir un dossier</a></div>
+      </article>
+      <article class="card source-card">
+        <span class="icon-tile" aria-hidden="true"><svg class="icon icon--lg" aria-hidden="true"><use href="#i-file-code"/></svg></span>
+        <h3>Un fichier</h3>
+        <p>Un manifeste ou un lockfile (<code>package.json</code>, <code>requirements.txt</code>, <code>uv.lock</code>…), pris sur l'ordinateur ou déposé ici.</p>
+        <div class="dropzone" aria-hidden="true">
+          <svg class="icon" aria-hidden="true"><use href="#i-upload"/></svg>
+          <span class="small">Déposer un fichier n'importe où sur la page</span>
+        </div>
+        <div class="actions"><a class="btn btn--secondary" href="index.html#ecran-2">Choisir un fichier</a></div>
+      </article>
+      <article class="card source-card">
+        <span class="icon-tile" aria-hidden="true"><svg class="icon icon--lg" aria-hidden="true"><use href="#i-folder-git-2"/></svg></span>
+        <h3>Mes dépôts</h3>
+        <p>GitHub, GitLab, Bitbucket : tous les dépôts du compte, analysés sans les cloner. Une PR par dépôt à mettre à jour.</p>
+        <p class="row small"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-unplug"/></svg>Aucun compte connecté</p>
+        <div class="actions"><a class="btn btn--secondary" href="index.html#ecran-6">Connecter un compte</a></div>
+      </article>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="chemin-titre">
+    <h2 id="chemin-titre" class="h3">Ou donner un chemin</h2>
+    <form class="stack-sm" action="#">
+      <div class="field">
+        <label class="label" for="chemin">Chemin absolu d'un dossier ou d'un fichier</label>
+        <div class="input-group">
+          <input id="chemin" class="input input--mono" name="path" placeholder="C:/Users/pauzzle/Projets/mon-app" autocomplete="off" spellcheck="false" aria-describedby="chemin-aide">
+          <button class="btn btn--secondary" type="submit"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-play"/></svg>Analyser</button>
+        </div>
+        <p id="chemin-aide" class="help">Coller le chemin copié depuis l'explorateur ou le terminal.</p>
+      </div>
+      <details class="disclosure">
+        <summary><svg class="icon icon--sm" aria-hidden="true"><use href="#i-chevron-right"/></svg>Options d'analyse</summary>
+        <div class="stack-sm" style="padding: 8px 0 0 24px">
+          <label class="switch"><input type="checkbox" checked> Vérifier les dépendances de développement</label>
+          <label class="switch"><input type="checkbox"> Vérifier aussi les versions des dépendances indirectes <span class="muted">(leurs failles sont toujours cherchées)</span></label>
+          <label class="switch"><input type="checkbox"> Analyser aussi les dossiers de tests et d'exemples</label>
+          <label class="switch" data-show="normal vide chargement erreur session non-concluant depot"><input type="checkbox"> Hors ligne : seulement le cache</label>
+          <label class="switch" data-show="hors-ligne"><input type="checkbox" checked> Hors ligne : seulement le cache <span class="muted">(coché : pas de réseau)</span></label>
+          <label class="switch"><input type="checkbox" checked> Utiliser le cache disque</label>
+        </div>
+      </details>
+    </form>
+  </section>
+
+  <!-- Analyses récentes -->
+  <section class="section" aria-labelledby="recentes-titre">
+    <div class="section-head">
+      <h2 id="recentes-titre">Analyses récentes</h2>
+      <p class="small muted" data-show="normal hors-ligne non-concluant depot">Les rapports sont gardés le temps de la session ; les chemins, d'une session à l'autre.</p>
+    </div>
+
+    <!-- Normal -->
+    <div class="stack" data-show="normal hors-ligne depot">
+      <h3 class="h4">Cette session</h3>
+      <ul class="list">
+        <li>
+          <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
+          <div class="grow">
+            <a class="mono" href="rapport.html"><b>vulnerable</b></a>
+            <div class="path">C:/Users/pauzzle/Desktop/update-checker/tests/projects/vulnerable</div>
+          </div>
+          <div class="meta">
+            <span class="badge badge--high"><svg class="icon" aria-hidden="true"><use href="#i-shield-alert"/></svg>28 failles</span>
+            <span class="badge badge--outline">2 plus récentes</span>
+            <span class="small muted nowrap">terminée à 18:30</span>
+          </div>
+          <a class="btn btn--ghost btn--sm act" href="rapport.html">Ouvrir le rapport</a>
+        </li>
+        <li>
+          <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
+          <div class="grow">
+            <span class="mono"><b>site-perso</b></span>
+            <div class="path">C:/Users/pauzzle/Projets/site-perso</div>
+            <div class="lame" role="progressbar" aria-label="Analyse de site-perso" aria-valuemin="0" aria-valuemax="64" aria-valuenow="41" style="--value: 64%; margin-top: 6px; max-width: 280px"><span></span></div>
+          </div>
+          <div class="meta">
+            <span class="badge badge--primary"><svg class="icon" aria-hidden="true"><use href="#i-loader-circle"/></svg>en cours · 41 sur 64 paquets</span>
+          </div>
+          <a class="btn btn--ghost btn--sm act" href="index.html#ecran-3">Suivre</a>
+        </li>
+        <li>
+          <svg class="icon" aria-hidden="true"><use href="#i-file"/></svg>
+          <div class="grow">
+            <span class="mono"><b>requirements.in</b></span>
+            <div class="path">fichier envoyé</div>
+          </div>
+          <div class="meta">
+            <span class="badge badge--success"><svg class="icon" aria-hidden="true"><use href="#i-circle-check"/></svg>rien à mettre à jour</span>
+            <span class="small muted nowrap">terminée à 18:12</span>
+          </div>
+          <a class="btn btn--ghost btn--sm act" href="rapport.html?state=a-jour">Ouvrir le rapport</a>
+        </li>
+        <li>
+          <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
+          <div class="grow">
+            <span class="mono"><b>api-facturation</b></span>
+            <div class="path">D:/travail/api-facturation</div>
+          </div>
+          <div class="meta">
+            <span class="badge badge--neutral"><svg class="icon" aria-hidden="true"><use href="#i-circle-stop"/></svg>annulée</span>
+            <span class="small muted nowrap">à 18:05</span>
+          </div>
+          <button type="button" class="btn btn--ghost btn--sm act">Relancer</button>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Non concluant : une analyse à vérifier -->
+    <div class="stack" data-show="non-concluant">
+      <h3 class="h4">Cette session</h3>
+      <ul class="list">
+        <li>
+          <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
+          <div class="grow">
+            <a class="mono" href="rapport.html?state=non-concluant"><b>vulnerable</b></a>
+            <div class="path">C:/Users/pauzzle/Desktop/update-checker/tests/projects/vulnerable</div>
+          </div>
+          <div class="meta">
+            <span class="badge badge--high"><svg class="icon" aria-hidden="true"><use href="#i-shield-alert"/></svg>22 failles</span>
+            <span class="badge badge--inconclusive"><svg class="icon" aria-hidden="true"><use href="#i-circle-help"/></svg>3 non concluants</span>
+            <span class="small muted nowrap">terminée à 18:30</span>
+          </div>
+          <a class="btn btn--ghost btn--sm act" href="rapport.html?state=non-concluant">Ouvrir le rapport</a>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Chargement -->
+    <div class="stack" data-show="chargement" aria-busy="true" aria-label="Chargement des analyses récentes">
+      <ul class="list">
+        <li><div class="skeleton" style="width: 20px; height: 20px"></div><div class="grow stack-sm"><div class="skeleton" style="width: 30%"></div><div class="skeleton" style="width: 60%; min-height: 10px"></div></div><div class="skeleton meta" style="width: 90px; height: 22px"></div><span></span></li>
+        <li><div class="skeleton" style="width: 20px; height: 20px"></div><div class="grow stack-sm"><div class="skeleton" style="width: 24%"></div><div class="skeleton" style="width: 50%; min-height: 10px"></div></div><div class="skeleton meta" style="width: 90px; height: 22px"></div><span></span></li>
+      </ul>
+    </div>
+
+    <!-- Erreur : la liste n'a pas pu être lue -->
+    <div class="card empty" data-show="erreur session">
+      <svg class="icon icon--xl" aria-hidden="true"><use href="#i-history"/></svg>
+      <h3>Analyses récentes indisponibles</h3>
+      <p>Elles reviendront dès que le serveur répondra.</p>
+    </div>
+
+    <!-- Vide : premier lancement -->
+    <div class="card empty" data-show="vide">
+      <svg class="icon icon--xl" aria-hidden="true"><use href="#i-history"/></svg>
+      <h3>Aucune analyse pour l'instant</h3>
+      <p>Choisir un dossier ou un fichier ci-dessus. Les chemins analysés seront proposés ici les fois suivantes.</p>
+    </div>
+
+    <div class="stack" data-show="normal hors-ligne non-concluant depot">
+      <h3 class="h4">Chemins récents</h3>
+      <ul class="chips" aria-label="Chemins récents, à analyser de nouveau">
+        <li><a class="chip" href="index.html#ecran-3" title="C:/Users/pauzzle/Desktop/update-checker/tests/projects/vulnerable"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-folder"/></svg><span class="mono">vulnerable</span><span class="sr-only">, analyser de nouveau</span></a></li>
+        <li><a class="chip" href="index.html#ecran-3" title="C:/Users/pauzzle/Desktop/update-checker"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-folder"/></svg><span class="mono">update-checker</span><span class="sr-only">, analyser de nouveau</span></a></li>
+        <li><a class="chip" href="index.html#ecran-3" title="C:/Users/pauzzle/Projets/site-perso"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-folder"/></svg><span class="mono">site-perso</span><span class="sr-only">, analyser de nouveau</span></a></li>
+        <li><a class="chip" href="index.html#ecran-3" title="D:/travail/api-facturation/requirements.txt"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-file"/></svg><span class="mono">requirements.txt</span><span class="sr-only">, analyser de nouveau</span></a></li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<footer class="app-footer">
+  <span>forceupdate 0.1.0 · serveur local <span class="mono">127.0.0.1:8765</span></span>
+  <span class="tagline">Que la Force soit avec tes dépendances.</span>
+</footer>
+
+<!-- Fichier glissé au-dessus de la page -->
+<div class="drop-overlay" data-show="depot">
+  <div class="dropzone is-over">
+    <svg class="icon icon--xl" aria-hidden="true"><use href="#i-upload"/></svg>
+    <p><b>Déposer pour analyser <span class="mono">requirements.in</span></b></p>
+    <p class="small muted">Un manifeste ou un lockfile, 2 Mo au plus (50 Mo pour un lockfile). Le fichier d'origine n'est jamais modifié : sa version mise à jour se télécharge.</p>
+  </div>
+</div>
+
+<div id="live" class="sr-only" aria-live="polite"></div>
+</body>
+</html>
