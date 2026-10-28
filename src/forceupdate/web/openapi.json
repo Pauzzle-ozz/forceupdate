@@ -1704,7 +1704,7 @@
           },
           "recent": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/RecentPath"
             },
             "type": "array",
             "title": "Recent"
@@ -2091,6 +2091,24 @@
         "title": "Reach",
         "description": "Où en est une mise à jour, une fois le lockfile relu."
       },
+      "RecentPath": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EntryKind"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "kind"
+        ],
+        "title": "RecentPath",
+        "description": "Un chemin analysé récemment."
+      },
       "ScanDetail": {
         "properties": {
           "id": {
@@ -2148,6 +2166,16 @@
               }
             ]
           },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SummaryDocument"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "report": {
             "anyOf": [
               {
@@ -2170,6 +2198,7 @@
           "finished_at",
           "error",
           "progress",
+          "summary",
           "report"
         ],
         "title": "ScanDetail",
@@ -2309,6 +2338,16 @@
                 "type": "null"
               }
             ]
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SummaryDocument"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -2321,7 +2360,8 @@
           "started_at",
           "finished_at",
           "error",
-          "progress"
+          "progress",
+          "summary"
         ],
         "title": "ScanSummary",
         "description": "Une analyse, sans son rapport."
@@ -2427,6 +2467,26 @@
             "type": "object",
             "title": "Outdated"
           },
+          "severities": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/Severity"
+            },
+            "type": "object",
+            "title": "Severities"
+          },
+          "vulnerabilities": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/Severity"
+            },
+            "type": "object",
+            "title": "Vulnerabilities"
+          },
           "to_update": {
             "type": "integer",
             "title": "To Update",
@@ -2442,6 +2502,8 @@
           "audited",
           "findings",
           "outdated",
+          "severities",
+          "vulnerabilities",
           "to_update"
         ],
         "title": "SummaryDocument",

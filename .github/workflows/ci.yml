@@ -35,3 +35,43 @@ jobs:
 
       - name: Tests
         run: uv run pytest
+
+  front:
+    name: Front
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          python-version: "3.14"
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Dépendances
+        run: npm ci
+
+      - name: Types
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests des composants
+        run: npm test
+
+      - name: Construction
+        run: npm run build
+
+      - name: Tests de bout en bout
+        run: |
+          uv sync --locked
+          npx playwright install --with-deps chromium
+          npx playwright test

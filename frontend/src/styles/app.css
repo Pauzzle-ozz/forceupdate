@@ -1,0 +1,336 @@
+@import "tailwindcss";
+@import "shadcn/tailwind.css";
+@import "./tokens.css";
+
+/* Les polices, embarquées (fontsource, licence OFL) : le sous-ensemble latin seulement, qui a
+   les accents, « œ » et les guillemets (MASTER, « Typographie »). Servies par le serveur local. */
+@font-face {
+  font-family: "IBM Plex Sans Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 700;
+  src: url("../../node_modules/@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2")
+    format("woff2-variations");
+}
+
+@font-face {
+  font-family: "JetBrains Mono Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("../../node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2")
+    format("woff2-variations");
+}
+
+/* Le thème sombre suit la classe .dark de <html> (choix gardé, sinon celui du système). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Les échelles de MASTER (mêmes valeurs que mockups.css) : espacements de 4 px (celles de
+   Tailwind), texte 12 à 30, rayons 4 / 6 / 8 / 12. */
+@theme {
+  --font-sans: "IBM Plex Sans Variable", "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-nav: 900px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1440px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Les couleurs : des tokens, jamais de valeur brute dans un composant. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-hover: var(--surface-hover);
+  --color-fg: var(--text);
+  --color-fg-muted: var(--text-muted);
+  --color-border: var(--border);
+  --color-control: var(--border-control);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-on-primary: var(--on-primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-link: var(--link);
+  --color-ring: var(--ring);
+  --color-blade: var(--blade);
+  --color-track: var(--track);
+  --color-scrim: var(--scrim);
+
+  --color-critical: var(--critical);
+  --color-on-critical: var(--on-critical);
+  --color-high: var(--high);
+  --color-high-bg: var(--high-bg);
+  --color-medium: var(--medium);
+  --color-medium-bg: var(--medium-bg);
+  --color-low: var(--low);
+  --color-low-bg: var(--low-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-warning-edge: var(--warning-edge);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-inconclusive: var(--inconclusive);
+  --color-inconclusive-bg: var(--inconclusive-bg);
+
+  --color-chart-critical: var(--chart-critical);
+  --color-chart-high: var(--chart-high);
+  --color-chart-medium: var(--chart-medium);
+  --color-chart-low: var(--chart-low);
+  --color-chart-info: var(--chart-info);
+
+  /* shadcn/ui */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-input: var(--input);
+
+  --shadow-raised: var(--shadow-md);
+  --shadow-float: var(--shadow-lg);
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    min-height: 100dvh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    line-height: 1.25;
+    font-weight: 600;
+  }
+
+  /* Ce qui se copie (code, versions, chemins, commandes) : sans ligatures, sinon
+     « --package-lock-only » s'afficherait avec un tiret long et « == » en signe double. */
+  code,
+  kbd,
+  pre,
+  samp,
+  .font-mono {
+    font-variant-ligatures: none;
+    font-feature-settings: "calt" 0, "liga" 0;
+  }
+
+  code,
+  kbd {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+  }
+
+  a {
+    color: var(--link);
+    text-underline-offset: 3px;
+  }
+
+  a:hover {
+    text-decoration-thickness: 2px;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary,
+  select:not(:disabled),
+  label:has(input:not(:disabled)) {
+    cursor: pointer;
+  }
+
+  /* Focus visible partout : anneau de 2 px, décalé de 2 px (MASTER, « Accessibilité »). */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
+  /* Titres et zones qui reçoivent le focus par programme (changement d'écran, panneau). */
+  [tabindex="-1"]:focus {
+    outline: none;
+  }
+
+  summary {
+    list-style: none;
+  }
+
+  summary::-webkit-details-marker {
+    display: none;
+  }
+
+  ::placeholder {
+    color: var(--text-muted);
+  }
+}
+
+/* -- La lame : la barre de progression, qui luit en sombre ----------------------------------- */
+
+@utility lame-fill {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  border-radius: inherit;
+  background: var(--blade);
+  box-shadow: var(--blade-glow);
+  transition: width var(--duration-slow) var(--ease-out);
+}
+
+@utility lame-sweep {
+  width: 35%;
+  animation: blade-sweep 1.6s ease-in-out infinite alternate;
+}
+
+/* -- Squelettes : blocs gris qui scintillent ------------------------------------------------- */
+
+@utility shimmer {
+  position: relative;
+  overflow: hidden;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 60%, transparent), transparent);
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+}
+
+/* -- Panneau latéral : un <dialog> natif (src/components/ui/sheet.tsx) ------------------------ */
+
+dialog.sheet {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(600px, 100%);
+  max-width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+}
+
+dialog.sheet[open] {
+  display: flex;
+  flex-direction: column;
+  animation: sheet-in var(--duration-slow) var(--ease-out);
+}
+
+dialog.sheet::backdrop {
+  background: var(--scrim);
+}
+
+/* La page ne défile pas derrière un panneau ouvert. */
+html:has(dialog[open]) {
+  overflow: hidden;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes blade-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(290%);
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* Mouvement réduit : plus d'animation ni de transition ; la lame indéterminée devient une
+   barre rayée immobile, les squelettes ne scintillent plus. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .lame-sweep {
+    width: 100%;
+    transform: none;
+    animation: none !important;
+    background: repeating-linear-gradient(
+      -45deg,
+      var(--blade) 0 8px,
+      color-mix(in srgb, var(--blade) 55%, transparent) 8px 16px
+    );
+  }
+
+  .shimmer::after {
+    display: none;
+  }
+}

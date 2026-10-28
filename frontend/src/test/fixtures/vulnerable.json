@@ -1,0 +1,1595 @@
+{
+  "schema_version": 1,
+  "tool": {
+    "name": "forceupdate",
+    "version": "0.1.0"
+  },
+  "source": "C:/Projets/vulnerable",
+  "languages": [],
+  "projects": [
+    {
+      "path": ".",
+      "ecosystems": [
+        "PyPI",
+        "npm"
+      ],
+      "manifests": [
+        "package.json",
+        "requirements.in"
+      ],
+      "lockfiles": [
+        "package-lock.json",
+        "requirements.txt"
+      ],
+      "dependencies": [
+        {
+          "ecosystem": "PyPI",
+          "name": "flask",
+          "constraint": "==0.12",
+          "resolved_constraint": null,
+          "installed": "0.12",
+          "lockfile": "requirements.txt",
+          "direct": true,
+          "scope": "runtime",
+          "file": "requirements.in",
+          "location": {
+            "line": 2,
+            "column": 5,
+            "end_column": 11
+          },
+          "unverifiable_reason": null
+        },
+        {
+          "ecosystem": "PyPI",
+          "name": "click",
+          "constraint": "==7.0",
+          "resolved_constraint": null,
+          "installed": "7.0",
+          "lockfile": "requirements.txt",
+          "direct": false,
+          "scope": "runtime",
+          "file": "requirements.txt",
+          "location": {
+            "line": 3,
+            "column": 5,
+            "end_column": 10
+          },
+          "unverifiable_reason": null
+        },
+        {
+          "ecosystem": "PyPI",
+          "name": "itsdangerous",
+          "constraint": "==1.1.0",
+          "resolved_constraint": null,
+          "installed": "1.1.0",
+          "lockfile": "requirements.txt",
+          "direct": false,
+          "scope": "runtime",
+          "file": "requirements.txt",
+          "location": {
+            "line": 7,
+            "column": 12,
+            "end_column": 19
+          },
+          "unverifiable_reason": null
+        },
+        {
+          "ecosystem": "PyPI",
+          "name": "jinja2",
+          "constraint": "==2.10",
+          "resolved_constraint": null,
+          "installed": "2.10",
+          "lockfile": "requirements.txt",
+          "direct": false,
+          "scope": "runtime",
+          "file": "requirements.txt",
+          "location": {
+            "line": 9,
+            "column": 6,
+            "end_column": 12
+          },
+          "unverifiable_reason": null
+        },
+        {
+          "ecosystem": "PyPI",
+          "name": "markupsafe",
+          "constraint": "==1.1.0",
+          "resolved_constraint": null,
+          "installed": "1.1.0",
+          "lockfile": "requirements.txt",
+          "direct": false,
+          "scope": "runtime",
+          "file": "requirements.txt",
+          "location": {
+            "line": 11,
+            "column": 10,
+            "end_column": 17
+          },
+          "unverifiable_reason": null
+        },
+        {
+          "ecosystem": "PyPI",
+          "name": "werkzeug",
+          "constraint": "==0.14.1",
+          "resolved_constraint": null,
+          "installed": "0.14.1",
+          "lockfile": "requirements.txt",
+          "direct": false,
+          "scope": "runtime",
+          "file": "requirements.txt",
+          "location": {
+            "line": 13,
+            "column": 8,
+            "end_column": 16
+          },
+          "unverifiable_reason": null
+        },
+        {
+          "ecosystem": "npm",
+          "name": "lodash",
+          "constraint": "4.17.15",
+          "resolved_constraint": null,
+          "installed": "4.17.15",
+          "lockfile": "package-lock.json",
+          "direct": true,
+          "scope": "runtime",
+          "file": "package.json",
+          "location": {
+            "line": 6,
+            "column": 15,
+            "end_column": 22
+          },
+          "unverifiable_reason": null
+        }
+      ],
+      "overrides": [],
+      "findings": [
+        {
+          "kind": "vulnerable",
+          "severity": "high",
+          "message": "CVE-2018-1000656, GHSA-562c-5r94-xh97 (gravité élevée, CVSS 7,5) : Flask is vulnerable to Denial of Service via incorrect encoding of JSON data. Corrigée en 0.12.3.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "flask",
+            "constraint": "==0.12",
+            "resolved_constraint": null,
+            "installed": "0.12",
+            "lockfile": "requirements.txt",
+            "direct": true,
+            "scope": "runtime",
+            "file": "requirements.in",
+            "location": {
+              "line": 2,
+              "column": 5,
+              "end_column": 11
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "0.12",
+          "current_is_approximate": false,
+          "target_version": "0.12.3",
+          "wanted_version": null,
+          "gap": "patch",
+          "identifiers": [
+            "CVE-2018-1000656",
+            "GHSA-562c-5r94-xh97",
+            "PYSEC-2018-66"
+          ],
+          "cvss_score": 7.5,
+          "detail": "Flask is vulnerable to Denial of Service via incorrect encoding of JSON data",
+          "url": "https://osv.dev/vulnerability/GHSA-562c-5r94-xh97"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "high",
+          "message": "CVE-2019-1010083, GHSA-5wv5-4vpf-pj6m (gravité élevée, CVSS 7,5) : Pallets Project Flask is vulnerable to Denial of Service via Unexpected memory usage. Corrigée en 1.0.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "flask",
+            "constraint": "==0.12",
+            "resolved_constraint": null,
+            "installed": "0.12",
+            "lockfile": "requirements.txt",
+            "direct": true,
+            "scope": "runtime",
+            "file": "requirements.in",
+            "location": {
+              "line": 2,
+              "column": 5,
+              "end_column": 11
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "0.12",
+          "current_is_approximate": false,
+          "target_version": "1.0",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2019-1010083",
+            "GHSA-5wv5-4vpf-pj6m",
+            "PYSEC-2019-179"
+          ],
+          "cvss_score": 7.5,
+          "detail": "Pallets Project Flask is vulnerable to Denial of Service via Unexpected memory usage",
+          "url": "https://osv.dev/vulnerability/GHSA-5wv5-4vpf-pj6m"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "high",
+          "message": "CVE-2023-30861, GHSA-m2qf-hxjv-5gpq (gravité élevée, CVSS 7,5) : Flask vulnerable to possible disclosure of permanent session cookie due to missing Vary: Cookie header. Corrigée en 2.2.5.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "flask",
+            "constraint": "==0.12",
+            "resolved_constraint": null,
+            "installed": "0.12",
+            "lockfile": "requirements.txt",
+            "direct": true,
+            "scope": "runtime",
+            "file": "requirements.in",
+            "location": {
+              "line": 2,
+              "column": 5,
+              "end_column": 11
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "0.12",
+          "current_is_approximate": false,
+          "target_version": "2.2.5",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2023-30861",
+            "GHSA-m2qf-hxjv-5gpq",
+            "PYSEC-2023-62"
+          ],
+          "cvss_score": 7.5,
+          "detail": "Flask vulnerable to possible disclosure of permanent session cookie due to missing Vary: Cookie header",
+          "url": "https://osv.dev/vulnerability/GHSA-m2qf-hxjv-5gpq"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "high",
+          "message": "CVE-2019-10906, GHSA-462w-v97r-4m45 (gravité élevée, CVSS 8,6) : Jinja2 sandbox escape via string formatting. Corrigée en 2.10.1.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "jinja2",
+            "constraint": "==2.10",
+            "resolved_constraint": null,
+            "installed": "2.10",
+            "lockfile": "requirements.txt",
+            "direct": false,
+            "scope": "runtime",
+            "file": "requirements.txt",
+            "location": {
+              "line": 9,
+              "column": 6,
+              "end_column": 12
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "2.10",
+          "current_is_approximate": false,
+          "target_version": "2.10.1",
+          "wanted_version": null,
+          "gap": "patch",
+          "identifiers": [
+            "CVE-2019-10906",
+            "GHSA-462w-v97r-4m45",
+            "PYSEC-2019-217"
+          ],
+          "cvss_score": 8.6,
+          "detail": "Jinja2 sandbox escape via string formatting",
+          "url": "https://osv.dev/vulnerability/GHSA-462w-v97r-4m45"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "high",
+          "message": "CVE-2024-56326, GHSA-q2x7-8rv6-6q7h (gravité élevée, CVSS 7,8) : Jinja has a sandbox breakout through indirect reference to format method. Corrigée en 3.1.5.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "jinja2",
+            "constraint": "==2.10",
+            "resolved_constraint": null,
+            "installed": "2.10",
+            "lockfile": "requirements.txt",
+            "direct": false,
+            "scope": "runtime",
+            "file": "requirements.txt",
+            "location": {
+              "line": 9,
+              "column": 6,
+              "end_column": 12
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "2.10",
+          "current_is_approximate": false,
+          "target_version": "3.1.5",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2024-56326",
+            "GHSA-q2x7-8rv6-6q7h",
+            "PYSEC-2026-1475"
+          ],
+          "cvss_score": 7.8,
+          "detail": "Jinja has a sandbox breakout through indirect reference to format method",
+          "url": "https://osv.dev/vulnerability/GHSA-q2x7-8rv6-6q7h"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "high",
+          "message": "CVE-2026-4800, GHSA-r5fr-rjxr-66jc (gravité élevée, CVSS 8,1) : lodash vulnerable to Code Injection via `_.template` imports key names. Corrigée en 4.18.0.",
+          "dependency": {
+            "ecosystem": "npm",
+            "name": "lodash",
+            "constraint": "4.17.15",
+            "resolved_constraint": null,
+            "installed": "4.17.15",
+            "lockfile": "package-lock.json",
+            "direct": true,
+            "scope": "runtime",
+            "file": "package.json",
+            "location": {
+              "line": 6,
+              "column": 15,
+              "end_column": 22
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "4.17.15",
+          "current_is_approximate": false,
+          "target_version": "4.18.0",
+          "wanted_version": null,
+          "gap": "minor",
+          "identifiers": [
+            "CVE-2026-4800",
+            "GHSA-r5fr-rjxr-66jc"
+          ],
+          "cvss_score": 8.1,
+          "detail": "lodash vulnerable to Code Injection via `_.template` imports key names",
+          "url": "https://osv.dev/vulnerability/GHSA-r5fr-rjxr-66jc"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "high",
+          "message": "CVE-2020-8203, GHSA-p6mc-m468-83gw (gravité élevée, CVSS 7,4) : Prototype Pollution in lodash. Corrigée en 4.17.19.",
+          "dependency": {
+            "ecosystem": "npm",
+            "name": "lodash",
+            "constraint": "4.17.15",
+            "resolved_constraint": null,
+            "installed": "4.17.15",
+            "lockfile": "package-lock.json",
+            "direct": true,
+            "scope": "runtime",
+            "file": "package.json",
+            "location": {
+              "line": 6,
+              "column": 15,
+              "end_column": 22
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "4.17.15",
+          "current_is_approximate": false,
+          "target_version": "4.17.19",
+          "wanted_version": null,
+          "gap": "patch",
+          "identifiers": [
+            "CVE-2020-8203",
+            "GHSA-p6mc-m468-83gw"
+          ],
+          "cvss_score": 7.4,
+          "detail": "Prototype Pollution in lodash",
+          "url": "https://osv.dev/vulnerability/GHSA-p6mc-m468-83gw"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "high",
+          "message": "CVE-2021-23337, GHSA-35jh-r3h4-6jhm (gravité élevée, CVSS 7,2) : Command Injection in lodash. Corrigée en 4.17.21.",
+          "dependency": {
+            "ecosystem": "npm",
+            "name": "lodash",
+            "constraint": "4.17.15",
+            "resolved_constraint": null,
+            "installed": "4.17.15",
+            "lockfile": "package-lock.json",
+            "direct": true,
+            "scope": "runtime",
+            "file": "package.json",
+            "location": {
+              "line": 6,
+              "column": 15,
+              "end_column": 22
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "4.17.15",
+          "current_is_approximate": false,
+          "target_version": "4.17.21",
+          "wanted_version": null,
+          "gap": "patch",
+          "identifiers": [
+            "CVE-2021-23337",
+            "GHSA-35jh-r3h4-6jhm"
+          ],
+          "cvss_score": 7.2,
+          "detail": "Command Injection in lodash",
+          "url": "https://osv.dev/vulnerability/GHSA-35jh-r3h4-6jhm"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "high",
+          "message": "CVE-2019-14322, GHSA-j544-7q9p-6xp8 (gravité élevée, CVSS 7,5) : Pallets Werkzeug vulnerable to Path Traversal. Corrigée en 0.15.5.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "werkzeug",
+            "constraint": "==0.14.1",
+            "resolved_constraint": null,
+            "installed": "0.14.1",
+            "lockfile": "requirements.txt",
+            "direct": false,
+            "scope": "runtime",
+            "file": "requirements.txt",
+            "location": {
+              "line": 13,
+              "column": 8,
+              "end_column": 16
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "0.14.1",
+          "current_is_approximate": false,
+          "target_version": "0.15.5",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2019-14322",
+            "GHSA-j544-7q9p-6xp8",
+            "PYSEC-2026-1065"
+          ],
+          "cvss_score": 7.5,
+          "detail": "Pallets Werkzeug vulnerable to Path Traversal",
+          "url": "https://osv.dev/vulnerability/GHSA-j544-7q9p-6xp8"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "high",
+          "message": "CVE-2019-14806, GHSA-gq9m-qvpx-68hc (gravité élevée, CVSS 7,5) : Pallets Werkzeug Insufficient Entropy. Corrigée en 0.15.3.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "werkzeug",
+            "constraint": "==0.14.1",
+            "resolved_constraint": null,
+            "installed": "0.14.1",
+            "lockfile": "requirements.txt",
+            "direct": false,
+            "scope": "runtime",
+            "file": "requirements.txt",
+            "location": {
+              "line": 13,
+              "column": 8,
+              "end_column": 16
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "0.14.1",
+          "current_is_approximate": false,
+          "target_version": "0.15.3",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2019-14806",
+            "GHSA-gq9m-qvpx-68hc",
+            "PYSEC-2019-140"
+          ],
+          "cvss_score": 7.5,
+          "detail": "Pallets Werkzeug Insufficient Entropy",
+          "url": "https://osv.dev/vulnerability/GHSA-gq9m-qvpx-68hc"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "high",
+          "message": "CVE-2023-25577, GHSA-xg9f-g7g7-2323 (gravité élevée, CVSS 7,5) : High resource usage when parsing multipart form data with many fields. Corrigée en 2.2.3.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "werkzeug",
+            "constraint": "==0.14.1",
+            "resolved_constraint": null,
+            "installed": "0.14.1",
+            "lockfile": "requirements.txt",
+            "direct": false,
+            "scope": "runtime",
+            "file": "requirements.txt",
+            "location": {
+              "line": 13,
+              "column": 8,
+              "end_column": 16
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "0.14.1",
+          "current_is_approximate": false,
+          "target_version": "2.2.3",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2023-25577",
+            "GHSA-xg9f-g7g7-2323",
+            "PYSEC-2023-58"
+          ],
+          "cvss_score": 7.5,
+          "detail": "High resource usage when parsing multipart form data with many fields",
+          "url": "https://osv.dev/vulnerability/GHSA-xg9f-g7g7-2323"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "high",
+          "message": "CVE-2023-46136, GHSA-hrfv-mqp8-q5rw (gravité élevée, CVSS 7,5) : Werkzeug is a comprehensive WSGI web application library. If an upload of a file that starts with CR or LF and then is followed by megabytes of data without these characters: all of these bytes are… Corrigée en 2.3.8.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "werkzeug",
+            "constraint": "==0.14.1",
+            "resolved_constraint": null,
+            "installed": "0.14.1",
+            "lockfile": "requirements.txt",
+            "direct": false,
+            "scope": "runtime",
+            "file": "requirements.txt",
+            "location": {
+              "line": 13,
+              "column": 8,
+              "end_column": 16
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "0.14.1",
+          "current_is_approximate": false,
+          "target_version": "2.3.8",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2023-46136",
+            "GHSA-hrfv-mqp8-q5rw",
+            "PYSEC-2023-221"
+          ],
+          "cvss_score": 7.5,
+          "detail": "Werkzeug is a comprehensive WSGI web application library. If an upload of a file that starts with CR or LF and then is followed by megabytes of data without these characters: all of these bytes are…",
+          "url": "https://osv.dev/vulnerability/PYSEC-2023-221"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "high",
+          "message": "CVE-2024-34069, GHSA-2g68-c3qc-8985 (gravité élevée, CVSS 7,5) : Werkzeug debugger vulnerable to remote execution when interacting with attacker controlled domain. Corrigée en 3.0.3.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "werkzeug",
+            "constraint": "==0.14.1",
+            "resolved_constraint": null,
+            "installed": "0.14.1",
+            "lockfile": "requirements.txt",
+            "direct": false,
+            "scope": "runtime",
+            "file": "requirements.txt",
+            "location": {
+              "line": 13,
+              "column": 8,
+              "end_column": 16
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "0.14.1",
+          "current_is_approximate": false,
+          "target_version": "3.0.3",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2024-34069",
+            "GHSA-2g68-c3qc-8985",
+            "PYSEC-2026-2043"
+          ],
+          "cvss_score": 7.5,
+          "detail": "Werkzeug debugger vulnerable to remote execution when interacting with attacker controlled domain",
+          "url": "https://osv.dev/vulnerability/GHSA-2g68-c3qc-8985"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "medium",
+          "message": "CVE-2026-27205, GHSA-68rp-wp8r-4726 (gravité moyenne, CVSS 4,3) : Flask session does not add `Vary: Cookie` header when accessed in some ways. Corrigée en 3.1.3.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "flask",
+            "constraint": "==0.12",
+            "resolved_constraint": null,
+            "installed": "0.12",
+            "lockfile": "requirements.txt",
+            "direct": true,
+            "scope": "runtime",
+            "file": "requirements.in",
+            "location": {
+              "line": 2,
+              "column": 5,
+              "end_column": 11
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "0.12",
+          "current_is_approximate": false,
+          "target_version": "3.1.3",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2026-27205",
+            "GHSA-68rp-wp8r-4726",
+            "PYSEC-2026-2151"
+          ],
+          "cvss_score": 4.3,
+          "detail": "Flask session does not add `Vary: Cookie` header when accessed in some ways",
+          "url": "https://osv.dev/vulnerability/GHSA-68rp-wp8r-4726"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "medium",
+          "message": "CVE-2024-22195, GHSA-h5c8-rqwp-cp95 (gravité moyenne, CVSS 5,4) : Jinja vulnerable to HTML attribute injection when passing user input as keys to xmlattr filter. Corrigée en 3.1.3.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "jinja2",
+            "constraint": "==2.10",
+            "resolved_constraint": null,
+            "installed": "2.10",
+            "lockfile": "requirements.txt",
+            "direct": false,
+            "scope": "runtime",
+            "file": "requirements.txt",
+            "location": {
+              "line": 9,
+              "column": 6,
+              "end_column": 12
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "2.10",
+          "current_is_approximate": false,
+          "target_version": "3.1.3",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2024-22195",
+            "GHSA-h5c8-rqwp-cp95",
+            "PYSEC-2026-1473"
+          ],
+          "cvss_score": 5.4,
+          "detail": "Jinja vulnerable to HTML attribute injection when passing user input as keys to xmlattr filter",
+          "url": "https://osv.dev/vulnerability/GHSA-h5c8-rqwp-cp95"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "medium",
+          "message": "CVE-2024-34064, GHSA-h75v-3vvj-5mfj (gravité moyenne, CVSS 5,4) : Jinja vulnerable to HTML attribute injection when passing user input as keys to xmlattr filter. Corrigée en 3.1.4.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "jinja2",
+            "constraint": "==2.10",
+            "resolved_constraint": null,
+            "installed": "2.10",
+            "lockfile": "requirements.txt",
+            "direct": false,
+            "scope": "runtime",
+            "file": "requirements.txt",
+            "location": {
+              "line": 9,
+              "column": 6,
+              "end_column": 12
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "2.10",
+          "current_is_approximate": false,
+          "target_version": "3.1.4",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2024-34064",
+            "GHSA-h75v-3vvj-5mfj",
+            "PYSEC-2026-1474"
+          ],
+          "cvss_score": 5.4,
+          "detail": "Jinja vulnerable to HTML attribute injection when passing user input as keys to xmlattr filter",
+          "url": "https://osv.dev/vulnerability/GHSA-h75v-3vvj-5mfj"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "medium",
+          "message": "CVE-2020-28493, GHSA-g3rq-g295-4j3m (gravité moyenne, CVSS 5,3) : Regular Expression Denial of Service (ReDoS) in Jinja2. Corrigée en 2.11.3.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "jinja2",
+            "constraint": "==2.10",
+            "resolved_constraint": null,
+            "installed": "2.10",
+            "lockfile": "requirements.txt",
+            "direct": false,
+            "scope": "runtime",
+            "file": "requirements.txt",
+            "location": {
+              "line": 9,
+              "column": 6,
+              "end_column": 12
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "2.10",
+          "current_is_approximate": false,
+          "target_version": "2.11.3",
+          "wanted_version": null,
+          "gap": "minor",
+          "identifiers": [
+            "CVE-2020-28493",
+            "GHSA-g3rq-g295-4j3m",
+            "PYSEC-2021-66",
+            "SNYK-PYTHON-JINJA2-1012994"
+          ],
+          "cvss_score": 5.3,
+          "detail": "Regular Expression Denial of Service (ReDoS) in Jinja2",
+          "url": "https://osv.dev/vulnerability/GHSA-g3rq-g295-4j3m"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "medium",
+          "message": "CVE-2025-27516, GHSA-cpwx-vrp4-4pq7 (gravité moyenne) : Jinja2 vulnerable to sandbox breakout through attr filter selecting format method. Corrigée en 3.1.6.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "jinja2",
+            "constraint": "==2.10",
+            "resolved_constraint": null,
+            "installed": "2.10",
+            "lockfile": "requirements.txt",
+            "direct": false,
+            "scope": "runtime",
+            "file": "requirements.txt",
+            "location": {
+              "line": 9,
+              "column": 6,
+              "end_column": 12
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "2.10",
+          "current_is_approximate": false,
+          "target_version": "3.1.6",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2025-27516",
+            "GHSA-cpwx-vrp4-4pq7",
+            "PYSEC-2026-1471"
+          ],
+          "cvss_score": null,
+          "detail": "Jinja2 vulnerable to sandbox breakout through attr filter selecting format method",
+          "url": "https://osv.dev/vulnerability/GHSA-cpwx-vrp4-4pq7"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "medium",
+          "message": "CVE-2025-13465, GHSA-xxjr-mmjv-4gpg (gravité moyenne, CVSS 6,5) : Lodash has Prototype Pollution Vulnerability in `_.unset` and `_.omit` functions. Corrigée en 4.17.23.",
+          "dependency": {
+            "ecosystem": "npm",
+            "name": "lodash",
+            "constraint": "4.17.15",
+            "resolved_constraint": null,
+            "installed": "4.17.15",
+            "lockfile": "package-lock.json",
+            "direct": true,
+            "scope": "runtime",
+            "file": "package.json",
+            "location": {
+              "line": 6,
+              "column": 15,
+              "end_column": 22
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "4.17.15",
+          "current_is_approximate": false,
+          "target_version": "4.17.23",
+          "wanted_version": null,
+          "gap": "patch",
+          "identifiers": [
+            "CVE-2025-13465",
+            "GHSA-xxjr-mmjv-4gpg"
+          ],
+          "cvss_score": 6.5,
+          "detail": "Lodash has Prototype Pollution Vulnerability in `_.unset` and `_.omit` functions",
+          "url": "https://osv.dev/vulnerability/GHSA-xxjr-mmjv-4gpg"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "medium",
+          "message": "CVE-2026-2950, GHSA-f23m-r3pf-42rh (gravité moyenne, CVSS 6,5) : lodash vulnerable to Prototype Pollution via array path bypass in `_.unset` and `_.omit`. Corrigée en 4.18.0.",
+          "dependency": {
+            "ecosystem": "npm",
+            "name": "lodash",
+            "constraint": "4.17.15",
+            "resolved_constraint": null,
+            "installed": "4.17.15",
+            "lockfile": "package-lock.json",
+            "direct": true,
+            "scope": "runtime",
+            "file": "package.json",
+            "location": {
+              "line": 6,
+              "column": 15,
+              "end_column": 22
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "4.17.15",
+          "current_is_approximate": false,
+          "target_version": "4.18.0",
+          "wanted_version": null,
+          "gap": "minor",
+          "identifiers": [
+            "CVE-2026-2950",
+            "GHSA-f23m-r3pf-42rh"
+          ],
+          "cvss_score": 6.5,
+          "detail": "lodash vulnerable to Prototype Pollution via array path bypass in `_.unset` and `_.omit`",
+          "url": "https://osv.dev/vulnerability/GHSA-f23m-r3pf-42rh"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "medium",
+          "message": "CVE-2020-28500, GHSA-29mw-wpgm-hmr9 (gravité moyenne, CVSS 5,3) : Regular Expression Denial of Service (ReDoS) in lodash. Corrigée en 4.17.21.",
+          "dependency": {
+            "ecosystem": "npm",
+            "name": "lodash",
+            "constraint": "4.17.15",
+            "resolved_constraint": null,
+            "installed": "4.17.15",
+            "lockfile": "package-lock.json",
+            "direct": true,
+            "scope": "runtime",
+            "file": "package.json",
+            "location": {
+              "line": 6,
+              "column": 15,
+              "end_column": 22
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "4.17.15",
+          "current_is_approximate": false,
+          "target_version": "4.17.21",
+          "wanted_version": null,
+          "gap": "patch",
+          "identifiers": [
+            "CVE-2020-28500",
+            "GHSA-29mw-wpgm-hmr9"
+          ],
+          "cvss_score": 5.3,
+          "detail": "Regular Expression Denial of Service (ReDoS) in lodash",
+          "url": "https://osv.dev/vulnerability/GHSA-29mw-wpgm-hmr9"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "medium",
+          "message": "CVE-2026-21860, GHSA-87hc-h4r5-73f7 (gravité moyenne, CVSS 5,3) : Werkzeug safe_join() allows Windows special device names with compound extensions. Corrigée en 3.1.5.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "werkzeug",
+            "constraint": "==0.14.1",
+            "resolved_constraint": null,
+            "installed": "0.14.1",
+            "lockfile": "requirements.txt",
+            "direct": false,
+            "scope": "runtime",
+            "file": "requirements.txt",
+            "location": {
+              "line": 13,
+              "column": 8,
+              "end_column": 16
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "0.14.1",
+          "current_is_approximate": false,
+          "target_version": "3.1.5",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2026-21860",
+            "GHSA-87hc-h4r5-73f7",
+            "PYSEC-2026-2044"
+          ],
+          "cvss_score": 5.3,
+          "detail": "Werkzeug safe_join() allows Windows special device names with compound extensions",
+          "url": "https://osv.dev/vulnerability/GHSA-87hc-h4r5-73f7"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "medium",
+          "message": "CVE-2026-27199, GHSA-29vq-49wr-vm6x (gravité moyenne, CVSS 5,3) : Werkzeug safe_join() allows Windows special device names. Corrigée en 3.1.6.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "werkzeug",
+            "constraint": "==0.14.1",
+            "resolved_constraint": null,
+            "installed": "0.14.1",
+            "lockfile": "requirements.txt",
+            "direct": false,
+            "scope": "runtime",
+            "file": "requirements.txt",
+            "location": {
+              "line": 13,
+              "column": 8,
+              "end_column": 16
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "0.14.1",
+          "current_is_approximate": false,
+          "target_version": "3.1.6",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2026-27199",
+            "GHSA-29vq-49wr-vm6x",
+            "PYSEC-2026-2320"
+          ],
+          "cvss_score": 5.3,
+          "detail": "Werkzeug safe_join() allows Windows special device names",
+          "url": "https://osv.dev/vulnerability/GHSA-29vq-49wr-vm6x"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "medium",
+          "message": "CVE-2022-29361 (gravité inconnue) : ** DISPUTED ** Improper parsing of HTTP requests in Pallets Werkzeug v2.1.0 and below allows attackers to perform HTTP Request Smuggling using a crafted HTTP request with multiple requests included… Corrigée en 2.1.1.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "werkzeug",
+            "constraint": "==0.14.1",
+            "resolved_constraint": null,
+            "installed": "0.14.1",
+            "lockfile": "requirements.txt",
+            "direct": false,
+            "scope": "runtime",
+            "file": "requirements.txt",
+            "location": {
+              "line": 13,
+              "column": 8,
+              "end_column": 16
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "0.14.1",
+          "current_is_approximate": false,
+          "target_version": "2.1.1",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2022-29361",
+            "PYSEC-2022-203"
+          ],
+          "cvss_score": null,
+          "detail": "** DISPUTED ** Improper parsing of HTTP requests in Pallets Werkzeug v2.1.0 and below allows attackers to perform HTTP Request Smuggling using a crafted HTTP request with multiple requests included…",
+          "url": "https://osv.dev/vulnerability/PYSEC-2022-203"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "medium",
+          "message": "CVE-2024-49766, GHSA-f9vj-2wh5-fj8j (gravité moyenne) : Werkzeug safe_join not safe on Windows. Corrigée en 3.0.6.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "werkzeug",
+            "constraint": "==0.14.1",
+            "resolved_constraint": null,
+            "installed": "0.14.1",
+            "lockfile": "requirements.txt",
+            "direct": false,
+            "scope": "runtime",
+            "file": "requirements.txt",
+            "location": {
+              "line": 13,
+              "column": 8,
+              "end_column": 16
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "0.14.1",
+          "current_is_approximate": false,
+          "target_version": "3.0.6",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2024-49766",
+            "GHSA-f9vj-2wh5-fj8j",
+            "PYSEC-2026-2045"
+          ],
+          "cvss_score": null,
+          "detail": "Werkzeug safe_join not safe on Windows",
+          "url": "https://osv.dev/vulnerability/GHSA-f9vj-2wh5-fj8j"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "medium",
+          "message": "CVE-2025-66221, GHSA-hgf8-39gv-g3f2 (gravité moyenne) : Werkzeug safe_join() allows Windows special device names. Corrigée en 3.1.4.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "werkzeug",
+            "constraint": "==0.14.1",
+            "resolved_constraint": null,
+            "installed": "0.14.1",
+            "lockfile": "requirements.txt",
+            "direct": false,
+            "scope": "runtime",
+            "file": "requirements.txt",
+            "location": {
+              "line": 13,
+              "column": 8,
+              "end_column": 16
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "0.14.1",
+          "current_is_approximate": false,
+          "target_version": "3.1.4",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2025-66221",
+            "GHSA-hgf8-39gv-g3f2",
+            "PYSEC-2026-2046"
+          ],
+          "cvss_score": null,
+          "detail": "Werkzeug safe_join() allows Windows special device names",
+          "url": "https://osv.dev/vulnerability/GHSA-hgf8-39gv-g3f2"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "medium",
+          "message": "CVE-2026-102598, GHSA-g6x2-hccm-hh4m (gravité moyenne) : Werkzeug safe_join() allows Windows special device names. Corrigée en 3.1.9.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "werkzeug",
+            "constraint": "==0.14.1",
+            "resolved_constraint": null,
+            "installed": "0.14.1",
+            "lockfile": "requirements.txt",
+            "direct": false,
+            "scope": "runtime",
+            "file": "requirements.txt",
+            "location": {
+              "line": 13,
+              "column": 8,
+              "end_column": 16
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "0.14.1",
+          "current_is_approximate": false,
+          "target_version": "3.1.9",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2026-102598",
+            "GHSA-g6x2-hccm-hh4m",
+            "PYSEC-2026-4312"
+          ],
+          "cvss_score": null,
+          "detail": "Werkzeug safe_join() allows Windows special device names",
+          "url": "https://osv.dev/vulnerability/GHSA-g6x2-hccm-hh4m"
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "low",
+          "message": "CVE-2023-23934, GHSA-px8h-6qxv-m22q (gravité faible, CVSS 2,6) : Incorrect parsing of nameless cookies leads to __Host- cookies bypass. Corrigée en 2.2.3.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "werkzeug",
+            "constraint": "==0.14.1",
+            "resolved_constraint": null,
+            "installed": "0.14.1",
+            "lockfile": "requirements.txt",
+            "direct": false,
+            "scope": "runtime",
+            "file": "requirements.txt",
+            "location": {
+              "line": 13,
+              "column": 8,
+              "end_column": 16
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "0.14.1",
+          "current_is_approximate": false,
+          "target_version": "2.2.3",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2023-23934",
+            "GHSA-px8h-6qxv-m22q",
+            "PYSEC-2023-57"
+          ],
+          "cvss_score": 2.6,
+          "detail": "Incorrect parsing of nameless cookies leads to __Host- cookies bypass",
+          "url": "https://osv.dev/vulnerability/GHSA-px8h-6qxv-m22q"
+        },
+        {
+          "kind": "outdated",
+          "severity": "low",
+          "message": "Version 3.1.3 disponible (majeure) ; utilisée : 0.12.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "flask",
+            "constraint": "==0.12",
+            "resolved_constraint": null,
+            "installed": "0.12",
+            "lockfile": "requirements.txt",
+            "direct": true,
+            "scope": "runtime",
+            "file": "requirements.in",
+            "location": {
+              "line": 2,
+              "column": 5,
+              "end_column": 11
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "0.12",
+          "current_is_approximate": false,
+          "target_version": "3.1.3",
+          "wanted_version": "0.12",
+          "gap": "major",
+          "identifiers": [],
+          "cvss_score": null,
+          "detail": null,
+          "url": "https://pypi.org/project/flask/"
+        },
+        {
+          "kind": "outdated",
+          "severity": "info",
+          "message": "Version 4.18.1 disponible (mineure) ; utilisée : 4.17.15.",
+          "dependency": {
+            "ecosystem": "npm",
+            "name": "lodash",
+            "constraint": "4.17.15",
+            "resolved_constraint": null,
+            "installed": "4.17.15",
+            "lockfile": "package-lock.json",
+            "direct": true,
+            "scope": "runtime",
+            "file": "package.json",
+            "location": {
+              "line": 6,
+              "column": 15,
+              "end_column": 22
+            },
+            "unverifiable_reason": null
+          },
+          "current_version": "4.17.15",
+          "current_is_approximate": false,
+          "target_version": "4.18.1",
+          "wanted_version": "4.17.15",
+          "gap": "minor",
+          "identifiers": [],
+          "cvss_score": null,
+          "detail": null,
+          "url": "https://www.npmjs.com/package/lodash"
+        }
+      ],
+      "updates": [
+        {
+          "id": ".|PyPI|flask",
+          "ecosystem": "PyPI",
+          "name": "flask",
+          "direct": true,
+          "dependencies": [
+            {
+              "ecosystem": "PyPI",
+              "name": "flask",
+              "constraint": "==0.12",
+              "resolved_constraint": null,
+              "installed": "0.12",
+              "lockfile": "requirements.txt",
+              "direct": true,
+              "scope": "runtime",
+              "file": "requirements.in",
+              "location": {
+                "line": 2,
+                "column": 5,
+                "end_column": 11
+              },
+              "unverifiable_reason": null
+            }
+          ],
+          "current_version": "0.12",
+          "current_is_approximate": false,
+          "options": [
+            {
+              "version": "0.12.5",
+              "gap": "patch",
+              "reasons": [
+                "latest_patch"
+              ],
+              "fixes": [
+                "CVE-2018-1000656"
+              ],
+              "unfixed": [
+                "CVE-2019-1010083",
+                "CVE-2023-30861",
+                "CVE-2026-27205"
+              ],
+              "introduced": [],
+              "edits": [
+                {
+                  "kind": "dependency",
+                  "file": "requirements.in",
+                  "location": {
+                    "line": 2,
+                    "column": 5,
+                    "end_column": 11
+                  },
+                  "old": "==0.12",
+                  "new": "==0.12.5",
+                  "override": null
+                }
+              ],
+              "lockfile": "requirements.txt",
+              "manual": null,
+              "warnings": []
+            },
+            {
+              "version": "3.1.3",
+              "gap": "major",
+              "reasons": [
+                "latest_major",
+                "security_fix"
+              ],
+              "fixes": [
+                "CVE-2018-1000656",
+                "CVE-2019-1010083",
+                "CVE-2023-30861",
+                "CVE-2026-27205"
+              ],
+              "unfixed": [],
+              "introduced": [],
+              "edits": [
+                {
+                  "kind": "dependency",
+                  "file": "requirements.in",
+                  "location": {
+                    "line": 2,
+                    "column": 5,
+                    "end_column": 11
+                  },
+                  "old": "==0.12",
+                  "new": "==3.1.3",
+                  "override": null
+                }
+              ],
+              "lockfile": "requirements.txt",
+              "manual": null,
+              "warnings": [
+                "Majeure : peut demander d'adapter le code."
+              ]
+            }
+          ],
+          "selected": "0.12.5",
+          "note": null
+        },
+        {
+          "id": ".|PyPI|jinja2|2.10",
+          "ecosystem": "PyPI",
+          "name": "jinja2",
+          "direct": false,
+          "dependencies": [
+            {
+              "ecosystem": "PyPI",
+              "name": "jinja2",
+              "constraint": "==2.10",
+              "resolved_constraint": null,
+              "installed": "2.10",
+              "lockfile": "requirements.txt",
+              "direct": false,
+              "scope": "runtime",
+              "file": "requirements.txt",
+              "location": {
+                "line": 9,
+                "column": 6,
+                "end_column": 12
+              },
+              "unverifiable_reason": null
+            }
+          ],
+          "current_version": "2.10",
+          "current_is_approximate": false,
+          "options": [
+            {
+              "version": "2.10.3",
+              "gap": "patch",
+              "reasons": [
+                "latest_patch"
+              ],
+              "fixes": [
+                "CVE-2019-10906"
+              ],
+              "unfixed": [
+                "CVE-2024-56326",
+                "CVE-2024-22195",
+                "CVE-2024-34064",
+                "CVE-2020-28493",
+                "CVE-2025-27516"
+              ],
+              "introduced": [],
+              "edits": [],
+              "lockfile": "requirements.txt",
+              "manual": null,
+              "warnings": []
+            },
+            {
+              "version": "2.11.3",
+              "gap": "minor",
+              "reasons": [
+                "latest_minor"
+              ],
+              "fixes": [
+                "CVE-2019-10906",
+                "CVE-2020-28493"
+              ],
+              "unfixed": [
+                "CVE-2024-56326",
+                "CVE-2024-22195",
+                "CVE-2024-34064",
+                "CVE-2025-27516"
+              ],
+              "introduced": [],
+              "edits": [],
+              "lockfile": "requirements.txt",
+              "manual": null,
+              "warnings": []
+            },
+            {
+              "version": "3.1.6",
+              "gap": "major",
+              "reasons": [
+                "security_fix"
+              ],
+              "fixes": [
+                "CVE-2019-10906",
+                "CVE-2024-56326",
+                "CVE-2024-22195",
+                "CVE-2024-34064",
+                "CVE-2020-28493",
+                "CVE-2025-27516"
+              ],
+              "unfixed": [],
+              "introduced": [],
+              "edits": [],
+              "lockfile": "requirements.txt",
+              "manual": null,
+              "warnings": [
+                "Majeure : peut demander d'adapter le code.",
+                "Dépendance indirecte : le paquet qui la tire devra peut-être monter aussi."
+              ]
+            }
+          ],
+          "selected": "2.11.3",
+          "note": null
+        },
+        {
+          "id": ".|npm|lodash",
+          "ecosystem": "npm",
+          "name": "lodash",
+          "direct": true,
+          "dependencies": [
+            {
+              "ecosystem": "npm",
+              "name": "lodash",
+              "constraint": "4.17.15",
+              "resolved_constraint": null,
+              "installed": "4.17.15",
+              "lockfile": "package-lock.json",
+              "direct": true,
+              "scope": "runtime",
+              "file": "package.json",
+              "location": {
+                "line": 6,
+                "column": 15,
+                "end_column": 22
+              },
+              "unverifiable_reason": null
+            }
+          ],
+          "current_version": "4.17.15",
+          "current_is_approximate": false,
+          "options": [
+            {
+              "version": "4.17.23",
+              "gap": "patch",
+              "reasons": [
+                "latest_patch"
+              ],
+              "fixes": [
+                "CVE-2020-8203",
+                "CVE-2021-23337",
+                "CVE-2025-13465",
+                "CVE-2020-28500"
+              ],
+              "unfixed": [
+                "CVE-2026-4800",
+                "CVE-2026-2950"
+              ],
+              "introduced": [],
+              "edits": [
+                {
+                  "kind": "dependency",
+                  "file": "package.json",
+                  "location": {
+                    "line": 6,
+                    "column": 15,
+                    "end_column": 22
+                  },
+                  "old": "4.17.15",
+                  "new": "4.17.23",
+                  "override": null
+                }
+              ],
+              "lockfile": "package-lock.json",
+              "manual": null,
+              "warnings": []
+            },
+            {
+              "version": "4.18.1",
+              "gap": "minor",
+              "reasons": [
+                "latest_minor",
+                "security_fix"
+              ],
+              "fixes": [
+                "CVE-2026-4800",
+                "CVE-2020-8203",
+                "CVE-2021-23337",
+                "CVE-2025-13465",
+                "CVE-2026-2950",
+                "CVE-2020-28500"
+              ],
+              "unfixed": [],
+              "introduced": [],
+              "edits": [
+                {
+                  "kind": "dependency",
+                  "file": "package.json",
+                  "location": {
+                    "line": 6,
+                    "column": 15,
+                    "end_column": 22
+                  },
+                  "old": "4.17.15",
+                  "new": "4.18.1",
+                  "override": null
+                }
+              ],
+              "lockfile": "package-lock.json",
+              "manual": null,
+              "warnings": []
+            }
+          ],
+          "selected": "4.18.1",
+          "note": null
+        },
+        {
+          "id": ".|PyPI|werkzeug|0.14.1",
+          "ecosystem": "PyPI",
+          "name": "werkzeug",
+          "direct": false,
+          "dependencies": [
+            {
+              "ecosystem": "PyPI",
+              "name": "werkzeug",
+              "constraint": "==0.14.1",
+              "resolved_constraint": null,
+              "installed": "0.14.1",
+              "lockfile": "requirements.txt",
+              "direct": false,
+              "scope": "runtime",
+              "file": "requirements.txt",
+              "location": {
+                "line": 13,
+                "column": 8,
+                "end_column": 16
+              },
+              "unverifiable_reason": null
+            }
+          ],
+          "current_version": "0.14.1",
+          "current_is_approximate": false,
+          "options": [
+            {
+              "version": "3.1.9",
+              "gap": "major",
+              "reasons": [
+                "security_fix"
+              ],
+              "fixes": [
+                "CVE-2019-14322",
+                "CVE-2019-14806",
+                "CVE-2023-25577",
+                "CVE-2023-46136",
+                "CVE-2024-34069",
+                "CVE-2026-21860",
+                "CVE-2026-27199",
+                "CVE-2022-29361",
+                "CVE-2024-49766",
+                "CVE-2025-66221",
+                "CVE-2026-102598",
+                "CVE-2023-23934"
+              ],
+              "unfixed": [],
+              "introduced": [],
+              "edits": [],
+              "lockfile": "requirements.txt",
+              "manual": null,
+              "warnings": [
+                "Majeure : peut demander d'adapter le code.",
+                "Dépendance indirecte : le paquet qui la tire devra peut-être monter aussi."
+              ]
+            }
+          ],
+          "selected": null,
+          "note": null
+        }
+      ],
+      "notices": []
+    }
+  ],
+  "ignored_manifests": [],
+  "options": {
+    "include_tests": false,
+    "dev": true,
+    "transitive": false,
+    "offline": false,
+    "cache": true
+  },
+  "scanned_at": "2026-10-28T17:30:00+00:00",
+  "oldest_data": "2026-10-28T17:30:00+00:00",
+  "summary": {
+    "projects": 1,
+    "direct": 2,
+    "transitive": 5,
+    "checked": 2,
+    "audited": 7,
+    "findings": {
+      "vulnerable": 28,
+      "eol": 0,
+      "yanked": 0,
+      "deprecated": 0,
+      "outdated": 2,
+      "unverifiable": 0,
+      "inconclusive": 0
+    },
+    "outdated": {
+      "major": 1,
+      "minor": 1,
+      "patch": 0
+    },
+    "severities": {
+      "critical": 0,
+      "high": 13,
+      "medium": 14,
+      "low": 2,
+      "info": 1
+    },
+    "vulnerabilities": {
+      "critical": 0,
+      "high": 13,
+      "medium": 14,
+      "low": 1,
+      "info": 0
+    },
+    "to_update": 30
+  }
+}

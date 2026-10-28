@@ -1,0 +1,166 @@
+/*
+ * Les tokens de design-system/MASTER.md, valeurs exactes de la référence
+ * (design-system/mockups/assets/mockups.css) : couleurs clair (:root) et sombre (.dark,
+ * posée par public/theme.js et src/hooks/useTheme.ts), ombres, mouvement, couches.
+ * Les échelles (espacements de 4 px, tailles de texte, rayons) sont dans le @theme de
+ * app.css, avec les mêmes valeurs, pour que Tailwind en fasse ses classes.
+ * Contrastes vérifiés à E13 : à refaire si une valeur change.
+ */
+
+:root {
+  color-scheme: light;
+
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-2: #f1f5f9;
+  --surface-hover: #f1f5f9;
+  --text: #0f172a;
+  --text-muted: #475569;
+  --border: #e2e8f0;
+  --border-control: #7c8ba1;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --on-primary: #ffffff;
+  --primary-soft: #eff6ff;
+  --link: #1d4ed8;
+  --ring: #2563eb;
+  --scrim: rgba(15, 23, 42, 0.5);
+
+  --critical: #b91c1c;
+  --on-critical: #ffffff;
+  --high: #b91c1c;
+  --high-bg: #fef2f2;
+  --medium: #c2410c;
+  --medium-bg: #fff7ed;
+  --low: #854d0e;
+  --low-bg: #fefce8;
+  --info: #334155;
+  --info-bg: #f1f5f9;
+  --success: #15803d;
+  --success-bg: #f0fdf4;
+  --warning: #92400e;
+  --warning-bg: #fffbeb;
+  --warning-edge: #d97706;
+  --danger: #b91c1c;
+  --danger-bg: #fef2f2;
+  --inconclusive: #6d28d9;
+  --inconclusive-bg: #f5f3ff;
+  --diff-add: #166534;
+  --diff-add-bg: #ecfdf3;
+  --diff-del: #991b1b;
+  --diff-del-bg: #fef2f2;
+
+  --blade: #2563eb;
+  --blade-glow: none;
+  --track: #e2e8f0;
+
+  /* Graphiques : aplats des gravités (toujours avec légende et nombres) */
+  --chart-critical: #7f1d1d;
+  --chart-high: #dc2626;
+  --chart-medium: #ea580c;
+  --chart-low: #ca8a04;
+  --chart-info: #94a3b8;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.16);
+
+  --duration-fast: 150ms;
+  --duration: 200ms;
+  --duration-slow: 250ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+
+  --z-sticky: 10;
+  --z-bar: 20;
+  --z-sheet: 40;
+  --z-menu: 50;
+  --z-dialog: 100;
+  --z-toast: 1000;
+
+  --header-h: 56px;
+  --control-h: 40px;
+
+  /* Les variables de shadcn/ui, branchées sur les tokens (MASTER, « Pour E14 ») */
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface);
+  --popover-foreground: var(--text);
+  --primary-foreground: var(--on-primary);
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--text);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--text-muted);
+  --accent: var(--surface-2);
+  --accent-foreground: var(--text);
+  --destructive: var(--danger);
+  --input: var(--border-control);
+  --radius: 6px;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --bg: #0b1120;
+  --surface: #131c2e;
+  --surface-2: #1c2638;
+  --surface-hover: #1c2638;
+  --text: #f1f5f9;
+  --text-muted: #a3b1c6;
+  --border: #273449;
+  --border-control: #6b7a90;
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --on-primary: #0b1120;
+  --primary-soft: #172554;
+  --link: #93c5fd;
+  --ring: #60a5fa;
+  --scrim: rgba(2, 6, 23, 0.7);
+
+  --critical: #dc2626;
+  --on-critical: #ffffff;
+  --high: #fca5a5;
+  --high-bg: #3a1519;
+  --medium: #fdba74;
+  --medium-bg: #3a2213;
+  --low: #fde68a;
+  --low-bg: #332a12;
+  --info: #cbd5e1;
+  --info-bg: #1c2638;
+  --success: #86efac;
+  --success-bg: #11291d;
+  --warning: #fcd34d;
+  --warning-bg: #33270f;
+  --warning-edge: #d97706;
+  --danger: #fca5a5;
+  --danger-bg: #3a1519;
+  --inconclusive: #c4b5fd;
+  --inconclusive-bg: #251e3d;
+  --diff-add: #86efac;
+  --diff-add-bg: #11291d;
+  --diff-del: #fca5a5;
+  --diff-del-bg: #3a1519;
+
+  --blade: #60a5fa;
+  --blade-glow: 0 0 6px 1px rgba(96, 165, 250, 0.7), 0 0 16px 3px rgba(59, 130, 246, 0.35);
+  --track: #1c2638;
+
+  --chart-critical: #f43f5e;
+  --chart-high: #ef4444;
+  --chart-medium: #f97316;
+  --chart-low: #eab308;
+  --chart-info: #64748b;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+/* Au doigt : les commandes font 44 px */
+@media (pointer: coarse) {
+  :root {
+    --control-h: 44px;
+  }
+}

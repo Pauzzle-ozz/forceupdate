@@ -327,8 +327,9 @@ Relevé en concevant les écrans ; ajouté au plan (E13 ne touche pas à l'API) 
 
 | Besoin | Écran | Où |
 |---|---|---|
-| Les chiffres d'une analyse finie dans la liste des analyses (`GET /api/scans` : `summary` du rapport, `null` avant la fin), pour « 28 failles » sans charger chaque rapport | 1 | E14 |
-| Dire si un chemin récent est un dossier ou un fichier (`recent` : `{path, kind}`), pour son icône | 1, 2 | E14 |
+| Les chiffres d'une analyse finie dans la liste des analyses (`GET /api/scans` : `summary` du rapport, `null` avant la fin), pour « 28 failles » sans charger chaque rapport | 1 | fait (E14) |
+| Dire si un chemin récent est un dossier ou un fichier (`recent` : `{path, kind}`), pour son icône | 1, 2 | fait (E14) |
+| La répartition par gravité des failles (« 13 élevées · 14 moyennes ») et de tous les constats (la barre), sans recompter dans le navigateur (`summary.vulnerabilities`, `summary.severities`) | 4 | fait (E14) |
 | Comptes : lister, connecter (OAuth, device flow, token, `gh`), déconnecter, droits | 6 | E16 |
 | Dépôts : drapeaux (archivé, fork, vide, privé, droit de push), organisations qui restreignent l'accès, requêtes restantes ; analyses groupées avec progression par dépôt et annulation ; **synthèse multi-dépôts calculée par le serveur** | 7 | E17 |
 | PR : récapitulatif avant envoi (par dépôt : PR existante, sélection, lockfiles), envoi suivi, liens | 8 | E18 |

@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from forceupdate.models import Event, ScanOptions
-from forceupdate.report.json import Document
+from forceupdate.report.json import Document, SummaryDocument
 from forceupdate.update.lockfiles import Installed, Job, LockKind, LockStatus, Reach, Regenerated
 from forceupdate.update.writers import Choice, Skipped
 
@@ -112,6 +112,9 @@ class ScanSummary:
     """``failed`` : ce qui s'est passé."""
     progress: Event | None
     """Le dernier événement de progression."""
+    summary: SummaryDocument | None
+    """Les chiffres du rapport (son ``summary``) une fois l'analyse finie ; ``null`` avant, ou
+    si elle n'a pas abouti. L'accueil les montre sans charger chaque rapport."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -258,6 +261,15 @@ class Entry:
 
 
 @dataclass(frozen=True, kw_only=True)
+class RecentPath:
+    """Un chemin analysé récemment."""
+
+    path: str
+    kind: EntryKind
+    """``folder`` ou ``file`` (un lecteur est un dossier)."""
+
+
+@dataclass(frozen=True, kw_only=True)
 class Listing:
     """Le contenu d'un dossier, pour choisir quoi analyser : ses dossiers, et les fichiers de
     dépendances qu'il contient. Jamais le contenu d'un fichier."""
@@ -271,8 +283,8 @@ class Listing:
     """Le dossier a plus d'entrées que n'en montre la liste."""
     home: str
     """Le dossier personnel."""
-    recent: tuple[str, ...]
-    """Les derniers chemins analysés, du plus récent au plus ancien."""
+    recent: tuple[RecentPath, ...]
+    """Les derniers chemins analysés qui existent encore, du plus récent au plus ancien."""
 
 
 @dataclass(frozen=True, kw_only=True)

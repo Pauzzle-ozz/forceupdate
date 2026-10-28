@@ -10,3 +10,6 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+
+# Le front construit (npm run build) : livré dans le paquet, pas versionné
+src/forceupdate/web/static/

@@ -50,7 +50,8 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 ├── LICENSE                 ← MIT, « Copyright (c) 2026 Pauzzle »
 ├── pyproject.toml          ← le paquet, ses dépendances, la config ruff et pytest
 ├── uv.lock                 ← les versions figées des dépendances (versionné)
-├── .github/workflows/      ← ci.yml : ruff + pytest, Ubuntu et Windows, Python 3.11 et 3.14
+├── .github/workflows/      ← ci.yml : ruff + pytest (Ubuntu et Windows, Python 3.11 et 3.14), et le
+│                             front (types, lint, Vitest, Playwright) ; publish.yml : PyPI, front compris
 ├── design-system/          ← produit à E13 avec le skill ui-ux-pro-max
 │   ├── MASTER.md           ← les règles de l'interface : tokens, typo, composants, accessibilité
 │   ├── ECRANS.md           ← les 9 écrans : contenu, appels à l'API, états, adresses
@@ -60,14 +61,21 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   ├── BRIEF.md            ← l'idée, les décisions prises, les pièges, les sources de données
 │   └── JSON_FORMAT.md      ← le format du rapport JSON (scan --format json), et l'API de ui
 ├── reference/              ← code repris d'Argos, à piocher (voir reference/README.md)
+├── frontend/               ← l'interface : React + TypeScript + Vite + Tailwind 4 + shadcn/ui (E14)
+│   ├── src/api/            ← schema.d.ts (généré depuis openapi.json), client.ts, types.ts
+│   ├── src/styles/         ← tokens.css (ceux de MASTER), app.css (Tailwind, polices)
+│   ├── src/components/ui/  ← les composants shadcn/ui, habillés par les tokens ; sheet.tsx : <dialog> natif
+│   ├── src/screens/        ← les écrans (Home, Choose, ScanProgress, report/…) ; tests *.test.tsx à côté
+│   ├── src/test/           ← mise en place de Vitest, fetch et EventSource simulés, rapport d'exemple
+│   └── e2e/                ← tests Playwright (vrai serveur, front construit, CSP, axe-core)
 ├── src/forceupdate/        ← le code de l'outil (architecture cible : PLAN.md)
-│   └── web/                ← le serveur de ui (FastAPI) ; openapi.json, exporté, donne les types du front
+│   └── web/                ← le serveur de ui (FastAPI) ; openapi.json, exporté, donne les types du front ;
+│                             static/ : le front construit (npm run build), ignoré par git, livré dans le paquet
 └── tests/                  ← les tests ; conftest.py gère le marqueur network
+    ├── e2e_server.py       ← le serveur de ui hors ligne pour Playwright, et les rapports d'exemple du front
     ├── fixtures/           ← réponses HTTP enregistrées ; record.py les ré-enregistre
     └── projects/           ← mini-projets par outil, lockfiles produits par les vrais outils
 ```
-
-Viendra plus tard : `frontend/` (l'interface, à partir de E14).
 
 ## Commandes
 
@@ -86,6 +94,14 @@ uv run ruff check                # lint
 uv run ruff format               # formatage ; la CI vérifie avec --check
 uv run python tests/fixtures/record.py   # ré-enregistre les réponses des registres et d'OSV
 uv run python tests/fixtures/record.py pypi:jinja2   # un seul paquet (déclaré dans PACKAGES)
+
+# le front (node 24 ; dans frontend/, après « npm ci »)
+npm run build                    # construit le front dans src/forceupdate/web/static/ (servi par ui)
+npm test                         # tests de composants (Vitest + Testing Library), sans réseau
+npm run typecheck                # types (tsc) ; npm run lint : oxlint, sans avertissement
+npm run test:e2e                 # construit, puis Playwright : vrai serveur hors ligne (tests/e2e_server.py)
+npm run gen:api                  # régénère src/api/schema.d.ts depuis openapi.json (un test le vérifie)
+FORCEUPDATE_URL=<adresse de « forceupdate ui »> npm run dev   # Vite, /api passé au serveur, jeton compris
 
 # une autre version de Python que celle de .venv (la CI teste 3.11 et 3.14)
 uv run --isolated --python 3.11 --group dev pytest
@@ -108,6 +124,18 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   `ui` (client de test de FastAPI, jeton compris), `finished` attend la fin d'une tâche.
 - Un test qui lance une vraie commande `ui` (sans `serve` simulé) bloque la suite :
   le serveur attend Ctrl+C.
+- Le front construit (`src/forceupdate/web/static/`) n'est pas versionné : sans lui, `ui`
+  sert une ligne de texte. `npm run build` d'abord ; la publication (`publish.yml`) le fait
+  avant `uv build`, et hatchling l'embarque (`artifacts`). Les tests Python ne lancent
+  jamais node ; ceux du front ont leurs commandes (ci-dessus).
+- Front : TypeScript 5.9, pas 7 (openapi-typescript a besoin de l'API JavaScript de
+  TypeScript, que la 7 n'a pas). Playwright télécharge son Chromium une fois
+  (`npx playwright install chromium`). Le serveur Vite de dev n'a pas la CSP : vérifier le
+  front construit, servi par `ui` (les tests e2e échouent sur toute erreur de console).
+- CSP du serveur (`default-src 'self'`) : rien d'un CDN, pas d'URL `data:`, pas de
+  `<style>` ni de script en ligne (les styles posés par React passent). Radix Dialog et
+  Sonner injectent un `<style>` : refusés ; le panneau et les dialogues sont des
+  `<dialog>` natifs (`components/ui/sheet.tsx`).
 - Pour essayer `forceupdate update` en vrai : sur une copie dans le scratchpad, jamais
   dans `tests/projects/` (les outils réécrivent les lockfiles). yarn, poetry, pdm,
   pipenv et pip-compile ne sont pas installés (choix de l'utilisateur) : `npx yarn@1`,

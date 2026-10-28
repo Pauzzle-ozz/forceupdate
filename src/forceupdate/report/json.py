@@ -12,7 +12,7 @@ OpenAPI, d'où viennent les types du front.
 """
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any
 
 from forceupdate import __version__
@@ -47,15 +47,21 @@ class Document(Report):
     summary: SummaryDocument
 
 
+def summary_document(report: Report) -> SummaryDocument:
+    """Le résumé de ``report``, tel qu'il est écrit dans le JSON (champ ``summary``)."""
+    summary = summarize(report)
+    counts = {f.name: getattr(summary, f.name) for f in fields(Summary)}
+    return SummaryDocument(**counts, to_update=summary.to_update)
+
+
 def build(report: Report) -> dict[str, Any]:
     """Le rapport en types simples, prêt pour ``json.dumps`` (ou une réponse de l'API) ; sa
     forme est ``Document``."""
-    summary = summarize(report)
     return {
         "schema_version": SCHEMA_VERSION,
         "tool": {"name": "forceupdate", "version": __version__},
         **to_dict(report),
-        "summary": {**to_dict(summary), "to_update": summary.to_update},
+        "summary": to_dict(summary_document(report)),
     }
 
 

@@ -141,6 +141,7 @@ class Scan:
             finished_at=self.finished_at,
             error=self.error,
             progress=self.progress.last,
+            summary=None if self.report is None else json_report.summary_document(self.report),
         )
 
     def document(self) -> dict[str, Any]:

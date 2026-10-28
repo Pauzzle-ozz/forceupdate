@@ -16,6 +16,7 @@ Le serveur de l'interface se teste avec ``api``, le client de test de FastAPI.
 
 import asyncio
 import asyncio.base_events
+import contextlib
 import json
 import subprocess
 import time
@@ -183,6 +184,14 @@ def recorded() -> Iterator[dict[str, respx.Route]]:
     connaît pas.
     Rend les routes, par nom de paquet, plus ``osv:querybatch`` et ``osv:<id>``.
     """
+    with recorded_responses() as routes:
+        yield routes
+
+
+@contextlib.contextmanager
+def recorded_responses() -> Iterator[dict[str, respx.Route]]:
+    """Ce que fait la fixture ``recorded``, hors de pytest : le serveur des tests de bout en
+    bout du front s'en sert (``tests/e2e_server.py``)."""
     with respx.mock(assert_all_called=False) as router:
         routes = {}
         for path in sorted((FIXTURES / "pypi").glob("*.json")):

@@ -46,10 +46,12 @@ forceupdate update . --exclude "eslint*" --ecosystem npm
 ```
 
 `forceupdate ui` démarre le serveur local de l'interface, sur `127.0.0.1`
-seulement, et ouvre le navigateur. L'interface elle-même n'est pas encore là : pour
-l'instant, le serveur offre son API (analyser, préparer et appliquer les mises à jour,
-suivre la progression), réservée à qui a le jeton de session que porte l'adresse
-affichée. Ctrl+C l'arrête.
+seulement, et ouvre le navigateur, réservé à qui a le jeton de session que porte
+l'adresse affichée. On y choisit un dossier ou un fichier de l'ordinateur (ou on le
+dépose), on suit l'analyse, et on lit le rapport : synthèse, projets, dépendances
+filtrables et triables, détail de chaque dépendance. Choisir et appliquer les mises
+à jour depuis l'interface arrive à l'étape suivante ; `forceupdate update` le fait
+déjà. Ctrl+C l'arrête.
 
 ```bash
 forceupdate ui                           # un port libre, et le navigateur

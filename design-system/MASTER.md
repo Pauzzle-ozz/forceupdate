@@ -340,6 +340,30 @@ son ou nom de personnage repris.
   React (`element.style`) sont permis. À vérifier avec le front construit (déjà noté à
   E14).
 
+**Fait à E14** (le code : `frontend/`) :
+
+- tokens dans `src/styles/tokens.css` (valeurs exactes des maquettes, `:root` et `.dark`) ;
+  échelles (texte, rayons, points de rupture, dont `nav` à 900 px) dans le `@theme` de
+  `src/styles/app.css` ; couleurs en classes Tailwind (`bg-surface`, `text-fg-muted`,
+  `bg-high-bg`…). Le thème est posé avant l'affichage par `public/theme.js` (fichier à
+  part : la CSP refuse le script en ligne) ;
+- polices : le sous-ensemble latin seulement (`@font-face` de `app.css`), licences dans
+  `public/licenses/` avec celle de Lucide ;
+- composants shadcn/ui (base Radix) réécrits aux mesures des maquettes : Button, Badge,
+  Card, Alert, Input, NativeSelect, Switch, Skeleton, Table. **Écart** : le panneau latéral
+  (et, à E15, les dialogues de confirmation) est un `<dialog>` natif (`ui/sheet.tsx`), pas
+  le Sheet/Dialog de Radix : react-remove-scroll y injecte un `<style>`, refusé par la CSP.
+  Sonner (notifications) fait de même : à éviter, ou à remplacer par une région
+  `aria-live` à soi ;
+- tableau : tri et filtres écrits à la main (TanStack Table, passé en v9, n'apportait rien
+  pour deux tris et cinq filtres) ; TanStack Virtual au-delà de 50 lignes. Entre 768 et
+  1024 px, la colonne « Projet » passe sous le nom du paquet et les cellules se resserrent
+  (sinon la dernière colonne était coupée) ;
+- le nom d'un bouton qui a un texte réservé aux lecteurs d'écran est donné par
+  `aria-label` (Chrome calcule « flask , voir le détail » avec un `<span class="sr-only">`) ;
+- vérifié par axe-core (WCAG 2.1 AA, contrastes compris) en clair et en sombre, à 1440 et
+  375 px (`frontend/e2e/a11y.spec.ts`).
+
 ## Anti-motifs
 
 - Couleur seule pour dire une gravité ou un état ; vert pour l'accent.

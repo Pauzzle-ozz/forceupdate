@@ -24,6 +24,7 @@ from forceupdate.models import (
     Project,
     Report,
     Scope,
+    Severity,
     Update,
     UpdateOption,
     UpdateReason,
@@ -172,6 +173,11 @@ class Summary:
     """Constats par type, dans l'ordre de priorité ; tous les types y sont, même à 0."""
     outdated: dict[Gap, int] = field(default_factory=dict)
     """Versions plus récentes par écart, de la majeure au correctif."""
+    severities: dict[Severity, int] = field(default_factory=dict)
+    """Les constats de ``to_update`` (tous sauf « non vérifiable » et « non concluant ») par
+    gravité, de la plus haute à la plus basse ; toutes les gravités y sont, même à 0."""
+    vulnerabilities: dict[Severity, int] = field(default_factory=dict)
+    """Les failles par gravité, de même."""
 
     @property
     def to_update(self) -> int:
@@ -187,10 +193,16 @@ def summarize(report: Report) -> Summary:
     """Le résumé de ``report``."""
     findings = dict.fromkeys(KIND_LABELS, 0)
     outdated = dict.fromkeys(GAP_LABELS, 0)
+    severities = dict.fromkeys(Severity, 0)
+    vulnerabilities = dict.fromkeys(Severity, 0)
     for finding in distinct_findings(report.projects):
         findings[finding.kind] += 1
         if finding.kind is FindingKind.OUTDATED and finding.gap is not None:
             outdated[finding.gap] += 1
+        if finding.kind not in (FindingKind.UNVERIFIABLE, FindingKind.INCONCLUSIVE):
+            severities[finding.severity] += 1
+        if finding.kind is FindingKind.VULNERABLE:
+            vulnerabilities[finding.severity] += 1
     dependencies = [d for project in report.projects for d in project.dependencies]
     direct = sum(1 for d in dependencies if d.direct)
     options = report.options
@@ -210,6 +222,8 @@ def summarize(report: Report) -> Summary:
         audited=audited,
         findings=findings,
         outdated=outdated,
+        severities=severities,
+        vulnerabilities=vulnerabilities,
     )
 
 

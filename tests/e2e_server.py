@@ -1,0 +1,76 @@
+"""Le serveur de ``forceupdate ui`` pour les tests de bout en bout du front (Playwright), et les
+rapports qui servent d'exemples à ses tests de composants.
+
+Comme les tests Python : jamais le réseau (PyPI, npm et OSV répondent par les réponses
+enregistrées de ``tests/fixtures/``, ``conftest.recorded_responses``), jamais le cache ni les
+chemins récents de l'utilisateur (un dossier temporaire), jamais le navigateur. Le jeton est
+fixe, pour que les tests ouvrent l'adresse d'entrée ::
+
+    uv run python tests/e2e_server.py --port 8799 --token jeton-e2e
+
+Le front servi est celui de ``src/forceupdate/web/static/`` (``npm run build`` d'abord).
+
+Un rapport d'exemple (``--report`` : le JSON de ``scan --format json``, celui de
+``GET /api/scans/{id}``, avec le chemin analysé remplacé par ``--source`` et des dates fixes)
+pour les tests du front (``frontend/src/test/fixtures/``) ::
+
+    uv run python tests/e2e_server.py --report tests/projects/vulnerable \\
+        --source C:/Projets/vulnerable > frontend/src/test/fixtures/vulnerable.json
+"""
+
+import argparse
+import json
+import sys
+import tempfile
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+from conftest import recorded_responses
+
+from forceupdate import engine
+from forceupdate.models import ScanOptions
+from forceupdate.net import cache as cache_module
+from forceupdate.report import json as json_report
+from forceupdate.sources.local import LocalSource
+from forceupdate.web import app, security
+
+
+def serve(port: int, token: str, state_dir: Path) -> None:
+    security.new_token = lambda: token
+    app.serve(
+        port=port,
+        browser=False,
+        state_dir=state_dir,
+        announce=lambda url: print(url, flush=True),
+    )
+
+
+def report(path: Path, source: str) -> None:
+    """Le rapport de ``path``, comme une analyse finie de l'API, sur la sortie standard."""
+    found = engine.scan(LocalSource(path), ScanOptions())
+    document = json.loads(json.dumps(json_report.build(found)).replace(found.source, source))
+    for name in ("scanned_at", "oldest_data"):
+        document[name] = "2026-10-28T17:30:00+00:00"
+    sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+    sys.stdout.write(json.dumps(document, ensure_ascii=False, indent=2) + "\n")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--port", type=int, default=8799)
+    parser.add_argument("--token", default="jeton-e2e")
+    parser.add_argument("--report", type=Path, help="écrire le rapport de ce dossier, et sortir")
+    parser.add_argument("--source", default="/projets/exemple", help="le chemin à y montrer")
+    options = parser.parse_args()
+    with tempfile.TemporaryDirectory(prefix="forceupdate-e2e-") as tmp:
+        cache_module.default_cache_path = lambda: Path(tmp) / "cache.sqlite3"
+        with recorded_responses():
+            if options.report is not None:
+                report(options.report.resolve(), options.source)
+            else:
+                serve(options.port, options.token, Path(tmp) / "état")
+
+
+if __name__ == "__main__":
+    main()

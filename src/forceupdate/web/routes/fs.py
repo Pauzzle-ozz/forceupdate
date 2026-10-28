@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 
 from forceupdate.detect.manifests import match_dependency_file
 from forceupdate.web.routes import CurrentJobs, errors, respond
-from forceupdate.web.schemas import Entry, EntryKind, Listing
+from forceupdate.web.schemas import Entry, EntryKind, Listing, RecentPath
 
 router = APIRouter(prefix="/api/fs", tags=["dossiers"])
 
@@ -48,7 +48,7 @@ async def list_folder(jobs: CurrentJobs, path: str | None = None) -> JSONRespons
     return respond(await asyncio.to_thread(_listing, path, recent))
 
 
-def _roots(recent: tuple[str, ...]) -> Listing:
+def _roots(recent: tuple[RecentPath, ...]) -> Listing:
     home = Path.home()
     entries = [
         Entry(
@@ -72,7 +72,7 @@ def _roots(recent: tuple[str, ...]) -> Listing:
     )
 
 
-def _listing(path: str, recent: tuple[str, ...]) -> Listing:
+def _listing(path: str, recent: tuple[RecentPath, ...]) -> Listing:
     folder = Path(path)
     if not folder.is_absolute():
         raise HTTPException(400, f"« {path} » : donner un chemin absolu.")
@@ -138,6 +138,13 @@ def _drives() -> list[str]:
     ]
 
 
-def _recent(paths: list[str]) -> tuple[str, ...]:
-    """Les chemins récents qui existent encore."""
-    return tuple(path for path in paths if Path(path).exists())
+def _recent(paths: list[str]) -> tuple[RecentPath, ...]:
+    """Les chemins récents qui existent encore, dossiers ou fichiers."""
+    recent = []
+    for path in paths:
+        found = Path(path)
+        if found.is_file():
+            recent.append(RecentPath(path=path, kind=EntryKind.FILE))
+        elif found.is_dir():
+            recent.append(RecentPath(path=path, kind=EntryKind.FOLDER))
+    return tuple(recent)

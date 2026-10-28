@@ -29,7 +29,8 @@ ignorer ce qu'il ne connaît pas. Les failles (E08) sont arrivées ainsi (champs
 `cvss_score` des constats et `audited` du résumé), puis les mises à jour
 proposées (E09 : `updates` et `overrides` des projets, `lockfile` des
 dépendances), puis les failles des versions proposées (E10 : `introduced` des
-options) ; les fins de vie (E27) arriveront de même, avec des constats `eol`.
+options), puis les répartitions par gravité du résumé (E14 : `severities`,
+`vulnerabilities`) ; les fins de vie (E27) arriveront de même, avec des constats `eol`.
 
 ## Le rapport
 
@@ -268,6 +269,8 @@ Un paquet déclaré deux fois dans un projet y compte pour un.
 | `findings` | objet | constats par type, tous les types présents (`{"yanked": 1, "outdated": 3, …}`) |
 | `outdated` | objet | constats `outdated` par écart (`{"major": 1, "minor": 2, "patch": 0}`) |
 | `to_update` | entier | ce qui est à mettre à jour : tous les constats sauf `unverifiable` et `inconclusive` |
+| `severities` | objet | les constats de `to_update` par gravité, toutes les gravités présentes (`{"critical": 0, "high": 13, …}`) |
+| `vulnerabilities` | objet | les failles par gravité, de même |
 
 ## Valeurs des énumérations
 
@@ -464,6 +467,8 @@ chaque constat, abrégée ici) :
     "audited": 1,
     "findings": {"vulnerable": 2, "eol": 0, "yanked": 1, "deprecated": 0, "outdated": 1, "unverifiable": 0, "inconclusive": 0},
     "outdated": {"major": 0, "minor": 1, "patch": 0},
+    "severities": {"critical": 0, "high": 0, "medium": 3, "low": 0, "info": 1},
+    "vulnerabilities": {"critical": 0, "high": 0, "medium": 2, "low": 0, "info": 0},
     "to_update": 4
   }
 }
@@ -551,6 +556,7 @@ disque.
 | `started_at`, `finished_at` | dates | `finished_at` : `null` tant qu'elle tourne |
 | `error` | chaîne ou `null` | `failed` : ce qui s'est passé |
 | `progress` | [événement](#événement) ou `null` | le dernier reçu |
+| `summary` | [résumé](#résumé) ou `null` | une fois `done` : le `summary` du rapport (ses chiffres, sans charger le rapport) ; `null` avant, ou si l'analyse n'a pas abouti |
 | `report` | [rapport](#le-rapport) ou `null` | seulement dans `GET /api/scans/{id}`, une fois `done` : le JSON de `scan --format json` |
 
 ## Plan de mise à jour
@@ -665,7 +671,7 @@ ne sont pas listés (un dossier OneDrive l'est).
 | `entries` | liste de `{"name", "path", "kind", "hidden"}` | les dossiers puis les fichiers, par nom ; `kind` : `drive`, `folder` ou `file` ; `hidden` : nom en `.`, ou caché pour Windows |
 | `truncated` | booléen | plus de 5000 entrées : la liste est coupée |
 | `home` | chemin | le dossier personnel |
-| `recent` | liste de chemins | les 10 derniers chemins analysés qui existent encore, du plus récent au plus ancien |
+| `recent` | liste de `{"path", "kind"}` | les 10 derniers chemins analysés qui existent encore, du plus récent au plus ancien ; `kind` : `folder` (dossier, lecteur compris) ou `file` |
 
 ## Fichier envoyé
 

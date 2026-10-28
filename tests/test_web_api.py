@@ -201,10 +201,16 @@ def test_recent_paths(
     for folder in (first, second):
         folder.mkdir()
         (folder / "requirements.txt").write_text("flask==0.12\n", encoding="utf-8")
-    for folder in (first, second, first):
-        scan(api, finished, folder)
+    alone = second / "requirements.txt"
+    for path in (first, second, alone, first):
+        scan(api, finished, path)
+    assert api.get("/api/fs").json()["recent"] == [
+        {"path": first.as_posix(), "kind": "folder"},
+        {"path": alone.as_posix(), "kind": "file"},
+        {"path": second.as_posix(), "kind": "folder"},
+    ]
     shutil.rmtree(second)
-    assert api.get("/api/fs").json()["recent"] == [first.as_posix()]
+    assert api.get("/api/fs").json()["recent"] == [{"path": first.as_posix(), "kind": "folder"}]
 
 
 # -- Analyses ---------------------------------------------------------------------
@@ -239,6 +245,8 @@ def test_a_scan_runs_in_the_background_and_gives_the_report(
         document.pop("oldest_data")
     assert report == expected
     assert report["summary"]["findings"]["vulnerable"] == 28
+    # Les chiffres du rapport, aussi dans la liste des analyses.
+    assert state["summary"] == report["summary"]
     assert api.get("/api/scans").json() == [{k: v for k, v in state.items() if k != "report"}]
 
 
@@ -321,10 +329,13 @@ def test_cancel_a_scan(
     api: TestClient, tmp_path: Path, stuck: list[asyncio.CancelledError]
 ) -> None:
     scan_id = api.post("/api/scans", json={"path": str(tmp_path)}).json()["id"]
-    assert api.get(f"/api/scans/{scan_id}").json()["status"] == "running"
+    running = api.get(f"/api/scans/{scan_id}").json()
+    assert running["status"] == "running"
+    assert running["summary"] is None
     response = api.delete(f"/api/scans/{scan_id}")
     assert response.status_code == 200
     assert response.json()["status"] == "cancelled"
+    assert response.json()["summary"] is None
     assert response.json()["finished_at"] is not None
     # Annuler encore ne change rien ; le flux d'événements se termine.
     assert api.delete(f"/api/scans/{scan_id}").json()["status"] == "cancelled"

@@ -82,6 +82,15 @@ def test_summary_counts_a_double_declaration_once(report: Report) -> None:
     }
     assert summary.outdated == {Gap.MAJOR: 1, Gap.MINOR: 2, Gap.PATCH: 0}
     assert summary.to_update == 5
+    # Les 5 à mettre à jour, par gravité (la majeure est faible, les mineures « info »).
+    assert summary.severities == {
+        Severity.CRITICAL: 0,
+        Severity.HIGH: 0,
+        Severity.MEDIUM: 1,
+        Severity.LOW: 2,
+        Severity.INFO: 2,
+    }
+    assert sum(summary.vulnerabilities.values()) == 0
 
 
 def test_rows_group_a_package_declared_twice(report: Report) -> None:
@@ -351,6 +360,8 @@ def test_summary_counts_the_dependencies_searched_for_vulnerabilities() -> None:
     assert (summary.checked, summary.audited) == (1, 3)
     assert summary.findings[FindingKind.VULNERABLE] == 2
     assert summary.to_update == 2
+    assert summary.vulnerabilities == summary.severities
+    assert sum(summary.vulnerabilities.values()) == 2
     data = json.loads(json_report.render(vulnerable_report()))
     assert data["summary"]["audited"] == 3
     assert data["projects"][0]["findings"][0]["cvss_score"] == 7.5
