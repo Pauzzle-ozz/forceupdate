@@ -139,7 +139,7 @@ Prises pour pouvoir planifier. Si l'une change : modifier ce tableau, puis les
 | 16 | Quelles forges en V1 ? | GitHub, GitLab (gitlab.com et auto-hébergé), Bitbucket Cloud | **Confirmé.** Demandé par l'utilisateur |
 | 17 | Avec quoi faire le front ? | React + TypeScript + Vite + Tailwind + shadcn/ui. Choix confirmé à E13 avec le design system. Le front construit est livré dans le paquet Python : pas besoin de node pour utiliser l'outil | Pile que le skill connaît, proche de celle d'Argos (React, Vite, Tailwind) |
 | 18 | Nom ? | `forceupdate` : nom sur PyPI, paquet Python, commande. Fichier de configuration `forceupdate.toml`, branche des PR `forceupdate/dependencies` | **Confirmé.** Choisi par l'utilisateur, en clin d'œil à Star Wars. Libre sur PyPI le 2026-10-27 ; `update-checker` était pris |
-| 19 | Publication ? | Sur PyPI, gratuitement, code public : on installe avec `uv tool install forceupdate`. Une première version (0.1.0) est publiée dès que l'analyse marche (E08), pour réserver le nom | **Confirmé.** Gratuit ; le code public ne gêne pas l'utilisateur |
+| 19 | Publication ? | Sur PyPI, gratuitement, code public : on installe avec `uv tool install forceupdate`. Une première version (0.1.0) est publiée dès que l'analyse marche, pour réserver le nom : **fait le 2026-10-28** (E09), par un workflow GitHub Actions et « Trusted Publisher », sans token | **Confirmé.** Gratuit ; le code public ne gêne pas l'utilisateur |
 | 20 | Licence ? | MIT : fichier `LICENSE` à la racine, déclaré dans `pyproject.toml` (E01) | **Confirmé.** La plus simple : chacun peut utiliser, modifier et redistribuer le code, en gardant la mention de l'auteur |
 
 ## Questions encore ouvertes
@@ -150,8 +150,8 @@ dans « Décisions prises » une fois tranchée.
 **À faire par toi, plus tard** (la session concernée te guidera, quelques minutes
 chaque fois) :
 
-- créer un compte PyPI et y relier le dépôt GitHub, pour publier (E08 pour la
-  0.1.0, puis E30) ;
+- ~~créer un compte PyPI et y relier le dépôt GitHub~~ : fait à E09, la 0.1.0 est
+  publiée ; les versions suivantes partent d'une étiquette `v*` ;
 - enregistrer l'outil auprès de GitHub (E16), de GitLab (E19) et de Bitbucket
   (E20).
 
