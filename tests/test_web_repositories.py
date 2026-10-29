@@ -84,12 +84,15 @@ def rows(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {row["full_name"]: row for row in document["repositories"]}
 
 
+def keys(*names: str, forge: str = "github", host: str = "github.com") -> list[dict[str, str]]:
+    """Les dépôts ``names`` d'un compte, comme les désigne l'API."""
+    return [{"forge": forge, "host": host, "full_name": name} for name in names]
+
+
 def run_batch(
     api: TestClient, finished: Finished, names: list[str], **options: Any
 ) -> dict[str, Any]:
-    response = api.post(
-        "/api/repositories/batches", json={"forge": "github", "repositories": names, **options}
-    )
+    response = api.post("/api/repositories/batches", json={"repositories": keys(*names), **options})
     assert response.status_code == 202, response.text
     batch = response.json()
     for scan_id in batch["scans"]:
@@ -209,7 +212,9 @@ def test_a_batch_analyzes_each_repository_without_cloning_but_a_truncated_one(
     assert batch["skipped"] == ["octo/neuf"]
     assert batch["concurrency"] == 4
     assert batch["requests"] > 0
-    assert batch["rate_limit"]["remaining"] < 5000
+    # Les requêtes restantes sont celles du compte, d'après la dernière réponse du lot.
+    account = api.get("/api/repositories").json()["accounts"][0]
+    assert account["rate_limit"]["remaining"] < 5000
     # Seuls les fichiers de dépendances sont lus (le dépôt tronqué est ensuite cloné).
     downloaded = {item.split(":")[1] for item in github.contents()}
     assert downloaded == {
@@ -294,16 +299,19 @@ def test_a_batch_refuses_what_it_cannot_do(api: TestClient, github: FakeGitHubRe
     def start(body: dict[str, Any]) -> Any:
         return api.post("/api/repositories/batches", json=body)
 
-    response = start({"forge": "github", "repositories": ["octo/vulnerable"]})
+    response = start({"repositories": keys("octo/vulnerable")})
     assert response.status_code == 404
     assert response.json() == {"detail": "Aucun compte GitHub connecté."}
     connect(api)
     api.get("/api/repositories")
-    response = start({"forge": "github", "repositories": ["octo/vulnerable", "octo/inconnu"]})
+    response = start({"repositories": keys("octo/vulnerable", "octo/inconnu")})
     assert response.status_code == 400
     assert response.json()["detail"].startswith("octo/inconnu : pas dans la liste")
-    assert start({"forge": "github", "repositories": []}).status_code == 400
-    response = start({"forge": "gitlab", "repositories": ["a/b"]})
+    assert start({"repositories": []}).status_code == 400
+    response = start({"repositories": keys("a/b", forge="gitlab", host="gitlab.com")})
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Aucun compte GitLab connecté."}
+    response = start({"repositories": keys("a/b", forge="bitbucket", host="bitbucket.org")})
     assert response.status_code == 409
 
 
@@ -336,9 +344,7 @@ def test_cancel_a_batch(
         return original(request)
 
     github._dispatch = slow  # type: ignore[method-assign]
-    batch = api.post(
-        "/api/repositories/batches", json={"forge": "github", "repositories": VISIBLE}
-    ).json()
+    batch = api.post("/api/repositories/batches", json={"repositories": keys(*VISIBLE)}).json()
     response = api.delete(f"/api/repositories/batches/{batch['id']}")
     assert response.status_code == 200
     cancelled = response.json()
@@ -410,7 +416,8 @@ def test_scan_a_repository_with_the_connected_account(
         ("pas un/dépôt", 400, "n'est pas un nom de dépôt"),
         ("octo", 400, "donner owner/nom"),
         ("https://exemple.org/a/b", 400, "seuls GitHub, GitLab et Bitbucket"),
-        ("https://gitlab.com/a/b", 409, "GitLab : l'analyse de ses dépôts n'est pas encore"),
+        ("https://bitbucket.org/a/b", 409, "Bitbucket : l'analyse de ses dépôts n'est pas"),
+        ("https://gitlab.example.com/a/b", 400, "et les instances GitLab connectées"),
         ("octo/vulnerable", 404, "privé et sans compte connecté, on n'y a pas accès"),
         ("octo/inconnu", 404, "Dépôt introuvable sur GitHub : octo/inconnu n'existe pas"),
         ("octo/neuf", 409, "octo/neuf est vide : rien à analyser."),
@@ -450,9 +457,7 @@ def test_responses_follow_the_exported_schema(
     check(api.get("/api/repositories").json(), "RepositoryList")
     connect(api)
     check(api.get("/api/repositories").json(), "RepositoryList")
-    batch = api.post(
-        "/api/repositories/batches", json={"forge": "github", "repositories": VISIBLE}
-    ).json()
+    batch = api.post("/api/repositories/batches", json={"repositories": keys(*VISIBLE)}).json()
     check(batch, "RepositoryBatch")
     for scan_id in batch["scans"]:
         check(finished(f"/api/scans/{scan_id}"), "ScanDetail")

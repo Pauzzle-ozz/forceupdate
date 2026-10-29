@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { cn } from 'cn'
 import { api, queryKeys } from '@/api/client'
 import type { Proposal, ProposedSelection, Report, ScanDetail, Selection } from '@/api/types'
+import { keyOf, keyText, requestWord } from '@/lib/proposals'
 import { EmptyState } from '@/components/EmptyState'
 import { Alert, AlertActions, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -122,11 +123,12 @@ function SelectStep({
   /** Un dépôt : le récapitulatif de sa PR, avec les autres dépôts du récapitulatif d'où l'on vient. */
   function propose() {
     if (!repository) return
+    const mine = keyText(repository).toLowerCase()
     const others: ProposedSelection[] = (proposal?.repositories ?? [])
-      .filter((item) => item.full_name.toLowerCase() !== repository.full_name.toLowerCase())
-      .map((item) => ({ repository: item.full_name, selection: item.state === 'ready' ? item.selection : null }))
+      .filter((item) => keyText(item).toLowerCase() !== mine)
+      .map((item) => ({ ...keyOf(item), selection: item.state === 'ready' ? item.selection : null }))
     prepare.mutate(
-      { forge: repository.forge, repositories: [...others, { repository: repository.full_name, selection }] },
+      { repositories: [...others, { ...keyOf(repository), selection }] },
       { onSuccess: (document) => void navigate(`/pr/${document.id}`) },
     )
   }
@@ -138,7 +140,7 @@ function SelectStep({
         {repository ? (
           <PreparingPlan
             label="Préparation du récapitulatif"
-            text={fr('Préparation du récapitulatif : réécriture à blanc, recherche de la PR déjà ouverte…')}
+            text={fr(`Préparation du récapitulatif : réécriture à blanc, recherche de la ${requestWord(repository.forge)} déjà ouverte…`)}
           />
         ) : (
           <PreparingPlan />
@@ -170,7 +172,7 @@ function SelectStep({
   const verify = repository ? (
     <Button variant="primary" className={cn(wide && 'w-full')} disabled={sums.chosen === 0} onClick={propose}>
       <GitPullRequest aria-hidden="true" />
-      Préparer la PR
+      {`Préparer la ${requestWord(repository.forge)}`}
       <ArrowRight aria-hidden="true" />
     </Button>
   ) : (
@@ -264,7 +266,7 @@ function SelectStep({
               {upload
                 ? fr("Rien ne s'écrit sur le disque : le fichier mis à jour se télécharge à l'étape suivante.")
                 : repository
-                  ? fr("Rien n'est poussé à cette étape : le récapitulatif montre d'abord le diff et la PR déjà ouverte.")
+                  ? fr(`Rien n'est poussé à cette étape : le récapitulatif montre d'abord le diff et la ${requestWord(repository.forge)} déjà ouverte.`)
                   : fr("Rien n'est écrit à cette étape : le plan montre d'abord le diff.")}
             </p>
           </Card>

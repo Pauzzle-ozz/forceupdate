@@ -438,6 +438,19 @@ son ou nom de personnage repris.
 - vérifié par axe-core (récapitulatif diffs ouverts, résultat) en clair et en sombre, à 1440 et
   375 px ; pas de défilement horizontal.
 
+**Fait à E19** (GitLab sur les écrans 6, 7 et 8) :
+
+- les noms des forges et des propositions viennent de `lib/proposals.ts` : `forgeLabel` (« GitLab »,
+  « GitLab (hôte) » pour une instance), `requestWord` (« PR », « MR »), `requestWords` (« PR et MR »),
+  `requestCount` (« 2 PR et 1 MR ») ; jamais de « PR » écrit en dur pour un dépôt dont on connaît la
+  forge ;
+- une sous-section dans une carte (les instances de GitLab) : un `role="group"` nommé par son titre
+  `h3` (icône `server`), séparée par un trait ; chaque élément dedans, une bordure fine et un `h4` ;
+- le nom accessible d'un dépôt dit sa forge seulement quand un autre dépôt porte le même nom
+  (`spokenName`) : court d'ordinaire, jamais ambigu ;
+- vérifié par axe-core (dépôts des deux forges, comptes GitLab avec une instance, récapitulatif PR
+  et MR) en clair et en sombre, à 1440 et 375 px ; pas de défilement horizontal.
+
 ## Anti-motifs
 
 - Couleur seule pour dire une gravité ou un état ; vert pour l'accent.

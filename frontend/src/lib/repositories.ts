@@ -4,8 +4,9 @@
  * (`GET /api/repositories`) : rien n'est recompté ici, sinon le nombre de mises à jour cochées
  * de la sélection (la somme de celles que le serveur donne pour chaque dépôt).
  */
-import type { ForgeKind, RateLimit, RepositoryRow, ScanSummary } from '@/api/types'
+import type { ForgeKind, RateLimit, RepositoryKey, RepositoryRow, ScanSummary } from '@/api/types'
 import { count, formatNumber, formatTime, fr } from '@/lib/format'
+import { forgeLabel, keyOf, keyText } from '@/lib/proposals'
 
 export type StateFilter = 'all' | 'to_update' | 'vulnerable' | 'up_to_date' | 'inconclusive' | 'not_scanned'
 
@@ -44,9 +45,9 @@ export interface RepositorySort {
 
 export const DEFAULT_REPOSITORY_SORT: RepositorySort = { key: 'name', descending: false }
 
-/** La clé d'un dépôt : sa forge et son nom. */
-export function repositoryKey(row: Pick<RepositoryRow, 'forge' | 'full_name'>): string {
-  return `${row.forge}:${row.full_name}`
+/** La clé d'un dépôt : sa forge, l'hôte de son compte, son nom (`gitlab:gitlab.com/g/projet`). */
+export function repositoryKey(row: Pick<RepositoryRow, 'forge' | 'host' | 'full_name'>): string {
+  return keyText(row)
 }
 
 function matchesState(row: RepositoryRow, state: StateFilter): boolean {
@@ -103,6 +104,23 @@ export function forgesOf(rows: RepositoryRow[]): ForgeKind[] {
   return [...new Set(rows.map((row) => row.forge))]
 }
 
+/** Les noms que portent plusieurs dépôts (le même `owner/nom` sur GitHub et sur GitLab). */
+export function twinNames(rows: RepositoryRow[]): Set<string> {
+  const seen = new Set<string>()
+  const twins = new Set<string>()
+  for (const row of rows) {
+    const name = row.full_name.toLowerCase()
+    if (seen.has(name)) twins.add(name)
+    seen.add(name)
+  }
+  return twins
+}
+
+/** Le nom d'un dépôt à dire (lecteurs d'écran) : avec sa forge, si un autre porte le même. */
+export function spokenName(row: RepositoryRow, twins: ReadonlySet<string>): string {
+  return twins.has(row.full_name.toLowerCase()) ? `${row.full_name} (${forgeLabel(row.forge, row.host)})` : row.full_name
+}
+
 /** Un dépôt vide n'a rien à analyser : il ne se coche pas. */
 export function selectable(row: RepositoryRow): boolean {
   return !row.empty
@@ -113,11 +131,9 @@ export function selectedUpdates(rows: RepositoryRow[], selected: ReadonlySet<str
   return rows.reduce((total, row) => total + (selected.has(repositoryKey(row)) ? (row.counts?.updates ?? 0) : 0), 0)
 }
 
-/** Les dépôts à analyser, par forge (une analyse groupée par forge). */
-export function byForge(rows: RepositoryRow[]): Map<ForgeKind, string[]> {
-  const found = new Map<ForgeKind, string[]>()
-  for (const row of rows) found.set(row.forge, [...(found.get(row.forge) ?? []), row.full_name])
-  return found
+/** Les dépôts, comme les désigne l'API (une analyse groupée, un récapitulatif). */
+export function keysOf(rows: RepositoryRow[]): RepositoryKey[] {
+  return rows.map(keyOf)
 }
 
 export interface Progress {

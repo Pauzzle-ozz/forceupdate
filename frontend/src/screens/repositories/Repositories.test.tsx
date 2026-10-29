@@ -180,8 +180,7 @@ describe('mes dépôts (écran 7)', () => {
     const sent = calls.find((call) => call.method === 'POST')!
     expect(sent.url.pathname).toBe('/api/repositories/batches')
     expect(JSON.parse(String(sent.init.body))).toEqual({
-      forge: 'github',
-      repositories: ['octo/boutique', 'octo/neuf'],
+      repositories: [{ forge: 'github', host: 'github.com', full_name: 'octo/boutique' }, { forge: 'github', host: 'github.com', full_name: 'octo/neuf' }],
       dev: true,
       transitive: false,
       include_tests: false,
@@ -256,7 +255,7 @@ describe('mes dépôts (écran 7)', () => {
     expect(screen.getByText('1 dépôt non concluant')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Relancer ce dépôt' }))
     await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true))
-    expect(JSON.parse(String(calls.find((call) => call.method === 'POST')!.init.body)).repositories).toEqual(['octo/scripts'])
+    expect(JSON.parse(String(calls.find((call) => call.method === 'POST')!.init.body)).repositories).toEqual([{ forge: 'github', host: 'github.com', full_name: 'octo/scripts' }])
   })
 
   it('hors ligne : la liste du dernier chargement, les analyses attendent', async () => {

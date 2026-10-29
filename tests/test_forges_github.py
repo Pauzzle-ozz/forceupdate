@@ -13,7 +13,7 @@ import httpx
 import pytest
 import respx
 
-from forceupdate.forges import FORGES, client, github
+from forceupdate.forges import FORGES, base, client, github
 from forceupdate.forges.base import (
     Access,
     AccessDenied,
@@ -25,6 +25,7 @@ from forceupdate.forges.base import (
     TokenRefused,
 )
 from forceupdate.forges.github import DeviceCode, DeviceExpired, GitHub, OAuthApp
+from forceupdate.forges.gitlab import GitLab
 from forceupdate.net import HttpClient, NetworkError
 
 T = TypeVar("T")
@@ -266,10 +267,10 @@ def test_the_forge_interface_is_fixed() -> None:
 
 
 def test_the_forges_and_their_client() -> None:
-    assert [(f.kind, f.name, f.available) for f in FORGES] == [
-        (ForgeKind.GITHUB, "GitHub", True),
-        (ForgeKind.GITLAB, "GitLab", False),
-        (ForgeKind.BITBUCKET, "Bitbucket", False),
+    assert [(f.kind, f.name, f.available, f.self_hosted, f.request) for f in FORGES] == [
+        (ForgeKind.GITHUB, "GitHub", True, False, "PR"),
+        (ForgeKind.GITLAB, "GitLab", True, True, "MR"),
+        (ForgeKind.BITBUCKET, "Bitbucket", False, False, "PR"),
     ]
 
     async def work(http: HttpClient) -> Any:
@@ -278,8 +279,16 @@ def test_the_forges_and_their_client() -> None:
     forge = run(work)
     assert isinstance(forge, GitHub)
     assert TOKEN not in repr(forge)
-    with pytest.raises(NotImplementedError, match="GitLab"):
-        client(ForgeKind.GITLAB, None, TOKEN)  # type: ignore[arg-type]
+
+    async def instance(http: HttpClient) -> Any:
+        return client(ForgeKind.GITLAB, http, TOKEN, host="gitlab.example.com")
+
+    found = run(instance)
+    assert isinstance(found, GitLab)
+    assert found.host == "gitlab.example.com"
+    assert TOKEN not in repr(found)
+    with pytest.raises(NotImplementedError, match="Bitbucket"):
+        client(ForgeKind.BITBUCKET, None, TOKEN)  # type: ignore[arg-type]
 
 
 # -- OAuth --------------------------------------------------------------------------
@@ -288,8 +297,8 @@ def test_the_forges_and_their_client() -> None:
 def test_pkce_challenge_follows_rfc_7636() -> None:
     # L'exemple de l'annexe B de la RFC 7636.
     verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
-    assert github.challenge_of(verifier) == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
-    verifiers = {github.new_verifier() for _ in range(10)}
+    assert base.challenge_of(verifier) == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+    verifiers = {base.new_verifier() for _ in range(10)}
     assert len(verifiers) == 10
     assert all(43 <= len(v) <= 128 for v in verifiers)
 
@@ -307,7 +316,7 @@ def test_the_authorization_url() -> None:
         "redirect_uri": ["http://127.0.0.1:54321/oauth/github/callback"],
         "scope": ["repo read:org"],
         "state": ["etat"],
-        "code_challenge": [github.challenge_of("v" * 50)],
+        "code_challenge": [base.challenge_of("v" * 50)],
         "code_challenge_method": ["S256"],
     }
 

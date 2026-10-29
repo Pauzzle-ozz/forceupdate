@@ -86,11 +86,16 @@ def npm_uv(fake_tools: Callable[..., FakeTools]) -> FakeTools:
 
 
 def propose(api: TestClient, *names: str, **selections: dict[str, str]) -> dict[str, Any]:
-    wanted = [{"repository": name, "selection": selections.get(name)} for name in names]
-    response = api.post("/api/proposals", json={"forge": "github", "repositories": wanted})
+    wanted = [{**key(name), "selection": selections.get(name)} for name in names]
+    response = api.post("/api/proposals", json={"repositories": wanted})
     assert response.status_code == 201, response.text
     assert response.headers["location"] == f"/api/proposals/{response.json()['id']}"
     return response.json()
+
+
+def key(name: str, forge: str = "github", host: str = "github.com") -> dict[str, str]:
+    """Un dépôt d'un compte, comme le désigne l'API."""
+    return {"forge": forge, "host": host, "full_name": name}
 
 
 def items(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -99,7 +104,8 @@ def items(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 def sent(api: TestClient, proposal: str, *names: str) -> dict[str, Any]:
     """Envoie, puis attend (20 s au plus) la fin de l'envoi."""
-    response = api.post(f"/api/proposals/{proposal}/send", json={"repositories": list(names)})
+    body = {"repositories": [key(name) for name in names]}
+    response = api.post(f"/api/proposals/{proposal}/send", json=body)
     assert response.status_code == 202, response.text
     deadline = time.monotonic() + 20
     while True:
@@ -218,8 +224,7 @@ def test_a_modified_selection(
     response = api.post(
         "/api/proposals",
         json={
-            "forge": "github",
-            "repositories": [{"repository": "octo/vulnerable", "selection": {"x|npm|y": "1.0"}}],
+            "repositories": [{**key("octo/vulnerable"), "selection": {"x|npm|y": "1.0"}}],
         },
     )
     assert response.status_code == 400
@@ -240,23 +245,27 @@ def test_what_cannot_be_proposed_or_sent(
         assert response.status_code == status, response.text
         assert text in response.json()["detail"]
 
-    refused({"forge": "github", "repositories": []}, 400, "Aucun dépôt")
-    refused({"forge": "github", "repositories": [{"repository": "x/y"}]}, 400, "pas dans la liste")
-    refused({"forge": "gitlab", "repositories": [{"repository": "x/y"}]}, 409, "pas encore")
+    refused({"repositories": []}, 400, "Aucun dépôt")
+    refused({"repositories": [key("x/y")]}, 400, "pas dans la liste")
+    refused({"repositories": [key("x/y", "gitlab", "gitlab.com")]}, 404, "Aucun compte GitLab")
+    refused({"repositories": [key("x/y", "bitbucket", "bitbucket.org")]}, 409, "pas encore")
     assert api.get("/api/proposals/inconnu").status_code == 404
     assert api.post("/api/proposals/inconnu/send", json={"repositories": []}).status_code == 404
 
     proposal = propose(api, "octo/vulnerable", "octo/a-jour")
     url = f"/api/proposals/{proposal['id']}/send"
     for names, status in ((["octo/a-jour"], 400), ([], 400), (["autre/depot"], 400)):
-        assert api.post(url, json={"repositories": names}).status_code == status
+        body = {"repositories": [key(name) for name in names]}
+        assert api.post(url, json=body).status_code == status
+    gitlab_one = {"repositories": [key("octo/vulnerable", "gitlab", "gitlab.com")]}
+    assert api.post(url, json=gitlab_one).status_code == 400  # pas le même dépôt
     with monkeypatch.context() as patched:  # git absent, le temps d'une requête
         patched.setattr(forge_git, "_which", lambda program: None)
-        response = api.post(url, json={"repositories": ["octo/vulnerable"]})
+        response = api.post(url, json={"repositories": [key("octo/vulnerable")]})
     assert response.status_code == 409
     assert "git n'est pas installé" in response.json()["detail"]
     sent(api, proposal["id"], "octo/vulnerable")
-    again = api.post(url, json={"repositories": ["octo/vulnerable"]})
+    again = api.post(url, json={"repositories": [key("octo/vulnerable")]})
     assert again.status_code == 409
 
 
@@ -337,8 +346,9 @@ def test_a_token_refused_when_sending(
     proposal = propose(api, "octo/vulnerable")
     github.tokens = {"autre"}  # révoqué sur github.com
     done = sent(api, proposal["id"], "octo/vulnerable")
-    assert "refuse le token" in (done["error"] or "")
+    assert done["error"] is None  # un compte refusé n'arrête pas ceux des autres comptes
     assert items(done)["octo/vulnerable"]["state"] == "failed"
+    assert "refuse le token" in (items(done)["octo/vulnerable"]["error"] or "")
     accounts = api.get("/api/accounts").json()
     github_account = next(f for f in accounts["forges"] if f["forge"] == "github")["account"]
     assert "refuse le token" in (github_account["problem"] or "")
@@ -377,7 +387,7 @@ def test_responses_follow_the_exported_schema(
     proposal = propose(api, "octo/vulnerable", "octo/a-jour", "octo/muet")
     check(proposal, "Proposal")
     response = api.post(
-        f"/api/proposals/{proposal['id']}/send", json={"repositories": ["octo/vulnerable"]}
+        f"/api/proposals/{proposal['id']}/send", json={"repositories": [key("octo/vulnerable")]}
     )
     check(response.json(), "Proposal")
     check(api.get(f"/api/proposals/{proposal['id']}").json(), "Proposal")

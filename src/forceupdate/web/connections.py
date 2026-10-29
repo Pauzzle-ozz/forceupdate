@@ -5,15 +5,16 @@
   forge, qui le renvoie sur l'adresse de retour (``web.routes.oauth``). ``by_state`` y retrouve
   la connexion, ``finish_oauth`` échange le code contre le token. Un ``state`` ne sert qu'une
   fois, et expire après ``OAUTH_TTL``.
-- **Device flow** : ``start_device`` demande un code à la forge, puis une tâche de la boucle du
-  serveur attend que la personne l'ait tapé (``github.wait_device``).
+- **Device flow** (GitHub) : ``start_device`` demande un code à la forge, puis une tâche de la
+  boucle du serveur attend que la personne l'ait tapé (``github.wait_device``).
 
 Dans les deux cas, le token obtenu est vérifié par la forge (``whoami``) puis rangé dans le
 trousseau (``forges.accounts.connect``) ; le navigateur suit la connexion par son identifiant.
 Tout se passe dans la boucle du serveur ; rien n'est gardé sur le disque.
 
 ``Connections`` porte aussi ce dont ont besoin les routes des comptes : le magasin des comptes,
-le ``HttpClient`` qui parle aux forges, l'application OAuth.
+le ``HttpClient`` qui parle aux forges, l'application OAuth de chaque forge (``apps``), et ce qui
+renouvelle le token d'un compte qui expire (``renew``, GitLab).
 """
 
 import asyncio
@@ -23,10 +24,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from forceupdate.forges import accounts as accounts_module
-from forceupdate.forges import github, info
+from forceupdate.forges import github, gitlab, info
 from forceupdate.forges.accounts import Account, Accounts, AccountsError, ConnectMethod
-from forceupdate.forges.base import ForgeError, ForgeKind
-from forceupdate.forges.github import DeviceCode, DeviceExpired, OAuthApp
+from forceupdate.forges.base import ForgeError, ForgeKind, OAuthFlow, Renew, new_verifier
+from forceupdate.forges.github import DeviceCode, DeviceExpired
 from forceupdate.net import HttpClient, NetworkError
 from forceupdate.web.schemas import AccountConnection, ConnectionStatus
 
@@ -96,12 +97,39 @@ class Connections:
     """Les connexions de la session, et ce qu'il faut pour connecter un compte. À créer et à
     fermer dans la boucle du serveur."""
 
-    def __init__(self, *, accounts: Accounts, port: int, app: OAuthApp | None = None) -> None:
+    def __init__(
+        self, *, accounts: Accounts, port: int, apps: dict[ForgeKind, OAuthFlow] | None = None
+    ) -> None:
         self.accounts = accounts
         self.port = port
-        self.app = app or OAuthApp.default()
+        self.apps: dict[ForgeKind, OAuthFlow] = {
+            ForgeKind.GITHUB: github.OAuthApp.default(),
+            ForgeKind.GITLAB: gitlab.OAuthApp.default(),
+            **(apps or {}),
+        }
+        """L'application de forceupdate auprès de chaque forge (par OAuth)."""
         self.http = HttpClient()
         self._items: dict[str, Connection] = {}
+
+    @property
+    def github(self) -> github.OAuthApp:
+        """L'application GitHub, pour le device flow."""
+        app = self.apps[ForgeKind.GITHUB]
+        assert isinstance(app, github.OAuthApp)
+        return app
+
+    def web_flow(self, forge: ForgeKind) -> bool:
+        """La connexion par la page d'autorisation de la forge est possible."""
+        app = self.apps.get(forge)
+        return app is not None and app.web_flow
+
+    def renew(self, account: Account) -> Renew | None:
+        """Ce qui renouvelle le token d'``account`` quand il expire ; ``None`` s'il n'a pas été
+        donné par une application de forceupdate (un token collé ne se renouvelle pas)."""
+        app = self.apps.get(account.forge)
+        if app is None or account.method is not ConnectMethod.OAUTH:
+            return None
+        return accounts_module.renewer(self.accounts, account, app)
 
     async def close(self) -> None:
         """Arrête les device flows en attente, ferme le client."""
@@ -136,12 +164,12 @@ class Connections:
     def start_oauth(self, forge: ForgeKind) -> Connection:
         """Une connexion par la page d'autorisation de la forge ; ``authorize_url`` dit où
         envoyer le navigateur."""
+        app = self.apps[forge]
         connection = self._add(forge, ConnectMethod.OAUTH, _now() + OAUTH_TTL)
         connection.state = secrets.token_urlsafe(32)
-        connection.verifier = github.new_verifier()
-        connection.redirect_to = github.redirect_uri(self.port)
-        connection.authorize_url = github.authorization_url(
-            self.app,
+        connection.verifier = new_verifier()
+        connection.redirect_to = app.redirect_uri(self.port)
+        connection.authorize_url = app.authorization_url(
             redirect_to=connection.redirect_to,
             state=connection.state,
             verifier=connection.verifier,
@@ -174,18 +202,20 @@ class Connections:
         self._expire(connection)
         if not connection.pending:
             return
+        app = self.apps[connection.forge]
         if error:
-            connection.end(ConnectionStatus.FAILED, github.authorization_error(error, description))
+            connection.end(ConnectionStatus.FAILED, app.authorization_error(error, description))
             return
         if not code or verifier is None or redirect_to is None:
-            connection.end(ConnectionStatus.FAILED, "GitHub n'a pas rendu de code d'autorisation.")
+            name = info(connection.forge).name
+            connection.end(ConnectionStatus.FAILED, f"{name} n'a pas rendu de code d'autorisation.")
             return
         try:
-            token = await github.exchange_code(
-                self.http, self.app, code=code, redirect_to=redirect_to, verifier=verifier
+            grant = await app.exchange_code(
+                self.http, code=code, redirect_to=redirect_to, verifier=verifier
             )
             account = await accounts_module.connect(
-                self.accounts, self.http, connection.forge, token, ConnectMethod.OAUTH
+                self.accounts, self.http, connection.forge, grant, ConnectMethod.OAUTH
             )
         except (ForgeError, NetworkError, AccountsError) as err:
             connection.end(ConnectionStatus.FAILED, failure(err, connection.forge))
@@ -198,7 +228,7 @@ class Connections:
     async def start_device(self, forge: ForgeKind) -> Connection:
         """Demande un code à la forge, et attend qu'il soit tapé (tâche de fond). Lève
         ``ForgeError`` ou ``NetworkError`` si la forge ne donne pas de code."""
-        device = await github.start_device(self.http, self.app)
+        device = await github.start_device(self.http, self.github)
         expires_at = _now() + timedelta(seconds=device.expires_in)
         connection = self._add(forge, ConnectMethod.DEVICE, expires_at)
         connection.device = device
@@ -207,7 +237,7 @@ class Connections:
 
     async def _wait_device(self, connection: Connection, device: DeviceCode) -> None:
         try:
-            token = await github.wait_device(self.http, self.app, device)
+            token = await github.wait_device(self.http, self.github, device)
             account = await accounts_module.connect(
                 self.accounts, self.http, connection.forge, token, ConnectMethod.DEVICE
             )

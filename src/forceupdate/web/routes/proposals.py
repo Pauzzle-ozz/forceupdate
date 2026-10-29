@@ -35,12 +35,12 @@ CurrentProposals = Annotated[Proposals, Depends(current_proposals)]
     responses=errors(400, 401, 403, 404, 409),
 )
 async def create_proposal(body: ProposalRequest, proposals: CurrentProposals) -> JSONResponse:
-    """Le récapitulatif des PR de quelques dépôts du compte connecté à ``forge`` : pour
-    chacun, la sélection (donnée, ou celle par défaut de sa dernière analyse) préparée sur les
-    fichiers de l'analyse (diffs, lockfiles, commandes), la PR déjà ouverte, ou pourquoi il est
-    sauté. Rien n'est cloné ni poussé."""
+    """Le récapitulatif des PR (MR sur GitLab) de quelques dépôts des comptes connectés, de
+    plusieurs forges au besoin : pour chacun, la sélection (donnée, ou celle par défaut de sa
+    dernière analyse) préparée sur les fichiers de l'analyse (diffs, lockfiles, commandes), la
+    PR déjà ouverte, ou pourquoi il est sauté. Rien n'est cloné ni poussé."""
     try:
-        proposal = await proposals.create(body.forge, body.repositories)
+        proposal = await proposals.create(body.repositories)
     except RepositoryError as err:
         raise HTTPException(err.status, str(err)) from err
     return respond(proposal.document(), 201, location=f"/api/proposals/{proposal.id}")

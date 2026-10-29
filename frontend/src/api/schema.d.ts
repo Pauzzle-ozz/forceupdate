@@ -277,7 +277,7 @@ export interface paths {
          * Start Device
          * @description Commence une connexion par device flow : la forge donne un code (``user_code``) à taper
          *     sur ``verification_uri`` ; le serveur attend, la connexion se suit sur
-         *     ``GET /api/accounts/connections/{id}``.
+         *     ``GET /api/accounts/connections/{id}``. GitHub seulement.
          */
         post: operations["start_device"];
         delete?: never;
@@ -322,8 +322,9 @@ export interface paths {
         put?: never;
         /**
          * Connect Token
-         * @description Connecte un compte avec un token collé (classic ou fine-grained), une fois que la forge
-         *     l'a accepté.
+         * @description Connecte un compte avec un token collé (GitHub : classic ou fine-grained ; GitLab : un
+         *     token d'accès personnel), une fois que la forge l'a accepté. ``url`` : l'adresse d'une
+         *     instance auto-hébergée (GitLab).
          */
         post: operations["connect_token"];
         delete?: never;
@@ -364,8 +365,9 @@ export interface paths {
         put?: never;
         /**
          * Verify Account
-         * @description Redemande à la forge qui est connecté et avec quels droits. Un token refusé (révoqué sur
-         *     la forge) est dit dans ``problem`` : le compte reste affiché, pour qu'on se reconnecte.
+         * @description Redemande à la forge qui est connecté et avec quels droits (le token renouvelé s'il a
+         *     expiré). Un token refusé (révoqué sur la forge) est dit dans ``problem`` : le compte reste
+         *     affiché, pour qu'on se reconnecte.
          */
         post: operations["verify_account"];
         delete?: never;
@@ -428,9 +430,9 @@ export interface paths {
         put?: never;
         /**
          * Start Batch
-         * @description Analyse ensemble des dépôts du compte connecté à ``forge``, sans les cloner : quelques
-         *     dépôts à la fois, une analyse par dépôt (``scans``), qui se suit comme les autres. Les
-         *     dépôts vides sont sautés.
+         * @description Analyse ensemble des dépôts des comptes connectés (de plusieurs forges au besoin), sans
+         *     les cloner : quelques dépôts à la fois, une analyse par dépôt (``scans``), qui se suit comme
+         *     les autres. Les dépôts vides sont sautés.
          */
         post: operations["start_batch"];
         delete?: never;
@@ -475,8 +477,9 @@ export interface paths {
         /**
          * Scan Repository
          * @description Analyse un dépôt donné par son nom (``owner/nom``) ou son adresse, même d'un autre compte
-         *     s'il est public : avec le token du compte connecté à sa forge, sans token sinon (GitHub :
-         *     60 requêtes par heure). Se suit comme une autre analyse.
+         *     s'il est public (sur GitLab : ``groupe/sous-groupe/projet`` ou son adresse) : avec le token
+         *     du compte connecté à sa forge, sans token sinon (GitHub : 60 requêtes par heure). Se suit
+         *     comme une autre analyse.
          */
         post: operations["scan_repository"];
         delete?: never;
@@ -496,10 +499,10 @@ export interface paths {
         put?: never;
         /**
          * Create Proposal
-         * @description Le récapitulatif des PR de quelques dépôts du compte connecté à ``forge`` : pour
-         *     chacun, la sélection (donnée, ou celle par défaut de sa dernière analyse) préparée sur les
-         *     fichiers de l'analyse (diffs, lockfiles, commandes), la PR déjà ouverte, ou pourquoi il est
-         *     sauté. Rien n'est cloné ni poussé.
+         * @description Le récapitulatif des PR (MR sur GitLab) de quelques dépôts des comptes connectés, de
+         *     plusieurs forges au besoin : pour chacun, la sélection (donnée, ou celle par défaut de sa
+         *     dernière analyse) préparée sur les fichiers de l'analyse (diffs, lockfiles, commandes), la
+         *     PR déjà ouverte, ou pourquoi il est sauté. Rien n'est cloné ni poussé.
          */
         post: operations["create_proposal"];
         delete?: never;
@@ -647,7 +650,8 @@ export interface components {
         };
         /**
          * BatchRequest
-         * @description Des dépôts d'un compte connecté à analyser ensemble.
+         * @description Des dépôts des comptes connectés à analyser ensemble (de plusieurs comptes, plusieurs
+         *     forges au besoin).
          */
         BatchRequest: {
             /**
@@ -670,9 +674,8 @@ export interface components {
              * @default true
              */
             cache: boolean;
-            forge: components["schemas"]["ForgeKind"];
             /** Repositories */
-            repositories: string[];
+            repositories: components["schemas"]["RepositoryKey"][];
         };
         /**
          * BatchStatus
@@ -758,6 +761,8 @@ export interface components {
          */
         Disconnection: {
             forge: components["schemas"]["ForgeKind"];
+            /** Host */
+            host: string;
             /** Login */
             login: string;
             /** Revoked */
@@ -949,7 +954,13 @@ export interface components {
             scopes: string[];
             /** Token Url */
             token_url: string | null;
+            /** Self Hosted */
+            self_hosted: boolean;
+            /** Request */
+            request: string;
             account: components["schemas"]["Account"] | null;
+            /** Instances */
+            instances: components["schemas"]["Account"][];
             connection: components["schemas"]["AccountConnection"] | null;
         };
         /**
@@ -1160,15 +1171,12 @@ export interface components {
         };
         /**
          * Proposal
-         * @description Un récapitulatif de PR (écran 8) : préparé sans rien pousser, puis envoyé dépôt par
-         *     dépôt, une fois validé.
+         * @description Un récapitulatif de PR et de MR (écran 8), de plusieurs comptes au besoin : préparé sans
+         *     rien pousser, puis envoyé dépôt par dépôt, une fois validé.
          */
         Proposal: {
             /** Id */
             id: string;
-            forge: components["schemas"]["ForgeKind"];
-            /** Host */
-            host: string;
             status: components["schemas"]["ProposalStatus"];
             /**
              * Created At
@@ -1190,10 +1198,10 @@ export interface components {
         };
         /**
          * ProposalRequest
-         * @description Des dépôts d'un compte connecté pour lesquels préparer une PR chacun.
+         * @description Des dépôts des comptes connectés pour lesquels préparer une PR (une MR sur GitLab)
+         *     chacun ; de plusieurs forges au besoin.
          */
         ProposalRequest: {
-            forge: components["schemas"]["ForgeKind"];
             /** Repositories */
             repositories: components["schemas"]["ProposedSelection"][];
         };
@@ -1258,11 +1266,15 @@ export interface components {
         };
         /**
          * ProposedSelection
-         * @description Un dépôt à mettre dans un récapitulatif de PR.
+         * @description Un dépôt à mettre dans un récapitulatif de PR (MR sur GitLab), parmi ceux de
+         *     ``GET /api/repositories``.
          */
         ProposedSelection: {
-            /** Repository */
-            repository: string;
+            forge: components["schemas"]["ForgeKind"];
+            /** Host */
+            host: string;
+            /** Full Name */
+            full_name: string;
             /** Selection */
             selection?: {
                 [key: string]: string;
@@ -1365,15 +1377,12 @@ export interface components {
         };
         /**
          * RepositoryBatch
-         * @description Une analyse groupée : des dépôts analysés ensemble, ``concurrency`` à la fois, avec le
-         *     même client et le même cache des registres.
+         * @description Une analyse groupée : des dépôts analysés ensemble (de plusieurs comptes au besoin),
+         *     ``concurrency`` à la fois, avec le même client et le même cache des registres.
          */
         RepositoryBatch: {
             /** Id */
             id: string;
-            forge: components["schemas"]["ForgeKind"];
-            /** Host */
-            host: string;
             status: components["schemas"]["BatchStatus"];
             /**
              * Started At
@@ -1396,7 +1405,6 @@ export interface components {
             skipped: string[];
             /** Requests */
             requests: number;
-            rate_limit: components["schemas"]["RateLimit"] | null;
         };
         /**
          * RepositoryCounts
@@ -1414,6 +1422,17 @@ export interface components {
             inconclusive: number;
             /** Updates */
             updates: number;
+        };
+        /**
+         * RepositoryKey
+         * @description Un dépôt d'un compte connecté : sa forge, l'hôte du compte, son nom.
+         */
+        RepositoryKey: {
+            forge: components["schemas"]["ForgeKind"];
+            /** Host */
+            host: string;
+            /** Full Name */
+            full_name: string;
         };
         /**
          * RepositoryList
@@ -1719,7 +1738,7 @@ export interface components {
          */
         SendRequest: {
             /** Repositories */
-            repositories: string[];
+            repositories: components["schemas"]["RepositoryKey"][];
         };
         /**
          * Severity
@@ -1807,6 +1826,8 @@ export interface components {
         TokenRequest: {
             /** Token */
             token: string;
+            /** Url */
+            url?: string | null;
         };
         /**
          * Tool
@@ -3163,7 +3184,9 @@ export interface operations {
     };
     verify_account: {
         parameters: {
-            query?: never;
+            query?: {
+                host?: string | null;
+            };
             header?: never;
             path: {
                 forge: components["schemas"]["ForgeKind"];
@@ -3239,7 +3262,9 @@ export interface operations {
     };
     disconnect: {
         parameters: {
-            query?: never;
+            query?: {
+                host?: string | null;
+            };
             header?: never;
             path: {
                 forge: components["schemas"]["ForgeKind"];

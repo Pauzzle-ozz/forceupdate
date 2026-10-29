@@ -77,6 +77,8 @@ export type RepositoryCounts = Schemas['RepositoryCounts']
 export type RepositoryBatch = Response<'start_batch', 202>
 export type BatchStatus = Schemas['BatchStatus']
 export type RepositoryRef = Schemas['RepositoryRef']
+/** Un dépôt d'un compte connecté : forge, hôte du compte, nom. */
+export type RepositoryKey = Schemas['RepositoryKey']
 export type Restriction = Schemas['Restriction']
 export type RateLimit = Schemas['RateLimit']
 export type BatchRequest = Schemas['BatchRequest']

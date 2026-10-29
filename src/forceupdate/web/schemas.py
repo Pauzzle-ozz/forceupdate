@@ -95,12 +95,23 @@ class RepositoryOptions:
 
 
 @dataclass(frozen=True, kw_only=True)
-class BatchRequest(RepositoryOptions):
-    """Des dépôts d'un compte connecté à analyser ensemble."""
+class RepositoryKey:
+    """Un dépôt d'un compte connecté : sa forge, l'hôte du compte, son nom."""
 
     forge: ForgeKind
-    repositories: list[str]
-    """Leurs noms (``owner/nom``), parmi ceux de ``GET /api/repositories``."""
+    host: str
+    """``github.com``, ``gitlab.com``, ou l'hôte d'une instance GitLab auto-hébergée."""
+    full_name: str
+    """``owner/nom`` ; sur GitLab, le chemin complet du projet (``groupe/sous-groupe/nom``)."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class BatchRequest(RepositoryOptions):
+    """Des dépôts des comptes connectés à analyser ensemble (de plusieurs comptes, plusieurs
+    forges au besoin)."""
+
+    repositories: list[RepositoryKey]
+    """Parmi ceux de ``GET /api/repositories``."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -112,11 +123,10 @@ class RepositoryRequest(RepositoryOptions):
 
 
 @dataclass(frozen=True, kw_only=True)
-class ProposedSelection:
-    """Un dépôt à mettre dans un récapitulatif de PR."""
+class ProposedSelection(RepositoryKey):
+    """Un dépôt à mettre dans un récapitulatif de PR (MR sur GitLab), parmi ceux de
+    ``GET /api/repositories``."""
 
-    repository: str
-    """``owner/nom``, parmi ceux de ``GET /api/repositories``."""
     selection: dict[str, str] | None = None
     """Les mises à jour choisies sur sa dernière analyse (comme ``PlanRequest.selection``) ;
     ``null`` : la sélection par défaut (les ``selected`` du rapport)."""
@@ -124,9 +134,9 @@ class ProposedSelection:
 
 @dataclass(frozen=True, kw_only=True)
 class ProposalRequest:
-    """Des dépôts d'un compte connecté pour lesquels préparer une PR chacun."""
+    """Des dépôts des comptes connectés pour lesquels préparer une PR (une MR sur GitLab)
+    chacun ; de plusieurs forges au besoin."""
 
-    forge: ForgeKind
     repositories: list[ProposedSelection]
 
 
@@ -134,8 +144,8 @@ class ProposalRequest:
 class SendRequest:
     """Les dépôts d'un récapitulatif à envoyer : rien ne part sans cette validation."""
 
-    repositories: list[str]
-    """``owner/nom``, parmi ceux prêts du récapitulatif."""
+    repositories: list[RepositoryKey]
+    """Parmi ceux prêts du récapitulatif."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -144,6 +154,9 @@ class TokenRequest:
     ne le renvoie jamais."""
 
     token: str = field(repr=False)
+    url: str | None = None
+    """L'adresse d'une instance auto-hébergée (GitLab : ``https://gitlab.example.com``) ;
+    ``null`` : le service en ligne de la forge."""
 
 
 # -- Analyses ---------------------------------------------------------------------
@@ -448,8 +461,16 @@ class ForgeStatus:
     scopes: tuple[str, ...]
     """Les portées demandées par OAuth et par le device flow."""
     token_url: str | None
-    """Où créer un token à coller, portées pré-cochées."""
+    """Où créer un token à coller, portées pré-cochées (sur le service en ligne)."""
+    self_hosted: bool
+    """On peut aussi y connecter une instance auto-hébergée (GitLab), par son adresse et un
+    token."""
+    request: str
+    """Le nom d'une proposition de changements sur cette forge : ``PR``, ``MR`` (GitLab)."""
     account: Account | None
+    """Le compte connecté au service en ligne (``host``)."""
+    instances: tuple[Account, ...]
+    """Les comptes connectés à des instances auto-hébergées, par hôte."""
     connection: AccountConnection | None
     """La connexion en attente, s'il y en a une (un device flow se retrouve après un
     rechargement)."""
@@ -467,6 +488,7 @@ class Disconnection:
     """Un compte déconnecté : son token est effacé du trousseau."""
 
     forge: ForgeKind
+    host: str
     login: str
     revoked: bool | None
     """Le token est aussi révoqué auprès de la forge (``true``), ne l'a pas été (``false`` :
@@ -613,12 +635,10 @@ class BatchStatus(enum.StrEnum):
 
 @dataclass(frozen=True, kw_only=True)
 class RepositoryBatch:
-    """Une analyse groupée : des dépôts analysés ensemble, ``concurrency`` à la fois, avec le
-    même client et le même cache des registres."""
+    """Une analyse groupée : des dépôts analysés ensemble (de plusieurs comptes au besoin),
+    ``concurrency`` à la fois, avec le même client et le même cache des registres."""
 
     id: str
-    forge: ForgeKind
-    host: str
     status: BatchStatus
     started_at: datetime
     finished_at: datetime | None
@@ -632,8 +652,7 @@ class RepositoryBatch:
     skipped: tuple[str, ...]
     """Les dépôts demandés mais pas analysés (vides)."""
     requests: int
-    """Les requêtes d'API envoyées à la forge."""
-    rate_limit: RateLimit | None
+    """Les requêtes d'API envoyées aux forges."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -767,12 +786,10 @@ class ProposedRepository:
 
 @dataclass(frozen=True, kw_only=True)
 class Proposal:
-    """Un récapitulatif de PR (écran 8) : préparé sans rien pousser, puis envoyé dépôt par
-    dépôt, une fois validé."""
+    """Un récapitulatif de PR et de MR (écran 8), de plusieurs comptes au besoin : préparé sans
+    rien pousser, puis envoyé dépôt par dépôt, une fois validé."""
 
     id: str
-    forge: ForgeKind
-    host: str
     status: ProposalStatus
     created_at: datetime
     started_at: datetime | None
@@ -784,7 +801,8 @@ class Proposal:
     existing: int
     """Parmi eux, ceux qui ont déjà une PR ouverte (elle sera mise à jour)."""
     error: str | None
-    """Pourquoi l'envoi n'a pas pu commencer (token refusé…)."""
+    """Pourquoi l'envoi n'a pas pu commencer (git absent…). Un compte dont le token est refusé
+    voit ses dépôts en échec, avec la raison ; les autres partent."""
 
 
 @dataclass(frozen=True, kw_only=True)

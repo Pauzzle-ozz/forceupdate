@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Protocol, TypeVar
 
 from forceupdate import __version__
-from forceupdate.forges import git
+from forceupdate.forges import git, info
 from forceupdate.forges.base import (
     Access,
     AccessDenied,
@@ -69,7 +69,8 @@ MARKER = "Generated-by: forceupdate"
 """La dernière ligne du message des commits de forceupdate : un commit de la branche qui ne
 l'a pas vient de quelqu'un d'autre."""
 MAX_BODY = 60_000
-"""Caractères au plus dans la description d'une PR (GitHub en refuse au-delà de 65 536)."""
+"""Caractères au plus dans la description d'une PR (GitHub en refuse au-delà de 65 536 ; GitLab
+en accepte bien plus, mais une description si longue ne se lit plus)."""
 
 FINE_GRAINED = (
     " Token fine-grained : il lui faut « Contents » et « Pull requests » en écriture sur ce dépôt."
@@ -331,8 +332,9 @@ def request_body(
         "",
         "---",
         "",
-        f"Relancer forceupdate met à jour cette PR : la branche `{BRANCH}` est remplacée. Un "
-        "commit ajouté à la main sur cette branche l'en empêche : forceupdate ne l'écrase pas.",
+        f"Relancer forceupdate met à jour cette {info(repo.forge).request} : la branche "
+        f"`{BRANCH}` est remplacée. Un commit ajouté à la main sur cette branche l'en empêche : "
+        "forceupdate ne l'écrase pas.",
     ]
     head = "\n".join(lines) + "\n"
     tail = "\n".join(footer) + "\n"
@@ -341,8 +343,8 @@ def request_body(
     if len(analysis) > room:
         cut = analysis[: max(room - 200, 0)].rpartition("\n")[0]
         analysis = (
-            f"{cut}\n\n_Rapport raccourci : trop long pour la description d'une PR. Le rapport "
-            "complet est dans forceupdate._\n"
+            f"{cut}\n\n_Rapport raccourci : trop long pour la description d'une "
+            f"{info(repo.forge).request}. Le rapport complet est dans forceupdate._\n"
         )
     return f"{head}\n{analysis}{tail}"
 

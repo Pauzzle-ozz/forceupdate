@@ -3,7 +3,7 @@ dans ``accounts.json``, jamais le token (``forges.accounts``)."""
 
 import asyncio
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import keyring.backend
@@ -15,7 +15,7 @@ from conftest import MemoryKeyring
 
 from forceupdate.forges import accounts as accounts_module
 from forceupdate.forges.accounts import Account, Accounts, AccountsError, ConnectMethod
-from forceupdate.forges.base import Access, ForgeKind, Identity, TokenRefused
+from forceupdate.forges.base import Access, ForgeKind, Grant, Identity, TokenRefused
 from forceupdate.net import HttpClient
 
 TOKEN = "gho_jeton-de-test"
@@ -276,3 +276,127 @@ def test_reads_and_writes_at_the_same_time_never_lose_the_account(store: Account
     assert errors == []
     assert lost == []
     assert len(store.connected()) == 1
+
+
+# -- GitLab : plusieurs comptes, tokens qui expirent (E19) ---------------------------------
+
+
+def gitlab_identity(host: str = "gitlab.com") -> Identity:
+    return Identity(
+        forge=ForgeKind.GITLAB,
+        host=host,
+        login="renard",
+        name="Renard Roux",
+        url=f"https://{host}/renard",
+        access=Access.WRITE,
+        scopes=("api",),
+        warnings=(),
+    )
+
+
+def test_one_account_per_host(store: Accounts, keychain: MemoryKeyring) -> None:
+    instance = store.save(gitlab_identity("git.example.com"), "glpat-instance", ConnectMethod.TOKEN)
+    online = store.save(gitlab_identity(), "glpat-com", ConnectMethod.TOKEN)
+    github = store.save(identity(), TOKEN, ConnectMethod.OAUTH)
+    # Par forge, le service en ligne avant les instances.
+    assert store.connected() == [github, online, instance]
+    assert store.token(ForgeKind.GITLAB, "git.example.com") == "glpat-instance"
+    assert store.token(ForgeKind.GITLAB, "gitlab.com") == "glpat-com"
+    assert ("forceupdate", "gitlab:git.example.com") in keychain.passwords
+    store.remove(ForgeKind.GITLAB, "git.example.com")
+    assert store.connected() == [github, online]
+
+
+def test_a_token_that_expires_is_kept_with_its_refresh_token(
+    store: Accounts, keychain: MemoryKeyring
+) -> None:
+    expires = datetime(2026, 10, 29, 12, 0, tzinfo=UTC)
+    grant = Grant(access_token="glo-acces", refresh_token="glo-refresh", expires_at=expires)
+    store.save(gitlab_identity(), grant, ConnectMethod.OAUTH)
+    stored = json.loads(keychain.passwords[("forceupdate", "gitlab:gitlab.com")])
+    assert stored == {
+        "access_token": "glo-acces",
+        "refresh_token": "glo-refresh",
+        "expires_at": expires.isoformat(),
+    }
+    assert store.grant(ForgeKind.GITLAB, "gitlab.com") == grant
+    assert store.token(ForgeKind.GITLAB, "gitlab.com") == "glo-acces"
+    assert "glo-" not in store.path.read_text(encoding="utf-8")
+    # Se déconnecter rend le token à révoquer, pas son refresh token.
+    assert store.remove(ForgeKind.GITLAB, "gitlab.com")[1] == "glo-acces"
+
+
+class Flow:
+    """Une application OAuth qui compte ses renouvellements."""
+
+    def __init__(self, *, refuse: bool = False) -> None:
+        self.calls: list[str] = []
+        self.refuse = refuse
+
+    async def refresh(self, http: HttpClient, refresh_token: str) -> Grant:
+        self.calls.append(refresh_token)
+        await asyncio.sleep(0.02)  # le temps qu'un autre renouvellement attende son tour
+        if self.refuse:
+            raise TokenRefused("GitLab ne renouvelle plus le token")
+        serial = len(self.calls)
+        return Grant(
+            access_token=f"acces-{serial}",
+            refresh_token=f"refresh-{serial}",
+            expires_at=datetime.now(UTC) + timedelta(hours=2),
+        )
+
+
+def saved_grant(store: Accounts, *, expires_in: timedelta) -> Account:
+    grant = Grant(
+        access_token="acces-0",
+        refresh_token="refresh-0",
+        expires_at=datetime.now(UTC) + expires_in,
+    )
+    return store.save(gitlab_identity(), grant, ConnectMethod.OAUTH)
+
+
+def test_a_token_still_valid_is_not_renewed(store: Accounts) -> None:
+    account = saved_grant(store, expires_in=timedelta(hours=1))
+    flow = Flow()
+    renew = accounts_module.renewer(store, account, flow)  # type: ignore[arg-type]
+    assert run(lambda http: renew(http, None)) == "acces-0"
+    assert flow.calls == []
+
+
+def test_a_token_about_to_expire_is_renewed_once_for_everyone(store: Accounts) -> None:
+    account = saved_grant(store, expires_in=timedelta(minutes=2))
+    flow = Flow()
+    renew = accounts_module.renewer(store, account, flow)  # type: ignore[arg-type]
+
+    async def together(http: HttpClient) -> list[str]:
+        return list(await asyncio.gather(renew(http, None), renew(http, None), renew(http, None)))
+
+    assert run(together) == ["acces-1", "acces-1", "acces-1"]
+    assert flow.calls == ["refresh-0"]  # le refresh token ne sert qu'une fois
+    assert store.grant(ForgeKind.GITLAB, "gitlab.com") == Grant(
+        access_token="acces-1",
+        refresh_token="refresh-1",
+        expires_at=store.grant(ForgeKind.GITLAB, "gitlab.com").expires_at,  # type: ignore[union-attr]
+    )
+
+
+def test_a_refused_token_is_renewed_unless_another_already_did(store: Accounts) -> None:
+    account = saved_grant(store, expires_in=timedelta(hours=1))
+    flow = Flow()
+    renew = accounts_module.renewer(store, account, flow)  # type: ignore[arg-type]
+    assert run(lambda http: renew(http, "acces-0")) == "acces-1"
+    # Refusé, mais ce n'est plus celui du trousseau : on prend le nouveau, sans renouveler.
+    assert run(lambda http: renew(http, "acces-0")) == "acces-1"
+    assert flow.calls == ["refresh-0"]
+
+
+def test_a_token_that_does_not_renew(store: Accounts) -> None:
+    account = saved_grant(store, expires_in=timedelta(minutes=1))
+    renew = accounts_module.renewer(store, account, Flow(refuse=True))  # type: ignore[arg-type]
+    with pytest.raises(TokenRefused, match="ne renouvelle plus"):
+        run(lambda http: renew(http, None))
+    pasted = store.save(gitlab_identity(), "glpat-colle", ConnectMethod.TOKEN)
+    renew = accounts_module.renewer(store, pasted, Flow())  # type: ignore[arg-type]
+    with pytest.raises(TokenRefused, match="Se reconnecter"):
+        run(lambda http: renew(http, "glpat-colle"))
+    assert not store.renewing(ForgeKind.GITLAB, "gitlab.com").locked()

@@ -19,6 +19,7 @@ import type {
   Proposal,
   ProposalRequest,
   RepositoryBatch,
+  RepositoryKey,
   RepositoryList,
   RepositoryRequest,
   ScanDetail,
@@ -94,6 +95,11 @@ async function detail(response: globalThis.Response): Promise<string> {
   return `Le serveur a répondu ${response.status}.`
 }
 
+/** `?host=…` pour un compte d'une instance auto-hébergée ; rien pour le service en ligne. */
+function hostQuery(host: string | undefined): string {
+  return host ? `?${new URLSearchParams({ host })}` : ''
+}
+
 function json(body: unknown): RequestInit {
   return { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
 }
@@ -151,16 +157,18 @@ export const api = {
     request<AccountConnection>('DELETE', `/api/accounts/connections/${encodeURIComponent(id)}`),
 
   /** Connecte un compte avec un token collé : envoyé au serveur, jamais renvoyé. */
-  connectToken: (forge: ForgeKind, token: string) =>
-    request<Account>('POST', `/api/accounts/${forge}/token`, json({ token })),
+  connectToken: (forge: ForgeKind, token: string, url: string | null = null) =>
+    request<Account>('POST', `/api/accounts/${forge}/token`, json({ token, url })),
 
   /** Reprend le compte de GitHub CLI (`gh`). */
   connectGh: (forge: ForgeKind) => request<Account>('POST', `/api/accounts/${forge}/gh`),
 
   /** Redemande à la forge qui est connecté et avec quels droits. */
-  verifyAccount: (forge: ForgeKind) => request<Account>('POST', `/api/accounts/${forge}/verify`),
+  verifyAccount: (forge: ForgeKind, host?: string) =>
+    request<Account>('POST', `/api/accounts/${forge}/verify${hostQuery(host)}`),
 
-  disconnect: (forge: ForgeKind) => request<Disconnection>('DELETE', `/api/accounts/${forge}`),
+  disconnect: (forge: ForgeKind, host?: string) =>
+    request<Disconnection>('DELETE', `/api/accounts/${forge}${hostQuery(host)}`),
 
   /**
    * Les dépôts des comptes connectés, l'état de leur dernière analyse et la synthèse. La liste
@@ -186,7 +194,7 @@ export const api = {
   getProposal: (id: string) => request<Proposal>('GET', `/api/proposals/${encodeURIComponent(id)}`),
 
   /** Envoie les dépôts cochés du récapitulatif, en tâche de fond. */
-  sendProposal: (id: string, repositories: string[]) =>
+  sendProposal: (id: string, repositories: RepositoryKey[]) =>
     request<Proposal>('POST', `/api/proposals/${encodeURIComponent(id)}/send`, json({ repositories })),
 }
 

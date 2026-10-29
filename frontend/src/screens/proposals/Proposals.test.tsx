@@ -73,23 +73,22 @@ describe('PR (écran 8)', () => {
 
   it('prépare le récapitulatif des dépôts demandés, puis passe à son adresse', async () => {
     const calls = mockApi({ 'POST /api/proposals': recap(), 'GET /api/proposals/pr1': recap() })
-    renderApp('/pr?forge=github&depots=octo/boutique,octo/site,atelier/api')
+    renderApp('/pr?depots=github:github.com/octo/boutique,github:github.com/octo/site,gitlab:gitlab.com/atelier/web/api')
     expect(await screen.findByRole('heading', { level: 1, name: 'Préparer les PR' })).toBeInTheDocument()
     const posts = calls.filter((call) => call.method === 'POST')
     expect(posts).toHaveLength(1)
     expect(JSON.parse(String(posts[0].init.body))).toEqual({
-      forge: 'github',
       repositories: [
-        { repository: 'octo/boutique', selection: null },
-        { repository: 'octo/site', selection: null },
-        { repository: 'atelier/api', selection: null },
+        { forge: 'github', host: 'github.com', full_name: 'octo/boutique', selection: null },
+        { forge: 'github', host: 'github.com', full_name: 'octo/site', selection: null },
+        { forge: 'gitlab', host: 'gitlab.com', full_name: 'atelier/web/api', selection: null },
       ],
     })
   })
 
   it('un récapitulatif refusé le dit, avec « Réessayer »', async () => {
     mockApi({ 'POST /api/proposals': new Status(404, { detail: 'Aucun compte GitHub connecté.' }) })
-    renderApp('/pr?forge=github&depots=octo/boutique')
+    renderApp('/pr?depots=github:github.com/octo/boutique')
     expect(await screen.findByText('Aucun compte GitHub connecté.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
   })
@@ -128,7 +127,7 @@ describe('PR (écran 8)', () => {
     await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true))
     const send = calls.find((call) => call.method === 'POST')!
     expect(send.url.pathname).toBe('/api/proposals/pr1/send')
-    expect(JSON.parse(String(send.init.body))).toEqual({ repositories: ['octo/boutique', 'octo/site'] })
+    expect(JSON.parse(String(send.init.body))).toEqual({ repositories: [{ forge: 'github', host: 'github.com', full_name: 'octo/boutique' }, { forge: 'github', host: 'github.com', full_name: 'octo/site' }] })
   })
 
   it('rien de coché, ou hors ligne : pas d’envoi, et pourquoi', async () => {
@@ -269,7 +268,7 @@ describe('les PR depuis l’écran 7 et le rapport d’un dépôt', () => {
     await user.click(screen.getByRole('button', { name: 'Préparer 2 PR' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Préparer les PR' })).toBeInTheDocument()
     const post = calls.find((call) => call.method === 'POST')!
-    expect(JSON.parse(String(post.init.body)).repositories.map((item: { repository: string }) => item.repository)).toEqual([
+    expect(JSON.parse(String(post.init.body)).repositories.map((item: { full_name: string }) => item.full_name)).toEqual([
       'octo/boutique',
       'octo/site',
     ])
@@ -313,9 +312,13 @@ describe('les PR depuis l’écran 7 et le rapport d’un dépôt', () => {
     await user.click(screen.getAllByRole('button', { name: 'Préparer la PR' })[0])
     expect(await screen.findByRole('heading', { level: 1, name: 'Préparer les PR' })).toBeInTheDocument()
     const body = JSON.parse(String(calls.find((call) => call.method === 'POST')!.init.body))
-    expect(body.forge).toBe('github')
     expect(body.repositories).toEqual([
-      { repository: 'octo/boutique', selection: { '.|npm|lodash': '4.18.1', '.|PyPI|flask': '0.12.5', '.|PyPI|jinja2|2.10': '2.11.3' } },
+      {
+        forge: 'github',
+        host: 'github.com',
+        full_name: 'octo/boutique',
+        selection: { '.|npm|lodash': '4.18.1', '.|PyPI|flask': '0.12.5', '.|PyPI|jinja2|2.10': '2.11.3' },
+      },
     ])
   })
 
@@ -331,12 +334,139 @@ describe('les PR depuis l’écran 7 et le rapport d’un dépôt', () => {
     await user.click(screen.getAllByRole('button', { name: 'Préparer la PR' })[0])
     await screen.findByRole('heading', { level: 1, name: 'Préparer les PR' })
     const body = JSON.parse(String(calls.find((call) => call.method === 'POST')!.init.body))
-    expect(body.repositories.map((item: { repository: string }) => item.repository)).toEqual([
+    expect(body.repositories.map((item: { full_name: string }) => item.full_name)).toEqual([
       'octo/site',
       'atelier/api',
       'octo/boutique',
     ])
     expect(body.repositories[1].selection).toBeNull() // sauté : sélection par défaut
     expect(body.repositories[2].selection).not.toHaveProperty('.|npm|lodash')
+  })
+})
+
+describe('GitLab : des MR, et des récapitulatifs à plusieurs forges', () => {
+  const MR = {
+    number: 12,
+    url: 'https://gitlab.com/groupe/web/app/-/merge_requests/12',
+    title: 'Mise à jour des dépendances (forceupdate)',
+    branch: 'forceupdate/dependencies',
+    base: 'main',
+  }
+  const gitlabRow = (overrides: Parameters<typeof repositoryRow>[0] = {}) =>
+    repositoryRow({
+      forge: 'gitlab',
+      host: 'gitlab.com',
+      full_name: 'groupe/web/app',
+      owner: 'groupe/web',
+      name: 'app',
+      url: 'https://gitlab.com/groupe/web/app',
+      state: 'to_update',
+      ...overrides,
+    })
+  const mixed = repositoryList({
+    accounts: [
+      repositoryAccount({ repositories: 1 }),
+      repositoryAccount({ forge: 'gitlab', host: 'gitlab.com', login: 'renard', repositories: 2 }),
+    ],
+    repositories: [
+      repositoryRow({ full_name: 'octo/boutique', state: 'to_update' }),
+      gitlabRow({ request: MR }),
+      gitlabRow({ host: 'git.example.com', full_name: 'equipe/outil', owner: 'equipe', name: 'outil', url: 'https://git.example.com/equipe/outil' }),
+    ],
+    synthesis: synthesis({ repositories: 3, to_update: 3, analyzed: 3, open_requests: 1 }),
+  })
+
+  it('l’écran 7 : la colonne PR / MR, le compteur, « Préparer 1 PR et 1 MR »', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 })
+    const calls = mockApi({ 'GET /api/repositories': mixed, 'POST /api/proposals': recap(), 'GET /api/proposals/pr1': recap() })
+    const user = userEvent.setup()
+    renderApp('/depots')
+    const link = await screen.findByRole('link', { name: 'MR !12 de groupe/web/app sur GitLab (nouvel onglet)' })
+    expect(link).toHaveAttribute('href', MR.url)
+    expect(screen.getByRole('columnheader', { name: 'PR / MR' })).toBeInTheDocument()
+    expect(screen.getByText('PR et MR ouvertes')).toBeInTheDocument()
+    expect(screen.getAllByText('GitLab (git.example.com)').length).toBeGreaterThan(0)
+    expect(screen.getByRole('option', { name: 'GitLab' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Sélectionner octo/boutique' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Sélectionner groupe/web/app' }))
+    await user.click(screen.getByRole('button', { name: 'Préparer 1 PR et 1 MR' }))
+    await screen.findByRole('heading', { level: 1, name: 'Préparer les PR' })
+    const post = calls.find((call) => call.method === 'POST')!
+    expect(JSON.parse(String(post.init.body)).repositories).toEqual([
+      { forge: 'github', host: 'github.com', full_name: 'octo/boutique', selection: null },
+      { forge: 'gitlab', host: 'gitlab.com', full_name: 'groupe/web/app', selection: null },
+    ])
+  })
+
+  it('le même nom sur deux forges : chaque case dit sa forge', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 })
+    mockApi({
+      'GET /api/repositories': repositoryList({
+        accounts: [repositoryAccount(), repositoryAccount({ forge: 'gitlab', host: 'gitlab.com', login: 'octo' })],
+        repositories: [
+          repositoryRow({ full_name: 'octo/app' }),
+          gitlabRow({ full_name: 'octo/app', owner: 'octo', name: 'app', url: 'https://gitlab.com/octo/app' }),
+          repositoryRow({ full_name: 'octo/seul' }),
+        ],
+      }),
+    })
+    renderApp('/depots')
+    expect(await screen.findByRole('checkbox', { name: 'Sélectionner octo/app (GitHub)' })).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Sélectionner octo/app (GitLab)' })).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Sélectionner octo/seul' })).toBeInTheDocument()
+  })
+
+  function mixedRecap(state: 'ready' | 'opened' = 'ready'): Proposal {
+    const sent = state === 'opened'
+    return proposal({
+      status: sent ? 'done' : 'planned',
+      repositories: [
+        proposedRepository({ state, request: sent ? REQUEST : null }),
+        proposedRepository({
+          forge: 'gitlab',
+          host: 'gitlab.com',
+          full_name: 'groupe/web/app',
+          url: 'https://gitlab.com/groupe/web/app',
+          scan: 's-app',
+          state: sent ? 'opened' : 'ready',
+          request: MR,
+          pushed: sent,
+        }),
+      ],
+    })
+  }
+
+  it('l’écran 8 : un récapitulatif de PR et de MR, puis leur envoi', async () => {
+    const calls = mockApi({
+      'GET /api/proposals/pr1': mixedRecap(),
+      'POST /api/proposals/pr1/send': { ...mixedRecap(), status: 'running' },
+    })
+    const user = userEvent.setup()
+    renderApp('/pr/pr1')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Préparer les PR et MR' })).toBeInTheDocument()
+    const app = within(await card('groupe/web/app'))
+    expect(app.getByRole('checkbox', { name: 'Envoyer la MR de groupe/web/app' })).toBeChecked()
+    expect(app.getByText(/met à jour la MR\s!12/)).toBeInTheDocument()
+    expect(app.getByText('GitLab')).toBeInTheDocument()
+    expect(within(await card('octo/boutique')).getByText('GitHub')).toBeInTheDocument()
+    expect(screen.getByText(/2 dépôts, 1 PR et 1 MR à envoyer/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Envoyer 1 PR et 1 MR' }))
+    await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true))
+    expect(JSON.parse(String(calls.find((call) => call.method === 'POST')!.init.body))).toEqual({
+      repositories: [
+        { forge: 'github', host: 'github.com', full_name: 'octo/boutique' },
+        { forge: 'gitlab', host: 'gitlab.com', full_name: 'groupe/web/app' },
+      ],
+    })
+  })
+
+  it('le résultat : « 1 PR ouverte · 1 MR ouverte », le lien de chaque', async () => {
+    mockApi({ 'GET /api/proposals/pr1': mixedRecap('opened') })
+    renderApp('/pr/pr1')
+    expect(await screen.findByRole('heading', { level: 1, name: 'PR et MR envoyées' })).toBeInTheDocument()
+    expect(screen.getByText(/Envoi terminé : 1 PR ouverte · 1 MR ouverte/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Voir la MR !12 sur GitLab/ })).toHaveAttribute('href', MR.url)
+    expect(screen.getByRole('link', { name: /Voir la PR #41 sur GitHub/ })).toHaveAttribute('href', REQUEST.url)
   })
 })

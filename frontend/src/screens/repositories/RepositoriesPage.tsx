@@ -36,11 +36,11 @@ import { analyzing, useCancelBatch, useReloadRepositories, useRepositories, useS
 import { REPOSITORY_OPTIONS, useScanRepository } from '@/hooks/useScanActions'
 import { useOnline } from '@/hooks/useStatus'
 import { count, formatDateTime, formatNumber, formatRelative, formatTime, fr } from '@/lib/format'
-import { proposalPath } from '@/lib/proposals'
+import { forgeLabel, proposalPath, requestWord, requestWords } from '@/lib/proposals'
 import {
   DEFAULT_REPOSITORY_SORT,
   NO_REPOSITORY_FILTERS,
-  byForge,
+  keysOf,
   filterRepositories,
   rateLow,
   rateText,
@@ -53,8 +53,7 @@ import { Container, PageHead, Section, useDocumentTitle } from '@/shell/Page'
 import { errorText } from '@/screens/accounts/ForgeCard'
 import { RepositoryList } from './RepositoryList'
 
-const FORGE_NAME = { github: 'GitHub', gitlab: 'GitLab', bitbucket: 'Bitbucket' } as const
-
+/** Les droits d'un compte en un badge ; « PR » se lit « MR » sur GitLab. */
 const ACCESS: Record<Access, { label: string; variant: 'success' | 'warning' | 'inconclusive'; icon: LucideIcon }> = {
   write: { label: 'lecture et PR', variant: 'success', icon: CircleCheck },
   public: { label: 'dépôts publics seulement', variant: 'warning', icon: TriangleAlert },
@@ -167,14 +166,13 @@ function Repositories({ data }: { data: List }) {
   const inconclusive = all.filter((row) => row.state === 'inconclusive')
 
   function analyze(rows: RepositoryRow[]) {
-    for (const [forge, repositories] of byForge(rows)) start.mutate({ forge, repositories, ...REPOSITORY_OPTIONS })
+    if (rows.length > 0) start.mutate({ repositories: keysOf(rows), ...REPOSITORY_OPTIONS })
     setSelected(new Set())
   }
 
-  /** L'écran 8, pour les dépôts sélectionnés (d'une seule forge à la fois). */
+  /** L'écran 8, pour les dépôts sélectionnés : un récapitulatif, de toutes leurs forges. */
   function propose(rows: RepositoryRow[]) {
-    const [first] = byForge(rows)
-    if (first) void navigate(proposalPath(first[0], first[1]))
+    if (rows.length > 0) void navigate(proposalPath(keysOf(rows)))
   }
 
   function select(keys: string[], checked: boolean) {
@@ -294,7 +292,7 @@ function Repositories({ data }: { data: List }) {
                     {restriction.kind === 'sso'
                       ? fr("Ses dépôts n'apparaîtront qu'une fois le token autorisé pour son authentification unique (SAML).")
                       : fr(
-                          `Ses dépôts privés n'apparaîtront qu'après l'accord d'un de ses propriétaires sur ${FORGE_NAME[account.forge]}. Ses dépôts publics sont listés.`,
+                          `Ses dépôts privés n'apparaîtront qu'après l'accord d'un de ses propriétaires sur ${forgeLabel(account.forge, account.host)}. Ses dépôts publics sont listés.`,
                         )}
                   </p>
                 </AlertDescription>
@@ -305,9 +303,9 @@ function Repositories({ data }: { data: List }) {
                       target="_blank"
                       rel="noreferrer"
                       className={buttonVariants({ variant: 'ghost', size: 'sm' })}
-                      aria-label={`${restriction.kind === 'sso' ? 'Autoriser le token' : "Demander l'accès"} sur ${FORGE_NAME[account.forge]} (nouvel onglet)`}
+                      aria-label={`${restriction.kind === 'sso' ? 'Autoriser le token' : "Demander l'accès"} sur ${forgeLabel(account.forge, account.host)} (nouvel onglet)`}
                     >
-                      {restriction.kind === 'sso' ? 'Autoriser le token' : "Demander l'accès"} sur {FORGE_NAME[account.forge]}
+                      {restriction.kind === 'sso' ? 'Autoriser le token' : "Demander l'accès"} sur {forgeLabel(account.forge, account.host)}
                     </a>
                   </AlertActions>
                 )}
@@ -364,7 +362,7 @@ function Repositories({ data }: { data: List }) {
 
 /** Ce qui ne va pas avec un compte : token refusé, liste qui n'a pas pu être (re)chargée. */
 function AccountAlert({ account }: { account: RepositoryAccount }) {
-  const name = FORGE_NAME[account.forge]
+  const name = forgeLabel(account.forge, account.host)
   if (account.problem) {
     return (
       <Alert variant="danger" role="alert">
@@ -401,8 +399,9 @@ function AccountAlert({ account }: { account: RepositoryAccount }) {
 }
 
 function AccountChip({ account }: { account: RepositoryAccount }) {
-  const name = FORGE_NAME[account.forge]
+  const name = forgeLabel(account.forge, account.host)
   const access = ACCESS[account.access]
+  const label = access.label.replace('PR', requestWord(account.forge))
   const AccessIcon = access.icon
   return (
     <li className="inline-flex min-h-(--control-h) max-w-full items-center gap-2 rounded-full border border-border bg-surface px-3 text-sm">
@@ -417,7 +416,7 @@ function AccountChip({ account }: { account: RepositoryAccount }) {
       ) : (
         <Badge variant={access.variant}>
           <AccessIcon aria-hidden="true" />
-          {access.label}
+          {label}
         </Badge>
       )}
     </li>
@@ -440,9 +439,12 @@ function Synthesis({ data, state, onState }: { data: List; state: StateFilter; o
           const rate = account.rate_limit!
           const low = rateLow(rate)
           return (
-            <p key={account.forge} className={cn('flex items-center gap-1.5 text-sm', low ? 'text-warning' : 'text-fg-muted')}>
+            <p
+              key={`${account.forge}:${account.host}`}
+              className={cn('flex items-center gap-1.5 text-sm', low ? 'text-warning' : 'text-fg-muted')}
+            >
               {low && <TriangleAlert className="size-4" aria-hidden="true" />}
-              {rateText(rate, FORGE_NAME[account.forge])}
+              {rateText(rate, forgeLabel(account.forge, account.host))}
             </p>
           )
         })}
@@ -503,7 +505,7 @@ function Synthesis({ data, state, onState }: { data: List; state: StateFilter; o
         />
         <Stat
           icon={GitPullRequest}
-          label="PR ouvertes"
+          label={`${requestWords(data.repositories.map((row) => row.forge))} ouvertes`}
           value={synthesis.open_requests}
           detail={synthesis.open_requests > 0 ? 'par forceupdate' : null}
         />

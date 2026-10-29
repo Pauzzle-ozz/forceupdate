@@ -3,14 +3,47 @@
  * d'un envoi en mots, ce qui est coché, où en est l'envoi. Ce que chaque PR fera, ce qui est
  * sauté et pourquoi, et ce qui s'est passé viennent du serveur (`/api/proposals`).
  */
-import type { ChangeRequest, ForgeKind, Proposal, ProposedRepository, ProposedState } from '@/api/types'
+import type {
+  ChangeRequest,
+  ForgeKind,
+  Proposal,
+  ProposedRepository,
+  ProposedState,
+  RepositoryKey,
+} from '@/api/types'
 import { count, fr } from '@/lib/format'
 
 export const FORGE_NAME: Record<ForgeKind, string> = { github: 'GitHub', gitlab: 'GitLab', bitbucket: 'Bitbucket' }
 
+/** L'hôte du service en ligne de chaque forge ; un autre hôte est une instance auto-hébergée. */
+export const FORGE_HOST: Record<ForgeKind, string> = {
+  github: 'github.com',
+  gitlab: 'gitlab.com',
+  bitbucket: 'bitbucket.org',
+}
+
+/** « GitLab », ou « GitLab (gitlab.example.com) » pour une instance auto-hébergée. */
+export function forgeLabel(forge: ForgeKind, host: string): string {
+  return host === FORGE_HOST[forge] ? FORGE_NAME[forge] : `${FORGE_NAME[forge]} (${host})`
+}
+
 /** « PR » ; « MR » sur GitLab. */
 export function requestWord(forge: ForgeKind): string {
   return forge === 'gitlab' ? 'MR' : 'PR'
+}
+
+/** « PR », « MR », ou « PR et MR » : le nom de ce qu'on propose sur ces forges. */
+export function requestWords(forges: Iterable<ForgeKind>): string {
+  const words = new Set([...forges].map(requestWord))
+  if (words.size === 0) return 'PR'
+  return ['PR', 'MR'].filter((word) => words.has(word)).join(' et ')
+}
+
+/** « 2 PR et 1 MR », « 1 PR » : combien il y en a, pour ces dépôts. */
+export function requestCount(forges: ForgeKind[]): string {
+  const pr = forges.filter((forge) => requestWord(forge) === 'PR').length
+  const mr = forges.length - pr
+  return [pr && `${pr} PR`, mr && `${mr} MR`].filter(Boolean).join(' et ') || '0 PR'
 }
 
 /** Le numéro tel que l'écrit la forge : `#41` (GitHub, Bitbucket), `!12` (GitLab). */
@@ -18,25 +51,38 @@ export function requestNumber(forge: ForgeKind, request: Pick<ChangeRequest, 'nu
   return `${forge === 'gitlab' ? '!' : '#'}${request.number}`
 }
 
-/** L'adresse de l'écran 8 pour préparer les PR de ces dépôts d'une forge. */
-export function proposalPath(forge: ForgeKind, names: string[]): string {
-  return `/pr?${new URLSearchParams({ forge, depots: names.join(',') })}`
+/** La clé d'un dépôt d'un compte : `github:github.com/owner/nom`. */
+export function keyText(key: RepositoryKey): string {
+  return `${key.forge}:${key.host}/${key.full_name}`
 }
 
-/** Les dépôts demandés par l'adresse de l'écran 8 (`?forge=github&depots=a/b,c/d`). */
-export function requestedRepositories(params: URLSearchParams): { forge: ForgeKind; names: string[] } | null {
-  const forge = params.get('forge')
-  const names = (params.get('depots') ?? '')
-    .split(',')
-    .map((name) => name.trim())
-    .filter(Boolean)
-  if (!forge || !['github', 'gitlab', 'bitbucket'].includes(forge) || names.length === 0) return null
-  return { forge: forge as ForgeKind, names: [...new Set(names)] }
+/** Un dépôt désigné par sa forge, l'hôte de son compte et son nom. */
+export function keyOf(item: RepositoryKey): RepositoryKey {
+  return { forge: item.forge, host: item.host, full_name: item.full_name }
+}
+
+/** L'adresse de l'écran 8 pour préparer les PR (MR sur GitLab) de ces dépôts. */
+export function proposalPath(keys: RepositoryKey[]): string {
+  return `/pr?${new URLSearchParams({ depots: keys.map(keyText).join(',') })}`
+}
+
+const FORGES: ForgeKind[] = ['github', 'gitlab', 'bitbucket']
+
+/** Les dépôts demandés par l'adresse de l'écran 8 (`?depots=github:github.com/a/b,gitlab:…`). */
+export function requestedRepositories(params: URLSearchParams): RepositoryKey[] | null {
+  const found = new Map<string, RepositoryKey>()
+  for (const text of (params.get('depots') ?? '').split(',')) {
+    const match = /^([a-z]+):([^/\s]+)\/(\S+\/\S+)$/.exec(text.trim())
+    if (!match || !FORGES.includes(match[1] as ForgeKind)) continue
+    const key = { forge: match[1] as ForgeKind, host: match[2], full_name: match[3] }
+    found.set(keyText(key).toLowerCase(), key)
+  }
+  return found.size > 0 ? [...found.values()] : null
 }
 
 /** Les dépôts cochés par défaut : prêts, à l'analyse concluante (le serveur le dit). */
 export function defaultChecked(proposal: Proposal): Set<string> {
-  return new Set(proposal.repositories.filter((item) => item.checked).map((item) => item.full_name))
+  return new Set(proposal.repositories.filter((item) => item.checked).map(keyText))
 }
 
 export function ready(proposal: Proposal): ProposedRepository[] {
@@ -99,13 +145,14 @@ export function outcomeText(item: ProposedRepository): string {
   }
 }
 
-/** « 3 PR ouvertes · 1 mise à jour · 1 en échec ». */
+/** « 3 PR ouvertes · 1 MR ouverte · 1 mise à jour · 1 en échec ». */
 export function resultSummary(proposal: Proposal): string {
   const items = sent(proposal)
-  const word = requestWord(proposal.forge)
   const by = (state: ProposedState) => items.filter((item) => item.state === state).length
+  const opened = (word: string) =>
+    items.filter((item) => item.state === 'opened' && requestWord(item.forge) === word).length
   return [
-    by('opened') && `${by('opened')} ${word} ${by('opened') >= 2 ? 'ouvertes' : 'ouverte'}`,
+    ...['PR', 'MR'].map((word) => opened(word) && `${opened(word)} ${word} ${opened(word) >= 2 ? 'ouvertes' : 'ouverte'}`),
     by('updated') && `${by('updated')} ${by('updated') >= 2 ? 'mises à jour' : 'mise à jour'}`,
     by('nothing') && `${count(by('nothing'), 'dépôt')} sans rien à faire`,
     by('failed') && `${by('failed')} en échec`,

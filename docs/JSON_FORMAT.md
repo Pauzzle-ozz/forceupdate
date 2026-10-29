@@ -532,10 +532,10 @@ curl -H "Authorization: Bearer $JETON" "http://127.0.0.1:$PORT/api/scans"
 | `POST /api/accounts/{forge}/device` | | `201` [connexion](#connexion) par device flow : le code à taper |
 | `GET /api/accounts/connections/{id}` | | `200` [connexion](#connexion) : où elle en est |
 | `DELETE /api/accounts/connections/{id}` | | `200` [connexion](#connexion) annulée |
-| `POST /api/accounts/{forge}/token` | `{"token": "…"}` | `201` [compte](#compte), une fois le token accepté par la forge |
+| `POST /api/accounts/{forge}/token` | `{"token": "…", "url": null}` | `201` [compte](#compte), une fois le token accepté par la forge ; `url` : l'adresse d'une instance GitLab auto-hébergée |
 | `POST /api/accounts/{forge}/gh` | | `201` [compte](#compte) de GitHub CLI (`gh auth token`) |
-| `POST /api/accounts/{forge}/verify` | | `200` [compte](#compte), droits relus auprès de la forge |
-| `DELETE /api/accounts/{forge}` | | `200` [déconnexion](#déconnexion) |
+| `POST /api/accounts/{forge}/verify?host=` | | `200` [compte](#compte), droits relus auprès de la forge |
+| `DELETE /api/accounts/{forge}?host=` | | `200` [déconnexion](#déconnexion) |
 | `GET /api/repositories?reload=` | | `200` [liste des dépôts](#liste-des-dépôts) des comptes connectés, avec la synthèse ; `reload=true` la redemande aux forges |
 | `POST /api/repositories/batches` | [demande d'analyse groupée](#demande-danalyse-groupée) | `202` [analyse groupée](#analyse-groupée), lancée en tâche de fond |
 | `GET /api/repositories/batches/{id}` | | `200` [analyse groupée](#analyse-groupée) |
@@ -543,10 +543,11 @@ curl -H "Authorization: Bearer $JETON" "http://127.0.0.1:$PORT/api/scans"
 | `POST /api/repositories/scans` | `{"repository": "owner/nom ou adresse", …}` | `202` [analyse](#analyse) d'un dépôt, même d'un autre compte s'il est public |
 | `POST /api/proposals` | [demande de récapitulatif](#demande-de-récapitulatif) | `201` [récapitulatif](#récapitulatif-de-pr) des PR de quelques dépôts : rien n'est poussé |
 | `GET /api/proposals/{id}` | | `200` [récapitulatif](#récapitulatif-de-pr) ; pendant et après l'envoi, où en est chaque dépôt |
-| `POST /api/proposals/{id}/send` | `{"repositories": ["owner/nom", …]}` | `202` [récapitulatif](#récapitulatif-de-pr), envoyé en tâche de fond |
+| `POST /api/proposals/{id}/send` | `{"repositories": [{"forge", "host", "full_name"}, …]}` | `202` [récapitulatif](#récapitulatif-de-pr), envoyé en tâche de fond |
 
-`{forge}` : `github`, `gitlab` ou `bitbucket` (sinon `422`) ; GitLab et Bitbucket
-répondent `409` tant que leur connexion n'est pas prête (E19, E20). Un plan
+`{forge}` : `github`, `gitlab` ou `bitbucket` (sinon `422`) ; Bitbucket répond `409` tant
+que sa connexion n'est pas prête (E20). `?host=` désigne le compte d'une instance
+auto-hébergée (GitLab) ; sans lui, le compte du service en ligne de la forge. Un plan
 (`POST /api/updates/plan`) sur l'analyse d'un dépôt est refusé (`409`) : un dépôt se met à jour
 par une PR ([PR des dépôts](#pr-des-dépôts)).
 
@@ -717,8 +718,10 @@ réécrite se télécharge par `GET /api/updates/{id}/files/{nom}`.
 
 ## Comptes des forges
 
-Chaque personne connecte son propre compte (E16 : GitHub ; GitLab à E19, Bitbucket à
-E20). **Le token reste sur le serveur** : rangé dans le trousseau du système (`keyring`),
+Chaque personne connecte son propre compte (E16 : GitHub ; E19 : GitLab ; Bitbucket à
+E20). Un compte se désigne par sa forge **et son hôte** : un compte par service en ligne
+(github.com, gitlab.com), plus un par instance GitLab auto-hébergée (`?host=` sur
+`verify` et `DELETE`). **Le token reste sur le serveur** : rangé dans le trousseau du système (`keyring`),
 jamais renvoyé au navigateur, jamais dans un journal ni dans `accounts.json` (qui garde le
 reste, dans le dossier d'état de l'utilisateur). Le navigateur n'envoie un token que quand
 la personne le colle.
@@ -731,10 +734,17 @@ Quatre façons de se connecter (`method`) :
 - `device` (device flow) : `POST …/device` rend un code (`user_code`) à taper sur
   `verification_uri` ; le serveur attend l'autorisation tout seul, le navigateur suit la
   connexion par `GET /api/accounts/connections/{id}` ;
-- `token` : un token collé (`POST …/token`) ;
+- `token` : un token collé (`POST …/token`) : GitHub classic ou fine-grained, GitLab token
+  d'accès personnel ; avec `url` (`https://hôte[:port]`, sans chemin), celui d'une instance
+  GitLab auto-hébergée (`400` pour une autre adresse, ou pour une autre forge) ;
 - `gh` : le token de GitHub CLI (`POST …/gh`), lu par `gh auth token`.
 
-Portées demandées à GitHub : `repo` et `read:org`.
+`device` et `gh` sont propres à GitHub (`400` ailleurs). Portées demandées : GitHub `repo`
+et `read:org` ; GitLab `api` (l'application de gitlab.com est « non confidentielle » : PKCE,
+sans secret). **Les tokens d'OAuth de GitLab expirent après 2 h** : le serveur les
+renouvelle par leur refresh token (à usage unique), avant qu'ils expirent ou quand GitLab en
+refuse un, un seul renouvellement à la fois pour un compte ; un refresh token refusé est dit
+dans `problem`.
 
 ### Liste des comptes
 
@@ -752,8 +762,11 @@ Chaque forge :
 | `available` | booléen | la connexion est prête ; sinon elle arrive à une étape à venir |
 | `methods` | liste de chaînes | les façons de se connecter possibles maintenant : `gh` seulement s'il est installé, `oauth` seulement si l'application a son secret |
 | `scopes` | liste de chaînes | les portées demandées par `oauth` et `device` |
-| `token_url` | chaîne ou `null` | où créer un token à coller, portées pré-cochées |
-| `account` | [compte](#compte) ou `null` | le compte connecté |
+| `token_url` | chaîne ou `null` | où créer un token à coller, portées pré-cochées (sur le service en ligne) |
+| `self_hosted` | booléen | on peut aussi y connecter une instance auto-hébergée (GitLab) |
+| `request` | chaîne | le nom d'une proposition de changements : `PR`, `MR` (GitLab) |
+| `account` | [compte](#compte) ou `null` | le compte connecté au service en ligne (`host`) |
+| `instances` | liste de [comptes](#compte) | les comptes connectés à des instances auto-hébergées, par hôte |
 | `connection` | [connexion](#connexion) ou `null` | une connexion en attente (un device flow se retrouve après un rechargement) |
 
 Rien n'est demandé aux forges pour lister : `POST …/verify` relit les droits.
@@ -767,8 +780,8 @@ Rien n'est demandé aux forges pour lister : `POST …/verify` relit les droits.
 | `name` | chaîne ou `null` | le nom affiché |
 | `url` | chaîne | son profil sur la forge |
 | `access` | chaîne | ce que permet le token : `write` (lire, pousser, ouvrir des PR, dépôts publics et privés), `public` (la même chose, dépôts publics seulement), `read` (lire les dépôts publics), `unknown` (droits non vérifiés : la forge ne les dit pas, token « fine-grained » de GitHub) |
-| `scopes` | liste ou `null` | les portées du token (`X-OAuth-Scopes` de GitHub) ; `null` si la forge ne les dit pas |
-| `warnings` | liste de chaînes | ce qui manquera avec ces droits (`read:org` absente…) |
+| `scopes` | liste ou `null` | les portées du token (`X-OAuth-Scopes` de GitHub ; GitLab : `/personal_access_tokens/self`, ou `/oauth/token/info`) ; `null` si la forge ne les dit pas |
+| `warnings` | liste de chaînes | ce qui manquera avec ces droits (`read:org` absente, `read_api` seulement…), et quand un token personnel de GitLab expire |
 | `method` | chaîne | `oauth`, `device`, `token`, `gh` |
 | `connected_at` | date | |
 | `checked_at` | date | la dernière fois que la forge a accepté le token |
@@ -798,14 +811,14 @@ de `gh`, n'appartient pas à forceupdate et reste valable.
 
 | Champ | Type | Sens |
 |---|---|---|
-| `forge`, `login` | chaînes | |
+| `forge`, `host`, `login` | chaînes | |
 | `revoked` | booléen ou `null` | `true` : révoqué ; `false` : la forge n'a pas pu le révoquer (injoignable) ; `null` : token collé ou de `gh`, pas à révoquer |
 | `message` | chaîne | ce qui a été fait, à montrer |
 
 ### Adresse de retour d'OAuth
 
-`GET /oauth/github/callback?code=…&state=…` : la forge y renvoie le navigateur après
-l'autorisation. Elle n'est pas dans `/api` ni dans le schéma OpenAPI : le front ne
+`GET /oauth/github/callback?code=…&state=…` (et `/oauth/gitlab/callback`) : la forge y
+renvoie le navigateur après l'autorisation. Elle n'est pas dans `/api` ni dans le schéma OpenAPI : le front ne
 l'appelle jamais.
 
 C'est une navigation venue d'un autre site (github.com) : le cookie de session
@@ -815,15 +828,16 @@ la laisse donc passer sans jeton de session, mais seulement en `GET`, en navigat
 étrangère (sinon `403`), et toujours avec le bon `Host`. Ce qui la protège est le
 `state`, tiré par le serveur pour une connexion lancée avec le jeton de session, gardé en
 mémoire, valable 10 minutes et **une seule fois** ; PKCE (`S256`) s'ajoute au secret de
-l'application. Sans `state` connu, la page ne fait rien (`400`).
+l'application (GitLab : PKCE seul, sans secret). Sans `state` connu, la page ne fait rien
+(`400`).
 
 Elle rend une petite page HTML qui renvoie aussitôt vers `/comptes?connexion=<id>`
 (`<meta http-equiv="refresh">`, avec un lien) : une redirection HTTP laisserait la page
 suivante « d'un autre site » (la chaîne de redirections part de github.com), sans cookie.
 Lancée par cette page, la navigation vient du serveur lui-même.
 
-GitHub ne revient que vers `127.0.0.1` (l'adresse enregistrée, sur n'importe quel port) :
-`POST …/oauth` est refusé (`409`) si l'interface est ouverte par `localhost`.
+GitHub et GitLab ne reviennent que vers `127.0.0.1` (l'adresse enregistrée, sur n'importe
+quel port) : `POST …/oauth` est refusé (`409`) si l'interface est ouverte par `localhost`.
 
 ## Dépôts des forges
 
@@ -833,6 +847,13 @@ les parseurs lisent sont téléchargés (manifestes, lockfiles, et ce qu'ils dé
 et `-c` d'un `requirements.txt`, le `pyproject.toml` racine d'un workspace uv, un
 `pnpm-workspace.yaml` parent). Le rapport est ensuite celui d'un dossier : même JSON, `source`
 vaut `owner/nom`. Le token ne quitte pas le serveur.
+
+**GitLab** (E19) : le nom d'un projet est son chemin complet, groupes et sous-groupes compris
+(`groupe/sous-groupe/projet` ; `owner` vaut `groupe/sous-groupe`) ; `can_push` veut dire le rôle
+Developer au moins. Son arborescence est paginée (tronquée au-delà de 100 pages : le dépôt est
+alors cloné) et ne donne pas la taille des fichiers : ses langages sont pesés en fichiers, pas
+en octets, et un fichier trop gros n'est écarté qu'une fois téléchargé. Ses limites d'API sont
+par minute (et parfois par point d'API) : `rate_limit` dit celles de la dernière réponse.
 
 La liste est demandée aux forges au premier `GET /api/repositories`, puis gardée le temps de la
 session (`reload=true` la redemande ; un compte reconnecté la recharge). Les dépôts archivés,
@@ -902,14 +923,15 @@ recompte rien.
 
 | Champ | Type | Sens |
 |---|---|---|
-| `forge` | chaîne | la forge du compte connecté |
-| `repositories` | liste de chaînes | les dépôts (`owner/nom`), parmi ceux de la liste (sinon `400`) ; les vides sont sautés |
+| `repositories` | liste de `{"forge", "host", "full_name"}` | les dépôts, de plusieurs comptes au besoin (GitHub, gitlab.com, une instance), parmi ceux de la liste (sinon `400`) ; les vides sont sautés |
 | `dev`, `transitive`, `include_tests`, `cache` | booléens | les [options](#options) ; jamais hors ligne |
 
-`404` sans compte connecté à cette forge, `409` pour une forge pas encore prête.
+`404` sans compte connecté à cette forge sur cet hôte, `409` pour une forge pas encore prête.
 
 `POST /api/repositories/scans` prend `repository` (`owner/nom`, `https://github.com/owner/nom`,
-`…/nom.git`, `git@github.com:owner/nom.git`, une page du dépôt) et les mêmes options : avec le
+`…/nom.git`, `git@github.com:owner/nom.git`, une page du dépôt ; sur GitLab, le chemin complet,
+`https://gitlab.com/groupe/sous-groupe/projet/-/tree/main` compris, et l'adresse d'une instance
+connectée) et les mêmes options : avec le
 token du compte connecté à sa forge s'il y en a un, sans token sinon (GitHub : 60 requêtes par
 heure, dépôts publics seulement). `400` nom illisible ou forge inconnue, `404` dépôt introuvable
 (ou privé et invisible), `409` dépôt vide, forge pas prête ou limite d'API atteinte, `502` forge
@@ -919,20 +941,20 @@ injoignable.
 
 Une analyse par dépôt, dans la boucle des analyses, `concurrency` dépôts à la fois (4), avec le
 même client HTTP et le même cache des registres ; les requêtes à un même hôte sont en plus
-limitées à 8 à la fois. Chaque analyse se suit comme une autre (`GET /api/scans/{id}`, SSE).
+limitées à 8 à la fois. Ses dépôts peuvent venir de plusieurs comptes : une forge par compte,
+qui compte ses requêtes (les restantes se lisent sur le compte, `rate_limit`). Chaque analyse
+se suit comme une autre (`GET /api/scans/{id}`, SSE).
 
 | Champ | Type | Sens |
 |---|---|---|
 | `id` | chaîne | |
-| `forge`, `host` | chaînes | |
 | `status` | chaîne | `running`, puis `done` (toutes finies, abouties ou non) ou `cancelled` |
 | `started_at`, `finished_at` | dates | |
 | `concurrency` | entier | |
 | `scans` | liste de chaînes | les identifiants de ses analyses |
 | `total`, `finished`, `failed` | entiers | |
 | `skipped` | liste de chaînes | les dépôts demandés mais vides |
-| `requests` | entier | les requêtes d'API envoyées à la forge par ce lot |
-| `rate_limit` | objet ou `null` | les requêtes restantes, d'après la dernière réponse |
+| `requests` | entier | les requêtes d'API envoyées aux forges par ce lot |
 
 Annuler (`DELETE`) arrête les analyses pas finies ; celles qui le sont gardent leur rapport.
 Les analyses gardées en mémoire sont les 20 plus récentes, **plus la dernière de chaque
@@ -940,8 +962,10 @@ dépôt**.
 
 ## PR des dépôts
 
-Un dépôt d'une forge se met à jour par une PR (une MR sur GitLab), jamais par un push sur sa
-branche par défaut (E18). En deux temps : un **récapitulatif**, préparé sans rien cloner ni
+Un dépôt d'une forge se met à jour par une PR (une MR sur GitLab, E19), jamais par un push sur
+sa branche par défaut (E18). Un récapitulatif peut mêler plusieurs comptes (des PR GitHub et des
+MR GitLab) ; à l'envoi, chaque compte a sa forge et son auteur, et un compte dont le token est
+refusé voit ses dépôts en échec (avec la raison) sans arrêter les autres. En deux temps : un **récapitulatif**, préparé sans rien cloner ni
 pousser, puis l'**envoi**, une fois validé.
 
 - **Le récapitulatif** (`POST /api/proposals`) : pour chaque dépôt demandé, sa dernière
@@ -968,7 +992,11 @@ pousser, puis l'**envoi**, une fois validé.
   faire : rien n'est poussé.
 
 Les commits de forceupdate finissent par la ligne `Generated-by: forceupdate <version>`.
-L'auteur est le compte du token (GitHub : son adresse `noreply`). Les 10 derniers
+L'auteur est le compte du token, avec son adresse `noreply` (GitHub
+`{id}+{login}@users.noreply.github.com`, GitLab `{id}-{login}@users.noreply.{hôte}`). Sur
+GitLab, git présente le token sous le nom `oauth2` ; l'arbre du dernier commit de la branche,
+que l'API ne donne pas, est recalculé depuis la liste de sa racine (pour ne rien pousser quand
+le contenu est le même). Les 10 derniers
 récapitulatifs restent en mémoire, le temps de la session ; l'envoi se suit en relisant
 `GET /api/proposals/{id}` (le front le fait chaque seconde).
 
@@ -976,28 +1004,27 @@ récapitulatifs restent en mémoire, le temps de la session ; l'envoi se suit en
 
 | Champ | Type | Sens |
 |---|---|---|
-| `forge` | chaîne | la forge du compte connecté |
-| `repositories` | liste de `{"repository", "selection"}` | `repository` : `owner/nom`, parmi ceux de la [liste](#liste-des-dépôts) (sinon `400`) ; `selection` : comme celle d'un [plan](#plan-de-mise-à-jour), sur la dernière analyse du dépôt, ou `null` pour la sélection par défaut |
+| `repositories` | liste de `{"forge", "host", "full_name", "selection"}` | des dépôts de la [liste](#liste-des-dépôts) (sinon `400`), de plusieurs comptes au besoin ; `selection` : comme celle d'un [plan](#plan-de-mise-à-jour), sur la dernière analyse du dépôt, ou `null` pour la sélection par défaut |
 
 `400` : aucun dépôt, dépôt inconnu, sélection qui ne correspond pas au rapport, token refusé
-par la forge ; `404` : aucun compte connecté ; `409` : forge pas prête, token absent du
-trousseau.
+par la forge ; `404` : aucun compte connecté à cette forge sur cet hôte ; `409` : forge pas
+prête, token absent du trousseau.
 
-`POST /api/proposals/{id}/send` prend `{"repositories": [...]}`, des dépôts prêts (`ready`) du
-récapitulatif (sinon `400`) ; `409` : déjà envoyé, git absent, token absent du trousseau.
+`POST /api/proposals/{id}/send` prend `{"repositories": [{"forge", "host", "full_name"}, …]}`,
+des dépôts prêts (`ready`) du récapitulatif (sinon `400`) ; `409` : déjà envoyé, git absent,
+token absent du trousseau.
 
 ### Récapitulatif de PR
 
 | Champ | Type | Sens |
 |---|---|---|
 | `id` | chaîne | |
-| `forge`, `host` | chaînes | |
 | `status` | chaîne | `planned` (rien n'est poussé), `running` (envoi en cours), `done` |
 | `created_at`, `started_at`, `finished_at` | dates | `started_at` et `finished_at` : de l'envoi |
 | `repositories` | liste de [dépôts du récapitulatif](#dépôt-du-récapitulatif) | dans l'ordre demandé |
 | `ready` | entier | les dépôts prêts à envoyer |
 | `existing` | entier | parmi eux, ceux qui ont déjà une PR ouverte (elle sera mise à jour) |
-| `error` | chaîne ou `null` | pourquoi l'envoi n'a pas pu commencer (token refusé…) |
+| `error` | chaîne ou `null` | pourquoi l'envoi s'est arrêté (le serveur s'est arrêté pendant l'envoi…) ; un token refusé est dit sur les dépôts de son compte |
 
 ### Dépôt du récapitulatif
 

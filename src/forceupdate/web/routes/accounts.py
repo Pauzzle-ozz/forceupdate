@@ -1,6 +1,10 @@
 """Les comptes des forges : lister, connecter (OAuth, device flow, token collé, ``gh``),
 vérifier les droits, déconnecter.
 
+Un compte se désigne par sa forge et son hôte (``?host=``, par défaut le service en ligne de
+la forge) : un compte gitlab.com et un compte par instance GitLab auto-hébergée. Une instance
+se connecte par son adresse et un token collé.
+
 Les tokens ne vont jamais au navigateur : il reçoit le compte (identifiant, droits), jamais son
 token. Un refus de la forge n'est jamais un ``401`` de l'API (celui-là veut dire « session
 terminée ») : c'est un ``400`` avec la raison, ou ``problem`` sur le compte ; une forge qui ne
@@ -8,12 +12,13 @@ répond pas, un ``502``.
 """
 
 import asyncio
+import urllib.parse
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from forceupdate.forges import FORGES, github, info
+from forceupdate.forges import FORGES, ForgeInfo, github, gitlab, info, label
 from forceupdate.forges import accounts as accounts_module
 from forceupdate.forges.accounts import Account, AccountsError, ConnectMethod
 from forceupdate.forges.base import ForgeError, ForgeKind, RateLimited
@@ -32,6 +37,19 @@ router = APIRouter(prefix="/api/accounts", tags=["comptes"])
 
 MAX_TOKEN = 1024
 """Longueur maximale d'un token collé."""
+
+SCOPES = {ForgeKind.GITHUB: github.SCOPES, ForgeKind.GITLAB: gitlab.SCOPES}
+"""Les portées demandées à la connexion, par forge."""
+TOKEN_URLS = {
+    ForgeKind.GITHUB: github.TOKEN_SETTINGS_URL,
+    ForgeKind.GITLAB: gitlab.token_settings_url(),
+}
+"""Où créer un token à coller, portées pré-cochées."""
+APPLICATIONS_URLS = {
+    ForgeKind.GITHUB: github.APPLICATIONS_URL,
+    ForgeKind.GITLAB: f"{gitlab.WEB_URL}/-/user_settings/applications",
+}
+"""Où révoquer à la main l'accès donné à forceupdate."""
 
 
 def current_connections(request: Request) -> Connections:
@@ -57,28 +75,40 @@ async def list_accounts(connections: CurrentConnections) -> JSONResponse:
     gh = await asyncio.to_thread(github.gh_installed)
     forges = []
     for forge in FORGES:
-        methods: list[ConnectMethod] = []
-        if forge.available and forge.kind is ForgeKind.GITHUB:
-            if connections.app.web_flow:
-                methods.append(ConnectMethod.OAUTH)
-            methods += [ConnectMethod.DEVICE, ConnectMethod.TOKEN]
-            if gh:
-                methods.append(ConnectMethod.GH)
         pending = connections.pending(forge.kind)
+        mine = [account for account in connected if account.forge is forge.kind]
         forges.append(
             ForgeStatus(
                 forge=forge.kind,
                 name=forge.name,
                 host=forge.host,
                 available=forge.available,
-                methods=tuple(methods),
-                scopes=github.SCOPES if forge.kind is ForgeKind.GITHUB else (),
-                token_url=github.TOKEN_SETTINGS_URL if forge.kind is ForgeKind.GITHUB else None,
-                account=next((a for a in connected if a.forge is forge.kind), None),
+                methods=_methods(forge, connections, gh=gh),
+                scopes=SCOPES.get(forge.kind, ()),
+                token_url=TOKEN_URLS.get(forge.kind),
+                self_hosted=forge.self_hosted,
+                request=forge.request,
+                account=next((a for a in mine if a.host == forge.host), None),
+                instances=tuple(a for a in mine if a.host != forge.host),
                 connection=pending.document() if pending is not None else None,
             )
         )
     return respond(AccountList(keyring=problem, forges=tuple(forges)))
+
+
+def _methods(forge: ForgeInfo, connections: Connections, *, gh: bool) -> tuple[ConnectMethod, ...]:
+    """Les façons de se connecter à ``forge`` possibles maintenant."""
+    if not forge.available:
+        return ()
+    methods: list[ConnectMethod] = []
+    if connections.web_flow(forge.kind):
+        methods.append(ConnectMethod.OAUTH)
+    if forge.kind is ForgeKind.GITHUB:
+        methods.append(ConnectMethod.DEVICE)
+    methods.append(ConnectMethod.TOKEN)
+    if forge.kind is ForgeKind.GITHUB and gh:
+        methods.append(ConnectMethod.GH)
+    return tuple(methods)
 
 
 @router.post(
@@ -95,16 +125,19 @@ async def start_oauth(
     token, puis vers ``/comptes?connexion=<id>``."""
     _check_available(forge)
     await _check_keyring(connections)
-    if not connections.app.web_flow:
+    name = info(forge).name
+    if not connections.web_flow(forge):
+        other = "avec un code (device flow)" if forge is ForgeKind.GITHUB else "avec un token"
         raise HTTPException(
-            409, "L'application n'a pas de secret : se connecter avec un code (device flow)."
+            409, f"L'application forceupdate n'est pas prête sur {name} : se connecter {other}."
         )
     expected = f"127.0.0.1:{connections.port}"
     if request.headers.get("host") != expected:
+        other = ", ou se connecter avec un code" if forge is ForgeKind.GITHUB else ""
         raise HTTPException(
             409,
-            f"GitHub ne revient que vers 127.0.0.1 : ouvrir l'interface par http://{expected} "
-            "(l'adresse que donne « forceupdate ui »), ou se connecter avec un code.",
+            f"{name} ne revient que vers 127.0.0.1 : ouvrir l'interface par http://{expected} "
+            f"(l'adresse que donne « forceupdate ui »){other}.",
         )
     connection = connections.start_oauth(forge)
     return _connection_response(connection)
@@ -119,8 +152,10 @@ async def start_oauth(
 async def start_device(forge: ForgeKind, connections: CurrentConnections) -> JSONResponse:
     """Commence une connexion par device flow : la forge donne un code (``user_code``) à taper
     sur ``verification_uri`` ; le serveur attend, la connexion se suit sur
-    ``GET /api/accounts/connections/{id}``."""
+    ``GET /api/accounts/connections/{id}``. GitHub seulement."""
     _check_available(forge)
+    if forge is not ForgeKind.GITHUB:
+        raise HTTPException(400, f"{info(forge).name} : pas de connexion par code, ici.")
     await _check_keyring(connections)
     try:
         connection = await connections.start_device(forge)
@@ -161,15 +196,17 @@ async def cancel_connection(connection_id: str, connections: CurrentConnections)
 async def connect_token(
     forge: ForgeKind, body: TokenRequest, connections: CurrentConnections
 ) -> JSONResponse:
-    """Connecte un compte avec un token collé (classic ou fine-grained), une fois que la forge
-    l'a accepté."""
+    """Connecte un compte avec un token collé (GitHub : classic ou fine-grained ; GitLab : un
+    token d'accès personnel), une fois que la forge l'a accepté. ``url`` : l'adresse d'une
+    instance auto-hébergée (GitLab)."""
     _check_available(forge)
+    host = _instance(forge, body.url) if body.url else info(forge).host
     token = body.token.strip()
     if not token or len(token) > MAX_TOKEN or any(c.isspace() for c in token):
         raise HTTPException(
             400, "Ce n'est pas un token : une seule suite de caractères, sans espace."
         )
-    return await _connect(connections, forge, token, ConnectMethod.TOKEN)
+    return await _connect(connections, forge, token, ConnectMethod.TOKEN, host=host)
 
 
 @router.post(
@@ -192,12 +229,20 @@ async def connect_gh(forge: ForgeKind, connections: CurrentConnections) -> JSONR
 
 
 @router.post("/{forge}/verify", response_model=Account, responses=errors(401, 403, 404, 409, 502))
-async def verify_account(forge: ForgeKind, connections: CurrentConnections) -> JSONResponse:
-    """Redemande à la forge qui est connecté et avec quels droits. Un token refusé (révoqué sur
-    la forge) est dit dans ``problem`` : le compte reste affiché, pour qu'on se reconnecte."""
-    account = await _account(connections, forge)
+async def verify_account(
+    forge: ForgeKind, connections: CurrentConnections, host: str | None = None
+) -> JSONResponse:
+    """Redemande à la forge qui est connecté et avec quels droits (le token renouvelé s'il a
+    expiré). Un token refusé (révoqué sur la forge) est dit dans ``problem`` : le compte reste
+    affiché, pour qu'on se reconnecte."""
+    account = await _account(connections, forge, host)
     try:
-        checked = await accounts_module.verify(connections.accounts, connections.http, account)
+        checked = await accounts_module.verify(
+            connections.accounts,
+            connections.http,
+            account,
+            renew=connections.renew(account),
+        )
     except AccountsError as err:
         raise HTTPException(409, str(err)) from err
     except (ForgeError, NetworkError) as err:
@@ -206,21 +251,23 @@ async def verify_account(forge: ForgeKind, connections: CurrentConnections) -> J
 
 
 @router.delete("/{forge}", response_model=Disconnection, responses=errors(401, 403, 404, 409))
-async def disconnect(forge: ForgeKind, connections: CurrentConnections) -> JSONResponse:
+async def disconnect(
+    forge: ForgeKind, connections: CurrentConnections, host: str | None = None
+) -> JSONResponse:
     """Déconnecte le compte : efface son token du trousseau, et le révoque auprès de la forge
     s'il a été donné à forceupdate (OAuth, device flow)."""
-    name = info(forge).name
+    host = (host or info(forge).host).lower()
+    name = label(forge, host)
     try:
-        account, token = await asyncio.to_thread(
-            connections.accounts.remove, forge, info(forge).host
-        )
+        account, token = await asyncio.to_thread(connections.accounts.remove, forge, host)
     except AccountsError as err:
         raise HTTPException(409, str(err)) from err
     if account is None or token is None:
         raise HTTPException(404, f"Aucun compte {name} connecté.")
     revoked: bool | None = None
-    if account.method.from_app:
-        revoked = await github.revoke(connections.http, connections.app, token)
+    app = connections.apps.get(forge)
+    if account.method.from_app and app is not None:
+        revoked = await app.revoke(connections.http, token)
     if revoked:
         message = f"Déconnecté de {name} : token effacé de cet ordinateur et révoqué."
     elif revoked is None:
@@ -231,11 +278,10 @@ async def disconnect(forge: ForgeKind, connections: CurrentConnections) -> JSONR
     else:
         message = (
             f"Déconnecté de {name} : token effacé de cet ordinateur, mais {name} ne l'a pas "
-            "révoqué (injoignable). Le révoquer dans ses réglages : "
-            "https://github.com/settings/applications"
+            f"révoqué (injoignable). Le révoquer dans ses réglages : {APPLICATIONS_URLS[forge]}"
         )
     return respond(
-        Disconnection(forge=forge, login=account.login, revoked=revoked, message=message)
+        Disconnection(forge=forge, host=host, login=account.login, revoked=revoked, message=message)
     )
 
 
@@ -257,23 +303,58 @@ def _find(connections: Connections, connection_id: str) -> Connection:
     return connection
 
 
-async def _account(connections: Connections, forge: ForgeKind) -> Account:
+async def _account(connections: Connections, forge: ForgeKind, host: str | None) -> Account:
+    host = (host or info(forge).host).lower()
     try:
-        account = await asyncio.to_thread(connections.accounts.get, forge, info(forge).host)
+        account = await asyncio.to_thread(connections.accounts.get, forge, host)
     except AccountsError as err:
         raise HTTPException(409, str(err)) from err
     if account is None:
-        raise HTTPException(404, f"Aucun compte {info(forge).name} connecté.")
+        raise HTTPException(404, f"Aucun compte {label(forge, host)} connecté.")
     return account
 
 
+def _instance(forge: ForgeKind, url: str) -> str:
+    """L'hôte d'une instance auto-hébergée, d'après son adresse (``https://hôte[:port]``).
+    Lève ``HTTPException`` (400) avec un message à montrer."""
+    if not info(forge).self_hosted:
+        raise HTTPException(400, f"{info(forge).name} : pas d'instance auto-hébergée, ici.")
+    text = url.strip()
+    parsed = urllib.parse.urlsplit(text if "://" in text else f"https://{text}")
+    try:
+        port = parsed.port
+    except ValueError:
+        port = -1
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or parsed.path.strip("/")
+        or port == -1
+    ):
+        raise HTTPException(
+            400,
+            "Adresse d'instance refusée : donner https://hôte (ou https://hôte:port), sans "
+            "chemin ni identifiants. Le token ne part jamais en clair (http).",
+        )
+    return parsed.hostname.lower() + (f":{port}" if port not in (None, 443) else "")
+
+
 async def _connect(
-    connections: Connections, forge: ForgeKind, token: str, method: ConnectMethod
+    connections: Connections,
+    forge: ForgeKind,
+    token: str,
+    method: ConnectMethod,
+    *,
+    host: str | None = None,
 ) -> JSONResponse:
     await _check_keyring(connections)
     try:
         account = await accounts_module.connect(
-            connections.accounts, connections.http, forge, token, method
+            connections.accounts, connections.http, forge, token, method, host=host
         )
     except AccountsError as err:
         raise HTTPException(409, str(err)) from err

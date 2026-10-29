@@ -262,7 +262,9 @@ def test_the_oauth_return_keeps_the_host_check(anonymous: TestClient) -> None:
         "/oauth/github/callback/",
         "/oauth/github/callback/autre",
         "/oauth/github",
-        "/oauth/gitlab/callback",
+        "/oauth/gitlab/callback/",
+        "/oauth/gitlab/callback/autre",
+        "/oauth/bitbucket/callback",
     ],
 )
 def test_every_other_address_still_refuses_another_site(api: TestClient, path: str) -> None:
@@ -270,6 +272,15 @@ def test_every_other_address_still_refuses_another_site(api: TestClient, path: s
     response = api.get(path, headers=NAVIGATION)
     assert response.status_code == 403
     assert response.json() == {"detail": "Requête venue d'un autre site : refusée."}
+
+
+@pytest.mark.parametrize("path", ["/oauth/github/callback", "/oauth/gitlab/callback"])
+def test_each_forge_has_its_oauth_return(anonymous: TestClient, path: str) -> None:
+    """GitHub et GitLab ont chacun leur adresse de retour, que le garde laisse passer (un
+    ``state`` inconnu n'y fait rien)."""
+    response = anonymous.get(f"{path}?code=c&state=inconnu", headers=NAVIGATION)
+    assert response.status_code == 400
+    assert "Lien de connexion inconnu ou déjà utilisé." in response.text
 
 
 def test_the_page_after_the_oauth_return_is_same_origin(anonymous: TestClient) -> None:

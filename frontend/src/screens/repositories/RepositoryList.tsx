@@ -29,11 +29,13 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { count, formatDateTime, formatRelative, fr } from '@/lib/format'
-import { requestNumber, requestWord } from '@/lib/proposals'
+import { FORGE_NAME, forgeLabel, requestCount, requestNumber, requestWord, requestWords } from '@/lib/proposals'
 import {
   NO_REPOSITORY_FILTERS,
   STATE_FILTERS,
   forgesOf,
+  spokenName,
+  twinNames,
   owners,
   progressOf,
   repositoryKey,
@@ -45,7 +47,6 @@ import {
 } from '@/lib/repositories'
 import { Section } from '@/shell/Page'
 
-const FORGE_NAME = { github: 'GitHub', gitlab: 'GitLab', bitbucket: 'Bitbucket' } as const
 
 interface ListProps {
   /** Tous les dépôts, et ceux que montrent les filtres et le tri. */
@@ -220,7 +221,9 @@ export function RepositoryList(props: ListProps) {
           </Button>
           <Button variant="primary" onClick={() => onPropose(picked)} disabled={proposeBlocked !== null}>
             <GitPullRequest aria-hidden="true" />
-            {picked.length >= 2 ? `Préparer ${picked.length} PR` : 'Préparer la PR'}
+            {picked.length >= 2
+              ? `Préparer ${requestCount(picked.map((row) => row.forge))}`
+              : `Préparer la ${requestWord(picked[0].forge)}`}
           </Button>
         </div>
       )}
@@ -270,7 +273,8 @@ function ariaSort(sort: RepositorySort, column: RepositorySortKey): 'ascending' 
   return sort.descending ? 'descending' : 'ascending'
 }
 
-function RepositoryTable({ shown, selected, onSelect, sort, onSort }: ListProps) {
+function RepositoryTable({ all, shown, selected, onSelect, sort, onSort }: ListProps) {
+  const twins = twinNames(all)
   return (
     <Table>
       <TableCaption className="sr-only">
@@ -292,7 +296,7 @@ function RepositoryTable({ shown, selected, onSelect, sort, onSort }: ListProps)
             <SortButton label="Dernier push" column="pushed" sort={sort} onSort={onSort} />
           </TableHead>
           <TableHead scope="col">Analyse</TableHead>
-          <TableHead scope="col">PR</TableHead>
+          <TableHead scope="col">{requestWords(forgesOf(all)).replace(' et ', ' / ')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -302,19 +306,19 @@ function RepositoryTable({ shown, selected, onSelect, sort, onSort }: ListProps)
           return (
             <TableRow key={key} className={cn(checked && 'bg-primary-soft [tbody_&]:hover:bg-primary-soft')}>
               <TableCell>
-                <RowCheckbox row={row} checked={checked} onSelect={onSelect} />
+                <RowCheckbox row={row} name={spokenName(row, twins)} checked={checked} onSelect={onSelect} />
               </TableCell>
               <TableCell>
-                <RepositoryName row={row} />
+                <RepositoryName row={row} name={spokenName(row, twins)} />
                 <span className="mt-1 flex items-center gap-1.5 text-xs text-fg-muted lg:hidden">
                   <ForgeLogo forge={row.forge} className="size-3.5" />
-                  {FORGE_NAME[row.forge]}
+                  {forgeLabel(row.forge, row.host)}
                 </span>
               </TableCell>
               <TableCell className="max-lg:hidden">
                 <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                   <ForgeLogo forge={row.forge} className="size-4" />
-                  {FORGE_NAME[row.forge]}
+                  {forgeLabel(row.forge, row.host)}
                 </span>
               </TableCell>
               <TableCell>
@@ -337,7 +341,8 @@ function RepositoryTable({ shown, selected, onSelect, sort, onSort }: ListProps)
   )
 }
 
-function RepositoryCards({ shown, selected, onSelect }: ListProps) {
+function RepositoryCards({ all, shown, selected, onSelect }: ListProps) {
+  const twins = twinNames(all)
   return (
     <>
       <div className="flex items-center gap-3 rounded-md border border-border bg-surface-2 px-4 py-2 text-sm">
@@ -351,14 +356,14 @@ function RepositoryCards({ shown, selected, onSelect }: ListProps) {
           return (
             <li key={key} className={cn('rounded-md border border-border bg-surface p-4', checked && 'border-control bg-primary-soft')}>
               <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2">
-                <RowCheckbox row={row} checked={checked} onSelect={onSelect} />
+                <RowCheckbox row={row} name={spokenName(row, twins)} checked={checked} onSelect={onSelect} />
                 <div className="flex min-w-0 flex-col gap-2">
-                  <RepositoryName row={row} />
+                  <RepositoryName row={row} name={spokenName(row, twins)} />
                   <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
                     <dt className="text-fg-muted">Forge</dt>
                     <dd className="flex items-center gap-1.5">
                       <ForgeLogo forge={row.forge} className="size-4" />
-                      {FORGE_NAME[row.forge]}
+                      {forgeLabel(row.forge, row.host)}
                     </dd>
                     <dt className="text-fg-muted">Langages</dt>
                     <dd>
@@ -384,30 +389,45 @@ function RepositoryCards({ shown, selected, onSelect }: ListProps) {
   )
 }
 
-function RowCheckbox({ row, checked, onSelect }: { row: RepositoryRow; checked: boolean; onSelect: ListProps['onSelect'] }) {
+/** `name` : le nom à dire, avec la forge si un autre dépôt porte le même (`spokenName`). */
+function RowCheckbox({
+  row,
+  name,
+  checked,
+  onSelect,
+}: {
+  row: RepositoryRow
+  name: string
+  checked: boolean
+  onSelect: ListProps['onSelect']
+}) {
   return (
     <Checkbox
       checked={checked}
       disabled={!selectable(row)}
       onChange={(event) => onSelect([repositoryKey(row)], event.target.checked)}
-      aria-label={selectable(row) ? `Sélectionner ${row.full_name}` : `${row.full_name} : vide, rien à analyser`}
+      aria-label={selectable(row) ? `Sélectionner ${name}` : `${name} : vide, rien à analyser`}
     />
   )
 }
 
 /** `owner/` atténué puis le nom, en chasse fixe ; le lien mène au rapport de la dernière analyse. */
-function RepositoryName({ row }: { row: RepositoryRow }) {
+function RepositoryName({ row, name: spoken }: { row: RepositoryRow; name: string }) {
   const name = (
     <>
       <span className="font-normal text-fg-muted">{row.owner}/</span>
       {row.name}
     </>
   )
-  const forge = FORGE_NAME[row.forge]
+  const forge = forgeLabel(row.forge, row.host)
   return (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
       {row.scan ? (
-        <Link to={`/analyses/${row.scan.id}`} className="font-mono text-sm font-semibold break-all text-fg">
+        <Link
+          to={`/analyses/${row.scan.id}`}
+          className="font-mono text-sm font-semibold break-all text-fg"
+          aria-label={spoken !== row.full_name ? spoken : undefined}
+        >
           {name}
         </Link>
       ) : (
@@ -462,7 +482,7 @@ function RequestCell({ row }: { row: RepositoryRow }) {
         target="_blank"
         rel="noreferrer"
         className="inline-flex min-h-6 items-center gap-1 font-mono text-sm whitespace-nowrap text-link underline pointer-coarse:min-h-11"
-        aria-label={`${word} ${number} de ${row.full_name} sur ${FORGE_NAME[row.forge]} (nouvel onglet)`}
+        aria-label={`${word} ${number} de ${row.full_name} sur ${forgeLabel(row.forge, row.host)} (nouvel onglet)`}
       >
         <GitPullRequest className="size-4" aria-hidden="true" />
         {number}

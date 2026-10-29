@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, queryKeys } from '@/api/client'
-import type { ProposalRequest } from '@/api/types'
+import type { ProposalRequest, RepositoryKey } from '@/api/types'
 
 /** Toutes les combien de millisecondes un récapitulatif est relu pendant son envoi. */
 export const PROPOSAL_POLL = 1000
@@ -32,7 +32,7 @@ export function useCreateProposal() {
 export function useSendProposal(id: string) {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (repositories: string[]) => api.sendProposal(id, repositories),
+    mutationFn: (repositories: RepositoryKey[]) => api.sendProposal(id, repositories),
     onSuccess: (proposal) => client.setQueryData(queryKeys.proposal(id), proposal),
   })
 }

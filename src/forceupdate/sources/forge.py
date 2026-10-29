@@ -20,9 +20,11 @@ des tailles de l'arborescence, les dépendances des fichiers téléchargés. Le 
 d'un dossier local, inchangé.
 
 Les fichiers trop gros (``max_read_size`` : 2 Mo, 50 Mo pour un lockfile) ne sont pas
-téléchargés : comme en local, ils ne sont pas lus, et le rapport le dit.
+téléchargés : comme en local, ils ne sont pas lus, et le rapport le dit. GitLab ne donne pas
+les tailles : ses fichiers sont téléchargés, puis écartés à la lecture s'ils sont trop gros.
 
-Une arborescence que la forge a tronquée (GitHub : au-delà de 100 000 entrées) donnerait une
+Une arborescence que la forge a tronquée (GitHub : au-delà de 100 000 entrées ; GitLab, au-delà
+de ``gitlab.MAX_TREE_PAGES`` pages) donnerait une
 analyse partielle : ``clone`` fait alors un clone superficiel du même dépôt, analysé comme un
 dossier (``ClonedSource``, E18).
 """
@@ -65,11 +67,14 @@ class ForgeSource(Source):
         self.tree = tree
         self.root = root
         self.origin = repo.full_name
+        # Une taille inconnue (GitLab ne la donne pas) compte pour 1 : les langages sont
+        # alors pesés en fichiers, pas en octets.
         self._files = sorted(
-            SourceFile(entry.path, entry.size)
+            SourceFile(entry.path, 1 if entry.size is None else entry.size)
             for entry in tree.entries
             if not is_ignored_path(entry.path)
         )
+        self._sizes = {entry.path: entry.size for entry in tree.entries}
 
     @property
     def truncated(self) -> bool:
@@ -78,6 +83,12 @@ class ForgeSource(Source):
 
     def files(self) -> list[SourceFile]:
         return list(self._files)
+
+    def small_enough(self, path: str) -> bool:
+        """``path`` peut être lu (``max_read_size``) : à télécharger. Une taille inconnue
+        aussi ; il sera écarté à la lecture s'il est trop gros."""
+        size = self._sizes.get(path)
+        return size is None or size <= max_read_size(path)
 
     def read_text(self, path: str) -> str | None:
         """Le fichier téléchargé ; ``None`` s'il ne l'a pas été (absent du dépôt, trop gros).
@@ -136,13 +147,13 @@ async def fetch(
     emit = on_event or _ignore
     tree = await forge.tree(repo)
     source = ForgeSource(repo, tree, destination)
-    sizes = {file.path: file.size for file in source.files()}
+    listed = {file.path for file in source.files()}
     done: set[str] = set()
     for _ in range(MAX_ROUNDS):
         todo = sorted(
             path
             for path in _requested(source, include_tests) - done
-            if path in sizes and sizes[path] <= max_read_size(path)
+            if path in listed and source.small_enough(path)
         )
         if not todo:
             break

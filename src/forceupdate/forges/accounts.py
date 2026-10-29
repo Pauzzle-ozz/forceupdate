@@ -4,13 +4,16 @@
   d'identification de Windows, le trousseau de macOS, Secret Service sous Linux), au service
   ``forceupdate``, sous le nom ``<forge>:<hôte>`` (``github:github.com``). Il n'en sort que pour
   parler à la forge : jamais affiché, jamais dans un journal ni un message, jamais envoyé au
-  navigateur.
+  navigateur. Un token qui expire (GitLab, par OAuth : 2 h) y est rangé avec son refresh token
+  et son heure d'expiration, en JSON ; ``renewer`` le renouvelle quand il le faut, un seul
+  renouvellement à la fois pour un compte, d'où qu'il vienne (boucle du serveur, boucle des
+  analyses) : le refresh token ne sert qu'une fois.
 - **Le reste** (identifiant, nom, droits, façon de se connecter, dates) est dans
   ``accounts.json``, dans le dossier d'état de l'utilisateur, sans aucun secret.
 
 Un compte n'existe que si son token est dans le trousseau : un token effacé à la main du
 trousseau fait disparaître le compte. Se déconnecter efface les deux. Un compte par forge et
-par hôte.
+par hôte : un compte gitlab.com et un compte de chaque instance GitLab auto-hébergée.
 """
 
 import asyncio
@@ -21,15 +24,23 @@ import logging
 import os
 import threading
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import keyring
 import keyring.errors
 
-from forceupdate.forges import client
-from forceupdate.forges.base import Access, ForgeKind, Identity, TokenRefused
+from forceupdate.forges import HOSTS, client, label
+from forceupdate.forges.base import (
+    Access,
+    ForgeKind,
+    Grant,
+    Identity,
+    OAuthFlow,
+    Renew,
+    TokenRefused,
+)
 from forceupdate.models import to_dict
 from forceupdate.net import HttpClient
 
@@ -37,6 +48,11 @@ logger = logging.getLogger(__name__)
 
 SERVICE = "forceupdate"
 """Le service des tokens dans le trousseau."""
+
+RENEW_MARGIN = timedelta(minutes=5)
+"""Un token qui expire dans moins de ce temps est renouvelé avant de servir."""
+WAIT_STEP = 0.05
+"""Secondes entre deux essais de prendre le verrou du renouvellement d'un compte."""
 
 
 class ConnectMethod(enum.StrEnum):
@@ -97,6 +113,7 @@ class Accounts:
     def __init__(self, path: Path) -> None:
         self.path = path
         self._lock = threading.RLock()
+        self._renewing: dict[tuple[ForgeKind, str], threading.Lock] = {}
 
     def unavailable(self) -> str | None:
         """Pourquoi le trousseau ne peut pas servir ; ``None`` s'il marche."""
@@ -112,7 +129,8 @@ class Accounts:
         return None
 
     def connected(self) -> list[Account]:
-        """Les comptes dont le token est dans le trousseau, par forge."""
+        """Les comptes dont le token est dans le trousseau, par forge (le service en ligne
+        avant les instances)."""
         return [account for account in self._load() if self._token(account) is not None]
 
     def get(self, forge: ForgeKind, host: str) -> Account | None:
@@ -120,13 +138,31 @@ class Accounts:
         return found if found is not None and self._token(found) is not None else None
 
     def token(self, forge: ForgeKind, host: str) -> str | None:
-        """Le token du compte, pour parler à la forge ; ``None`` s'il n'y en a pas."""
-        account = self.get(forge, host)
-        return None if account is None else self._token(account)
+        """Le token du compte, pour parler à la forge ; ``None`` s'il n'y en a pas. Il peut
+        avoir expiré : ``renewer`` le renouvelle."""
+        grant = self.grant(forge, host)
+        return None if grant is None else grant.access_token
 
-    def save(self, identity: Identity, token: str, method: ConnectMethod) -> Account:
+    def grant(self, forge: ForgeKind, host: str) -> Grant | None:
+        """Le token du compte, avec son refresh token et son expiration s'il en a."""
+        account = self.get(forge, host)
+        if account is None:
+            return None
+        stored = self._token(account)
+        return None if stored is None else _grant(stored)
+
+    def renewed(self, forge: ForgeKind, host: str, grant: Grant) -> None:
+        """Range les tokens qui remplacent ceux du compte (renouvelés)."""
+        self._keep(forge, host, grant)
+
+    def renewing(self, forge: ForgeKind, host: str) -> threading.Lock:
+        """Le verrou du renouvellement du token d'un compte."""
+        with self._lock:
+            return self._renewing.setdefault((forge, host), threading.Lock())
+
+    def save(self, identity: Identity, token: str | Grant, method: ConnectMethod) -> Account:
         """Range le token d'``identity`` et son compte ; remplace celui qui était connecté à
-        la même forge."""
+        la même forge, sur le même hôte."""
         now = _now()
         account = Account(
             forge=identity.forge,
@@ -142,14 +178,17 @@ class Accounts:
             checked_at=now,
             problem=None,
         )
+        self._keep(account.forge, account.host, token)
+        self._store(account)
+        return account
+
+    def _keep(self, forge: ForgeKind, host: str, token: str | Grant) -> None:
         try:
-            keyring.set_password(SERVICE, _key(account.forge, account.host), token)
+            keyring.set_password(SERVICE, _key(forge, host), _stored(token))
         except keyring.errors.KeyringError as err:
             raise AccountsError(
                 f"Le trousseau du système refuse de garder le token ({type(err).__name__})."
             ) from None
-        self._store(account)
-        return account
 
     def checked(self, account: Account, identity: Identity) -> Account:
         """Le compte, après un contrôle accepté par la forge : droits relus."""
@@ -175,7 +214,8 @@ class Accounts:
 
     def remove(self, forge: ForgeKind, host: str) -> tuple[Account | None, str | None]:
         """Efface le token du trousseau et le compte ; rend le compte et son token (pour le
-        révoquer auprès de la forge), ou ``(None, None)`` s'il n'y en avait pas."""
+        révoquer auprès de la forge : le token, pas son refresh token), ou ``(None, None)``
+        s'il n'y en avait pas."""
         account = next((a for a in self._load() if (a.forge, a.host) == (forge, host)), None)
         token = None
         with contextlib.suppress(keyring.errors.KeyringError):
@@ -191,7 +231,9 @@ class Accounts:
                 ) from None
         with self._lock:
             self._write([a for a in self._load() if (a.forge, a.host) != (forge, host)])
-        return (account if token is not None else None), token
+        if token is None:
+            return None, None
+        return account, _grant(token).access_token
 
     def _token(self, account: Account) -> str | None:
         try:
@@ -205,7 +247,7 @@ class Accounts:
         with self._lock:
             key = (account.forge, account.host)
             others = [a for a in self._load() if (a.forge, a.host) != key]
-            self._write(sorted([*others, account], key=lambda a: list(ForgeKind).index(a.forge)))
+            self._write(sorted([*others, account], key=_order))
 
     def _load(self) -> list[Account]:
         try:
@@ -232,31 +274,126 @@ class Accounts:
 
 
 async def connect(
-    accounts: Accounts, http: HttpClient, forge: ForgeKind, token: str, method: ConnectMethod
+    accounts: Accounts,
+    http: HttpClient,
+    forge: ForgeKind,
+    token: str | Grant,
+    method: ConnectMethod,
+    *,
+    host: str | None = None,
 ) -> Account:
-    """Vérifie ``token`` auprès de la forge (``whoami``), puis range le compte. Lève
-    ``TokenRefused`` (ou une autre ``ForgeError``) si la forge le refuse, ``NetworkError`` si
-    elle ne répond pas, ``AccountsError`` si le trousseau ne le garde pas."""
-    identity = await client(forge, http, token).whoami()
+    """Vérifie ``token`` auprès de la forge (``whoami``, sur ``host`` : par défaut son service
+    en ligne), puis range le compte. Lève ``TokenRefused`` (ou une autre ``ForgeError``) si la
+    forge le refuse, ``NetworkError`` si elle ne répond pas, ``AccountsError`` si le trousseau
+    ne le garde pas."""
+    access = token.access_token if isinstance(token, Grant) else token
+    identity = await client(forge, http, access, host=host).whoami()
     return await asyncio.to_thread(accounts.save, identity, token, method)
 
 
-async def verify(accounts: Accounts, http: HttpClient, account: Account) -> Account:
-    """Redemande à la forge qui est connecté et avec quels droits. Un token refusé est noté
-    dans ``problem`` (le compte reste, pour qu'on le voie et qu'on se reconnecte) ; une forge
-    injoignable lève ``NetworkError``."""
+async def verify(
+    accounts: Accounts, http: HttpClient, account: Account, *, renew: Renew | None = None
+) -> Account:
+    """Redemande à la forge qui est connecté et avec quels droits (le token renouvelé s'il a
+    expiré). Un token refusé est noté dans ``problem`` (le compte reste, pour qu'on le voie et
+    qu'on se reconnecte) ; une forge injoignable lève ``NetworkError``."""
     token = await asyncio.to_thread(accounts.token, account.forge, account.host)
     if token is None:
         raise AccountsError("Le token n'est plus dans le trousseau : se reconnecter.")
     try:
-        identity = await client(account.forge, http, token).whoami()
+        if renew is not None:
+            token = await renew(http, None)
+        forge = client(account.forge, http, token, host=account.host, renew=renew)
+        identity = await forge.whoami()
     except TokenRefused as err:
         return await asyncio.to_thread(accounts.refused, account, str(err))
     return await asyncio.to_thread(accounts.checked, account, identity)
 
 
+def renewer(accounts: Accounts, account: Account, flow: OAuthFlow) -> Renew:
+    """Ce qui renouvelle le token d'``account`` (connecté par l'application ``flow``) : avant
+    qu'il expire, ou quand la forge refuse celui qu'on lui passe. Un seul renouvellement à la
+    fois pour un compte : celui qui attend son tour relit le trousseau, et prend le token que
+    l'autre vient d'obtenir. Lève ``TokenRefused`` si le token ne se renouvelle pas (refresh
+    token refusé, ou absent : un token qui n'expire pas a été révoqué)."""
+    key = (account.forge, account.host)
+    name = label(account.forge, account.host)
+    gone = f"{name} : le token n'est plus dans le trousseau, se reconnecter."
+
+    async def renew(http: HttpClient, refused: str | None) -> str:
+        grant = await asyncio.to_thread(accounts.grant, *key)
+        if grant is None:
+            raise TokenRefused(gone)
+        if not _stale(grant, refused):
+            return grant.access_token
+        lock = accounts.renewing(*key)
+        while not lock.acquire(blocking=False):  # sans bloquer la boucle, ni rester pris
+            await asyncio.sleep(WAIT_STEP)
+        try:
+            grant = await asyncio.to_thread(accounts.grant, *key)
+            if grant is None:
+                raise TokenRefused(gone)
+            if not _stale(grant, refused):
+                return grant.access_token  # renouvelé par un autre pendant l'attente
+            if grant.refresh_token is None:
+                raise TokenRefused(f"{name} refuse le token : révoqué, ou expiré. Se reconnecter.")
+            fresh = await flow.refresh(http, grant.refresh_token)
+            await asyncio.to_thread(accounts.renewed, *key, fresh)
+            logger.info("%s : token renouvelé", name)
+            return fresh.access_token
+        finally:
+            lock.release()
+
+    return renew
+
+
+def _stale(grant: Grant, refused: str | None) -> bool:
+    """Le token est à renouveler : la forge vient de le refuser, ou il expire bientôt."""
+    if refused is not None and grant.access_token == refused:
+        return True
+    return grant.expires_at is not None and grant.expires_at - _now() < RENEW_MARGIN
+
+
 def _key(forge: ForgeKind, host: str) -> str:
     return f"{forge.value}:{host}"
+
+
+def _order(account: Account) -> tuple[int, bool, str]:
+    """Par forge, le service en ligne avant les instances, puis par hôte."""
+    return list(ForgeKind).index(account.forge), account.host != HOSTS[account.forge], account.host
+
+
+def _stored(token: str | Grant) -> str:
+    """Ce qui va dans le trousseau : le token seul, ou en JSON avec son refresh token et son
+    expiration."""
+    if isinstance(token, str):
+        return token
+    if token.refresh_token is None and token.expires_at is None:
+        return token.access_token
+    return json.dumps(
+        {
+            "access_token": token.access_token,
+            "refresh_token": token.refresh_token,
+            "expires_at": token.expires_at.isoformat() if token.expires_at else None,
+        }
+    )
+
+
+def _grant(stored: str) -> Grant:
+    """Ce qu'on a lu dans le trousseau (un token seul n'est jamais du JSON)."""
+    if not stored.startswith("{"):
+        return Grant(access_token=stored)
+    try:
+        document = json.loads(stored)
+        expires = document.get("expires_at")
+        refresh = document.get("refresh_token")
+        return Grant(
+            access_token=str(document["access_token"]),
+            refresh_token=refresh if isinstance(refresh, str) else None,
+            expires_at=datetime.fromisoformat(expires) if isinstance(expires, str) else None,
+        )
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return Grant(access_token=stored)
 
 
 def _now() -> datetime:

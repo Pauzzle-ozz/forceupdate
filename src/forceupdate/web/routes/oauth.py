@@ -1,7 +1,7 @@
 """L'adresse de retour d'OAuth : la forge y renvoie le navigateur après l'autorisation.
 
 Elle n'est pas sous ``/api``, et le garde la traite à part (``security.Guard``, ``returns``) :
-c'est une navigation venue d'un autre site (github.com), le cookie de session
+c'est une navigation venue d'un autre site (github.com, gitlab.com), le cookie de session
 (``SameSite=Strict``) n'y est pas envoyé et ``Sec-Fetch-Site`` y vaut ``cross-site``. Ce qui la
 protège, c'est le ``state`` : tiré au hasard par le serveur pour une connexion lancée depuis
 l'interface (jeton de session compris), gardé en mémoire, valable 10 minutes et une seule fois.
@@ -19,13 +19,13 @@ import html
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
-from forceupdate.forges import github
+from forceupdate.forges import github, gitlab
 from forceupdate.forges.base import ForgeKind
 from forceupdate.web.connections import Connections
 
 router = APIRouter(include_in_schema=False)
 
-RETURN_PATHS = frozenset({github.CALLBACK_PATH})
+RETURN_PATHS = frozenset({github.CALLBACK_PATH, gitlab.CALLBACK_PATH})
 """Les adresses de retour des forges, que le garde laisse passer sans jeton de session."""
 
 
@@ -37,13 +37,28 @@ async def github_callback(
     error: str = "",
     error_description: str = "",
 ) -> HTMLResponse:
+    return await _callback(request, ForgeKind.GITHUB, code, state, error, error_description)
+
+
+@router.get(gitlab.CALLBACK_PATH)
+async def gitlab_callback(
+    request: Request,
+    code: str = "",
+    state: str = "",
+    error: str = "",
+    error_description: str = "",
+) -> HTMLResponse:
+    return await _callback(request, ForgeKind.GITLAB, code, state, error, error_description)
+
+
+async def _callback(
+    request: Request, forge: ForgeKind, code: str, state: str, error: str, description: str
+) -> HTMLResponse:
     connections: Connections = request.app.state.connections
-    connection = connections.by_state(ForgeKind.GITHUB, state)
+    connection = connections.by_state(forge, state)
     if connection is None:
         return _page("Lien de connexion inconnu ou déjà utilisé.", "/comptes", status_code=400)
-    await connections.finish_oauth(
-        connection, code=code, error=error, description=error_description
-    )
+    await connections.finish_oauth(connection, code=code, error=error, description=description)
     return _page("Retour à forceupdate…", f"/comptes?connexion={connection.id}")
 
 

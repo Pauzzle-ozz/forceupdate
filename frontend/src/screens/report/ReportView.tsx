@@ -33,6 +33,7 @@ import {
   formatTime,
   fr,
 } from '@/lib/format'
+import { forgeLabel, requestWord } from '@/lib/proposals'
 import {
   DEFAULT_SORT,
   NO_FILTERS,
@@ -50,8 +51,6 @@ import { DependencyDetail } from './DependencyDetail'
 import { Ignored, Notices } from './Extras'
 import { Overview } from './Overview'
 import { Synthesis } from './Synthesis'
-
-const FORGE_NAME = { github: 'GitHub', gitlab: 'GitLab', bitbucket: 'Bitbucket' } as const
 
 /** Le paquet ouvert dans l'adresse : `?paquet=PyPI:flask` (et `&projet=` s'il y a plusieurs projets). */
 function packageParam(row: Row): string {
@@ -131,7 +130,7 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
       {updates && (
         <Link to={`/analyses/${scan.id}/mise-a-jour`} className={buttonVariants({ variant: 'primary' })}>
           {repository ? <GitPullRequest aria-hidden="true" /> : <ListChecks aria-hidden="true" />}
-          {repository ? 'Préparer la PR' : 'Mettre à jour'}
+          {repository ? `Préparer la ${requestWord(repository.forge)}` : 'Mettre à jour'}
           <Badge variant="primary" className="ml-1">
             {selected === 0 ? 'aucune cochée' : `${selected} ${selected >= 2 ? 'cochées' : 'cochée'}`}
           </Badge>
@@ -156,7 +155,7 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
         {repository ? (
           <p className="flex flex-wrap items-center gap-x-2 text-sm text-fg-muted">
             <span>
-              dépôt {FORGE_NAME[repository.forge]},{' '}
+              dépôt {forgeLabel(repository.forge, repository.host)},{' '}
               {repository.cloned ? "cloné : l'API n'en rendait pas toute l'arborescence" : "lu par l'API sans le cloner"}
             </span>
             {repository.commit && (
@@ -168,7 +167,7 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
               </>
             )}
             <span aria-hidden="true">·</span>
-            <ExternalLink href={repository.url}>Voir sur {FORGE_NAME[repository.forge]}</ExternalLink>
+            <ExternalLink href={repository.url}>Voir sur {forgeLabel(repository.forge, repository.host)}</ExternalLink>
           </p>
         ) : (
           <p className="font-mono text-sm break-all text-fg-muted">{upload ? 'fichier envoyé' : report.source}</p>
@@ -202,7 +201,7 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
               <AlertDescription>
                 <p>
                   {fr(
-                    `${FORGE_NAME[repository.forge]} n'a pas rendu toute l'arborescence du dépôt (plus de 100 000 fichiers) : des fichiers de dépendances peuvent manquer. Ce n'est pas « à jour ».`,
+                    `${forgeLabel(repository.forge, repository.host)} n'a pas rendu toute l'arborescence du dépôt (${repository.forge === 'gitlab' ? 'trop de fichiers' : 'plus de 100 000 fichiers'}) : des fichiers de dépendances peuvent manquer. Ce n'est pas « à jour ».`,
                   )}
                 </p>
               </AlertDescription>

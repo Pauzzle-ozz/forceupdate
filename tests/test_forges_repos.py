@@ -245,13 +245,45 @@ def test_read_file_gets_the_raw_content_at_the_commit(github: FakeGitHubRepos) -
     ],
 )
 def test_parse_repository(text: str) -> None:
-    forge, name = parse_repository(text)
-    assert (forge.kind, name) == (ForgeKind.GITHUB, "octo/app")
+    forge, host, name = parse_repository(text)
+    assert (forge.kind, host, name) == (ForgeKind.GITHUB, "github.com", "octo/app")
 
 
 def test_parse_repository_knows_the_other_forges() -> None:
     assert parse_repository("https://gitlab.com/groupe/projet")[0].kind is ForgeKind.GITLAB
     assert parse_repository("bitbucket.org/espace/depot")[0].kind is ForgeKind.BITBUCKET
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "gitlab.com/groupe/sous-groupe/projet",
+        "https://gitlab.com/groupe/sous-groupe/projet",
+        "https://gitlab.com/groupe/sous-groupe/projet.git",
+        "https://gitlab.com/groupe/sous-groupe/projet/-/tree/main/src",
+        "https://gitlab.com/groupe/sous-groupe/projet/-/merge_requests/12",
+        "git@gitlab.com:groupe/sous-groupe/projet.git",
+    ],
+)
+def test_parse_repository_keeps_the_full_path_of_a_gitlab_project(text: str) -> None:
+    forge, host, name = parse_repository(text)
+    assert (forge.kind, host, name) == (ForgeKind.GITLAB, "gitlab.com", "groupe/sous-groupe/projet")
+
+
+def test_parse_repository_knows_the_connected_gitlab_instances() -> None:
+    instances = {"git.example.com:8443": ForgeKind.GITLAB}
+    found = parse_repository("https://git.example.com:8443/equipe/app", instances=instances)
+    assert (found.forge.kind, found.host, found.full_name) == (
+        ForgeKind.GITLAB,
+        "git.example.com:8443",
+        "equipe/app",
+    )
+    with pytest.raises(ValueError, match="instances GitLab connectées"):
+        parse_repository("https://git.example.com/equipe/app")
+    with pytest.raises(ValueError, match="groupe/projet"):
+        parse_repository("https://gitlab.com/projet-seul")
+    with pytest.raises(ValueError, match="chemin de projet GitLab"):
+        parse_repository("https://gitlab.com/groupe/-projet")
 
 
 @pytest.mark.parametrize(

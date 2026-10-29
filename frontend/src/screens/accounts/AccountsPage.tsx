@@ -41,7 +41,7 @@ export function AccountsPage() {
       <PageHead>
         <h1 className="text-2xl">Comptes</h1>
         <p className="text-fg-muted">
-          {fr('Connecter une forge pour lister ses dépôts, les analyser sans les cloner, et y ouvrir des PR.')}
+          {fr('Connecter une forge pour lister ses dépôts, les analyser sans les cloner, et y ouvrir des PR (des MR sur GitLab).')}
         </p>
         <p className="flex items-start gap-2 text-sm text-fg-muted">
           <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />

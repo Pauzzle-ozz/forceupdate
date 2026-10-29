@@ -6,15 +6,17 @@ synthèse de l'ensemble, calculée ici et pas dans le navigateur.
   l'accès, les requêtes restantes. Elle passe par le client des comptes (``Connections.http``),
   dans la boucle du serveur. Si la forge ne répond pas, la liste d'avant reste, avec l'erreur.
 - **Une analyse groupée** (``Batch``) lance une analyse par dépôt dans la boucle des analyses
-  (``Jobs.start_repository_scan``), ``CONCURRENCY`` dépôts à la fois, avec une forge créée sur
-  le client de cette boucle : ses requêtes en partent, et elle compte celles du lot.
+  (``Jobs.start_repository_scan``), ``CONCURRENCY`` dépôts à la fois ; ses dépôts peuvent
+  venir de plusieurs comptes (GitHub, gitlab.com, une instance GitLab) : une forge par compte,
+  créée sur le client de cette boucle (ses requêtes en partent, et elle compte celles du lot).
 - **Chaque dépôt** a l'état de sa dernière analyse (groupée ou non), et **la synthèse** les
   additionne (``report.synthesis``). Sa PR de forceupdate ouverte est la plus récente qu'on
   connaisse : trouvée par sa dernière analyse, par un récapitulatif ou par un envoi
   (``remember``, E18).
 
-Le token ne quitte jamais le serveur : il est lu dans le trousseau (``Accounts.token``, dans un
-thread) au moment de parler à la forge. Un token refusé est noté sur le compte
+Un compte se désigne par sa forge et son hôte. Le token ne quitte jamais le serveur : il est lu
+dans le trousseau (``Accounts.token``, dans un thread) au moment de parler à la forge, et
+renouvelé s'il expire (``Connections.renew``, GitLab). Un token refusé est noté sur le compte
 (``Accounts.refused``) : l'écran Comptes le montre.
 """
 
@@ -40,14 +42,14 @@ from forceupdate.forges.base import (
     TokenRefused,
 )
 from forceupdate.models import FindingKind, ScanOptions, Severity
-from forceupdate.net import NetworkError
+from forceupdate.net import HttpClient, NetworkError
 from forceupdate.report import Summary, summarize
 from forceupdate.report.synthesis import Verdict, combine, verdict
 from forceupdate.sources.forge import ForgeSource
 from forceupdate.web import schemas
 from forceupdate.web.connections import Connections, failure
 from forceupdate.web.jobs import Jobs, RepositoryTarget, Scan, same
-from forceupdate.web.schemas import BatchStatus, RepositoryState, TaskStatus
+from forceupdate.web.schemas import BatchStatus, RepositoryKey, RepositoryState, TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -99,8 +101,9 @@ class Batch:
     """Une analyse groupée."""
 
     id: str
-    forge: Forge
-    """Créée sur le client de la boucle des analyses ; elle compte les requêtes du lot."""
+    forges: dict[tuple[ForgeKind, str], Forge]
+    """Une par compte (forge, hôte), créée sur le client de la boucle des analyses ; chacune
+    compte les requêtes du lot."""
     scans: list[Scan]
     skipped: list[str]
     started_at: datetime = field(default_factory=_now)
@@ -119,8 +122,6 @@ class Batch:
         ends = [scan.finished_at for scan in finished if scan.finished_at is not None]
         return schemas.RepositoryBatch(
             id=self.id,
-            forge=self.forge.kind,
-            host=self.forge.host,
             status=status,
             started_at=self.started_at,
             finished_at=None if self.running else max(ends, default=self.started_at),
@@ -130,8 +131,7 @@ class Batch:
             finished=len(finished),
             failed=sum(1 for scan in finished if scan.status is TaskStatus.FAILED),
             skipped=tuple(self.skipped),
-            requests=self.forge.requests,
-            rate_limit=self.forge.rate_limit,
+            requests=sum(forge.requests for forge in self.forges.values()),
         )
 
 
@@ -187,14 +187,14 @@ class Repositories:
             known.append((scan.finished_at or scan.started_at, scan.request))
         return max(known, key=lambda entry: entry[0])[1] if known else None
 
-    def listed(self, forge: ForgeKind, full_name: str) -> Repository | None:
-        """Le dépôt ``full_name`` de la dernière liste de ``forge``."""
+    def listed(self, forge: ForgeKind, host: str, full_name: str) -> Repository | None:
+        """Le dépôt ``full_name`` de la dernière liste du compte de ``forge`` sur ``host``."""
+        listing = self._listings.get((forge, host.lower()))
         wanted = full_name.lower()
-        for (kind, _), listing in self._listings.items():
-            if kind is forge:
-                for repo in listing.repos:
-                    if repo.full_name.lower() == wanted:
-                        return repo
+        if listing is not None:
+            for repo in listing.repos:
+                if repo.full_name.lower() == wanted:
+                    return repo
         return None
 
     async def _accounts(self) -> list[Account]:
@@ -221,11 +221,10 @@ class Repositories:
                 listed_at=current.listed_at if current else None,
                 connected_at=account.connected_at,
             )
-            token = await self.token(account)
-            if token is None:
+            forge = await self.forge(account, self.connections.http)
+            if forge is None:
                 listing.error = "Le token n'est plus dans le trousseau : se reconnecter."
             else:
-                forge = forges.client(account.forge, self.connections.http, token)
                 try:
                     repos = await forge.list_repos()
                     restrictions = await forge.restrictions()
@@ -252,17 +251,39 @@ class Repositories:
         except AccountsError:
             return None
 
+    async def forge(self, account: Account, http: HttpClient) -> Forge | None:
+        """La forge du compte, sur ``http`` (le client de la boucle où elle servira), avec son
+        token, renouvelé s'il expire ; ``None`` si le token n'est plus dans le trousseau."""
+        token = await self.token(account)
+        if token is None:
+            return None
+        return forges.client(
+            account.forge,
+            http,
+            token,
+            host=account.host,
+            renew=self.connections.renew(account),
+        )
+
+    async def worker_forge_of(self, account: Account) -> Forge:
+        """La forge du compte, pour la boucle des analyses ; lève ``RepositoryError``."""
+        forge = await self.forge(account, self._worker_http())
+        if forge is None:
+            raise RepositoryError(409, "Le token n'est plus dans le trousseau : se reconnecter.")
+        return forge
+
     def _account(
         self, account: Account, listing: Listing, batch: Batch | None
     ) -> schemas.RepositoryAccount:
         rate = listing.rate_limit
+        used = batch.forges.get((account.forge, account.host)) if batch is not None else None
         if (
             batch is not None
-            and batch.forge.kind is account.forge
-            and batch.forge.rate_limit is not None
+            and used is not None
+            and used.rate_limit is not None
             and (listing.listed_at is None or batch.started_at > listing.listed_at)
         ):
-            rate = batch.forge.rate_limit
+            rate = used.rate_limit
         return schemas.RepositoryAccount(
             forge=account.forge,
             host=account.host,
@@ -379,39 +400,28 @@ class Repositories:
 
     # -- les analyses --------------------------------------------------------------
 
-    async def start_batch(
-        self, forge_kind: ForgeKind, names: list[str], options: ScanOptions
-    ) -> Batch:
-        """Analyse ensemble les dépôts ``names`` du compte connecté à ``forge_kind`` ; les
-        vides sont sautés. Lève ``RepositoryError``."""
-        account = await self.connected(forge_kind)
-        if not names:
+    async def start_batch(self, keys: list[RepositoryKey], options: ScanOptions) -> Batch:
+        """Analyse ensemble les dépôts ``keys`` des comptes connectés (de plusieurs comptes au
+        besoin) ; les vides sont sautés. Lève ``RepositoryError``."""
+        if not keys:
             raise RepositoryError(400, "Aucun dépôt à analyser.")
-        repos: list[Repository] = []
-        unknown: list[str] = []
-        for name in dict.fromkeys(names):
-            repo = self.listed(forge_kind, name)
-            if repo is None:
-                unknown.append(name)
-            else:
-                repos.append(repo)
-        if unknown:
-            raise RepositoryError(
-                400,
-                f"{', '.join(unknown)} : pas dans la liste des dépôts du compte (la recharger).",
-            )
-        token = await self.token(account)
-        if token is None:
-            raise RepositoryError(409, "Le token n'est plus dans le trousseau : se reconnecter.")
-        forge = self.worker_forge(forge_kind, token)
+        repos = await self.chosen(keys)
         slots = asyncio.Semaphore(CONCURRENCY)
-        refused = refused_callback(self.connections, account)
-        batch = Batch(id=secrets.token_hex(6), forge=forge, scans=[], skipped=[])
-        for repo in repos:
+        batch = Batch(id=secrets.token_hex(6), forges={}, scans=[], skipped=[])
+        refused: dict[tuple[ForgeKind, str], Callable[[str], None]] = {}
+        for account, _ in repos.values():
+            key = (account.forge, account.host)
+            if key not in batch.forges:
+                batch.forges[key] = await self.worker_forge_of(account)
+                refused[key] = refused_callback(self.connections, account)
+        for account, repo in repos.values():
             if repo.empty:
                 batch.skipped.append(repo.full_name)
                 continue
-            target = RepositoryTarget(forge=forge, repo=repo, slots=slots, refused=refused)
+            key = (account.forge, account.host)
+            target = RepositoryTarget(
+                forge=batch.forges[key], repo=repo, slots=slots, refused=refused[key]
+            )
             batch.scans.append(self.jobs.start_repository_scan(target, options, batch=batch.id))
         self.batches[batch.id] = batch
         self._forget_old_batches()
@@ -424,23 +434,62 @@ class Repositories:
         for scan in batch.scans:
             self.jobs.cancel(scan)
 
+    async def chosen(
+        self, keys: list[RepositoryKey]
+    ) -> dict[tuple[ForgeKind, str, str], tuple[Account, Repository]]:
+        """Les dépôts ``keys`` des listes des comptes connectés, chacun avec son compte, dans
+        l'ordre, sans doublon. Lève ``RepositoryError`` (compte non connecté, dépôt pas dans
+        la liste)."""
+        accounts: dict[tuple[ForgeKind, str], Account] = {}
+        found: dict[tuple[ForgeKind, str, str], tuple[Account, Repository]] = {}
+        unknown: list[str] = []
+        for key in keys:
+            host = key.host.lower()
+            if (key.forge, host) not in accounts:
+                accounts[(key.forge, host)] = await self.connected(key.forge, host)
+            account = accounts[(key.forge, host)]
+            repo = self.listed(key.forge, host, key.full_name)
+            if repo is None:
+                unknown.append(key.full_name)
+            else:
+                found.setdefault((repo.forge, repo.host, repo.full_name.lower()), (account, repo))
+        if unknown:
+            raise RepositoryError(
+                400,
+                f"{', '.join(unknown)} : pas dans la liste des dépôts du compte (la recharger).",
+            )
+        return found
+
     async def start_scan(self, text: str, options: ScanOptions) -> Scan:
         """Analyse un dépôt donné par son nom ou son adresse, même d'un autre compte s'il est
-        public : avec le token du compte connecté à sa forge s'il y en a un, sans sinon. Lève
-        ``RepositoryError``."""
+        public : avec le token du compte connecté à sa forge (et à son hôte) s'il y en a un,
+        sans sinon. Lève ``RepositoryError``."""
+        connected = await self._accounts()
+        instances = {
+            account.host: account.forge
+            for account in connected
+            if account.host != forges.HOSTS[account.forge]
+        }
         try:
-            forge_info, full_name = forges.parse_repository(text)
+            forge_info, host, full_name = forges.parse_repository(text, instances=instances)
         except ValueError as err:
             raise RepositoryError(400, str(err)) from None
         if not forge_info.available:
             raise RepositoryError(
                 409, f"{forge_info.name} : l'analyse de ses dépôts n'est pas encore disponible."
             )
-        account = await self._account_of(forge_info.kind)
-        token = await self.token(account) if account is not None else None
-        lookup = forges.client(forge_info.kind, self.connections.http, token)
+        account = next((a for a in connected if (a.forge, a.host) == (forge_info.kind, host)), None)
+        name = forges.label(forge_info.kind, host)
+        if account is not None:
+            lookup = await self.forge(account, self.connections.http)
+        else:
+            lookup = forges.client(forge_info.kind, self.connections.http, None, host=host)
         try:
-            repo = self.listed(forge_info.kind, full_name) or await lookup.repository(full_name)
+            if lookup is None:
+                raise TokenRefused("Le token n'est plus dans le trousseau : se reconnecter.")
+            repo = self.listed(forge_info.kind, host, full_name) or await lookup.repository(
+                full_name
+            )
         except TokenRefused as err:
             if account is not None:
                 await asyncio.to_thread(self.connections.accounts.refused, account, str(err))
@@ -448,8 +497,8 @@ class Repositories:
         except NotFound:
             who = "le compte connecté" if account is not None else "sans compte connecté, on"
             message = (
-                f"Dépôt introuvable sur {forge_info.name} : {full_name} n'existe pas, ou il est "
-                f"privé et {who} n'y a pas accès."
+                f"Dépôt introuvable sur {name} : {full_name} n'existe pas, ou il est privé et "
+                f"{who} n'y a pas accès."
             )
             raise RepositoryError(404, message) from None
         except RateLimited as err:
@@ -460,32 +509,36 @@ class Repositories:
             raise RepositoryError(502, failure(err, forge_info.kind)) from None
         if repo.empty:
             raise RepositoryError(409, f"{repo.full_name} est vide : rien à analyser.")
+        if account is not None:
+            forge = await self.worker_forge_of(account)
+        else:
+            forge = forges.client(forge_info.kind, self._worker_http(), None, host=host)
         target = RepositoryTarget(
-            forge=self.worker_forge(forge_info.kind, token),
+            forge=forge,
             repo=repo,
             slots=asyncio.Semaphore(1),
             refused=refused_callback(self.connections, account) if account is not None else None,
         )
         return self.jobs.start_repository_scan(target, options)
 
-    def worker_forge(self, kind: ForgeKind, token: str | None) -> Forge:
-        """La forge des analyses : sur le client de la boucle des analyses, d'où partiront ses
-        requêtes."""
+    def _worker_http(self) -> HttpClient:
+        """Le client de la boucle des analyses, d'où partiront les requêtes de ses forges."""
         http = self.jobs.worker.http
         assert http is not None, "Jobs.start d'abord"
-        return forges.client(kind, http, token)
+        return http
 
-    async def _account_of(self, kind: ForgeKind) -> Account | None:
-        return next((a for a in await self._accounts() if a.forge is kind), None)
-
-    async def connected(self, kind: ForgeKind) -> Account:
+    async def connected(self, kind: ForgeKind, host: str | None = None) -> Account:
+        """Le compte connecté à ``kind`` sur ``host`` (par défaut, son service en ligne) ;
+        lève ``RepositoryError``."""
+        host = (host or forges.HOSTS[kind]).lower()
+        name = forges.label(kind, host)
         if not forges.info(kind).available:
-            raise RepositoryError(
-                409, f"{forges.info(kind).name} : la connexion n'est pas encore disponible."
-            )
-        account = await self._account_of(kind)
+            raise RepositoryError(409, f"{name} : la connexion n'est pas encore disponible.")
+        account = next(
+            (a for a in await self._accounts() if (a.forge, a.host) == (kind, host)), None
+        )
         if account is None:
-            raise RepositoryError(404, f"Aucun compte {forges.info(kind).name} connecté.")
+            raise RepositoryError(404, f"Aucun compte {name} connecté.")
         return account
 
     def _forget_old_batches(self) -> None:

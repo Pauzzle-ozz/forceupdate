@@ -133,7 +133,7 @@ Prises pour pouvoir planifier. Si l'une change : modifier ce tableau, puis les
 | 10 | Interface ? | **Interface web en V1**, qui tourne sur l'ordinateur de la personne, pas un site en ligne : `forceupdate ui` ouvre le navigateur. Conçue avec le skill `ui-ux-pro-max`. La ligne de commande reste (`scan`, `update`) pour les scripts et la CI | **Confirmé.** Accès direct aux dossiers et aux fichiers à réécrire ; rien à héberger ; les tokens restent sur la machine. Un site en ligne serait un autre projet, bien plus gros (serveur, comptes, isolation) : l'API de E12 pourrait lui servir de base plus tard |
 | 11 | Comment mettre à jour en local ? | Sélection → diff → validation. Réécriture ciblée du texte des manifestes (la mise en forme et les commentaires restent). Lockfile régénéré par l'outil natif (npm, uv…), sans jamais lancer les scripts du projet | Un diff minimal, relisible, sans surprise |
 | 12 | Quelles mises à jour sont proposées par défaut ? | Correctifs, mineures et failles pré-cochés. Majeures proposées mais **jamais cochées d'office** : c'est la personne qui les coche (voir « Les trois niveaux »). En ligne de commande : `--level minor` par défaut | **Confirmé.** Une majeure peut demander d'adapter le code |
-| 13 | Connexion aux forges ? | Chaque personne connecte son propre compte depuis l'interface (OAuth). L'outil est enregistré une fois auprès de chaque forge par son auteur, l'utilisateur de ce projet. Repli : token collé, ou `gh`. Tokens dans le trousseau du système. **GitHub (E16)** : une OAuth App (pas une GitHub App), portées `repo` et `read:org`, tokens sans expiration ; device flow en repli ; se déconnecter révoque le token donné à forceupdate | **Confirmé.** « Je lie mon compte, l'outil a accès ». OAuth App plutôt que GitHub App : un clic et tous les dépôts, sans installer l'app sur chaque compte et organisation (comme `gh`) |
+| 13 | Connexion aux forges ? | Chaque personne connecte son propre compte depuis l'interface (OAuth). L'outil est enregistré une fois auprès de chaque forge par son auteur, l'utilisateur de ce projet. Repli : token collé, ou `gh`. Tokens dans le trousseau du système. **GitHub (E16)** : une OAuth App (pas une GitHub App), portées `repo` et `read:org`, tokens sans expiration ; device flow en repli ; se déconnecter révoque le token donné à forceupdate. **GitLab (E19)** : une application « non confidentielle » sur gitlab.com (PKCE, sans secret), portée `api` ; ses tokens expirent après 2 h et se renouvellent par leur refresh token ; une instance auto-hébergée par son adresse et un token d'accès personnel ; un compte par hôte | **Confirmé.** « Je lie mon compte, l'outil a accès ». OAuth App plutôt que GitHub App : un clic et tous les dépôts, sans installer l'app sur chaque compte et organisation (comme `gh`) |
 | 14 | Mettre à jour sur une forge ? | Une PR (ou MR) par dépôt, idempotente. Jamais de push sur la branche par défaut | **Confirmé.** La CI du dépôt teste la PR, un humain la fusionne |
 | 15 | Analyser sur une forge ? | Par l'API, sans cloner (arborescence + manifestes). Clone superficiel seulement pour mettre à jour, ou si l'API ne donne pas l'arborescence | Rapide sur des dizaines de dépôts |
 | 16 | Quelles forges en V1 ? | GitHub, GitLab (gitlab.com et auto-hébergé), Bitbucket Cloud | **Confirmé.** Demandé par l'utilisateur |
@@ -142,7 +142,7 @@ Prises pour pouvoir planifier. Si l'une change : modifier ce tableau, puis les
 | 19 | Publication ? | Sur PyPI, gratuitement, code public : on installe avec `uv tool install forceupdate`. Une première version (0.1.0) est publiée dès que l'analyse marche, pour réserver le nom : **fait le 2026-10-28** (E09), par un workflow GitHub Actions et « Trusted Publisher », sans token | **Confirmé.** Gratuit ; le code public ne gêne pas l'utilisateur |
 | 20 | Licence ? | MIT : fichier `LICENSE` à la racine, déclaré dans `pyproject.toml` (E01) | **Confirmé.** La plus simple : chacun peut utiliser, modifier et redistribuer le code, en gardant la mention de l'auteur |
 | 21 | Logos des forges ? | Les logos officiels de GitHub, GitLab et Bitbucket (tracés de Simple Icons, CC0), en une couleur, sans modification, à côté du nom (MASTER, « Icônes ») | **Confirmé** (E16). Lucide n'a plus de logos de marque ; les chartes permettent cet usage pour désigner le service |
-| 22 | Que devient la branche d'une PR quand on relance ? | Remplacée : un seul commit, refait sur la branche par défaut du moment, au nom du compte (son adresse `noreply`), marqué `Generated-by: forceupdate`, poussé avec `--force-with-lease`. **Jamais par-dessus le travail d'un autre** : si la branche a un commit sans la marque (une correction poussée à la main), rien n'est poussé, l'erreur le dit ; une fusion de la branche par défaut (« Update branch ») est tolérée. Même contenu : rien n'est poussé, la description seule est refaite | Pris à E18 (à confirmer par l'utilisateur). Une PR toujours relisible d'un coup et à jour de la branche par défaut, comme Dependabot, sans jamais détruire le travail de quelqu'un |
+| 22 | Que devient la branche d'une PR quand on relance ? | Remplacée : un seul commit, refait sur la branche par défaut du moment, au nom du compte (son adresse `noreply`), marqué `Generated-by: forceupdate`, poussé avec `--force-with-lease`. **Jamais par-dessus le travail d'un autre** : si la branche a un commit sans la marque (une correction poussée à la main), rien n'est poussé, l'erreur le dit ; une fusion de la branche par défaut (« Update branch ») est tolérée. Même contenu : rien n'est poussé, la description seule est refaite | **Confirmé** (E19), pour les PR comme pour les MR. Une PR toujours relisible d'un coup et à jour de la branche par défaut, comme Dependabot, sans jamais détruire le travail de quelqu'un |
 
 ## Questions encore ouvertes
 
@@ -156,7 +156,9 @@ chaque fois) :
   publiée ; les versions suivantes partent d'une étiquette `v*` ;
 - ~~enregistrer l'outil auprès de GitHub~~ : fait à E16 (OAuth App « forceupdate »,
   client id `Ov23lihqeEYz35ddy5Pm`, dans `forges/github.py`) ;
-- enregistrer l'outil auprès de GitLab (E19) et de Bitbucket (E20).
+- ~~enregistrer l'outil auprès de GitLab~~ : fait à E19 (application « forceupdate » de
+  gitlab.com, non confidentielle, portée `api`, Application ID dans `forges/gitlab.py`) ;
+- enregistrer l'outil auprès de Bitbucket (E20).
 
 ## Pièges connus
 
@@ -295,7 +297,26 @@ chaque fois) :
     `{id}+{login}@users.noreply.github.com`. Les vrais npm et uv redonnent les mêmes lockfiles
     d'un envoi à l'autre : relancer ne pousse rien ;
 - **GitLab** : les projets sont rangés dans des groupes et des sous-groupes ;
-  l'arborescence est paginée ; on parle de « merge request ».
+  l'arborescence est paginée ; on parle de « merge request ». **Constaté à E19** :
+  - l'application OAuth : le formulaire de gitlab.com (avatar → « Edit profile » → « Access »
+    → « Applications ») a « Confidential », décoché pour une application installée chez les
+    gens (PKCE remplace le secret) ; une adresse de retour `http://127.0.0.1/…` accepte
+    n'importe quel port (Doorkeeper ignore le port d'une adresse de bouclage, RFC 8252) ;
+    `/oauth/token` lit un corps JSON ;
+  - **les tokens d'OAuth expirent après 2 h** (on ne peut plus le désactiver) ; le refresh
+    token ne sert qu'une fois, et renouveler invalide l'ancien token : un seul renouvellement
+    à la fois pour un compte, d'où qu'il vienne ;
+  - `/personal_access_tokens/self` répond **400** (« This endpoint requires token type to be a
+    personal access token ») pour un token d'OAuth, dont les portées se lisent par
+    `/oauth/token/info` ;
+  - l'arborescence (`repository/tree`) ne donne pas la taille des fichiers, ni l'API d'un
+    commit son arbre (recalculé depuis la liste de la racine : le même que celui de git,
+    vérifié sur gitlab.com) ; les MR sont sous `/projects/:id/merge_requests` (pas sous
+    `/repository`) ; une MR déjà ouverte depuis la branche donne un 409 ;
+  - git présente le token sous le nom `oauth2` ; la portée `api` suffit pour pousser ;
+    l'adresse `noreply` d'un compte est `{id}-{login}@users.noreply.gitlab.com` ;
+  - les limites d'API de gitlab.com sont par minute, et l'en-tête `RateLimit-Limit` peut être
+    celui d'un point d'API (100) plutôt que la limite générale.
 - **Bitbucket** :
   - pas d'arborescence complète en un seul appel ;
   - un seul « langage » par dépôt ;

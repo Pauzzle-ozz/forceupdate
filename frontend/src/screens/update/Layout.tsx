@@ -4,6 +4,7 @@ import type { ScanSummary } from '@/api/types'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { basename } from '@/lib/format'
+import { requestWord } from '@/lib/proposals'
 import { Breadcrumb, Container, useDocumentTitle } from '@/shell/Page'
 
 const STEPS = ['Choisir', 'Vérifier', 'Appliquer', 'Résultat']
@@ -70,12 +71,12 @@ export function UpdateHeader({ scan, step }: { scan: ScanSummary; step: number }
         items={[
           repository ? { label: 'Mes dépôts', to: '/depots' } : { label: 'Analyser', to: '/' },
           { label: name, to: `/analyses/${scan.id}`, mono: true },
-          { label: repository ? 'PR' : 'Mise à jour' },
+          { label: repository ? requestWord(repository.forge) : 'Mise à jour' },
         ]}
       />
       <div className="mb-6 flex flex-col gap-2">
         <h1 className="text-2xl [overflow-wrap:anywhere]">
-          {repository ? 'Préparer la PR de ' : 'Mettre à jour '}
+          {repository ? `Préparer la ${requestWord(repository.forge)} de ` : 'Mettre à jour '}
           <span className="font-mono">{name}</span>
         </h1>
         <Stepper current={step} upload={scan.kind === 'upload'} steps={repository ? REQUEST_STEPS : undefined} />

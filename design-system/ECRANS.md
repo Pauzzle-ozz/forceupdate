@@ -263,6 +263,22 @@ ce que l'outil peut faire.
 - l'accueil (écran 1) : la carte « Mes dépôts » montre les comptes connectés (logo, forge,
   `@identifiant`) et « Gérer les comptes ».
 
+**Fait à E19** (GitLab ; Bitbucket reste « Bientôt ») :
+
+- la carte GitLab est une carte de forge comme celle de GitHub : « Se connecter avec GitLab »
+  (OAuth avec PKCE, action principale), puis le token collé (« Un token d'accès personnel avec
+  la portée api », « Créer un token sur gitlab.com », nom et portée pré-remplis) ; pas de code
+  ni de `gh` ; droits « Lecture et MR » ; un token refusé sans OAuth possible dit « Se
+  déconnecter, puis coller un nouveau token » ;
+- dans la carte GitLab, un groupe « Instances auto-hébergées » : chaque instance connectée
+  (son hôte en titre `h4`, « Connecté », ses droits relus à l'ouverture, « Vérifier les
+  droits », « Se déconnecter… » confirmé), puis le formulaire « Adresse de l'instance »
+  (`type="url"`, https seulement) et « Token de l'instance », le lien « Créer un token sur
+  <hôte> » apparaissant quand l'adresse est lisible, « Connecter l'instance » ;
+- chaque carte ne suit que les connexions de sa forge (le retour d'OAuth `?connexion=` est
+  donné à toutes) ; l'intro dit « y ouvrir des PR (des MR sur GitLab) » ; l'accueil montre
+  aussi les comptes des instances (« GitLab (hôte) »).
+
 ## 7. Mes dépôts (E17, E19, E20)
 
 **But** : tous les dépôts des comptes connectés, les analyser en groupe, choisir ceux à
@@ -335,6 +351,17 @@ analysée sur un clone (étape « Clone superficiel » de l'écran 3, « cloné 
 rapport) ; le rapport d'un dépôt a « Préparer la PR » (vers l'écran 5 pour ce dépôt), et le
 panneau de détail son lien « Choisir la version ».
 
+**Fait à E19** : les dépôts de tous les comptes (GitHub, gitlab.com, instances) dans la même
+liste ; la forge dite « GitLab (hôte) » pour une instance (colonne, cartes, pastilles des
+comptes, requêtes restantes) ; la colonne « PR / MR » (le nom d'après les forges listées ;
+`!12` sur GitLab, nommé « MR !12 de groupe/app sur GitLab ») ; le compteur « PR et MR
+ouvertes » ; la barre de sélection « Préparer 1 PR et 1 MR » (un seul récapitulatif, toutes
+forges confondues), « Préparer la MR » pour un projet GitLab ; les badges « lecture et MR » ;
+un même `owner/nom` sur deux forges : le nom accessible de sa case et de son lien dit la forge
+(« Sélectionner octo/app (GitLab) ») ; les projets en sous-groupes gardent leur chemin
+complet (`groupe/sous-groupe/` atténué). Le rapport d'un projet GitLab dit « Préparer la
+MR », « Voir sur GitLab ».
+
 ## 8. PR / MR (E18, E19, E20)
 
 **But** : envoyer les mises à jour en pull requests (merge requests sur GitLab), après un
@@ -377,8 +404,15 @@ récapitulatif, et retrouver les liens.
   lockfile en cours, push, PR) ; résultat : « 1 PR ouverte · 1 mise à jour · 1 en échec », le lien
   de chaque PR, « elle avait déjà ces changements, rien n'est poussé », l'erreur d'un dépôt, les
   lockfiles à reprendre, « Retour à mes dépôts ».
-- **Pas encore** : GitLab (« MR », `!12` : déjà prévus par `lib/proposals.ts`) et Bitbucket (E19,
-  E20) ; plusieurs forges dans une même sélection.
+- **Fait à E19** : « MR » et `!12` pour GitLab ; **un récapitulatif peut mêler les forges** :
+  l'adresse devient `/pr?depots=github:github.com/owner/a,gitlab:gitlab.com/groupe/sous/b`
+  (forge, hôte du compte, chemin) ; le titre dit « Préparer les PR et MR » (ou « les MR »),
+  le bouton « Envoyer 1 PR et 1 MR », le résultat « 1 PR ouverte · 1 MR ouverte » ; quand le
+  récapitulatif mêle plusieurs comptes, chaque carte dit sa forge (logo et nom) ; la liste des
+  sautés aussi, toujours ; un compte dont le token est refusé à l'envoi : ses dépôts en échec,
+  et une alerte « Un compte refuse son token » qui mène à « Comptes ». L'écran 5 d'un projet
+  GitLab dit « Préparer la MR de … ».
+- **Pas encore** : Bitbucket (E20).
 
 ## 9. Réglages (E29)
 

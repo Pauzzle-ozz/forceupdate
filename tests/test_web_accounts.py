@@ -19,7 +19,8 @@ import respx
 from conftest import API_PORT, MemoryKeyring
 from fastapi.testclient import TestClient
 
-from forceupdate.forges import github
+from forceupdate.forges import github, gitlab
+from forceupdate.forges.base import ForgeKind
 from forceupdate.net import http as http_module
 from forceupdate.web.connections import Connections
 
@@ -155,18 +156,24 @@ def test_the_forges_without_any_account(api: TestClient, fake_github: FakeGitHub
                 "methods": ["oauth", "device", "token"],
                 "scopes": ["repo", "read:org"],
                 "token_url": github.TOKEN_SETTINGS_URL,
+                "self_hosted": False,
+                "request": "PR",
                 "account": None,
+                "instances": [],
                 "connection": None,
             },
             {
                 "forge": "gitlab",
                 "name": "GitLab",
                 "host": "gitlab.com",
-                "available": False,
-                "methods": [],
-                "scopes": [],
-                "token_url": None,
+                "available": True,
+                "methods": ["oauth", "token"],
+                "scopes": ["api"],
+                "token_url": gitlab.token_settings_url(),
+                "self_hosted": True,
+                "request": "MR",
                 "account": None,
+                "instances": [],
                 "connection": None,
             },
             {
@@ -177,7 +184,10 @@ def test_the_forges_without_any_account(api: TestClient, fake_github: FakeGitHub
                 "methods": [],
                 "scopes": [],
                 "token_url": None,
+                "self_hosted": False,
+                "request": "PR",
                 "account": None,
+                "instances": [],
                 "connection": None,
             },
         ],
@@ -195,7 +205,9 @@ def test_gh_is_offered_when_installed(
 def test_without_the_secret_oauth_is_not_offered(
     api: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    connections(api).app = github.OAuthApp(client_id="Ov23-autre", client_secret="")
+    connections(api).apps[ForgeKind.GITHUB] = github.OAuthApp(
+        client_id="Ov23-autre", client_secret=""
+    )
     assert github_status(api)["methods"] == ["device", "token"]
     response = api.post("/api/accounts/github/oauth")
     assert response.status_code == 409
@@ -334,20 +346,25 @@ def test_gh_not_installed(api: TestClient, fake_github: FakeGitHub) -> None:
     assert response.json()["detail"] == "GitHub CLI (gh) n'est pas installé."
 
 
-@pytest.mark.parametrize("forge", ["gitlab", "bitbucket"])
-def test_other_forges_are_not_available_yet(
-    api: TestClient, fake_github: FakeGitHub, forge: str
-) -> None:
+def test_bitbucket_is_not_available_yet(api: TestClient, fake_github: FakeGitHub) -> None:
     for method, path in (
-        ("POST", f"/api/accounts/{forge}/oauth"),
-        ("POST", f"/api/accounts/{forge}/device"),
-        ("POST", f"/api/accounts/{forge}/gh"),
+        ("POST", "/api/accounts/bitbucket/oauth"),
+        ("POST", "/api/accounts/bitbucket/device"),
+        ("POST", "/api/accounts/bitbucket/gh"),
     ):
         response = api.request(method, path)
         assert response.status_code == 409
         assert "la connexion n'est pas encore disponible" in response.json()["detail"]
-    response = api.post(f"/api/accounts/{forge}/token", json={"token": GOOD})
+    response = api.post("/api/accounts/bitbucket/token", json={"token": GOOD})
     assert response.status_code == 409
+
+
+def test_github_has_no_self_hosted_instance(api: TestClient, fake_github: FakeGitHub) -> None:
+    response = api.post(
+        "/api/accounts/github/token", json={"token": GOOD, "url": "https://ghe.example.com"}
+    )
+    assert response.status_code == 400
+    assert "pas d'instance auto-hébergée" in response.json()["detail"]
 
 
 def test_an_unknown_forge(api: TestClient) -> None:
@@ -396,6 +413,7 @@ def test_disconnect_a_pasted_token_does_not_revoke_it(
     assert response.status_code == 200
     assert response.json() == {
         "forge": "github",
+        "host": "github.com",
         "login": "octo",
         "revoked": None,
         "message": "Déconnecté de GitHub : token effacé de cet ordinateur. Il reste valable "

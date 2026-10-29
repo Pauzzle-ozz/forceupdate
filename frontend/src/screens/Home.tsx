@@ -38,6 +38,7 @@ import { useRepositories } from '@/hooks/useRepositories'
 import { DEFAULT_OPTIONS, useRescan, useScanOptions, useStartScan, useUpload } from '@/hooks/useScanActions'
 import { useOnline } from '@/hooks/useStatus'
 import { basename, count, formatTime, fr } from '@/lib/format'
+import { forgeLabel } from '@/lib/proposals'
 import { KINDS, KIND_WORD, SEVERITIES } from '@/lib/report'
 import { Container, PageHead, Section, useDocumentTitle } from '@/shell/Page'
 
@@ -47,7 +48,10 @@ export function Home() {
   const online = useOnline()
   const upload = useUpload()
   const accounts = useAccounts()
-  const connected = (accounts.data?.forges ?? []).filter((forge) => forge.account !== null)
+  // Les comptes connectés : le service en ligne de chaque forge, puis ses instances auto-hébergées.
+  const connected = (accounts.data?.forges ?? []).flatMap((forge) =>
+    [forge.account, ...forge.instances].filter((account) => account !== null),
+  )
   const repositories = useRepositories({ enabled: connected.length > 0 })
 
   return (
@@ -144,11 +148,11 @@ export function Home() {
               {connected.length > 0 ? (
                 <>
                   <ul className="flex flex-col gap-1 text-sm">
-                    {connected.map(({ forge, name, account }) => (
-                      <li key={forge} className="flex items-center gap-2 text-fg">
-                        <ForgeLogo forge={forge} className="size-4" />
-                        {name}
-                        <span className="font-mono">@{account?.login}</span>
+                    {connected.map((account) => (
+                      <li key={`${account.forge}:${account.host}`} className="flex flex-wrap items-center gap-x-2 text-fg">
+                        <ForgeLogo forge={account.forge} className="size-4" />
+                        {forgeLabel(account.forge, account.host)}
+                        <span className="font-mono">@{account.login}</span>
                       </li>
                     ))}
                   </ul>
@@ -457,12 +461,11 @@ function ScanItem({ scan, onRescan, rescanning }: { scan: ScanSummary; onRescan:
   )
 }
 
-const FORGE_NAME = { github: 'GitHub', gitlab: 'GitLab', bitbucket: 'Bitbucket' } as const
 
 /** D'où vient une analyse, sous son nom : le chemin, « fichier envoyé », « dépôt GitHub ». */
 function origin(scan: ScanSummary): string {
   if (scan.kind === 'upload') return 'fichier envoyé'
-  if (scan.repository) return `dépôt ${FORGE_NAME[scan.repository.forge]}`
+  if (scan.repository) return `dépôt ${forgeLabel(scan.repository.forge, scan.repository.host)}`
   return scan.source
 }
 

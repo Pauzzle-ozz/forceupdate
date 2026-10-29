@@ -1,6 +1,7 @@
 """Un dépôt lu par l'API de sa forge, sans le cloner (``sources.forge``) : seuls les fichiers de
 dépendances sont téléchargés (et ceux que les parseurs demandent en plus), puis le moteur le lit
-comme un dossier. GitHub est simulé par ``fake_forge.FakeGitHubRepos``."""
+comme un dossier. GitHub est simulé par ``fake_forge.FakeGitHubRepos``, GitLab par
+``fake_gitlab.FakeGitLab``."""
 
 import asyncio
 import copy
@@ -11,9 +12,11 @@ from typing import Any
 import pytest
 import respx
 from fake_forge import FakeGitHubRepos, FakeRepo, from_directory
+from fake_gitlab import FakeGitLab, FakeToken
 
 from forceupdate import engine
 from forceupdate.forges.github import GitHub
+from forceupdate.forges.gitlab import GitLab
 from forceupdate.models import Event, EventKind, to_dict
 from forceupdate.net import HttpClient
 from forceupdate.sources import forge as forge_source
@@ -218,3 +221,52 @@ def test_a_real_public_repository(tmp_path: Path) -> None:
     assert report.projects[0].dependencies
     assert not (tmp_path / "setup.py").exists()
     assert requests <= 6
+
+
+# -- GitLab (E19) : une arborescence paginée, sans les tailles ------------------------------
+
+
+def fetch_gitlab(repo: FakeRepo, destination: Path) -> tuple[ForgeSource, FakeGitLab]:
+    lab = FakeGitLab(repos=[repo], tokens={TOKEN: FakeToken()}, page_size=5)
+
+    async def main() -> ForgeSource:
+        async with HttpClient() as http:
+            forge = GitLab(http, TOKEN)
+            found = await forge.repository(repo.full_name)
+            return await forge_source.fetch(forge, found, destination)
+
+    with respx.mock(assert_all_called=False) as router:
+        lab.routes(router)
+        return asyncio.run(main()), lab
+
+
+@pytest.mark.parametrize("project", sorted(p.name for p in PROJECTS.iterdir() if p.is_dir()))
+def test_a_gitlab_project_reads_like_the_same_folder(
+    tmp_path: Path, no_git: None, project: str
+) -> None:
+    """Mêmes projets, dépendances et remarques qu'en local ; les mêmes langages, pesés en
+    fichiers (GitLab ne donne pas les tailles)."""
+    folder = PROJECTS / project
+    repo = from_directory(f"groupe/sous-groupe/{project}", folder)
+    source, _ = fetch_gitlab(repo, tmp_path / "depot")
+    found, expected = inventory(source), inventory(LocalSource(folder))
+    assert {item["name"] for item in found.pop("languages")} == {
+        item["name"] for item in expected.pop("languages")
+    }
+    assert found == expected
+
+
+def test_a_gitlab_file_too_big_is_read_like_a_local_one(tmp_path: Path) -> None:
+    repo = FakeRepo(
+        full_name="groupe/gros",
+        files={
+            "package.json": b'{"dependencies": {"lodash": "^4.17.15"}}' + b" " * 2_000_000,
+            "api/requirements.txt": b"flask==2.0.1\n",
+        },
+    )
+    source, lab = fetch_gitlab(repo, tmp_path)
+    report = engine.inventory(source)
+    # La taille n'est connue qu'une fois téléchargé : il l'est, mais pas lu.
+    assert sorted(lab.files()) == ["groupe/gros:api/requirements.txt", "groupe/gros:package.json"]
+    notices = {n.file: n.message for p in report.projects for n in p.notices}
+    assert notices["package.json"] == "introuvable, illisible ou trop gros : pas lu."

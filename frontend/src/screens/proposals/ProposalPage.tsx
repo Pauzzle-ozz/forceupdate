@@ -24,6 +24,7 @@ import { Command } from '@/components/Command'
 import { Diff } from '@/components/Diff'
 import { EmptyState } from '@/components/EmptyState'
 import { ExternalLink } from '@/components/ExternalLink'
+import { ForgeLogo } from '@/components/ForgeLogo'
 import { GapBadge } from '@/components/badges'
 import { Alert, AlertActions, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -35,13 +36,17 @@ import { useCreateProposal, useProposal, useSendProposal } from '@/hooks/useProp
 import { useOnline } from '@/hooks/useStatus'
 import { NBSP, count, fr } from '@/lib/format'
 import {
-  FORGE_NAME,
   defaultChecked,
   finished,
+  forgeLabel,
+  keyOf,
+  keyText,
   outcomeText,
   ready,
+  requestCount,
   requestNumber,
   requestWord,
+  requestWords,
   requestedRepositories,
   resultSummary,
   sent,
@@ -52,8 +57,9 @@ import { errorText } from '@/screens/accounts/ForgeCard'
 import { PreparingPlan, REQUEST_STEPS, Stepper } from '@/screens/update/Layout'
 
 /**
- * `/pr?forge=github&depots=owner/a,owner/b` (écran 7, « Préparer N PR ») : prépare le
- * récapitulatif de ces dépôts, puis passe à son adresse, `/pr/{id}`.
+ * `/pr?depots=github:github.com/owner/a,gitlab:gitlab.com/groupe/b` (écran 7, « Préparer N PR et
+ * M MR ») : prépare le récapitulatif de ces dépôts, de plusieurs forges au besoin, puis passe à son
+ * adresse, `/pr/{id}`.
  */
 export function NewProposalPage() {
   useDocumentTitle('PR')
@@ -68,7 +74,7 @@ export function NewProposalPage() {
     if (!wanted || started.current) return
     started.current = true
     create.mutate(
-      { forge: wanted.forge, repositories: wanted.names.map((repository) => ({ repository, selection: null })) },
+      { repositories: wanted.map((key) => ({ ...key, selection: null })) },
       { onSuccess: (proposal) => void navigate(`/pr/${proposal.id}`, { replace: true }) },
     )
   }, [wanted, create, navigate])
@@ -76,7 +82,7 @@ export function NewProposalPage() {
   if (!wanted) {
     return (
       <Container narrow>
-        <ProposalHead forge="github" step={1} />
+        <ProposalHead words="PR" step={1} />
         <EmptyState
           icon={GitPullRequest}
           level="h2"
@@ -88,7 +94,7 @@ export function NewProposalPage() {
             </Link>
           }
         >
-          <p>{fr('Sélectionner les dépôts à mettre à jour dans « Mes dépôts », puis « Préparer les PR ».')}</p>
+          <p>{fr('Sélectionner les dépôts à mettre à jour dans « Mes dépôts », puis « Préparer les PR » (les MR sur GitLab).')}</p>
         </EmptyState>
       </Container>
     )
@@ -96,7 +102,7 @@ export function NewProposalPage() {
   if (create.isError) {
     return (
       <Container narrow>
-        <ProposalHead forge={wanted.forge} step={1} />
+        <ProposalHead words={requestWords(wanted.map((key) => key.forge))} step={1} />
         <Alert variant="danger" role="alert">
           <CircleX aria-hidden="true" />
           <AlertTitle>Le récapitulatif n'a pas pu être préparé</AlertTitle>
@@ -108,7 +114,7 @@ export function NewProposalPage() {
               size="sm"
               onClick={() =>
                 create.mutate(
-                  { forge: wanted.forge, repositories: wanted.names.map((repository) => ({ repository, selection: null })) },
+                  { repositories: wanted.map((key) => ({ ...key, selection: null })) },
                   { onSuccess: (proposal) => void navigate(`/pr/${proposal.id}`, { replace: true }) },
                 )
               }
@@ -126,11 +132,11 @@ export function NewProposalPage() {
   }
   return (
     <Container narrow>
-      <ProposalHead forge={wanted.forge} step={1} />
+      <ProposalHead words={requestWords(wanted.map((key) => key.forge))} step={1} />
       <PreparingPlan
         label="Préparation du récapitulatif"
         text={fr(
-          `Préparation du récapitulatif de ${count(wanted.names.length, 'dépôt')} : réécriture à blanc sur les fichiers de l'analyse, recherche des ${requestWord(wanted.forge)} déjà ouvertes…`,
+          `Préparation du récapitulatif de ${count(wanted.length, 'dépôt')} : réécriture à blanc sur les fichiers de l'analyse, recherche des ${requestWords(wanted.map((key) => key.forge))} déjà ouvertes…`,
         )}
       />
     </Container>
@@ -157,7 +163,7 @@ export function ProposalPage() {
     const gone = proposal.error instanceof ApiError && proposal.error.status === 404
     return (
       <Container narrow>
-        <ProposalHead forge="github" step={1} />
+        <ProposalHead words="PR" step={1} />
         <EmptyState
           icon={gone ? GitPullRequest : CircleX}
           level="h2"
@@ -189,13 +195,13 @@ export function ProposalPage() {
   return <Sending proposal={data} />
 }
 
-function ProposalHead({ forge, step, title }: { forge: ForgeKind; step: number; title?: string }) {
-  const word = requestWord(forge)
-  const heading = title ?? `Préparer les ${word}`
+/** L'en-tête de l'écran 8 ; `words` : « PR », « MR » ou « PR et MR », selon les forges. */
+function ProposalHead({ words, step, title }: { words: string; step: number; title?: string }) {
+  const heading = title ?? `Préparer les ${words}`
   useDocumentTitle(heading)
   return (
     <>
-      <Breadcrumb items={[{ label: 'Mes dépôts', to: '/depots' }, { label: word }]} />
+      <Breadcrumb items={[{ label: 'Mes dépôts', to: '/depots' }, { label: words }]} />
       <div className="mb-6 flex flex-col gap-2">
         <h1 className="text-2xl" tabIndex={-1} id="pr-titre">
           {heading}
@@ -234,10 +240,11 @@ function Recap({ proposal }: { proposal: Proposal }) {
   const online = useOnline()
   const send = useSendProposal(proposal.id)
   const [checked, setChecked] = useState<ReadonlySet<string>>(() => defaultChecked(proposal))
-  const word = requestWord(proposal.forge)
   const prepared = ready(proposal)
+  const words = requestWords(proposal.repositories.map((item) => item.forge))
   const skipped = proposal.repositories.filter((item) => item.state === 'skipped')
-  const chosen = prepared.filter((item) => checked.has(item.full_name))
+  const chosen = prepared.filter((item) => checked.has(keyText(item)))
+  const several = new Set(proposal.repositories.map((item) => `${item.forge}:${item.host}`)).size > 1
   const updates = chosen.filter((item) => item.request !== null).length
   const blocked = !online ? fr("Hors ligne : l'envoi attendra le réseau.") : chosen.length === 0 ? `Aucun dépôt coché.` : null
 
@@ -252,10 +259,10 @@ function Recap({ proposal }: { proposal: Proposal }) {
 
   return (
     <Container narrow>
-      <ProposalHead forge={proposal.forge} step={1} />
+      <ProposalHead words={words} step={1} />
       <p className="mb-6 text-fg-muted" aria-live="polite">
         {fr(
-          `${count(proposal.repositories.length, 'dépôt')}, ${chosen.length} ${word} à envoyer${
+          `${count(proposal.repositories.length, 'dépôt')}, ${requestCount(chosen.map((item) => item.forge))} à envoyer${
             updates > 0 ? ` (dont ${updates} ${updates >= 2 ? 'déjà ouvertes, mises à jour' : 'déjà ouverte, mise à jour'})` : ''
           }. Rien n'est poussé avant « Envoyer ».`,
         )}
@@ -265,7 +272,7 @@ function Recap({ proposal }: { proposal: Proposal }) {
         <EmptyState
           icon={CircleCheck}
           level="h2"
-          title={`Aucune ${word} à préparer`}
+          title={`Aucune ${words} à préparer`}
           actions={
             <Link to="/depots" className={buttonVariants({ variant: 'primary' })}>
               Retour à mes dépôts
@@ -281,12 +288,13 @@ function Recap({ proposal }: { proposal: Proposal }) {
           </h2>
           <ul className="flex flex-col gap-4">
             {prepared.map((item) => (
-              <li key={item.full_name}>
+              <li key={keyText(item)}>
                 <RecapCard
                   item={item}
                   proposalId={proposal.id}
-                  checked={checked.has(item.full_name)}
-                  onCheck={(on) => check(item.full_name, on)}
+                  checked={checked.has(keyText(item))}
+                  onCheck={(on) => check(keyText(item), on)}
+                  showForge={several}
                 />
               </li>
             ))}
@@ -321,10 +329,12 @@ function Recap({ proposal }: { proposal: Proposal }) {
           <Button
             variant="primary"
             disabled={blocked !== null || send.isPending}
-            onClick={() => send.mutate(chosen.map((item) => item.full_name))}
+            onClick={() => send.mutate(chosen.map(keyOf))}
           >
             {send.isPending ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}
-            {chosen.length >= 2 ? `Envoyer ${chosen.length} ${word}` : `Envoyer la ${word}`}
+            {chosen.length >= 2
+              ? `Envoyer ${requestCount(chosen.map((item) => item.forge))}`
+              : `Envoyer la ${requestWords(chosen.map((item) => item.forge))}`}
           </Button>
         </div>
       )}
@@ -338,11 +348,14 @@ function RecapCard({
   proposalId,
   checked,
   onCheck,
+  showForge,
 }: {
   item: ProposedRepository
   proposalId: string
   checked: boolean
   onCheck: (on: boolean) => void
+  /** Le récapitulatif mêle plusieurs comptes : dire la forge de chaque dépôt. */
+  showForge: boolean
 }) {
   const id = useId()
   const word = requestWord(item.forge)
@@ -360,6 +373,7 @@ function RecapCard({
             <h3 id={`${id}-nom`} className="font-mono text-base break-all">
               {item.full_name}
             </h3>
+            {showForge && <ForgeTag forge={item.forge} host={item.host} />}
             {item.request ? (
               <Badge variant="info">
                 <GitPullRequest aria-hidden="true" />
@@ -531,9 +545,10 @@ function SkippedList({ items, title = 'Sautés' }: { items: ProposedRepository[]
       </h2>
       <ul className="flex flex-col divide-y divide-border rounded-md border border-border bg-surface">
         {items.map((item) => (
-          <li key={item.full_name} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-sm">
+          <li key={keyText(item)} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-sm">
             <CircleMinus className="size-4 shrink-0 text-fg-muted" aria-hidden="true" />
             <span className="font-mono font-semibold break-all">{item.full_name}</span>
+            <ForgeTag forge={item.forge} host={item.host} />
             <span className="text-fg-muted">{item.reason}</span>
             {item.reason === 'pas encore analysé' && item.scan === null && (
               <Link to="/depots" className="text-link underline">
@@ -560,8 +575,10 @@ const STATE_ICON: Record<string, { icon: LucideIcon; className: string; spin?: b
 
 function Sending({ proposal }: { proposal: Proposal }) {
   const running = proposal.status === 'running'
-  const word = requestWord(proposal.forge)
   const items = sent(proposal)
+  const word = requestWords(items.map((item) => item.forge))
+  const several = new Set(proposal.repositories.map((item) => `${item.forge}:${item.host}`)).size > 1
+  const refused = items.filter((item) => item.state === 'failed' && item.error?.includes('token'))
   const done = items.filter(finished)
   const others = proposal.repositories.filter((item) => item.state === 'skipped')
   const announced = done.map((item) => `${item.full_name} : ${outcomeText(item)}.`).join(' ')
@@ -573,7 +590,7 @@ function Sending({ proposal }: { proposal: Proposal }) {
 
   return (
     <Container narrow>
-      <ProposalHead forge={proposal.forge} step={running ? 2 : 3} title={running ? `Envoi des ${word}` : `${word} envoyées`} />
+      <ProposalHead words={word} step={running ? 2 : 3} title={running ? `Envoi des ${word}` : `${word} envoyées`} />
 
       <Card className="mb-6 flex flex-col gap-3" role="region" aria-labelledby="envoi-titre">
         <h2 id="envoi-titre" className="flex items-center gap-2 text-base">
@@ -606,13 +623,25 @@ function Sending({ proposal }: { proposal: Proposal }) {
           <AlertDescription>
             <p>{proposal.error}</p>
           </AlertDescription>
-          {proposal.error.includes('token') && (
-            <AlertActions>
-              <Link to="/comptes" className={buttonVariants({ variant: 'primary', size: 'sm' })}>
-                Reconnecter {FORGE_NAME[proposal.forge]}
-              </Link>
-            </AlertActions>
-          )}
+        </Alert>
+      )}
+
+      {!running && refused.length > 0 && (
+        <Alert variant="danger" role="alert" className="mb-6">
+          <CircleX aria-hidden="true" />
+          <AlertTitle>{fr('Un compte refuse son token')}</AlertTitle>
+          <AlertDescription>
+            <p>
+              {fr(
+                `${[...new Set(refused.map((item) => forgeLabel(item.forge, item.host)))].join(', ')} : se reconnecter, puis relancer.`,
+              )}
+            </p>
+          </AlertDescription>
+          <AlertActions>
+            <Link to="/comptes" className={buttonVariants({ variant: 'primary', size: 'sm' })}>
+              Comptes
+            </Link>
+          </AlertActions>
         </Alert>
       )}
 
@@ -622,8 +651,8 @@ function Sending({ proposal }: { proposal: Proposal }) {
         </h2>
         <ul className="flex flex-col gap-4">
           {items.map((item) => (
-            <li key={item.full_name}>
-              <SentCard item={item} />
+            <li key={keyText(item)}>
+              <SentCard item={item} showForge={several} />
             </li>
           ))}
         </ul>
@@ -644,7 +673,7 @@ function Sending({ proposal }: { proposal: Proposal }) {
 }
 
 /** Un dépôt envoyé : où il en est, puis sa PR, ou l'erreur, et ce qui reste à faire. */
-function SentCard({ item }: { item: ProposedRepository }) {
+function SentCard({ item, showForge }: { item: ProposedRepository; showForge: boolean }) {
   const id = useId()
   const look = STATE_ICON[item.state] ?? STATE_ICON.waiting
   const Icon = look.icon
@@ -657,13 +686,14 @@ function SentCard({ item }: { item: ProposedRepository }) {
         <h3 id={`${id}-nom`} className="font-mono text-base break-all">
           {item.full_name}
         </h3>
+        {showForge && <ForgeTag forge={item.forge} host={item.host} />}
         <span className={cn('text-sm', item.state === 'failed' ? 'text-danger' : 'text-fg-muted')}>{outcomeText(item)}</span>
       </div>
       {item.state === 'sending' && <Blade label={`Envoi de ${item.full_name}`} />}
       {item.request && (item.state === 'opened' || item.state === 'updated') && (
         <p className="text-sm">
           <ExternalLink href={item.request.url}>
-            {`Voir la ${word} ${requestNumber(item.forge, item.request)} sur ${FORGE_NAME[item.forge]}`}
+            {`Voir la ${word} ${requestNumber(item.forge, item.request)} sur ${forgeLabel(item.forge, item.host)}`}
           </ExternalLink>
         </p>
       )}
@@ -742,3 +772,12 @@ function ResultLine({ result, job, word }: { result: LockResult; job: LockJob | 
   )
 }
 
+/** La forge d'un dépôt, quand le récapitulatif en mêle plusieurs : son logo et son nom. */
+function ForgeTag({ forge, host }: { forge: ForgeKind; host: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-sm text-fg-muted">
+      <ForgeLogo forge={forge} className="size-4" />
+      {forgeLabel(forge, host)}
+    </span>
+  )
+}

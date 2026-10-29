@@ -2,10 +2,23 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { browser } from '@/hooks/useAccounts'
-import { DOWN, Status, account, accountList, deviceConnection, mockApi, renderApp } from '@/test/api'
+import {
+  DOWN,
+  Status,
+  account,
+  accountList,
+  deviceConnection,
+  gitlabAccount,
+  mockApi,
+  renderApp,
+} from '@/test/api'
 
 function github() {
   return screen.getByRole('region', { name: 'GitHub' })
+}
+
+function gitlab() {
+  return screen.getByRole('region', { name: 'GitLab' })
 }
 
 afterEach(() => {
@@ -13,7 +26,7 @@ afterEach(() => {
 })
 
 describe('les comptes (écran 6)', () => {
-  it('sans compte : GitHub et ses façons de se connecter, GitLab et Bitbucket bientôt', async () => {
+  it('sans compte : GitHub et GitLab et leurs façons de se connecter, Bitbucket bientôt', async () => {
     mockApi({})
     renderApp('/comptes')
     expect(await screen.findByRole('heading', { level: 1, name: 'Comptes' })).toBeInTheDocument()
@@ -30,11 +43,22 @@ describe('les comptes (écran 6)', () => {
       'https://github.com/settings/tokens/new?scopes=repo,read:org&description=forceupdate',
     )
     expect(within(card).queryByRole('button', { name: 'Reprendre le compte de gh' })).toBeNull()
-    for (const name of ['GitLab', 'Bitbucket']) {
-      const soon = screen.getByRole('region', { name })
-      expect(within(soon).getByText('Bientôt')).toBeInTheDocument()
-      expect(within(soon).queryByRole('button')).toBeNull()
-    }
+    const lab = gitlab()
+    expect(within(lab).getByText('Non connecté')).toBeInTheDocument()
+    expect(within(lab).getByRole('button', { name: 'Se connecter avec GitLab' })).toHaveClass('bg-primary')
+    expect(within(lab).getByText(/y ouvrir des MR\. Portée demandée/)).toBeInTheDocument()
+    expect(within(lab).queryByRole('button', { name: 'Se connecter avec un code' })).toBeNull()
+    expect(within(lab).getByLabelText('Token GitLab')).toHaveAttribute('type', 'password')
+    expect(within(lab).getByRole('link', { name: /Créer un token sur gitlab\.com/ })).toHaveAttribute(
+      'href',
+      'https://gitlab.com/-/user_settings/personal_access_tokens?name=forceupdate&scopes=api',
+    )
+    const instances = within(lab).getByRole('group', { name: 'Instances auto-hébergées' })
+    expect(within(instances).getByLabelText("Adresse de l'instance")).toHaveAttribute('type', 'url')
+    expect(within(instances).getByRole('button', { name: "Connecter l'instance" })).toBeDisabled()
+    const soon = screen.getByRole('region', { name: 'Bitbucket' })
+    expect(within(soon).getByText('Bientôt')).toBeInTheDocument()
+    expect(within(soon).queryByRole('button')).toBeNull()
   })
 
   it('« Se connecter avec GitHub » part vers la page d’autorisation', async () => {
@@ -186,16 +210,16 @@ describe('les comptes (écran 6)', () => {
     const user = userEvent.setup()
     renderApp('/comptes')
     const field = await screen.findByLabelText('Token GitHub')
-    expect(screen.getByRole('button', { name: 'Connecter avec ce token' })).toBeDisabled()
+    expect(within(github()).getByRole('button', { name: 'Connecter avec ce token' })).toBeDisabled()
     await user.type(field, 'ghp_secret')
-    const toggle = screen.getByRole('button', { name: 'Afficher le token' })
+    const toggle = within(github()).getByRole('button', { name: 'Afficher le token' })
     await user.click(toggle)
     expect(toggle).toHaveAttribute('aria-pressed', 'true')
     expect(field).toHaveAttribute('type', 'text')
-    await user.click(screen.getByRole('button', { name: 'Connecter avec ce token' }))
+    await user.click(within(github()).getByRole('button', { name: 'Connecter avec ce token' }))
     expect(await within(github()).findByText('Connecté à GitHub')).toBeInTheDocument()
     const sent = calls.find((call) => call.url.pathname === '/api/accounts/github/token')
-    expect(JSON.parse(String(sent?.init.body))).toEqual({ token: 'ghp_secret' })
+    expect(JSON.parse(String(sent?.init.body))).toEqual({ token: 'ghp_secret', url: null })
     expect(await within(github()).findByText('par un token collé', { exact: false })).toBeInTheDocument()
     expect(screen.queryByDisplayValue('ghp_secret')).toBeNull()
   })
@@ -210,7 +234,7 @@ describe('les comptes (écran 6)', () => {
     renderApp('/comptes')
     const field = await screen.findByLabelText('Token GitHub')
     await user.type(field, 'ghp_faux')
-    await user.click(screen.getByRole('button', { name: 'Connecter avec ce token' }))
+    await user.click(within(github()).getByRole('button', { name: 'Connecter avec ce token' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('GitHub refuse le token (401)')
     expect(field).toHaveAttribute('aria-invalid', 'true')
     expect(field).toHaveAccessibleDescription(expect.stringContaining('GitHub refuse le token'))
@@ -394,5 +418,79 @@ describe('les comptes (écran 6)', () => {
     renderApp('/')
     expect(await screen.findByText('@octo')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Gérer les comptes' })).toHaveAttribute('href', '/comptes')
+  })
+
+  it('GitLab : le compte de gitlab.com et celui d’une instance, chacun ses droits et sa déconnexion', async () => {
+    const instance = gitlabAccount({ host: 'git.example.com', method: 'token', warnings: ['Ce token expire le 01/03/2027.'] })
+    const calls = mockApi({
+      'GET /api/accounts': accountList({}, null, { account: gitlabAccount(), instances: [instance] }),
+      'POST /api/accounts/gitlab/verify': ({ url }) => (url.searchParams.get('host') ? instance : gitlabAccount()),
+      'DELETE /api/accounts/gitlab': {
+        forge: 'gitlab',
+        host: 'git.example.com',
+        login: 'renard',
+        revoked: null,
+        message: 'Déconnecté de GitLab (git.example.com) : token effacé de cet ordinateur.',
+      },
+    })
+    const user = userEvent.setup()
+    renderApp('/comptes')
+    const lab = await screen.findByRole('region', { name: 'GitLab' })
+    const profiles = await within(lab).findAllByRole('link', { name: '@renard (nouvel onglet)' })
+    expect(profiles.map((link) => link.getAttribute('href'))).toEqual(['https://gitlab.com/renard', 'https://gitlab.com/renard'])
+    expect(within(lab).getAllByText('Lecture et MR')).toHaveLength(2)
+    const instances = within(lab).getByRole('group', { name: 'Instances auto-hébergées' })
+    expect(within(instances).getByRole('heading', { level: 4, name: /git\.example\.com/ })).toBeInTheDocument()
+    expect(within(instances).getByText('Ce token expire le 01/03/2027.')).toBeInTheDocument()
+    await waitFor(() => {
+      const verified = calls.filter((call) => call.url.pathname === '/api/accounts/gitlab/verify')
+      expect(verified.map((call) => call.url.searchParams.get('host'))).toEqual(expect.arrayContaining([null, 'git.example.com']))
+    })
+    const buttons = within(instances).getAllByRole('button', { name: 'Se déconnecter…' })
+    await user.click(buttons[0])
+    await user.click(await screen.findByRole('button', { name: 'Se déconnecter' }))
+    expect(await within(instances).findByText('Déconnecté de GitLab (git.example.com)')).toBeInTheDocument()
+    const gone = calls.find((call) => call.method === 'DELETE')
+    expect(gone?.url.search).toBe('?host=git.example.com')
+  })
+
+  it('une instance GitLab : son adresse et un token, le lien pour créer le token', async () => {
+    const calls = mockApi({
+      'POST /api/accounts/gitlab/token': gitlabAccount({ host: 'git.example.com', method: 'token' }),
+    })
+    const user = userEvent.setup()
+    renderApp('/comptes')
+    const lab = await screen.findByRole('region', { name: 'GitLab' })
+    const instances = within(lab).getByRole('group', { name: 'Instances auto-hébergées' })
+    await user.type(within(instances).getByLabelText("Adresse de l'instance"), 'https://git.example.com')
+    expect(within(instances).getByRole('link', { name: /Créer un token sur git\.example\.com/ })).toHaveAttribute(
+      'href',
+      'https://git.example.com/-/user_settings/personal_access_tokens?name=forceupdate&scopes=api',
+    )
+    await user.type(within(instances).getByLabelText("Token de l'instance"), 'glpat-secret')
+    await user.click(within(instances).getByRole('button', { name: "Connecter l'instance" }))
+    expect(await within(instances).findByText('Connecté à GitLab (git.example.com)')).toBeInTheDocument()
+    const sent = calls.find((call) => call.url.pathname === '/api/accounts/gitlab/token')
+    expect(JSON.parse(String(sent?.init.body))).toEqual({ token: 'glpat-secret', url: 'https://git.example.com' })
+    expect(screen.queryByDisplayValue('glpat-secret')).toBeNull()
+  })
+
+  it('le retour d’OAuth de GitLab ne se montre que sur sa carte', async () => {
+    mockApi({
+      'GET /api/accounts': accountList({}, null, { account: gitlabAccount() }),
+      'GET /api/accounts/connections/c9': deviceConnection({
+        id: 'c9',
+        forge: 'gitlab',
+        method: 'oauth',
+        status: 'done',
+        user_code: null,
+        verification_uri: null,
+        account: gitlabAccount(),
+      }),
+      'POST /api/accounts/gitlab/verify': gitlabAccount(),
+    })
+    renderApp('/comptes?connexion=c9')
+    expect(await within(await screen.findByRole('region', { name: 'GitLab' })).findByText('Connecté à GitLab')).toBeInTheDocument()
+    expect(within(github()).queryByText(/Connecté à/)).toBeNull()
   })
 })

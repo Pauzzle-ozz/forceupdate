@@ -1,4 +1,6 @@
-"""Les PR des dépôts (écran 8) : le récapitulatif, préparé sans rien pousser, puis l'envoi.
+"""Les PR des dépôts (écran 8 ; des MR sur GitLab) : le récapitulatif, préparé sans rien
+pousser, puis l'envoi. Un récapitulatif peut mêler plusieurs comptes (GitHub, gitlab.com, une
+instance GitLab) : chaque dépôt garde le sien.
 
 - **Le récapitulatif** (``Proposals.create``) : pour chaque dépôt demandé, sa dernière analyse,
   la sélection (celle donnée, ou celle par défaut du rapport) préparée comme en local sur les
@@ -8,12 +10,12 @@
   jour. Un dépôt dont l'analyse n'a pas tout vérifié (un registre ou OSV muet, une arborescence
   tronquée) est prêt, mais pas coché par défaut. Rien n'est cloné ni poussé.
 - **L'envoi** (``Proposals.send``), une fois validé : les dépôts cochés, un à la fois, dans la
-  boucle des analyses, avec une forge créée sur son client ; pour chacun
+  boucle des analyses, avec une forge par compte créée sur son client ; pour chacun
   ``update.forge.deliver`` (clone, mise à jour, push, PR) dans un dossier de travail effacé
   ensuite, ses outils de lockfile dans le thread des mises à jour (``Jobs.in_updates``). Un
-  dépôt qui échoue n'arrête pas les autres. L'auteur des commits est le compte du token
-  (``Forge.whoami``). Un envoi ne s'annule pas (un outil interrompu laisserait un clone à
-  moitié fait, et une PR peut déjà être ouverte).
+  dépôt qui échoue n'arrête pas les autres, un compte dont le token est refusé non plus.
+  L'auteur des commits est le compte du token (``Forge.whoami``). Un envoi ne s'annule pas (un
+  outil interrompu laisserait un clone à moitié fait, et une PR peut déjà être ouverte).
 
 L'état n'est modifié que dans la boucle du serveur (``Jobs.post``) ; le token ne quitte pas le
 serveur. Les récapitulatifs restent en mémoire le temps de la session (``MAX_PROPOSALS``).
@@ -27,14 +29,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from forceupdate import forges
 from forceupdate.forges import git
 from forceupdate.forges.accounts import Account
 from forceupdate.forges.base import (
     ChangeRequest,
     Forge,
     ForgeError,
-    ForgeKind,
     Identity,
     Repository,
     TokenRefused,
@@ -54,7 +54,13 @@ from forceupdate.web.connections import failure
 from forceupdate.web.jobs import Jobs, Scan
 from forceupdate.web.repositories import Repositories, RepositoryError, refused_callback
 from forceupdate.web.routes import sentence
-from forceupdate.web.schemas import ProposalStatus, ProposedSelection, ProposedState, TaskStatus
+from forceupdate.web.schemas import (
+    ProposalStatus,
+    ProposedSelection,
+    ProposedState,
+    RepositoryKey,
+    TaskStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +83,7 @@ def _now() -> datetime:
 class Proposed:
     """Un dépôt d'un récapitulatif."""
 
+    account: Account
     repo: Repository
     scan: Scan | None
     state: ProposedState = ProposedState.SKIPPED
@@ -141,11 +148,9 @@ class Proposed:
 
 @dataclass(eq=False, kw_only=True)
 class Proposal:
-    """Un récapitulatif de PR, puis son envoi."""
+    """Un récapitulatif de PR et de MR, puis son envoi."""
 
     id: str
-    forge: ForgeKind
-    host: str
     items: list[Proposed]
     created_at: datetime = field(default_factory=_now)
     status: ProposalStatus = ProposalStatus.PLANNED
@@ -153,16 +158,14 @@ class Proposal:
     finished_at: datetime | None = None
     error: str | None = None
 
-    def item(self, full_name: str) -> Proposed | None:
-        wanted = full_name.lower()
-        return next((i for i in self.items if i.repo.full_name.lower() == wanted), None)
+    def item(self, key: RepositoryKey) -> Proposed | None:
+        wanted = (key.forge, key.host.lower(), key.full_name.lower())
+        return next((item for item in self.items if _key(item.repo) == wanted), None)
 
     def document(self) -> schemas.Proposal:
         ready = [item for item in self.items if item.state is ProposedState.READY]
         return schemas.Proposal(
             id=self.id,
-            forge=self.forge,
-            host=self.host,
             status=self.status,
             created_at=self.created_at,
             started_at=self.started_at,
@@ -184,51 +187,54 @@ class Proposals:
 
     # -- le récapitulatif ------------------------------------------------------------
 
-    async def create(self, kind: ForgeKind, wanted: list[ProposedSelection]) -> Proposal:
-        """Le récapitulatif des PR de ``wanted``, des dépôts du compte connecté à ``kind`` :
-        rien n'est cloné ni poussé. Lève ``RepositoryError``."""
-        account = await self.repositories.connected(kind)
+    async def create(self, wanted: list[ProposedSelection]) -> Proposal:
+        """Le récapitulatif des PR (MR sur GitLab) de ``wanted``, des dépôts des comptes
+        connectés : rien n'est cloné ni poussé. Lève ``RepositoryError``."""
         if not wanted:
             raise RepositoryError(400, "Aucun dépôt pour lequel préparer une PR.")
-        chosen: dict[str, tuple[Repository, dict[str, str] | None]] = {}
-        unknown = []
-        for entry in wanted:
-            repo = self.repositories.listed(kind, entry.repository)
-            if repo is None:
-                unknown.append(entry.repository)
-            elif repo.full_name.lower() not in chosen:
-                chosen[repo.full_name.lower()] = (repo, entry.selection)
-        if unknown:
-            raise RepositoryError(
-                400,
-                f"{', '.join(unknown)} : pas dans la liste des dépôts du compte (la recharger).",
-            )
-        items = [await self._prepare(repo, selection) for repo, selection in chosen.values()]
-        token = await self.repositories.token(account)
-        if token is None:
-            raise RepositoryError(409, "Le token n'est plus dans le trousseau : se reconnecter.")
-        forge = forges.client(kind, self.repositories.connections.http, token)
+        chosen = await self.repositories.chosen(list(wanted))
+        selections = {
+            (entry.forge, entry.host.lower(), entry.full_name.lower()): entry.selection
+            for entry in reversed(wanted)  # le premier demandé l'emporte
+        }
+        items = [
+            await self._prepare(account, repo, selections.get(key))
+            for key, (account, repo) in chosen.items()
+        ]
         ready = [item for item in items if item.state is ProposedState.READY]
-        try:
-            found = await asyncio.gather(*(self._existing(forge, item.repo) for item in ready))
-        except TokenRefused as err:
-            await asyncio.to_thread(
-                self.repositories.connections.accounts.refused, account, str(err)
-            )
-            raise RepositoryError(400, str(err)) from None
-        for item, (checked, request) in zip(ready, found, strict=True):
-            item.request = request
-            if checked:
-                self.repositories.remember(item.repo, request)
-        proposal = Proposal(id=secrets.token_hex(6), forge=kind, host=account.host, items=items)
+        by_account: dict[tuple[object, str], list[Proposed]] = {}
+        for item in ready:
+            by_account.setdefault((item.account.forge, item.account.host), []).append(item)
+        for group in by_account.values():
+            await self._find_requests(group)
+        proposal = Proposal(id=secrets.token_hex(6), items=items)
         self.proposals[proposal.id] = proposal
         self._forget_old()
         return proposal
 
-    async def _prepare(self, repo: Repository, selection: dict[str, str] | None) -> Proposed:
+    async def _find_requests(self, items: list[Proposed]) -> None:
+        """Les PR déjà ouvertes des dépôts ``items`` d'un même compte, en parallèle."""
+        account = items[0].account
+        connections = self.repositories.connections
+        forge = await self.repositories.forge(account, connections.http)
+        if forge is None:
+            raise RepositoryError(409, "Le token n'est plus dans le trousseau : se reconnecter.")
+        try:
+            found = await asyncio.gather(*(self._existing(forge, item.repo) for item in items))
+        except TokenRefused as err:
+            await asyncio.to_thread(connections.accounts.refused, account, str(err))
+            raise RepositoryError(400, str(err)) from None
+        for item, (checked, request) in zip(items, found, strict=True):
+            item.request = request
+            if checked:
+                self.repositories.remember(item.repo, request)
+
+    async def _prepare(
+        self, account: Account, repo: Repository, selection: dict[str, str] | None
+    ) -> Proposed:
         """Un dépôt du récapitulatif : sautée avec la raison, ou sa sélection préparée."""
         scan = self.repositories.jobs.latest(repo)
-        item = Proposed(repo=repo, scan=scan)
+        item = Proposed(account=account, repo=repo, scan=scan)
         item.reason = _skipped(repo, scan)
         if item.reason is not None:
             return item
@@ -272,51 +278,55 @@ class Proposals:
 
     # -- l'envoi -----------------------------------------------------------------------
 
-    async def send(self, proposal: Proposal, names: list[str]) -> None:
-        """Envoie les dépôts ``names`` du récapitulatif, en tâche de fond. Lève
+    async def send(self, proposal: Proposal, keys: list[RepositoryKey]) -> None:
+        """Envoie les dépôts ``keys`` du récapitulatif, en tâche de fond. Lève
         ``RepositoryError``."""
         if proposal.status is not ProposalStatus.PLANNED:
             raise RepositoryError(409, "Ce récapitulatif est déjà envoyé, ou en cours d'envoi.")
         chosen: list[Proposed] = []
-        for name in dict.fromkeys(name.lower() for name in names):
-            item = proposal.item(name)
+        for key in keys:
+            item = proposal.item(key)
             if item is None or item.state is not ProposedState.READY:
-                raise RepositoryError(400, f"{name} : pas prêt à envoyer dans ce récapitulatif.")
-            chosen.append(item)
+                raise RepositoryError(
+                    400, f"{key.full_name} : pas prêt à envoyer dans ce récapitulatif."
+                )
+            if item not in chosen:
+                chosen.append(item)
         if not chosen:
             raise RepositoryError(400, "Aucun dépôt à envoyer.")
         if not git.available():
             raise RepositoryError(409, "git n'est pas installé : il faut git pour cloner.")
-        account = await self.repositories.connected(proposal.forge)
-        token = await self.repositories.token(account)
-        if token is None:
-            raise RepositoryError(409, "Le token n'est plus dans le trousseau : se reconnecter.")
+        groups: list[tuple[Forge, Account, list[Proposed]]] = []
+        by_account: dict[tuple[object, str], list[Proposed]] = {}
+        for item in chosen:
+            by_account.setdefault((item.account.forge, item.account.host), []).append(item)
+        for items in by_account.values():
+            first = items[0].account
+            account = await self.repositories.connected(first.forge, first.host)
+            groups.append((await self.repositories.worker_forge_of(account), account, items))
         for item in proposal.items:
             if item in chosen:
                 item.state = ProposedState.WAITING
             elif item.state is ProposedState.READY:
                 item.state, item.reason = ProposedState.SKIPPED, "pas coché à l'envoi"
         proposal.status, proposal.started_at = ProposalStatus.RUNNING, _now()
-        forge = self.repositories.worker_forge(proposal.forge, token)
-        future = self.jobs.worker.submit(self._send(proposal, chosen, forge, account))
+        future = self.jobs.worker.submit(self._send(groups))
         future.add_done_callback(lambda done: self.jobs.post(self._sent, proposal, done))
 
-    async def _send(
-        self, proposal: Proposal, items: list[Proposed], forge: Forge, account: Account
-    ) -> None:
-        """Dans la boucle des analyses : chaque dépôt à son tour."""
-        post = self.jobs.post
-        refused = refused_callback(self.repositories.connections, account)
-        try:
-            author = await forge.whoami()
-        except (ForgeError, NetworkError) as err:
-            message = str(err) if isinstance(err, ForgeError) else failure(err, proposal.forge)
-            if isinstance(err, TokenRefused):
-                await asyncio.to_thread(refused, message)
-            post(_abandon, proposal, items, sentence(message))
-            return
-        for item in items:
-            await self._send_one(item, forge, author, refused)
+    async def _send(self, groups: list[tuple[Forge, Account, list[Proposed]]]) -> None:
+        """Dans la boucle des analyses : compte par compte, chaque dépôt à son tour."""
+        for forge, account, items in groups:
+            refused = refused_callback(self.repositories.connections, account)
+            try:
+                author = await forge.whoami()
+            except (ForgeError, NetworkError) as err:
+                message = str(err) if isinstance(err, ForgeError) else failure(err, account.forge)
+                if isinstance(err, TokenRefused):
+                    await asyncio.to_thread(refused, message)
+                self.jobs.post(_abandon, items, sentence(message))
+                continue
+            for item in items:
+                await self._send_one(item, forge, author, refused)
 
     async def _send_one(
         self, item: Proposed, forge: Forge, author: Identity, refused: Callable[[str], None]
@@ -402,7 +412,11 @@ def _skipped(repo: Repository, scan: Scan | None) -> str | None:
     return None
 
 
-def _abandon(proposal: Proposal, items: list[Proposed], message: str) -> None:
-    proposal.error = message
+def _key(repo: Repository) -> tuple[object, str, str]:
+    return repo.forge, repo.host, repo.full_name.lower()
+
+
+def _abandon(items: list[Proposed], message: str) -> None:
+    """Les dépôts d'un compte dont l'envoi n'a pas pu commencer (token refusé…)."""
     for item in items:
         item.state, item.error = ProposedState.FAILED, message

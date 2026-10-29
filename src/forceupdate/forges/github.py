@@ -37,10 +37,8 @@ ouverte depuis la branche vers la branche par défaut, mise à jour plutôt que 
 
 import asyncio
 import base64
-import hashlib
 import os
 import re
-import secrets
 import shutil
 import subprocess
 import time
@@ -65,8 +63,10 @@ from forceupdate.forges.base import (
     Forge,
     ForgeError,
     ForgeKind,
+    Grant,
     Identity,
     NotFound,
+    OAuthFlow,
     RateLimit,
     RateLimited,
     Repository,
@@ -76,6 +76,7 @@ from forceupdate.forges.base import (
     TokenRefused,
     Tree,
     TreeEntry,
+    challenge_of,
 )
 from forceupdate.net import HttpClient, NetworkError
 from forceupdate.net.http import Response
@@ -138,8 +139,11 @@ _LINK = re.compile(r'<([^>]+)>\s*;\s*rel="([^"]+)"')
 
 
 @dataclass(frozen=True, kw_only=True)
-class OAuthApp:
+class OAuthApp(OAuthFlow):
     """L'application auprès de qui on se connecte."""
+
+    kind: ClassVar[ForgeKind] = ForgeKind.GITHUB
+    callback_path: ClassVar[str] = CALLBACK_PATH
 
     client_id: str
     client_secret: str = field(repr=False)
@@ -157,6 +161,23 @@ class OAuthApp:
     def web_flow(self) -> bool:
         """L'autorisation par la page de GitHub est possible (il faut le secret)."""
         return bool(self.client_secret)
+
+    def authorization_url(self, *, redirect_to: str, state: str, verifier: str) -> str:
+        return authorization_url(self, redirect_to=redirect_to, state=state, verifier=verifier)
+
+    async def exchange_code(
+        self, http: HttpClient, *, code: str, redirect_to: str, verifier: str
+    ) -> Grant:
+        token = await exchange_code(
+            http, self, code=code, redirect_to=redirect_to, verifier=verifier
+        )
+        return Grant(access_token=token)
+
+    def authorization_error(self, error: str, description: str = "") -> str:
+        return authorization_error(error, description)
+
+    async def revoke(self, http: HttpClient, token: str) -> bool:
+        return await revoke(http, self, token)
 
 
 # -- Client REST ----------------------------------------------------------------------
@@ -703,17 +724,6 @@ def _change_request(item: Any) -> ChangeRequest | None:
 
 
 # -- Connexion : OAuth ----------------------------------------------------------------
-
-
-def new_verifier() -> str:
-    """Le secret PKCE d'une connexion (``code_verifier``)."""
-    return secrets.token_urlsafe(48)
-
-
-def challenge_of(verifier: str) -> str:
-    """Le ``code_challenge`` (S256) d'un ``code_verifier``."""
-    digest = hashlib.sha256(verifier.encode("ascii")).digest()
-    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
 
 
 def redirect_uri(port: int) -> str:

@@ -19,11 +19,17 @@ montré) ; une requête qui n'aboutit pas lève ``net.NetworkError``.
 """
 
 import abc
+import base64
 import enum
-from dataclasses import dataclass
+import hashlib
+import secrets
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import ClassVar
+
+from forceupdate.net import HttpClient
 
 
 class ForgeKind(enum.StrEnum):
@@ -40,7 +46,8 @@ class Access(enum.StrEnum):
     PUBLIC = "public"
     """La même chose, sur les dépôts publics seulement."""
     READ = "read"
-    """Lire les dépôts publics, rien de plus."""
+    """Lire les dépôts, rien de plus : les publics seulement sur GitHub, ceux du compte aussi
+    sur GitLab (portée ``read_api``)."""
     UNKNOWN = "unknown"
     """Droits non vérifiés : la forge ne les dit pas (token « fine-grained » de GitHub, qui n'a
     pas d'en-tête ``X-OAuth-Scopes``). Ce qu'il permet ne se saura qu'en essayant."""
@@ -65,8 +72,29 @@ class Identity:
     warnings: tuple[str, ...]
     """Ce qui manquera, avec ces droits (une portée absente…)."""
     email: str | None = None
-    """L'adresse des commits faits au nom du compte (GitHub : son adresse ``noreply``, qui les
-    rattache au compte sans dévoiler la vraie)."""
+    """L'adresse des commits faits au nom du compte : son adresse ``noreply`` (GitHub
+    ``{id}+{login}@users.noreply.github.com``, GitLab ``{id}-{login}@users.noreply.{hôte}``),
+    qui les rattache au compte sans dévoiler la vraie."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class Grant:
+    """Les tokens qu'une forge donne à la connexion d'un compte (OAuth, device flow), ou un
+    token collé."""
+
+    access_token: str = field(repr=False)
+    refresh_token: str | None = field(default=None, repr=False)
+    """De quoi en obtenir un nouveau quand il expire (GitLab : à usage unique, il est remplacé
+    à chaque renouvellement) ; ``None`` : il n'expire pas, ou ne se renouvelle pas."""
+    expires_at: datetime | None = None
+    """Quand l'``access_token`` expire (GitLab : 2 h après sa création) ; ``None`` : jamais,
+    ou on ne le sait pas."""
+
+
+Renew = Callable[[HttpClient, str | None], Awaitable[str]]
+"""Ce qui donne à une forge un token à jour : renouvelé s'il expire bientôt, ou si c'est
+celui qu'on lui passe (que la forge vient de refuser). Il reçoit le ``HttpClient`` de la forge
+(celui de sa boucle). Lève ``TokenRefused`` si le renouvellement est refusé."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -140,7 +168,8 @@ class TreeEntry:
 
     path: str
     """Chemin POSIX, depuis la racine du dépôt."""
-    size: int
+    size: int | None
+    """En octets ; ``None`` si la forge ne la donne pas (GitLab)."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -151,7 +180,8 @@ class Tree:
     """Le commit lu : les fichiers se lisent à ce commit (``read_file``)."""
     entries: tuple[TreeEntry, ...]
     truncated: bool
-    """La forge n'a pas tout rendu (GitHub, au-delà de 100 000 entrées) : cloner."""
+    """La forge n'a pas tout rendu (GitHub, au-delà de 100 000 entrées ; GitLab, au-delà de
+    ``gitlab.MAX_TREE_PAGES`` pages) : cloner."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -175,8 +205,8 @@ class BranchCommit:
     sha: str
     message: str
     merge: bool
-    """Un commit de fusion (plusieurs parents) : « Update branch » de GitHub, qui ne fait
-    qu'apporter la branche par défaut."""
+    """Un commit de fusion (plusieurs parents) : « Update branch » de GitHub (« Merge » de
+    la branche visée sur GitLab), qui ne fait qu'apporter la branche par défaut."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -309,3 +339,58 @@ class Forge(abc.ABC):
         """Ouvre la PR de ``branch`` vers la branche par défaut, ou met à jour celle qui est
         déjà ouverte (titre, description) : relancer l'outil n'en ouvre jamais une
         deuxième."""
+
+
+class OAuthFlow(abc.ABC):
+    """La connexion d'un compte par la page d'autorisation d'une forge (OAuth 2, avec PKCE) :
+    forceupdate y est enregistré une fois, par son auteur (``client_id``), et chaque personne
+    y autorise son propre compte. La forge renvoie le navigateur vers le serveur local
+    (``redirect_uri``, sur 127.0.0.1 : les deux forges acceptent n'importe quel port)."""
+
+    kind: ClassVar[ForgeKind]
+    callback_path: ClassVar[str]
+    """Le chemin de l'adresse de retour, celui enregistré auprès de la forge."""
+    client_id: str
+
+    @property
+    @abc.abstractmethod
+    def web_flow(self) -> bool:
+        """L'autorisation par la page de la forge est possible (l'application est connue)."""
+
+    @abc.abstractmethod
+    def authorization_url(self, *, redirect_to: str, state: str, verifier: str) -> str:
+        """La page d'autorisation de la forge, où envoyer la personne."""
+
+    @abc.abstractmethod
+    async def exchange_code(
+        self, http: HttpClient, *, code: str, redirect_to: str, verifier: str
+    ) -> Grant:
+        """Les tokens, contre le code que la forge a donné au retour. Lève ``ForgeError``."""
+
+    @abc.abstractmethod
+    def authorization_error(self, error: str, description: str = "") -> str:
+        """Le message d'une erreur renvoyée par la forge sur l'adresse de retour."""
+
+    @abc.abstractmethod
+    async def revoke(self, http: HttpClient, token: str) -> bool:
+        """Révoque un token obtenu par l'application ; ``False`` si la forge n'a pas pu."""
+
+    async def refresh(self, http: HttpClient, refresh_token: str) -> Grant:
+        """De nouveaux tokens, contre le ``refresh_token`` (qui ne sert plus ensuite). Lève
+        ``TokenRefused`` s'il n'est plus valable."""
+        raise TokenRefused("Ce token ne se renouvelle pas : se reconnecter.")
+
+    def redirect_uri(self, port: int) -> str:
+        """L'adresse de retour vers le serveur local."""
+        return f"http://127.0.0.1:{port}{self.callback_path}"
+
+
+def new_verifier() -> str:
+    """Le secret PKCE d'une connexion (``code_verifier``)."""
+    return secrets.token_urlsafe(48)
+
+
+def challenge_of(verifier: str) -> str:
+    """Le ``code_challenge`` (S256) d'un ``code_verifier``."""
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")

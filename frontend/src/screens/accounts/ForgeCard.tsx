@@ -12,6 +12,7 @@ import {
   LoaderCircle,
   LogOut,
   RefreshCw,
+  Server,
   Terminal,
   TriangleAlert,
   Unplug,
@@ -40,6 +41,7 @@ import { browser, useAccountConnection } from '@/hooks/useAccounts'
 import { useCopy } from '@/hooks/useCopy'
 import { useOnline } from '@/hooks/useStatus'
 import { formatDateTime, formatRelative, formatTime, fr } from '@/lib/format'
+import { forgeLabel } from '@/lib/proposals'
 
 /** Le texte d'une erreur de l'API, à montrer près de ce qui l'a provoquée. */
 export function errorText(error: unknown): string {
@@ -47,12 +49,28 @@ export function errorText(error: unknown): string {
   return 'Erreur inattendue : réessayer.'
 }
 
-/** Ce que permet un token : un mot (avec icône) et une précision (MASTER : jamais la couleur seule). */
-const ACCESS: Record<Access, { label: string; detail: string; variant: 'success' | 'warning' | 'inconclusive'; icon: LucideIcon }> = {
-  write: { label: 'Lecture et PR', detail: 'dépôts publics et privés', variant: 'success', icon: CircleCheck },
-  public: { label: 'Lecture et PR', detail: 'dépôts publics seulement', variant: 'warning', icon: TriangleAlert },
-  read: { label: 'Lecture seule', detail: 'dépôts publics, aucune PR', variant: 'warning', icon: TriangleAlert },
-  unknown: { label: 'Droits non vérifiés', detail: 'la forge ne les dit pas pour ce token', variant: 'inconclusive', icon: CircleHelp },
+type AccessLook = { label: string; detail: string; variant: 'success' | 'warning' | 'inconclusive'; icon: LucideIcon }
+
+/**
+ * Ce que permet un token : un mot (avec icône) et une précision (MASTER : jamais la couleur seule).
+ * `word` : « PR », « MR » sur GitLab, où un token en lecture (`read_api`) lit aussi les projets privés.
+ */
+function accessLook(access: Access, word: string, forge: Account['forge']): AccessLook {
+  switch (access) {
+    case 'write':
+      return { label: `Lecture et ${word}`, detail: 'dépôts publics et privés', variant: 'success', icon: CircleCheck }
+    case 'public':
+      return { label: `Lecture et ${word}`, detail: 'dépôts publics seulement', variant: 'warning', icon: TriangleAlert }
+    case 'read':
+      return {
+        label: 'Lecture seule',
+        detail: forge === 'gitlab' ? `projets lisibles, aucune ${word}` : `dépôts publics, aucune ${word}`,
+        variant: 'warning',
+        icon: TriangleAlert,
+      }
+    default:
+      return { label: 'Droits non vérifiés', detail: 'la forge ne les dit pas pour ce token', variant: 'inconclusive', icon: CircleHelp }
+  }
 }
 
 const METHOD: Record<ConnectMethod, string> = {
@@ -91,9 +109,10 @@ const NOTICE_ICON: Record<Notice['variant'], LucideIcon> = {
 }
 
 /**
- * Une forge dont la connexion est prête (GitHub à E16) : son compte connecté, ou les façons de
- * s'y connecter ; le device flow en cours ; l'issue d'une connexion. Les tokens ne passent
- * jamais par ici, sauf celui que la personne colle (envoyé au serveur, jamais renvoyé).
+ * Une forge dont la connexion est prête (GitHub à E16, GitLab à E19) : son compte connecté au
+ * service en ligne, ou les façons de s'y connecter ; le device flow en cours ; l'issue d'une
+ * connexion ; et pour GitLab, ses instances auto-hébergées. Les tokens ne passent jamais par ici,
+ * sauf celui que la personne colle (envoyé au serveur, jamais renvoyé).
  */
 export function ForgeCard({
   status,
@@ -117,7 +136,8 @@ export function ForgeCard({
   const [confirming, setConfirming] = useState(false)
 
   const connection = useAccountConnection(followed)
-  const current = connection.data ?? null
+  // Le retour d'OAuth (`?connexion=`) est donné à toutes les cartes : chacune ne suit que les siennes.
+  const current = connection.data?.forge === forge ? connection.data : null
   const pending = current?.status === 'pending' ? current : null
   const ended = current && current.status !== 'pending' ? current : null
   const endedKey = ended ? `${ended.id}:${ended.status}` : null
@@ -176,11 +196,7 @@ export function ForgeCard({
   const gh = useMutation({ mutationFn: () => api.connectGh(forge), onSuccess: connected })
   const verify = useMutation({
     mutationFn: () => api.verifyAccount(forge),
-    onSuccess: (checked) => {
-      client.setQueryData<AccountList>(queryKeys.accounts, (list) =>
-        list && { ...list, forges: list.forges.map((f) => (f.forge === checked.forge ? { ...f, account: checked } : f)) },
-      )
-    },
+    onSuccess: (checked) => client.setQueryData<AccountList>(queryKeys.accounts, (list) => list && withChecked(list, checked)),
   })
   const disconnect = useMutation({
     mutationFn: () => api.disconnect(forge),
@@ -212,7 +228,11 @@ export function ForgeCard({
   }
 
   const shown = notice ?? (ended ? noticeOf(ended, name) : null)
-  const reconnect: ConnectMethod = status.methods.includes('oauth') ? 'oauth' : 'device'
+  const reconnect: ConnectMethod | null = status.methods.includes('oauth')
+    ? 'oauth'
+    : status.methods.includes('device')
+      ? 'device'
+      : null
   const titleId = `${forge}-titre`
 
   return (
@@ -267,13 +287,14 @@ export function ForgeCard({
         <ConnectedAccount
           account={account}
           name={name}
+          word={status.request}
           verifying={verify.isPending}
           verifyError={verify.error}
           disconnecting={disconnect.isPending}
           disconnectError={disconnect.error}
           blocked={blocked}
           onVerify={() => verify.mutate()}
-          onReconnect={() => start(reconnect)}
+          onReconnect={reconnect ? () => start(reconnect) : undefined}
           onDisconnect={() => setConfirming(true)}
         />
       ) : (
@@ -309,7 +330,141 @@ export function ForgeCard({
           <p>Les analyses déjà faites restent.</p>
         </ConfirmDialog>
       )}
+
+      {status.self_hosted && <Instances status={status} blocked={blocked} />}
     </section>
+  )
+}
+
+/** La liste des comptes, avec ``checked`` à la place du compte qu'il a relu (même forge, même hôte). */
+function withChecked(list: AccountList, checked: Account): AccountList {
+  return {
+    ...list,
+    forges: list.forges.map((f) => {
+      if (f.forge !== checked.forge) return f
+      if (f.host === checked.host) return { ...f, account: checked }
+      return { ...f, instances: f.instances.map((other) => (other.host === checked.host ? checked : other)) }
+    }),
+  }
+}
+
+/**
+ * Les instances auto-hébergées d'une forge (GitLab) : un compte par hôte, connecté par son adresse
+ * et un token d'accès personnel (l'OAuth demanderait d'enregistrer forceupdate sur chaque instance).
+ */
+function Instances({ status, blocked }: { status: ForgeStatus; blocked: string | null }) {
+  const client = useQueryClient()
+  const id = useId()
+  const [notice, setNotice] = useState<Notice | null>(null)
+  return (
+    <div className="flex flex-col gap-4 border-t border-border pt-4" role="group" aria-labelledby={`${id}-titre`}>
+      <div className="flex flex-col gap-1">
+        <h3 id={`${id}-titre`} className="flex items-center gap-2 text-base">
+          <Server className="size-4 text-fg-muted" aria-hidden="true" />
+          Instances auto-hébergées
+        </h3>
+        <p className="text-sm text-fg-muted">
+          {fr(`Une instance ${status.name} de votre entreprise ou de votre équipe : son adresse et un token d'accès personnel.`)}
+        </p>
+      </div>
+      {notice && <NoticeAlert notice={notice} blocked={blocked} onClose={() => setNotice(null)} />}
+      {status.instances.length > 0 && (
+        <ul className="flex flex-col gap-3">
+          {status.instances.map((account) => (
+            <li key={account.host}>
+              <InstanceAccount account={account} status={status} blocked={blocked} onGone={setNotice} />
+            </li>
+          ))}
+        </ul>
+      )}
+      <TokenForm
+        status={status}
+        blocked={blocked}
+        instance
+        onConnected={(account) => {
+          setNotice({
+            variant: 'success',
+            title: `Connecté à ${forgeLabel(account.forge, account.host)}`,
+            text: `Compte @${account.login}.`,
+          })
+          void client.invalidateQueries({ queryKey: queryKeys.accounts })
+        }}
+      />
+    </div>
+  )
+}
+
+/** Le compte d'une instance : comme celui du service en ligne, ses droits relus et sa déconnexion. */
+function InstanceAccount({
+  account,
+  status,
+  blocked,
+  onGone,
+}: {
+  account: Account
+  status: ForgeStatus
+  blocked: string | null
+  onGone: (notice: Notice) => void
+}) {
+  const client = useQueryClient()
+  const online = useOnline()
+  const [confirming, setConfirming] = useState(false)
+  const name = forgeLabel(account.forge, account.host)
+  const verify = useMutation({
+    mutationFn: () => api.verifyAccount(account.forge, account.host),
+    onSuccess: (checked) => client.setQueryData<AccountList>(queryKeys.accounts, (list) => list && withChecked(list, checked)),
+  })
+  const disconnect = useMutation({
+    mutationFn: () => api.disconnect(account.forge, account.host),
+    onSuccess: (result) => {
+      onGone({ variant: 'success', title: `Déconnecté de ${name}`, text: result.message })
+      void client.invalidateQueries({ queryKey: queryKeys.accounts })
+    },
+  })
+  const verifyNow = verify.mutate
+  const verified = useRef(false)
+  useEffect(() => {
+    if (online && !blocked && !verified.current) {
+      verified.current = true
+      verifyNow()
+    }
+  }, [online, blocked, verifyNow])
+  return (
+    <div className="flex flex-col gap-3 rounded-md border border-border p-4">
+      <h4 className="flex flex-wrap items-center gap-2 font-mono text-base break-all">
+        {account.host}
+        <Badge variant="success">
+          <CircleCheck aria-hidden="true" />
+          Connecté
+        </Badge>
+      </h4>
+      <ConnectedAccount
+        account={account}
+        name={name}
+        word={status.request}
+        verifying={verify.isPending}
+        verifyError={verify.error}
+        disconnecting={disconnect.isPending}
+        disconnectError={disconnect.error}
+        blocked={blocked}
+        onVerify={() => verify.mutate()}
+        onDisconnect={() => setConfirming(true)}
+      />
+      <ConfirmDialog
+        open={confirming}
+        title={`Se déconnecter de ${name} ?`}
+        confirm="Se déconnecter"
+        onCancel={() => setConfirming(false)}
+        onConfirm={() => {
+          setConfirming(false)
+          disconnect.mutate()
+        }}
+      >
+        <p>{fr(`Le token du compte @${account.login} est effacé du trousseau de cet ordinateur.`)}</p>
+        <p>{fr(REVOKE[account.method](name))}</p>
+        <p>Les analyses déjà faites restent.</p>
+      </ConfirmDialog>
+    </div>
   )
 }
 
@@ -356,6 +511,7 @@ function NoticeAlert({
 function ConnectedAccount({
   account,
   name,
+  word,
   verifying,
   verifyError,
   disconnecting,
@@ -367,16 +523,19 @@ function ConnectedAccount({
 }: {
   account: Account
   name: string
+  /** « PR », « MR » sur GitLab. */
+  word: string
   verifying: boolean
   verifyError: Error | null
   disconnecting: boolean
   disconnectError: Error | null
   blocked: string | null
   onVerify: () => void
-  onReconnect: () => void
+  /** Se reconnecter (OAuth, device flow) ; absent : coller un nouveau token. */
+  onReconnect?: () => void
   onDisconnect: () => void
 }) {
-  const access = ACCESS[account.access]
+  const access = accessLook(account.access, word, account.forge)
   const AccessIcon = access.icon
   return (
     <div className="flex flex-col gap-4">
@@ -399,7 +558,9 @@ function ConnectedAccount({
         <dt className="text-fg-muted">Portées</dt>
         <dd className="mb-2 flex flex-wrap items-center gap-1.5 sm:mb-0">
           {account.scopes === null ? (
-            <span className="text-fg-muted">non données par la forge (token fine-grained)</span>
+            <span className="text-fg-muted">
+              {account.forge === 'github' ? 'non données par la forge (token fine-grained)' : 'non données par la forge'}
+            </span>
           ) : account.scopes.length === 0 ? (
             <span className="text-fg-muted">aucune</span>
           ) : (
@@ -425,11 +586,15 @@ function ConnectedAccount({
           <AlertDescription>
             <p>{account.problem}</p>
           </AlertDescription>
-          <AlertActions>
-            <Button size="sm" variant="primary" onClick={onReconnect} disabled={blocked !== null}>
-              Se reconnecter
-            </Button>
-          </AlertActions>
+          {onReconnect ? (
+            <AlertActions>
+              <Button size="sm" variant="primary" onClick={onReconnect} disabled={blocked !== null}>
+                Se reconnecter
+              </Button>
+            </AlertActions>
+          ) : (
+            <p className="text-sm">{fr('Se déconnecter, puis coller un nouveau token.')}</p>
+          )}
         </Alert>
       )}
 
@@ -518,7 +683,7 @@ function ConnectOptions({
   return (
     <div className="flex flex-col gap-5">
       <p className="text-sm">
-        {fr('Lire vos dépôts, publics et privés, et y ouvrir des PR. Portées demandées : ')}
+        {fr(`Lire vos dépôts, publics et privés, et y ouvrir des ${status.request}. ${status.scopes.length >= 2 ? 'Portées demandées' : 'Portée demandée'} : `)}
         {status.scopes.map((scope, index) => (
           <span key={scope}>
             {index > 0 && ', '}
@@ -596,6 +761,11 @@ function ConnectOptions({
               <TokenForm status={status} blocked={blocked} onConnected={onConnected} />
             </li>
           )}
+          {methods.includes('token') && methods.length === 1 && (
+            <li className="py-3 text-sm text-fg-muted">
+              {fr(`La connexion par ${status.host} n'est pas prête ici : coller un token.`)}
+            </li>
+          )}
         </ul>
       </div>
     </div>
@@ -637,50 +807,98 @@ function FieldError({ error, id }: { error: Error | null; id?: string }) {
   )
 }
 
-/** Un token collé : envoyé au serveur, qui le vérifie auprès de la forge ; effacé du champ ensuite. */
+/** L'adresse d'une instance tapée par la personne, si elle en a la forme (`https://hôte`). */
+function instanceHost(url: string): string | null {
+  const text = url.trim()
+  if (!text) return null
+  try {
+    const parsed = new URL(text.includes('://') ? text : `https://${text}`)
+    return parsed.protocol === 'https:' && parsed.hostname.includes('.') ? parsed.host : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Un token collé : envoyé au serveur, qui le vérifie auprès de la forge ; effacé du champ ensuite.
+ * `instance` : pour une instance auto-hébergée, son adresse en plus.
+ */
 function TokenForm({
   status,
   blocked,
+  instance = false,
   onConnected,
 }: {
   status: ForgeStatus
   blocked: string | null
+  instance?: boolean
   onConnected: (account: Account) => void
 }) {
   const id = useId()
   const [value, setValue] = useState('')
+  const [url, setUrl] = useState('')
   const [visible, setVisible] = useState(false)
   const connect = useMutation({
-    mutationFn: (token: string) => api.connectToken(status.forge, token),
+    mutationFn: (token: string) => api.connectToken(status.forge, token, instance ? url.trim() : null),
     onSuccess: (account) => {
       setValue('')
+      setUrl('')
       onConnected(account)
     },
   })
   const described = [`${id}-aide`, connect.error ? `${id}-erreur` : null].filter(Boolean).join(' ')
+  const host = instance ? instanceHost(url) : status.host
+  const tokenUrl = instance
+    ? host && `https://${host}/-/user_settings/personal_access_tokens?name=forceupdate&scopes=api`
+    : status.token_url
+  const ready = value.trim() !== '' && (!instance || url.trim() !== '')
 
   return (
     <form
       className="flex flex-col gap-2"
+      aria-label={instance ? `Connecter une instance ${status.name}` : undefined}
       onSubmit={(event) => {
         event.preventDefault()
-        if (value.trim()) connect.mutate(value)
+        if (ready) connect.mutate(value)
       }}
     >
+      {instance && (
+        <div className="flex flex-col gap-1">
+          <label htmlFor={`${id}-adresse`} className="font-medium">
+            {`Adresse de l'instance`}
+          </label>
+          <Input
+            id={`${id}-adresse`}
+            type="url"
+            inputMode="url"
+            mono
+            autoComplete="url"
+            placeholder="https://gitlab.example.com"
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+            aria-describedby={`${id}-aide`}
+            disabled={connect.isPending}
+          />
+        </div>
+      )}
       <label htmlFor={id} className="font-medium">
-        {`Token ${status.name}`}
+        {instance ? `Token de l'instance` : `Token ${status.name}`}
       </label>
       {/* Un lien dans une phrase se distingue autrement que par sa couleur : souligné. */}
       <p id={`${id}-aide`} className="text-sm text-fg-muted [&_a]:underline">
-        {fr('Un token classic avec les portées ')}
+        {status.forge === 'github' ? fr('Un token classic avec les portées ') : fr("Un token d'accès personnel avec la portée ")}
         {status.scopes.map((scope, index) => (
           <span key={scope}>
             {index > 0 && ' et '}
             <code>{scope}</code>
           </span>
         ))}
-        {fr(', ou un token fine-grained (ses droits ne se vérifient pas). ')}
-        {status.token_url && <ExternalLink href={status.token_url}>{`Créer un token sur ${status.host}`}</ExternalLink>}
+        {status.forge === 'github'
+          ? fr(', ou un token fine-grained (ses droits ne se vérifient pas). ')
+          : instance
+            ? fr(', créé sur l\'instance (https seulement : le token ne part jamais en clair). ')
+            : '. '}
+        {tokenUrl && <ExternalLink href={tokenUrl}>{`Créer un token sur ${host}`}</ExternalLink>}
       </p>
       <div className="flex flex-wrap gap-2">
         <div className="flex min-w-0 flex-1 basis-64 gap-2">
@@ -708,13 +926,13 @@ function TokenForm({
             {visible ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
           </Button>
         </div>
-        <Button type="submit" disabled={blocked !== null || connect.isPending || !value.trim()} className="max-sm:w-full">
+        <Button type="submit" disabled={blocked !== null || connect.isPending || !ready} className="max-sm:w-full">
           {connect.isPending ? (
             <LoaderCircle className="motion-safe:animate-spin" aria-hidden="true" />
           ) : (
             <KeyRound aria-hidden="true" />
           )}
-          Connecter avec ce token
+          {instance ? "Connecter l'instance" : 'Connecter avec ce token'}
         </Button>
       </div>
       <FieldError id={`${id}-erreur`} error={connect.error} />

@@ -1110,7 +1110,7 @@
           "comptes"
         ],
         "summary": "Start Device",
-        "description": "Commence une connexion par device flow : la forge donne un code (``user_code``) à taper\nsur ``verification_uri`` ; le serveur attend, la connexion se suit sur\n``GET /api/accounts/connections/{id}``.",
+        "description": "Commence une connexion par device flow : la forge donne un code (``user_code``) à taper\nsur ``verification_uri`` ; le serveur attend, la connexion se suit sur\n``GET /api/accounts/connections/{id}``. GitHub seulement.",
         "operationId": "start_device",
         "parameters": [
           {
@@ -1336,7 +1336,7 @@
           "comptes"
         ],
         "summary": "Connect Token",
-        "description": "Connecte un compte avec un token collé (classic ou fine-grained), une fois que la forge\nl'a accepté.",
+        "description": "Connecte un compte avec un token collé (GitHub : classic ou fine-grained ; GitLab : un\ntoken d'accès personnel), une fois que la forge l'a accepté. ``url`` : l'adresse d'une\ninstance auto-hébergée (GitLab).",
         "operationId": "connect_token",
         "parameters": [
           {
@@ -1530,7 +1530,7 @@
           "comptes"
         ],
         "summary": "Verify Account",
-        "description": "Redemande à la forge qui est connecté et avec quels droits. Un token refusé (révoqué sur\nla forge) est dit dans ``problem`` : le compte reste affiché, pour qu'on se reconnecte.",
+        "description": "Redemande à la forge qui est connecté et avec quels droits (le token renouvelé s'il a\nexpiré). Un token refusé (révoqué sur la forge) est dit dans ``problem`` : le compte reste\naffiché, pour qu'on se reconnecte.",
         "operationId": "verify_account",
         "parameters": [
           {
@@ -1539,6 +1539,22 @@
             "required": true,
             "schema": {
               "$ref": "#/components/schemas/ForgeKind"
+            }
+          },
+          {
+            "name": "host",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Host"
             }
           }
         ],
@@ -1631,6 +1647,22 @@
             "required": true,
             "schema": {
               "$ref": "#/components/schemas/ForgeKind"
+            }
+          },
+          {
+            "name": "host",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Host"
             }
           }
         ],
@@ -1768,7 +1800,7 @@
           "dépôts"
         ],
         "summary": "Start Batch",
-        "description": "Analyse ensemble des dépôts du compte connecté à ``forge``, sans les cloner : quelques\ndépôts à la fois, une analyse par dépôt (``scans``), qui se suit comme les autres. Les\ndépôts vides sont sautés.",
+        "description": "Analyse ensemble des dépôts des comptes connectés (de plusieurs forges au besoin), sans\nles cloner : quelques dépôts à la fois, une analyse par dépôt (``scans``), qui se suit comme\nles autres. Les dépôts vides sont sautés.",
         "operationId": "start_batch",
         "requestBody": {
           "content": {
@@ -2004,7 +2036,7 @@
           "dépôts"
         ],
         "summary": "Scan Repository",
-        "description": "Analyse un dépôt donné par son nom (``owner/nom``) ou son adresse, même d'un autre compte\ns'il est public : avec le token du compte connecté à sa forge, sans token sinon (GitHub :\n60 requêtes par heure). Se suit comme une autre analyse.",
+        "description": "Analyse un dépôt donné par son nom (``owner/nom``) ou son adresse, même d'un autre compte\ns'il est public (sur GitLab : ``groupe/sous-groupe/projet`` ou son adresse) : avec le token\ndu compte connecté à sa forge, sans token sinon (GitHub : 60 requêtes par heure). Se suit\ncomme une autre analyse.",
         "operationId": "scan_repository",
         "requestBody": {
           "content": {
@@ -2106,7 +2138,7 @@
           "PR"
         ],
         "summary": "Create Proposal",
-        "description": "Le récapitulatif des PR de quelques dépôts du compte connecté à ``forge`` : pour\nchacun, la sélection (donnée, ou celle par défaut de sa dernière analyse) préparée sur les\nfichiers de l'analyse (diffs, lockfiles, commandes), la PR déjà ouverte, ou pourquoi il est\nsauté. Rien n'est cloné ni poussé.",
+        "description": "Le récapitulatif des PR (MR sur GitLab) de quelques dépôts des comptes connectés, de\nplusieurs forges au besoin : pour chacun, la sélection (donnée, ou celle par défaut de sa\ndernière analyse) préparée sur les fichiers de l'analyse (diffs, lockfiles, commandes), la\nPR déjà ouverte, ou pourquoi il est sauté. Rien n'est cloné ni poussé.",
         "operationId": "create_proposal",
         "requestBody": {
           "content": {
@@ -2655,12 +2687,9 @@
             "title": "Cache",
             "default": true
           },
-          "forge": {
-            "$ref": "#/components/schemas/ForgeKind"
-          },
           "repositories": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/RepositoryKey"
             },
             "type": "array",
             "title": "Repositories"
@@ -2668,11 +2697,10 @@
         },
         "type": "object",
         "required": [
-          "forge",
           "repositories"
         ],
         "title": "BatchRequest",
-        "description": "Des dépôts d'un compte connecté à analyser ensemble."
+        "description": "Des dépôts des comptes connectés à analyser ensemble (de plusieurs comptes, plusieurs\nforges au besoin)."
       },
       "BatchStatus": {
         "type": "string",
@@ -2863,6 +2891,10 @@
           "forge": {
             "$ref": "#/components/schemas/ForgeKind"
           },
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
           "login": {
             "type": "string",
             "title": "Login"
@@ -2886,6 +2918,7 @@
         "type": "object",
         "required": [
           "forge",
+          "host",
           "login",
           "revoked",
           "message"
@@ -3387,6 +3420,14 @@
             ],
             "title": "Token Url"
           },
+          "self_hosted": {
+            "type": "boolean",
+            "title": "Self Hosted"
+          },
+          "request": {
+            "type": "string",
+            "title": "Request"
+          },
           "account": {
             "anyOf": [
               {
@@ -3396,6 +3437,13 @@
                 "type": "null"
               }
             ]
+          },
+          "instances": {
+            "items": {
+              "$ref": "#/components/schemas/Account"
+            },
+            "type": "array",
+            "title": "Instances"
           },
           "connection": {
             "anyOf": [
@@ -3417,7 +3465,10 @@
           "methods",
           "scopes",
           "token_url",
+          "self_hosted",
+          "request",
           "account",
+          "instances",
           "connection"
         ],
         "title": "ForgeStatus",
@@ -3938,13 +3989,6 @@
             "type": "string",
             "title": "Id"
           },
-          "forge": {
-            "$ref": "#/components/schemas/ForgeKind"
-          },
-          "host": {
-            "type": "string",
-            "title": "Host"
-          },
           "status": {
             "$ref": "#/components/schemas/ProposalStatus"
           },
@@ -4007,8 +4051,6 @@
         "type": "object",
         "required": [
           "id",
-          "forge",
-          "host",
           "status",
           "created_at",
           "started_at",
@@ -4019,13 +4061,10 @@
           "error"
         ],
         "title": "Proposal",
-        "description": "Un récapitulatif de PR (écran 8) : préparé sans rien pousser, puis envoyé dépôt par\ndépôt, une fois validé."
+        "description": "Un récapitulatif de PR et de MR (écran 8), de plusieurs comptes au besoin : préparé sans\nrien pousser, puis envoyé dépôt par dépôt, une fois validé."
       },
       "ProposalRequest": {
         "properties": {
-          "forge": {
-            "$ref": "#/components/schemas/ForgeKind"
-          },
           "repositories": {
             "items": {
               "$ref": "#/components/schemas/ProposedSelection"
@@ -4036,11 +4075,10 @@
         },
         "type": "object",
         "required": [
-          "forge",
           "repositories"
         ],
         "title": "ProposalRequest",
-        "description": "Des dépôts d'un compte connecté pour lesquels préparer une PR chacun."
+        "description": "Des dépôts des comptes connectés pour lesquels préparer une PR (une MR sur GitLab)\nchacun ; de plusieurs forges au besoin."
       },
       "ProposalStatus": {
         "type": "string",
@@ -4267,9 +4305,16 @@
       },
       "ProposedSelection": {
         "properties": {
-          "repository": {
+          "forge": {
+            "$ref": "#/components/schemas/ForgeKind"
+          },
+          "host": {
             "type": "string",
-            "title": "Repository"
+            "title": "Host"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
           },
           "selection": {
             "anyOf": [
@@ -4288,10 +4333,12 @@
         },
         "type": "object",
         "required": [
-          "repository"
+          "forge",
+          "host",
+          "full_name"
         ],
         "title": "ProposedSelection",
-        "description": "Un dépôt à mettre dans un récapitulatif de PR."
+        "description": "Un dépôt à mettre dans un récapitulatif de PR (MR sur GitLab), parmi ceux de\n``GET /api/repositories``."
       },
       "ProposedSkip": {
         "properties": {
@@ -4554,13 +4601,6 @@
             "type": "string",
             "title": "Id"
           },
-          "forge": {
-            "$ref": "#/components/schemas/ForgeKind"
-          },
-          "host": {
-            "type": "string",
-            "title": "Host"
-          },
           "status": {
             "$ref": "#/components/schemas/BatchStatus"
           },
@@ -4614,23 +4654,11 @@
           "requests": {
             "type": "integer",
             "title": "Requests"
-          },
-          "rate_limit": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RateLimit"
-              },
-              {
-                "type": "null"
-              }
-            ]
           }
         },
         "type": "object",
         "required": [
           "id",
-          "forge",
-          "host",
           "status",
           "started_at",
           "finished_at",
@@ -4640,11 +4668,10 @@
           "finished",
           "failed",
           "skipped",
-          "requests",
-          "rate_limit"
+          "requests"
         ],
         "title": "RepositoryBatch",
-        "description": "Une analyse groupée : des dépôts analysés ensemble, ``concurrency`` à la fois, avec le\nmême client et le même cache des registres."
+        "description": "Une analyse groupée : des dépôts analysés ensemble (de plusieurs comptes au besoin),\n``concurrency`` à la fois, avec le même client et le même cache des registres."
       },
       "RepositoryCounts": {
         "properties": {
@@ -4690,6 +4717,29 @@
         ],
         "title": "RepositoryCounts",
         "description": "Les chiffres de la dernière analyse d'un dépôt."
+      },
+      "RepositoryKey": {
+        "properties": {
+          "forge": {
+            "$ref": "#/components/schemas/ForgeKind"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "forge",
+          "host",
+          "full_name"
+        ],
+        "title": "RepositoryKey",
+        "description": "Un dépôt d'un compte connecté : sa forge, l'hôte du compte, son nom."
       },
       "RepositoryList": {
         "properties": {
@@ -5453,7 +5503,7 @@
         "properties": {
           "repositories": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/RepositoryKey"
             },
             "type": "array",
             "title": "Repositories"
@@ -5626,6 +5676,17 @@
           "token": {
             "type": "string",
             "title": "Token"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
           }
         },
         "type": "object",

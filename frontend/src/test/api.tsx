@@ -258,29 +258,69 @@ export function githubStatus(overrides: Partial<ForgeStatus> = {}): ForgeStatus 
     methods: ['oauth', 'device', 'token'],
     scopes: ['repo', 'read:org'],
     token_url: 'https://github.com/settings/tokens/new?scopes=repo,read:org&description=forceupdate',
+    self_hosted: false,
+    request: 'PR',
     account: null,
+    instances: [],
     connection: null,
     ...overrides,
   }
 }
 
-/** `GET /api/accounts` : GitHub (`githubStatus(github)`), puis GitLab et Bitbucket « bientôt ». */
-export function accountList(github: Partial<ForgeStatus> = {}, keyring: string | null = null): AccountList {
-  const soon = (forge: 'gitlab' | 'bitbucket', name: string, host: string): ForgeStatus => ({
-    forge,
-    name,
-    host,
+/** Le compte GitLab `@renard`, connecté à gitlab.com par OAuth. */
+export function gitlabAccount(overrides: Partial<Account> = {}): Account {
+  return account({
+    forge: 'gitlab',
+    host: 'gitlab.com',
+    login: 'renard',
+    name: 'Renard Roux',
+    url: 'https://gitlab.com/renard',
+    scopes: ['api'],
+    ...overrides,
+  })
+}
+
+/** GitLab dans la liste des forges : sans compte par défaut ; OAuth, token collé, instance. */
+export function gitlabStatus(overrides: Partial<ForgeStatus> = {}): ForgeStatus {
+  return {
+    forge: 'gitlab',
+    name: 'GitLab',
+    host: 'gitlab.com',
+    available: true,
+    methods: ['oauth', 'token'],
+    scopes: ['api'],
+    token_url: 'https://gitlab.com/-/user_settings/personal_access_tokens?name=forceupdate&scopes=api',
+    self_hosted: true,
+    request: 'MR',
+    account: null,
+    instances: [],
+    connection: null,
+    ...overrides,
+  }
+}
+
+/** `GET /api/accounts` : GitHub (`githubStatus(github)`), GitLab (`gitlabStatus(gitlab)`), puis
+ * Bitbucket « bientôt ». */
+export function accountList(
+  github: Partial<ForgeStatus> = {},
+  keyring: string | null = null,
+  gitlab: Partial<ForgeStatus> = {},
+): AccountList {
+  const bitbucket: ForgeStatus = {
+    forge: 'bitbucket',
+    name: 'Bitbucket',
+    host: 'bitbucket.org',
     available: false,
     methods: [],
     scopes: [],
     token_url: null,
+    self_hosted: false,
+    request: 'PR',
     account: null,
+    instances: [],
     connection: null,
-  })
-  return {
-    keyring,
-    forges: [githubStatus(github), soon('gitlab', 'GitLab', 'gitlab.com'), soon('bitbucket', 'Bitbucket', 'bitbucket.org')],
   }
+  return { keyring, forges: [githubStatus(github), gitlabStatus(gitlab), bitbucket] }
 }
 
 /** Une connexion par device flow, en attente du code `WDJB-MJHT`. */
@@ -382,8 +422,6 @@ export function repositoryList(overrides: Partial<RepositoryList> = {}): Reposit
 export function batch(overrides: Partial<RepositoryBatch> = {}): RepositoryBatch {
   return {
     id: 'b1',
-    forge: 'github',
-    host: 'github.com',
     status: 'running',
     started_at: '2026-10-28T17:31:00+00:00',
     finished_at: null,
@@ -394,7 +432,6 @@ export function batch(overrides: Partial<RepositoryBatch> = {}): RepositoryBatch
     failed: 0,
     skipped: [],
     requests: 42,
-    rate_limit: { limit: 5000, remaining: 4100, reset_at: '2026-10-28T19:00:00+00:00' },
     ...overrides,
   }
 }
@@ -446,8 +483,6 @@ export function proposal(overrides: Partial<Proposal> = {}): Proposal {
   const ready = repositories.filter((item) => item.state === 'ready')
   return {
     id: 'pr1',
-    forge: 'github',
-    host: 'github.com',
     status: 'planned',
     created_at: '2026-10-29T10:00:00+00:00',
     started_at: null,

@@ -73,6 +73,17 @@
   de push » (ou « archivé ») atténué ; « — » sinon. Elle s'appellera « PR / MR » quand GitLab
   sera là.
 - Le compteur « PR ouvertes » est le sixième de la synthèse ; il ne filtre pas le tableau.
+
+## Fait à E19
+
+- La colonne s'appelle « PR / MR » quand la liste a des dépôts GitLab (« PR » sinon), le
+  compteur « PR et MR ouvertes » ; « Préparer 1 PR et 1 MR » prépare **un seul**
+  récapitulatif pour toutes les forges sélectionnées (au lieu d'un par forge).
+- Une instance GitLab se dit « GitLab (hôte) » partout où la forge est nommée ; ses requêtes
+  restantes ont leur ligne, comme celles de chaque compte.
+- Deux dépôts de même nom (le même `owner/nom` sur GitHub et sur GitLab) : rien ne change à
+  l'écran (la colonne Forge les distingue), mais leur case et leur lien disent la forge aux
+  lecteurs d'écran.
 - La barre de sélection suit la maquette : « Préparer N PR » en principale, à droite ;
   « Analyser ces N dépôts » en secondaire. Le nombre de mises à jour cochées par défaut reste
   dit (« N mises à jour cochées par défaut »).

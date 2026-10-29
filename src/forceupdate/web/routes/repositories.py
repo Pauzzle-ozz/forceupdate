@@ -48,11 +48,11 @@ async def list_repositories(
     responses=errors(400, 401, 403, 404, 409),
 )
 async def start_batch(body: BatchRequest, repositories: CurrentRepositories) -> JSONResponse:
-    """Analyse ensemble des dépôts du compte connecté à ``forge``, sans les cloner : quelques
-    dépôts à la fois, une analyse par dépôt (``scans``), qui se suit comme les autres. Les
-    dépôts vides sont sautés."""
+    """Analyse ensemble des dépôts des comptes connectés (de plusieurs forges au besoin), sans
+    les cloner : quelques dépôts à la fois, une analyse par dépôt (``scans``), qui se suit comme
+    les autres. Les dépôts vides sont sautés."""
     try:
-        batch = await repositories.start_batch(body.forge, body.repositories, body.options())
+        batch = await repositories.start_batch(body.repositories, body.options())
     except RepositoryError as err:
         raise HTTPException(err.status, str(err)) from err
     return respond(batch.document(), 202, location=f"/api/repositories/batches/{batch.id}")
@@ -84,8 +84,9 @@ async def scan_repository(
     body: RepositoryRequest, repositories: CurrentRepositories
 ) -> JSONResponse:
     """Analyse un dépôt donné par son nom (``owner/nom``) ou son adresse, même d'un autre compte
-    s'il est public : avec le token du compte connecté à sa forge, sans token sinon (GitHub :
-    60 requêtes par heure). Se suit comme une autre analyse."""
+    s'il est public (sur GitLab : ``groupe/sous-groupe/projet`` ou son adresse) : avec le token
+    du compte connecté à sa forge, sans token sinon (GitHub : 60 requêtes par heure). Se suit
+    comme une autre analyse."""
     try:
         scan = await repositories.start_scan(body.repository, body.options())
     except RepositoryError as err:

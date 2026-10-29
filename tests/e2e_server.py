@@ -27,6 +27,11 @@ navigateur, c'est un autre site, comme github.com. Elle renvoie aussitôt vers l
 retour, avec le code ``e2e-code`` : le retour d'OAuth se teste pour de vrai (cookie
 ``SameSite=Strict`` absent, ``Sec-Fetch-Site: cross-site``).
 
+GitLab aussi (E19, ``fake_gitlab.FakeGitLab``) : gitlab.com, dont la page d'autorisation (la
+même fausse page, ``/oauth/authorize``) rend un code lié au ``code_challenge`` reçu (PKCE), et
+une instance auto-hébergée (``gitlab-e2e.example.com``, token ``glpat-e2e-instance``) ; leurs
+projets ont aussi leur dépôt « bare », où git pousse les MR.
+
 Un rapport d'exemple (``--report`` : le JSON de ``scan --format json``, celui de
 ``GET /api/scans/{id}``, avec le chemin analysé remplacé par ``--source`` et des dates fixes)
 pour les tests du front (``frontend/src/test/fixtures/``) ::
@@ -56,9 +61,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from conftest import MemoryKeyring, recorded_responses
 from fake_forge import FakeGitHubRepos, FakeRepo, from_directory, make_remote, remotes_url
+from fake_gitlab import FakeGitLab, FakeToken
 
 from forceupdate import engine
-from forceupdate.forges import github
+from forceupdate.forges import github, gitlab
 from forceupdate.models import ScanOptions
 from forceupdate.net import cache as cache_module
 from forceupdate.report import json as json_report
@@ -151,6 +157,34 @@ REPOSITORIES = [
 """Les dépôts du faux GitHub : ceux du compte connecté, et un dépôt public d'un autre compte
 (``pallets-e2e/flask``)."""
 
+GITLAB_USER = {"id": 7777, "username": "renard-e2e", "name": "Renard E2E"}
+
+GITLAB_PROJECTS = [
+    from_directory("renard-e2e/outils/vulnerable", PROJECTS / "vulnerable", private=True),
+    FakeRepo(full_name="renard-e2e/a-jour", files={"requirements.txt": b"werkzeug==3.1.9\n"}),
+]
+"""Les projets de gitlab.com : un dans un sous-groupe, un à jour."""
+
+INSTANCE_HOST = "gitlab-e2e.example.com"
+INSTANCE_TOKEN = "glpat-e2e-instance"
+INSTANCE_PROJECTS = [
+    FakeRepo(full_name="equipe-e2e/app", files={"requirements.txt": b"werkzeug==3.1.9\n"}),
+]
+
+LAB = FakeGitLab(
+    repos=GITLAB_PROJECTS,
+    tokens={"glpat-e2e": FakeToken()},
+    user=dict(GITLAB_USER),
+    client_id=gitlab.CLIENT_ID,
+)
+"""gitlab.com simulé ; ses tokens d'OAuth s'ajoutent à ``tokens`` quand il les donne."""
+INSTANCE = FakeGitLab(
+    repos=INSTANCE_PROJECTS,
+    host=INSTANCE_HOST,
+    tokens={INSTANCE_TOKEN: FakeToken(expires_at="2027-06-30")},
+    user=dict(GITLAB_USER),
+)
+
 
 class FakeGitHub:
     """GitHub simulé pour le serveur de test : chaque code de device flow est en attente aux
@@ -202,14 +236,19 @@ class FakeGitHub:
 
 
 class _Authorize(http.server.BaseHTTPRequestHandler):
-    """La page d'autorisation de GitHub : accepte tout de suite, et renvoie vers l'adresse de
-    retour avec le code ``e2e-code`` et le ``state`` reçu."""
+    """La page d'autorisation de GitHub (``/login/oauth/authorize``) ou de GitLab
+    (``/oauth/authorize``) : accepte tout de suite, et renvoie vers l'adresse de retour avec un
+    code (``e2e-code`` ; pour GitLab, un code lié au ``code_challenge`` reçu) et le ``state``."""
 
     def do_GET(self) -> None:
-        query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        parts = urllib.parse.urlsplit(self.path)
+        query = urllib.parse.parse_qs(parts.query)
         target = query["redirect_uri"][0]
         state = query["state"][0]
-        location = f"{target}?{urllib.parse.urlencode({'code': 'e2e-code', 'state': state})}"
+        code = "e2e-code"
+        if parts.path == "/oauth/authorize":
+            code = LAB.code_for(query["code_challenge"][0])
+        location = f"{target}?{urllib.parse.urlencode({'code': code, 'state': state})}"
         self.send_response(302)
         self.send_header("Location", location)
         self.send_header("Content-Length", "0")
@@ -224,7 +263,7 @@ def fake_authorize() -> str:
     que 127.0.0.1 pour le navigateur)."""
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Authorize)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    return f"http://localhost:{server.server_address[1]}/login/oauth/authorize"
+    return f"http://localhost:{server.server_address[1]}"
 
 
 def fake_gh_run(command: list[str], **options: Any) -> subprocess.CompletedProcess[bytes]:
@@ -238,7 +277,9 @@ def serve(port: int, token: str, state_dir: Path) -> None:
     keyring.set_keyring(MemoryKeyring())
     github._which = lambda program: "/outils-e2e/gh" if program == "gh" else None
     github._run = fake_gh_run
-    github.AUTHORIZE_URL = fake_authorize()
+    authorize = fake_authorize()
+    github.AUTHORIZE_URL = f"{authorize}/login/oauth/authorize"
+    gitlab.AUTHORIZE_URL = f"{authorize}/oauth/authorize"
     app.serve(
         port=port,
         browser=False,
@@ -268,10 +309,11 @@ def main() -> None:
         cache_module.default_cache_path = lambda: Path(tmp) / "cache.sqlite3"
         if options.report is None:
             remotes = Path(tmp) / "distants"
-            for repo in REPOSITORIES:
+            for repo in [*REPOSITORIES, *GITLAB_PROJECTS]:
                 if not repo.empty:
                     make_remote(repo, remotes)
             github.GIT_URL = remotes_url(remotes)
+            gitlab.GIT_URL = remotes_url(remotes)
         repositories = FakeGitHubRepos(
             REPOSITORIES,
             tokens=set(TOKENS),
@@ -281,6 +323,8 @@ def main() -> None:
         def routes(router: respx.MockRouter) -> None:
             FakeGitHub().routes(router)
             repositories.routes(router)
+            LAB.routes(router)
+            INSTANCE.routes(router)
 
         with recorded_responses(routes):
             if options.report is not None:

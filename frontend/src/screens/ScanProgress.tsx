@@ -11,9 +11,9 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useScanEvents, type ScanProgress as Progress } from '@/hooks/useScanEvents'
 import { basename, count, formatDuration, fr } from '@/lib/format'
+import { forgeLabel } from '@/lib/proposals'
 import { Breadcrumb, Container, useDocumentTitle } from '@/shell/Page'
 
-const FORGE_NAME = { github: 'GitHub', gitlab: 'GitLab', bitbucket: 'Bitbucket' } as const
 
 /** Le nom du paquet n'est annoncé aux lecteurs d'écran qu'au plus toutes les 5 s. */
 const ANNOUNCE_EVERY = 5000
@@ -143,7 +143,7 @@ export function ScanProgress({ scan, onEnd }: { scan: ScanDetail; onEnd?: () => 
               {scan.kind === 'upload'
                 ? 'fichier envoyé'
                 : repository
-                  ? `dépôt ${FORGE_NAME[repository.forge]}, lu par l'API sans le cloner`
+                  ? `dépôt ${forgeLabel(repository.forge, repository.host)}, lu par l'API sans le cloner`
                   : scan.source}
             </p>
             <OptionBadges options={scan.options} />
