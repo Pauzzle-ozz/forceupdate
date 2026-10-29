@@ -395,6 +395,96 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/repositories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Repositories
+         * @description Les dépôts des comptes connectés, l'état de leur dernière analyse, et la synthèse. La
+         *     liste est demandée aux forges la première fois, puis gardée le temps de la session ;
+         *     ``reload`` la redemande. Un refus de la forge est dit dans ``accounts[].error``.
+         */
+        get: operations["list_repositories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/repositories/batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Batch
+         * @description Analyse ensemble des dépôts du compte connecté à ``forge``, sans les cloner : quelques
+         *     dépôts à la fois, une analyse par dépôt (``scans``), qui se suit comme les autres. Les
+         *     dépôts vides sont sautés.
+         */
+        post: operations["start_batch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/repositories/batches/{batch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Batch
+         * @description Où en est une analyse groupée.
+         */
+        get: operations["get_batch"];
+        put?: never;
+        post?: never;
+        /**
+         * Cancel Batch
+         * @description Annule les analyses du lot qui ne sont pas finies ; celles qui le sont restent.
+         */
+        delete: operations["cancel_batch"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/repositories/scans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scan Repository
+         * @description Analyse un dépôt donné par son nom (``owner/nom``) ou son adresse, même d'un autre compte
+         *     s'il est public : avec le token du compte connecté à sa forge, sans token sinon (GitHub :
+         *     60 requêtes par heure). Se suit comme une autre analyse.
+         */
+        post: operations["scan_repository"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -490,6 +580,40 @@ export interface components {
              */
             force: boolean;
         };
+        /**
+         * BatchRequest
+         * @description Des dépôts d'un compte connecté à analyser ensemble.
+         */
+        BatchRequest: {
+            /**
+             * Dev
+             * @default true
+             */
+            dev: boolean;
+            /**
+             * Transitive
+             * @default false
+             */
+            transitive: boolean;
+            /**
+             * Include Tests
+             * @default false
+             */
+            include_tests: boolean;
+            /**
+             * Cache
+             * @default true
+             */
+            cache: boolean;
+            forge: components["schemas"]["ForgeKind"];
+            /** Repositories */
+            repositories: string[];
+        };
+        /**
+         * BatchStatus
+         * @enum {string}
+         */
+        BatchStatus: "running" | "done" | "cancelled";
         /**
          * Chosen
          * @description Une option de mise à jour, désignée dans le rapport de l'analyse.
@@ -666,7 +790,7 @@ export interface components {
          *     arrivent.
          * @enum {string}
          */
-        EventKind: "reading" | "projects_found" | "checking" | "package_checked" | "vulnerabilities_checked" | "written" | "regenerating" | "finished";
+        EventKind: "downloading" | "reading" | "projects_found" | "checking" | "package_checked" | "vulnerabilities_checked" | "written" | "regenerating" | "finished";
         /**
          * FileDiff
          * @description Un fichier à réécrire, et son diff unifié.
@@ -954,6 +1078,21 @@ export interface components {
             notices: components["schemas"]["Notice"][];
         };
         /**
+         * RateLimit
+         * @description Les requêtes d'API restantes, d'après la dernière réponse de la forge.
+         */
+        RateLimit: {
+            /** Limit */
+            limit: number;
+            /** Remaining */
+            remaining: number;
+            /**
+             * Reset At
+             * Format: date-time
+             */
+            reset_at: string;
+        };
+        /**
          * Reach
          * @description Où en est une mise à jour, une fois le lockfile relu.
          * @enum {string}
@@ -969,6 +1108,248 @@ export interface components {
             kind: components["schemas"]["EntryKind"];
         };
         /**
+         * RepositoryAccount
+         * @description Un compte connecté, vu depuis ses dépôts.
+         */
+        RepositoryAccount: {
+            forge: components["schemas"]["ForgeKind"];
+            /** Host */
+            host: string;
+            /** Login */
+            login: string;
+            access: components["schemas"]["Access"];
+            /** Problem */
+            problem: string | null;
+            /** Listed At */
+            listed_at: string | null;
+            /** Error */
+            error: string | null;
+            /** Repositories */
+            repositories: number;
+            /** Restrictions */
+            restrictions: components["schemas"]["Restriction"][];
+            rate_limit: components["schemas"]["RateLimit"] | null;
+        };
+        /**
+         * RepositoryBatch
+         * @description Une analyse groupée : des dépôts analysés ensemble, ``concurrency`` à la fois, avec le
+         *     même client et le même cache des registres.
+         */
+        RepositoryBatch: {
+            /** Id */
+            id: string;
+            forge: components["schemas"]["ForgeKind"];
+            /** Host */
+            host: string;
+            status: components["schemas"]["BatchStatus"];
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Finished At */
+            finished_at: string | null;
+            /** Concurrency */
+            concurrency: number;
+            /** Scans */
+            scans: string[];
+            /** Total */
+            total: number;
+            /** Finished */
+            finished: number;
+            /** Failed */
+            failed: number;
+            /** Skipped */
+            skipped: string[];
+            /** Requests */
+            requests: number;
+            rate_limit: components["schemas"]["RateLimit"] | null;
+        };
+        /**
+         * RepositoryCounts
+         * @description Les chiffres de la dernière analyse d'un dépôt.
+         */
+        RepositoryCounts: {
+            /** Vulnerabilities */
+            vulnerabilities: number;
+            /** Critical */
+            critical: number;
+            worst: components["schemas"]["Severity"] | null;
+            /** To Update */
+            to_update: number;
+            /** Inconclusive */
+            inconclusive: number;
+            /** Updates */
+            updates: number;
+        };
+        /**
+         * RepositoryList
+         * @description Les dépôts des comptes connectés (écran 7).
+         */
+        RepositoryList: {
+            /** Accounts */
+            accounts: components["schemas"]["RepositoryAccount"][];
+            /** Repositories */
+            repositories: components["schemas"]["RepositoryRow"][];
+            synthesis: components["schemas"]["RepositorySynthesis"];
+            batch: components["schemas"]["RepositoryBatch"] | null;
+        };
+        /**
+         * RepositoryRef
+         * @description Le dépôt d'une analyse de dépôt.
+         */
+        RepositoryRef: {
+            forge: components["schemas"]["ForgeKind"];
+            /** Host */
+            host: string;
+            /** Full Name */
+            full_name: string;
+            /** Url */
+            url: string;
+            /** Commit */
+            commit: string | null;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /**
+         * RepositoryRequest
+         * @description Un dépôt à analyser, même d'un autre compte s'il est public.
+         */
+        RepositoryRequest: {
+            /**
+             * Dev
+             * @default true
+             */
+            dev: boolean;
+            /**
+             * Transitive
+             * @default false
+             */
+            transitive: boolean;
+            /**
+             * Include Tests
+             * @default false
+             */
+            include_tests: boolean;
+            /**
+             * Cache
+             * @default true
+             */
+            cache: boolean;
+            /** Repository */
+            repository: string;
+        };
+        /**
+         * RepositoryRow
+         * @description Un dépôt d'un compte connecté, ses drapeaux, et sa dernière analyse.
+         */
+        RepositoryRow: {
+            forge: components["schemas"]["ForgeKind"];
+            /** Host */
+            host: string;
+            /** Full Name */
+            full_name: string;
+            /** Owner */
+            owner: string;
+            /** Name */
+            name: string;
+            /** Url */
+            url: string;
+            /** Default Branch */
+            default_branch: string | null;
+            /** Private */
+            private: boolean;
+            /** Archived */
+            archived: boolean;
+            /** Fork */
+            fork: boolean;
+            /** Empty */
+            empty: boolean;
+            /** Can Push */
+            can_push: boolean;
+            /** Pushed At */
+            pushed_at: string | null;
+            /** Hidden */
+            hidden: boolean;
+            /** Languages */
+            languages: string[];
+            state: components["schemas"]["RepositoryState"];
+            /** Reason */
+            reason: string | null;
+            counts: components["schemas"]["RepositoryCounts"] | null;
+            scan: components["schemas"]["ScanSummary"] | null;
+        };
+        /**
+         * RepositoryState
+         * @description Où en est un dépôt (écran 7), d'après sa dernière analyse.
+         * @enum {string}
+         */
+        RepositoryState: "not_scanned" | "running" | "to_update" | "up_to_date" | "inconclusive" | "no_dependencies" | "skipped";
+        /**
+         * RepositorySynthesis
+         * @description La synthèse de tous les dépôts listés, calculée par le serveur.
+         */
+        RepositorySynthesis: {
+            /** Repositories */
+            repositories: number;
+            /** Hidden */
+            hidden: number;
+            /** Archived */
+            archived: number;
+            /** Forks */
+            forks: number;
+            /** Empty */
+            empty: number;
+            /** Analyzed */
+            analyzed: number;
+            /** Running */
+            running: number;
+            /** Not Scanned */
+            not_scanned: number;
+            /** Skipped */
+            skipped: number;
+            /** To Update */
+            to_update: number;
+            /** Up To Date */
+            up_to_date: number;
+            /** Inconclusive */
+            inconclusive: number;
+            /** No Dependencies */
+            no_dependencies: number;
+            /** Vulnerabilities */
+            vulnerabilities: number;
+            /** Critical */
+            critical: number;
+            /** Vulnerable Repositories */
+            vulnerable_repositories: number;
+            /** Findings */
+            findings: {
+                [key: string]: number;
+            };
+            /** Severities */
+            severities: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * Restriction
+         * @description Une organisation dont le compte est membre, mais dont les dépôts ne sont pas tous
+         *     lisibles avec ce token (``Forge.restrictions``) : à dire, pas à cacher.
+         */
+        Restriction: {
+            /** Organization */
+            organization: string;
+            kind: components["schemas"]["RestrictionKind"];
+            /** Url */
+            url: string | null;
+        };
+        /**
+         * RestrictionKind
+         * @description Pourquoi les dépôts d'une organisation ne sont pas tous lisibles.
+         * @enum {string}
+         */
+        RestrictionKind: "app_access" | "sso";
+        /**
          * ScanDetail
          * @description Une analyse, avec son rapport une fois finie.
          */
@@ -978,6 +1359,9 @@ export interface components {
             /** Source */
             source: string;
             kind: components["schemas"]["SourceKind"];
+            repository: components["schemas"]["RepositoryRef"] | null;
+            /** Batch */
+            batch: string | null;
             status: components["schemas"]["TaskStatus"];
             options: components["schemas"]["ScanOptions"];
             /**
@@ -1068,6 +1452,9 @@ export interface components {
             /** Source */
             source: string;
             kind: components["schemas"]["SourceKind"];
+            repository: components["schemas"]["RepositoryRef"] | null;
+            /** Batch */
+            batch: string | null;
             status: components["schemas"]["TaskStatus"];
             options: components["schemas"]["ScanOptions"];
             /**
@@ -1113,7 +1500,7 @@ export interface components {
          * @description Ce qui est analysé.
          * @enum {string}
          */
-        SourceKind: "folder" | "file" | "upload";
+        SourceKind: "folder" | "file" | "upload" | "repository";
         /**
          * SummaryDocument
          * @description Le résumé, avec ``to_update`` (une propriété de ``Summary``).
@@ -2661,6 +3048,336 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_repositories: {
+        parameters: {
+            query?: {
+                reload?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepositoryList"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepositoryBatch"];
+                };
+            };
+            /** @description Requête invalide */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Introuvable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Impossible dans l'état actuel */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepositoryBatch"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Introuvable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepositoryBatch"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Introuvable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scan_repository: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RepositoryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScanSummary"];
+                };
+            };
+            /** @description Requête invalide */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Introuvable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Impossible dans l'état actuel */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description La forge ne répond pas */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };

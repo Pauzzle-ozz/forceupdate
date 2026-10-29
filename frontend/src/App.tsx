@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { FolderGit2, GitPullRequest, Settings } from 'lucide-react'
+import { GitPullRequest, Settings } from 'lucide-react'
 import { useState } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import { Choose } from '@/screens/Choose'
 import { AccountsPage } from '@/screens/accounts/AccountsPage'
 import { Home } from '@/screens/Home'
 import { ScanPage } from '@/screens/ScanPage'
+import { RepositoriesPage } from '@/screens/repositories/RepositoriesPage'
 import { PlanPage } from '@/screens/update/PlanPage'
 import { UpdatePage } from '@/screens/update/UpdatePage'
 import { AppShell } from '@/shell/AppShell'
@@ -32,20 +33,13 @@ export function AppRoutes() {
         <Route path="analyses/:id" element={<ScanPage />} />
         <Route path="analyses/:id/mise-a-jour" element={<UpdatePage />} />
         <Route path="plans/:id" element={<PlanPage />} />
-        <Route
-          path="depots"
-          element={
-            <ComingSoon title="Mes dépôts" icon={FolderGit2}>
-              <p>La liste des dépôts des comptes connectés, et leur analyse sans les cloner, arrivent bientôt.</p>
-            </ComingSoon>
-          }
-        />
+        <Route path="depots" element={<RepositoriesPage />} />
         <Route path="comptes" element={<AccountsPage />} />
         <Route
           path="pr"
           element={
             <ComingSoon title="PR et MR" icon={GitPullRequest}>
-              <p>Les pull requests arrivent avec la liste des dépôts.</p>
+              <p>Les pull requests des dépôts à mettre à jour arrivent bientôt.</p>
             </ComingSoon>
           }
         />

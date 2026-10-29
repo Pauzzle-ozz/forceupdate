@@ -17,9 +17,16 @@ Apps, E17). Les tokens n'expirent pas (case « Expire user access tokens » déc
 réglages de l'application) ; se déconnecter révoque le token obtenu par OAuth (``revoke``).
 
 **Client REST** : ``Authorization: Bearer``, version d'API fixée, pagination par l'en-tête
-``Link``, requêtes restantes (``rate_limit``), et une ``ForgeError`` au message clair pour 401,
-403 (limite atteinte, SSO, droits) et 404. Le token n'est jamais dans une URL, un message ni un
-journal.
+``Link``, requêtes restantes (``rate_limit``) et envoyées (``requests``), et une ``ForgeError``
+au message clair pour 401, 403 (limite atteinte, SSO, accès des applications restreint, droits),
+404 et 409 (dépôt vide). Le token n'est jamais dans une URL, un message ni un journal. Sans
+token, le client lit les dépôts publics (60 requêtes par heure au lieu de 5 000).
+
+**Dépôts** (E17) : ``list_repos`` (``/user/repos``, les siens, ceux où le compte collabore, ceux
+de ses organisations), ``repository`` (un dépôt par son nom, même d'un autre compte),
+``restrictions`` (les organisations qui restreignent l'accès des applications OAuth, ou exigent
+le SSO), ``tree`` (l'arborescence d'un commit, en un appel) et ``read_file`` (le contenu brut
+d'un fichier, ``application/vnd.github.raw`` : l'API « contents » en JSON s'arrête à 1 Mo).
 """
 
 import asyncio
@@ -33,7 +40,7 @@ import subprocess
 import time
 import urllib.parse
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
@@ -43,7 +50,9 @@ import httpx
 from forceupdate.forges.base import (
     Access,
     AccessDenied,
+    AppRestricted,
     ChangeRequest,
+    EmptyRepository,
     Forge,
     ForgeError,
     ForgeKind,
@@ -52,8 +61,12 @@ from forceupdate.forges.base import (
     RateLimit,
     RateLimited,
     Repository,
+    Restriction,
+    RestrictionKind,
+    SsoRequired,
     TokenRefused,
     Tree,
+    TreeEntry,
 )
 from forceupdate.net import HttpClient, NetworkError
 from forceupdate.net.http import Response
@@ -89,6 +102,13 @@ remplacent (une autre application, un fork)."""
 ENV_CLIENT_ID = "FORCEUPDATE_GITHUB_CLIENT_ID"
 ENV_CLIENT_SECRET = "FORCEUPDATE_GITHUB_CLIENT_SECRET"
 
+AFFILIATION = "owner,collaborator,organization_member"
+"""Les dépôts listés : les siens, ceux où le compte collabore, ceux de ses organisations."""
+
+APPLICATIONS_URL = f"{WEB_URL}/settings/applications"
+"""Les applications OAuth autorisées par le compte : c'est là qu'un membre demande à une
+organisation d'en autoriser une."""
+
 GH_TIMEOUT = 15.0
 """Délai maximal de ``gh auth token``, en secondes."""
 
@@ -96,6 +116,9 @@ MIN_INTERVAL = 1.0
 """Attente minimale entre deux demandes du device flow, en secondes, quoi que dise GitHub."""
 
 _JSON = "application/vnd.github+json"
+_RAW = "application/vnd.github.raw"
+_SHA_ONLY = "application/vnd.github.sha"
+_COMMIT = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 _LINK = re.compile(r'<([^>]+)>\s*;\s*rel="([^"]+)"')
 
 
@@ -129,13 +152,14 @@ class GitHub(Forge):
 
     kind: ClassVar[ForgeKind] = ForgeKind.GITHUB
 
-    def __init__(self, http: HttpClient, token: str, *, api_url: str = API_URL) -> None:
+    def __init__(self, http: HttpClient, token: str | None, *, api_url: str = API_URL) -> None:
         self.host = HOST
         self._http = http
         self._token = token
+        """``None`` : sans compte, les dépôts publics seulement."""
         self._api = api_url.rstrip("/")
         self.rate_limit: RateLimit | None = None
-        """Les requêtes restantes, d'après la dernière réponse."""
+        self.requests = 0
 
     def __repr__(self) -> str:
         return f"GitHub({self._api})"
@@ -146,11 +170,10 @@ class GitHub(Forge):
         """``method path`` (un chemin de l'API, ou une URL complète de l'API) ; lève une
         ``ForgeError`` pour une réponse d'erreur."""
         url = path if path.startswith(("https://", "http://")) else f"{self._api}{path}"
-        headers = {
-            "Authorization": f"Bearer {self._token}",
-            "Accept": accept,
-            "X-GitHub-Api-Version": API_VERSION,
-        }
+        headers = {"Accept": accept, "X-GitHub-Api-Version": API_VERSION}
+        if self._token is not None:
+            headers["Authorization"] = f"Bearer {self._token}"
+        self.requests += 1
         response = await self._http.request(method, url, headers=headers, json=json)
         self.rate_limit = _rate_limit(response.headers) or self.rate_limit
         if response.status_code >= 400:
@@ -194,13 +217,121 @@ class GitHub(Forge):
         )
 
     async def list_repos(self) -> list[Repository]:
-        raise NotImplementedError("les dépôts GitHub arrivent à E17")
+        """Les dépôts du compte, par nom. GitHub ne dit pas qu'un dépôt est vide : ceux de
+        taille nulle (``size``, en Ko, arrondie : un petit dépôt peut l'avoir aussi) sont
+        vérifiés un par un."""
+        listed: list[tuple[Repository, bool]] = []
+        async for item in self.paginate(f"/user/repos?affiliation={AFFILIATION}&sort=full_name"):
+            found = self._repository(item)
+            if found is not None:
+                listed.append(found)
+        return list(await asyncio.gather(*(self._check_empty(*item) for item in listed)))
+
+    async def repository(self, full_name: str) -> Repository:
+        found = self._repository(await self.get(f"/repos/{_quote(full_name)}"))
+        if found is None:
+            raise ForgeError(f"Réponse inattendue de GitHub pour /repos/{full_name}.")
+        return await self._check_empty(*found)
+
+    async def restrictions(self) -> list[Restriction]:
+        """Les organisations du compte (``/user/orgs``, portée ``read:org``) dont la liste des
+        dépôts est refusée : accès des applications OAuth restreint, ou SSO exigé. Sans
+        ``read:org``, GitHub ne dit rien : aucune."""
+        try:
+            organizations = [
+                item["login"]
+                async for item in self.paginate("/user/orgs")
+                if isinstance(item, dict) and isinstance(item.get("login"), str)
+            ]
+        except AccessDenied:
+            return []
+        found = await asyncio.gather(*(self._restriction(org) for org in organizations))
+        return [restriction for restriction in found if restriction is not None]
+
+    async def _restriction(self, organization: str) -> Restriction | None:
+        try:
+            await self.request("GET", f"/orgs/{_quote(organization)}/repos?per_page=1")
+        except AppRestricted:
+            return Restriction(
+                organization=organization, kind=RestrictionKind.APP_ACCESS, url=APPLICATIONS_URL
+            )
+        except SsoRequired as err:
+            return Restriction(organization=organization, kind=RestrictionKind.SSO, url=err.url)
+        except (AccessDenied, NotFound):
+            pass
+        return None
 
     async def tree(self, repo: Repository, ref: str | None = None) -> Tree:
-        raise NotImplementedError("l'arborescence d'un dépôt GitHub arrive à E17")
+        """L'arborescence du dernier commit de ``ref`` : le commit d'abord (les fichiers se
+        liront à ce commit, même si la branche avance entre-temps), puis son arbre en un
+        appel. Sans les sous-modules ni les liens symboliques ; GitHub la tronque au-delà de
+        100 000 entrées."""
+        branch = ref or repo.default_branch
+        if repo.empty or branch is None:
+            raise EmptyRepository(_EMPTY)
+        base = f"/repos/{_quote(repo.full_name)}"
+        response = await self.request("GET", f"{base}/commits/{_quote(branch)}", accept=_SHA_ONLY)
+        commit = response.content.decode("ascii", errors="replace").strip()
+        if not _COMMIT.fullmatch(commit):
+            raise ForgeError(f"Réponse inattendue de GitHub pour {base}/commits/{branch}.")
+        body = await self.get(f"{base}/git/trees/{commit}?recursive=1")
+        items = body.get("tree") if isinstance(body, dict) else None
+        if not isinstance(items, list):
+            raise ForgeError(f"Réponse inattendue de GitHub pour {base}/git/trees.")
+        entries = tuple(
+            TreeEntry(path=item["path"], size=_size(item.get("size")))
+            for item in items
+            if isinstance(item, dict)
+            and item.get("type") == "blob"
+            and item.get("mode") != "120000"  # lien symbolique
+            and isinstance(item.get("path"), str)
+        )
+        return Tree(commit=commit, entries=entries, truncated=bool(body.get("truncated")))
 
     async def read_file(self, repo: Repository, path: str, ref: str) -> bytes | None:
-        raise NotImplementedError("la lecture d'un fichier GitHub arrive à E17")
+        """Le contenu brut (``application/vnd.github.raw``), jusqu'à 100 Mo : en JSON,
+        l'API « contents » ne donne plus le contenu au-delà de 1 Mo."""
+        url = f"/repos/{_quote(repo.full_name)}/contents/{_quote(path)}?ref={_quote(ref)}"
+        try:
+            response = await self.request("GET", url, accept=_RAW)
+        except NotFound:
+            return None
+        return response.content
+
+    def _repository(self, item: Any) -> tuple[Repository, bool] | None:
+        """Un dépôt de l'API, et s'il est de taille nulle (peut-être vide)."""
+        if not isinstance(item, dict) or not isinstance(item.get("full_name"), str):
+            return None
+        full_name: str = item["full_name"]
+        permissions = item.get("permissions")
+        language = item.get("language")
+        repo = Repository(
+            forge=ForgeKind.GITHUB,
+            host=self.host,
+            full_name=full_name,
+            default_branch=item.get("default_branch") or None,
+            private=bool(item.get("private")),
+            archived=bool(item.get("archived")),
+            fork=bool(item.get("fork")),
+            can_push=isinstance(permissions, dict) and bool(permissions.get("push")),
+            url=item.get("html_url") or f"{WEB_URL}/{full_name}",
+            clone_url=item.get("clone_url") or f"{WEB_URL}/{full_name}.git",
+            language=language if isinstance(language, str) else None,
+            pushed_at=_date(item.get("pushed_at")),
+        )
+        return repo, item.get("size") == 0
+
+    async def _check_empty(self, repo: Repository, maybe_empty: bool) -> Repository:
+        """Le dépôt, marqué vide si GitHub le dit (409 sur ses commits)."""
+        if not maybe_empty:
+            return repo
+        try:
+            await self.request("GET", f"/repos/{_quote(repo.full_name)}/commits?per_page=1")
+        except EmptyRepository:
+            return replace(repo, empty=True, default_branch=None)
+        except (AccessDenied, NotFound):
+            pass
+        return repo
 
     async def clone(self, repo: Repository, destination: Path) -> None:
         raise NotImplementedError("le clone d'un dépôt GitHub arrive à E18")
@@ -317,10 +448,17 @@ def _error(response: Response, path: str) -> ForgeError:
     if status == 403:
         sso = headers.get("x-github-sso", "")
         if sso.startswith("required"):
-            url = sso.partition("url=")[2].strip()
+            url = sso.partition("url=")[2].strip() or None
             where = f" : {url}" if url else ""
-            return AccessDenied(
-                f"Cette organisation exige d'autoriser le token pour son SSO (SAML){where}."
+            return SsoRequired(
+                f"Cette organisation exige d'autoriser le token pour son SSO (SAML){where}.",
+                url=url,
+            )
+        if "oauth app access restrictions" in message.lower():
+            return AppRestricted(
+                "Cette organisation restreint l'accès des applications OAuth : ses dépôts "
+                "privés ne sont lisibles qu'après l'accord d'un de ses propriétaires "
+                f"({APPLICATIONS_URL})."
             )
         return AccessDenied(f"GitHub refuse l'accès (403) à {_path(path)} : {message}")
     if status == 404:
@@ -328,7 +466,30 @@ def _error(response: Response, path: str) -> ForgeError:
             f"Introuvable sur GitHub (404) : {_path(path)} n'existe pas, ou le token n'y a "
             "pas accès."
         )
+    if status == 409 and "empty" in message.lower():
+        return EmptyRepository(_EMPTY)
     return ForgeError(f"GitHub refuse la requête (HTTP {status}) sur {_path(path)} : {message}")
+
+
+_EMPTY = "Dépôt vide : aucun commit, rien à analyser."
+
+
+def _quote(value: str) -> str:
+    """Un nom, un chemin ou une branche dans un chemin d'URL (les ``/`` restent)."""
+    return urllib.parse.quote(value, safe="/")
+
+
+def _size(value: Any) -> int:
+    return value if isinstance(value, int) and value >= 0 else 0
+
+
+def _date(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def _message(response: Response) -> str:

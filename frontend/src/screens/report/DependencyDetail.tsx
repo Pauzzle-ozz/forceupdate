@@ -32,7 +32,8 @@ export function DependencyDetail({
 }: {
   rows: Row[]
   report: Report
-  scanId: string
+  /** L'analyse dont on choisit la mise à jour ; `null` : pas de mise à jour ici (un dépôt). */
+  scanId: string | null
   onClose: () => void
 }) {
   const open = rows.length > 0
@@ -43,7 +44,7 @@ export function DependencyDetail({
   )
 }
 
-function Detail({ rows, report, scanId, onClose }: { rows: Row[]; report: Report; scanId: string; onClose: () => void }) {
+function Detail({ rows, report, scanId, onClose }: { rows: Row[]; report: Report; scanId: string | null; onClose: () => void }) {
   const first = rows[0]
   const { dependency } = first
   const findings = uniqueFindings(rows)
@@ -168,7 +169,7 @@ function Detail({ rows, report, scanId, onClose }: { rows: Row[]; report: Report
 
       <SheetFooter>
         <Button onClick={onClose}>Fermer</Button>
-        {update && update.options.length > 0 && (
+        {scanId !== null && update && update.options.length > 0 && (
           <Link
             to={`/analyses/${scanId}/mise-a-jour?paquet=${encodeURIComponent(update.id)}`}
             className={buttonVariants({ variant: 'primary' })}

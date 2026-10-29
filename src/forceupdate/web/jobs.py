@@ -8,6 +8,10 @@ lockfile plusieurs minutes.
   un ``HttpClient`` et un ``Cache`` partagés par toutes : un paquet demandé par une analyse est
   en cache pour la suivante, et les limites par hôte valent pour toutes. Une analyse est une
   tâche de cette boucle : l'annuler l'interrompt à sa prochaine attente (une requête).
+- **Les dépôts des forges** (E17) passent par la même boucle : l'arborescence et les fichiers
+  de dépendances sont lus par l'API de la forge (``sources.forge.fetch``), avec le client de
+  cette boucle, puis le dépôt est analysé comme un dossier. Les analyses d'un même lot
+  attendent leur tour (``RepositoryTarget.slots`` : ``concurrency`` dépôts à la fois).
 - **Les mises à jour** (``update.local.apply`` : écriture, puis outils de lockfile) tournent
   dans un thread à part, une à la fois : deux outils ne réécrivent jamais les mêmes fichiers en
   même temps. Une mise à jour ne s'annule pas : interrompre un outil à mi-chemin laisserait des
@@ -17,7 +21,8 @@ lockfile plusieurs minutes.
   leur résultat par ``call_soon_threadsafe``. Les routes le lisent donc sans verrou.
 
 Les analyses et les plans restent en mémoire, le temps de la session (les ``MAX_SCANS`` plus
-récentes) ; seuls les derniers chemins analysés sont gardés sur le disque (``Recent``).
+récentes, plus la dernière de chaque dépôt) ; seuls les derniers chemins analysés sont gardés
+sur le disque (``Recent``).
 """
 
 import asyncio
@@ -27,6 +32,7 @@ import json
 import logging
 import secrets
 import shutil
+import tempfile
 import threading
 from collections.abc import AsyncIterator, Callable, Coroutine
 from dataclasses import dataclass, field
@@ -35,9 +41,13 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 from forceupdate import engine
+from forceupdate.forges.base import Forge, ForgeError, Repository, TokenRefused
 from forceupdate.models import Event, Report, ScanOptions, to_dict
-from forceupdate.net import Cache, HttpClient
+from forceupdate.net import Cache, HttpClient, NetworkError
 from forceupdate.report import json as json_report
+from forceupdate.sources import forge as forge_source
+from forceupdate.sources.base import Source, SourceError
+from forceupdate.sources.forge import ForgeSource
 from forceupdate.sources.local import LocalSource
 from forceupdate.update import local, writers
 from forceupdate.update.local import Prepared
@@ -111,15 +121,34 @@ class Progress:
 
 
 @dataclass(eq=False, kw_only=True)
+class RepositoryTarget:
+    """Un dépôt à analyser, et ce qu'il faut pour le lire. Les analyses d'un même lot partagent
+    leur ``forge`` (un client créé avec celui du ``Worker`` : ses requêtes partent de la boucle
+    des analyses) et leurs ``slots``."""
+
+    forge: Forge
+    repo: Repository
+    slots: asyncio.Semaphore
+    """Les dépôts lus et analysés en même temps (``concurrency``)."""
+    refused: Callable[[str], object] | None = None
+    """Appelé (dans un thread) si la forge refuse le token : le compte le dira
+    (``Accounts.refused``)."""
+
+
+@dataclass(eq=False, kw_only=True)
 class Scan:
     """Une analyse lancée par l'interface."""
 
     id: str
-    source: LocalSource
+    source: Source | None
+    """``None`` pour un dépôt tant que son arborescence n'est pas lue."""
     kind: SourceKind
     label: str
-    """Ce qu'on montre : le chemin choisi, ou le nom du fichier envoyé."""
+    """Ce qu'on montre : le chemin choisi, le nom du fichier envoyé, ou ``owner/nom``."""
     options: ScanOptions
+    repository: Repository | None = None
+    batch: str | None = None
+    """L'analyse groupée dont elle fait partie."""
     started_at: datetime = field(default_factory=_now)
     status: TaskStatus = TaskStatus.RUNNING
     finished_at: datetime | None = None
@@ -128,13 +157,36 @@ class Scan:
     progress: Progress = field(default_factory=Progress)
     future: concurrent.futures.Future[Report] | None = None
     upload_dir: Path | None = None
-    """Le dossier temporaire d'un fichier envoyé, effacé avec l'analyse."""
+    """Le dossier temporaire d'un fichier envoyé, ou des fichiers téléchargés d'un dépôt,
+    effacé avec l'analyse."""
+
+    @property
+    def local(self) -> LocalSource | None:
+        """La source sur le disque de la personne (dossier, fichier, fichier envoyé) ; ``None``
+        pour un dépôt."""
+        return self.source if isinstance(self.source, LocalSource) else None
+
+    def repository_ref(self) -> schemas.RepositoryRef | None:
+        repo = self.repository
+        if repo is None:
+            return None
+        source = self.source if isinstance(self.source, ForgeSource) else None
+        return schemas.RepositoryRef(
+            forge=repo.forge,
+            host=repo.host,
+            full_name=repo.full_name,
+            url=repo.url,
+            commit=source.tree.commit if source is not None else None,
+            truncated=source.truncated if source is not None else False,
+        )
 
     def summary(self) -> schemas.ScanSummary:
         return schemas.ScanSummary(
             id=self.id,
             source=self.label,
             kind=self.kind,
+            repository=self.repository_ref(),
+            batch=self.batch,
             status=self.status,
             options=self.options,
             started_at=self.started_at,
@@ -236,13 +288,40 @@ class Worker:
         return self.submit(coroutine).result()
 
     async def analyze(
-        self, source: LocalSource, options: ScanOptions, on_event: Callable[[Event], None]
+        self, source: Source, options: ScanOptions, on_event: Callable[[Event], None]
     ) -> Report:
         """``engine.analyze``, avec le client et le cache partagés. Une analyse hors ligne a un
         client à elle (qui n'envoie rien), une analyse sans cache un cache désactivé."""
         http = None if options.offline else self.http
         cache = self.cache if options.cache else None
         return await engine.analyze(source, options, on_event=on_event, http=http, cache=cache)
+
+    async def analyze_repository(
+        self,
+        target: RepositoryTarget,
+        options: ScanOptions,
+        on_event: Callable[[Event], None],
+        destination: Path,
+        on_source: Callable[[ForgeSource], None],
+    ) -> Report:
+        """Lit le dépôt par l'API de sa forge (arborescence, fichiers de dépendances, dans
+        ``destination``), puis l'analyse comme un dossier ; ``on_source`` reçoit la source dès
+        qu'elle est prête. Attend son tour (``target.slots``)."""
+        async with target.slots:
+            try:
+                source = await forge_source.fetch(
+                    target.forge,
+                    target.repo,
+                    destination,
+                    include_tests=options.include_tests,
+                    on_event=on_event,
+                )
+            except TokenRefused as err:
+                if target.refused is not None:
+                    await asyncio.to_thread(target.refused, str(err))
+                raise
+            on_source(source)
+            return await self.analyze(source, options, on_event)
 
     def stop(self) -> None:
         """Annule les analyses en cours, ferme le client et le cache, arrête la boucle."""
@@ -296,13 +375,13 @@ class Jobs:
         self.scans: dict[str, Scan] = {}
         self.plans: dict[str, Plan] = {}
         self._loop = asyncio.get_running_loop()
-        self._worker = Worker(cache or Cache.default())
+        self.worker = Worker(cache or Cache.default())
         self._updates = concurrent.futures.ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="forceupdate-updates"
         )
 
     def start(self) -> None:
-        self._worker.start()
+        self.worker.start()
 
     async def close(self) -> None:
         """Annule les analyses en cours, attend la fin d'une mise à jour en cours (ses outils
@@ -312,7 +391,7 @@ class Jobs:
         if any(plan.status is TaskStatus.RUNNING for plan in self.plans.values()):
             logger.warning("mise à jour en cours : attente de sa fin avant de s'arrêter")
         await asyncio.to_thread(self._updates.shutdown)
-        await asyncio.to_thread(self._worker.stop)
+        await asyncio.to_thread(self.worker.stop)
         for scan in self.scans.values():
             _remove(scan.upload_dir)
 
@@ -342,9 +421,49 @@ class Jobs:
         def on_event(event: Event) -> None:
             self._post(scan.progress.add, event)
 
-        scan.future = self._worker.submit(self._worker.analyze(source, options, on_event))
+        scan.future = self.worker.submit(self.worker.analyze(source, options, on_event))
         scan.future.add_done_callback(lambda future: self._post(self._scanned, scan, future))
         return scan
+
+    def start_repository_scan(
+        self, target: RepositoryTarget, options: ScanOptions, *, batch: str | None = None
+    ) -> Scan:
+        """Lance l'analyse du dépôt ``target.repo`` : ses fichiers de dépendances sont
+        téléchargés dans un dossier temporaire, effacé avec l'analyse."""
+        directory = Path(tempfile.mkdtemp(prefix="forceupdate-depot-"))
+        scan = Scan(
+            id=_new_id(),
+            source=None,
+            kind=SourceKind.REPOSITORY,
+            label=target.repo.full_name,
+            options=options,
+            repository=target.repo,
+            batch=batch,
+            upload_dir=directory,
+        )
+        self.scans[scan.id] = scan
+        self._forget_old_scans()
+
+        def on_event(event: Event) -> None:
+            self._post(scan.progress.add, event)
+
+        def on_source(source: ForgeSource) -> None:
+            self._post(setattr, scan, "source", source)
+
+        scan.future = self.worker.submit(
+            self.worker.analyze_repository(target, options, on_event, directory, on_source)
+        )
+        scan.future.add_done_callback(lambda future: self._post(self._scanned, scan, future))
+        return scan
+
+    def latest(self, repo: Repository) -> Scan | None:
+        """La dernière analyse du dépôt ``repo``, s'il y en a une."""
+        found = [
+            scan
+            for scan in self.scans.values()
+            if scan.repository is not None and _same(scan.repository, repo)
+        ]
+        return max(found, key=lambda scan: scan.started_at, default=None)
 
     def cancel(self, scan: Scan) -> bool:
         """Annule ``scan`` si elle tourne encore ; faux si elle était déjà finie."""
@@ -362,6 +481,11 @@ class Jobs:
             self._end_scan(scan, TaskStatus.CANCELLED)
             return
         error = future.exception()
+        if isinstance(error, ForgeError | NetworkError | SourceError):
+            # Un refus de la forge, un dépôt vide, le réseau : le message est fait pour être lu.
+            message = str(error).rstrip(".")
+            self._end_scan(scan, TaskStatus.FAILED, f"{message[:1].upper()}{message[1:]}.")
+            return
         if error is not None:
             logger.error("analyse de %s en échec", scan.label, exc_info=error)
             self._end_scan(scan, TaskStatus.FAILED, f"erreur inattendue : {error!r}")
@@ -379,8 +503,19 @@ class Jobs:
         scan.progress.finish()
 
     def _forget_old_scans(self) -> None:
-        finished = [s for s in self.scans.values() if s.status is not TaskStatus.RUNNING]
-        excess = len(self.scans) - MAX_SCANS
+        """Oublie les analyses finies les plus anciennes au-delà de ``MAX_SCANS``, sauf la
+        dernière de chaque dépôt (l'écran des dépôts montre son rapport)."""
+        kept = {
+            id(latest)
+            for scan in self.scans.values()
+            if scan.repository is not None and (latest := self.latest(scan.repository))
+        }
+        finished = [
+            s
+            for s in self.scans.values()
+            if s.status is not TaskStatus.RUNNING and id(s) not in kept
+        ]
+        excess = len(self.scans) - len(kept) - MAX_SCANS
         for scan in sorted(finished, key=lambda s: s.started_at)[: max(excess, 0)]:
             if any(p.scan is scan and p.status is TaskStatus.RUNNING for p in self.plans.values()):
                 continue
@@ -412,13 +547,13 @@ class Jobs:
         """Applique ``plan`` dans le thread des mises à jour (après celles qui attendent)."""
         plan.status = TaskStatus.RUNNING
         scan = plan.scan
-        assert scan.report is not None
+        assert scan.report is not None and scan.local is not None
 
         def on_event(event: Event) -> None:
             self._post(plan.progress.add, event)
 
         future = self._updates.submit(
-            local.apply, scan.source, scan.report, plan.prepared, on_event=on_event
+            local.apply, scan.local, scan.report, plan.prepared, on_event=on_event
         )
         future.add_done_callback(lambda done: self._post(self._applied, plan, done))
 
@@ -443,6 +578,15 @@ class Jobs:
         thread."""
         with contextlib.suppress(RuntimeError):  # boucle du serveur déjà fermée
             self._loop.call_soon_threadsafe(callback, *args)
+
+
+def _same(one: Repository, other: Repository) -> bool:
+    """Le même dépôt (GitHub ne distingue pas les majuscules dans les noms)."""
+    return (one.forge, one.host, one.full_name.lower()) == (
+        other.forge,
+        other.host,
+        other.full_name.lower(),
+    )
 
 
 def _remove(directory: Path | None) -> None:

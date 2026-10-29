@@ -249,6 +249,7 @@ def test_the_forge_interface_is_fixed() -> None:
     assert {name for name in Forge.__abstractmethods__} == {
         "whoami",
         "list_repos",
+        "repository",
         "tree",
         "read_file",
         "clone",
@@ -283,9 +284,6 @@ def test_what_github_does_not_do_yet_says_when_it_comes(tmp_path: Path) -> None:
         forge = GitHub(http, TOKEN)
         found = []
         for call in (
-            forge.list_repos(),
-            forge.tree(repo),
-            forge.read_file(repo, "package.json", "abc"),
             forge.clone(repo, tmp_path),
             forge.push_branch(repo, tmp_path, "forceupdate/dependencies"),
             forge.find_open_request(repo, "forceupdate/dependencies"),
@@ -298,8 +296,8 @@ def test_what_github_does_not_do_yet_says_when_it_comes(tmp_path: Path) -> None:
         return found
 
     found = run(calls)
-    assert len(found) == 7
-    assert all(" E17" in text or " E18" in text for text in found)
+    assert len(found) == 4
+    assert all(" E18" in text for text in found)
 
 
 def test_the_forges_and_their_client() -> None:

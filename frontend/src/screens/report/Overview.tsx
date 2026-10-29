@@ -14,7 +14,7 @@ export function Overview({ report }: { report: Report }) {
       <h2 id="projets-titre" className="sr-only">
         Langages et projets
       </h2>
-      <div className="grid gap-4 nav:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 nav:grid-cols-3">
         <Languages report={report} />
         <Projects projects={report.projects} />
       </div>
@@ -81,7 +81,7 @@ function Projects({ projects }: { projects: Project[] }) {
           <ul className="flex flex-col text-sm">
             {projects.map((project) => (
               <li key={project.path} className="flex flex-wrap items-center gap-2 border-t border-border py-2">
-                <span className="font-mono font-semibold">{project.path}</span>
+                <span className="font-mono font-semibold break-all">{project.path}</span>
                 {project.ecosystems.map((ecosystem) => (
                   <Badge key={ecosystem}>{ecosystem}</Badge>
                 ))}
@@ -101,11 +101,11 @@ function Projects({ projects }: { projects: Project[] }) {
       {projects.map((project, index) => (
         <dl
           key={project.path}
-          className={cn('grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm', index > 0 && 'border-t border-border pt-3')}
+          className={cn('grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm', index > 0 && 'border-t border-border pt-3')}
         >
           <dt className="text-fg-muted">Dossier</dt>
           <dd>
-            <span className="font-mono">{project.path}</span>
+            <span className="font-mono break-all">{project.path}</span>
             {project.path === '.' && <span className="text-fg-muted"> (la racine)</span>}
           </dd>
           <dt className="text-fg-muted">Manifestes</dt>

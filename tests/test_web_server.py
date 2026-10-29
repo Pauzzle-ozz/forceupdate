@@ -168,6 +168,11 @@ def test_the_schema_describes_every_route() -> None:
         ("POST", "/api/accounts/{forge}/gh"): "connect_gh",
         ("POST", "/api/accounts/{forge}/verify"): "verify_account",
         ("DELETE", "/api/accounts/{forge}"): "disconnect",
+        ("GET", "/api/repositories"): "list_repositories",
+        ("POST", "/api/repositories/batches"): "start_batch",
+        ("GET", "/api/repositories/batches/{batch_id}"): "get_batch",
+        ("DELETE", "/api/repositories/batches/{batch_id}"): "cancel_batch",
+        ("POST", "/api/repositories/scans"): "scan_repository",
     }
 
 

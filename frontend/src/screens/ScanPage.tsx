@@ -9,7 +9,7 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useScan } from '@/hooks/useScan'
-import { rescanRequest, useStartScan } from '@/hooks/useScanActions'
+import { useRescan } from '@/hooks/useScanActions'
 import { basename, fr } from '@/lib/format'
 import { Breadcrumb, Container, useDocumentTitle } from '@/shell/Page'
 import { ScanProgress } from './ScanProgress'
@@ -116,15 +116,16 @@ export function ScanError({ error, retry, title = 'Rapport' }: { error: Error; r
 /** Une analyse échouée ou annulée : ce qui s'est passé, et la relancer. */
 function Unfinished({ scan }: { scan: ScanDetail }) {
   const upload = scan.kind === 'upload'
-  const name = upload ? scan.source : basename(scan.source)
+  const repository = scan.repository
+  const name = upload || repository ? scan.source : basename(scan.source)
   useDocumentTitle(`Analyse de ${name}`)
-  const start = useStartScan()
+  const start = useRescan()
   const relaunch = upload ? (
     <Link to="/choisir?mode=fichier" className={buttonVariants({ variant: 'primary', size: 'sm' })}>
       Redéposer le fichier
     </Link>
   ) : (
-    <Button variant="primary" size="sm" onClick={() => start.mutate(rescanRequest(scan))} disabled={start.isPending}>
+    <Button variant="primary" size="sm" onClick={() => start.mutate({ scan })} disabled={start.isPending}>
       <RefreshCw aria-hidden="true" />
       Relancer l'analyse
     </Button>
@@ -132,7 +133,9 @@ function Unfinished({ scan }: { scan: ScanDetail }) {
 
   return (
     <Container narrow>
-      <Breadcrumb items={[{ label: 'Analyser', to: '/' }, { label: name, mono: true }]} />
+      <Breadcrumb
+        items={[repository ? { label: 'Mes dépôts', to: '/depots' } : { label: 'Analyser', to: '/' }, { label: name, mono: true }]}
+      />
       {scan.status === 'cancelled' ? (
         <EmptyState icon={CircleStop} level="h1" title="Analyse annulée" actions={relaunch}>
           <p>{fr(`Analyse de ${name} arrêtée avant la fin. Aucun rapport partiel n'est gardé.`)}</p>
@@ -150,14 +153,22 @@ function Unfinished({ scan }: { scan: ScanDetail }) {
               <p className="text-fg-muted">
                 {upload
                   ? 'Vérifier le fichier, puis le déposer de nouveau.'
-                  : "Vérifier que le dossier existe et qu'il est lisible, puis relancer."}
+                  : repository
+                    ? "Vérifier que le compte connecté y a toujours accès, puis relancer."
+                    : "Vérifier que le dossier existe et qu'il est lisible, puis relancer."}
               </p>
             </AlertDescription>
             <AlertActions>
               {relaunch}
-              <Link to="/choisir?mode=dossier" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
-                Choisir un autre dossier
-              </Link>
+              {repository ? (
+                <Link to="/depots" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
+                  Revenir aux dépôts
+                </Link>
+              ) : (
+                <Link to="/choisir?mode=dossier" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
+                  Choisir un autre dossier
+                </Link>
+              )}
             </AlertActions>
           </Alert>
         </>

@@ -294,6 +294,39 @@ mettre à jour. Page à part : [pages/depots.md](pages/depots.md). Maquette :
 | Hors ligne | La liste du dernier chargement, datée ; analyses et PR en attente du réseau |
 | Non concluant | Compteur et filtre « Non concluants », alerte « à relancer » |
 
+**Fait à E17** (GitHub ; `frontend/src/screens/repositories/`) :
+
+- adresse `/depots` ; un dépôt ouvre son rapport (`/analyses/{id}`, écran 4 : fil d'Ariane
+  « Mes dépôts », commit lu, « Voir sur GitHub », alerte d'arborescence tronquée ; pas de
+  « Mettre à jour » avant les PR) ; l'écran 3 a une étape « Téléchargement des fichiers de
+  dépendances » ;
+- en tête : « Comptes », « Recharger la liste », « Analyser tous les dépôts » (ceux qui ne sont
+  pas masqués) ; les comptes en pastilles ; les alertes : token refusé (« Reconnecter GitHub »),
+  liste non rechargée (datée), organisation restreinte (« Demander l'accès sur GitHub ») ou
+  exigeant le SSO, dépôts non concluants (« Relancer ces N dépôts », « Les voir ») ;
+- synthèse du serveur : Dépôts (analysés, sautés), Failles (dont critiques, dans combien de
+  dépôts ; « analyse en cours » tant qu'un dépôt tourne), À mettre à jour, À jour, Non
+  concluants ; les quatre derniers filtrent le tableau ; requêtes d'API restantes (en
+  avertissement sous 10 %) ;
+- analyse groupée : sa carte (dépôts finis sur total, lame, 4 à la fois, requêtes utilisées,
+  « Annuler »), puis son issue (terminée, annulée, échouées, vides sautés) ;
+- tableau : case, dépôt (`owner/` atténué, cadenas « privé », lien vers la forge, badges
+  archivé, fork, vide), forge, langages (trois au plus), dernier push (relatif, triable),
+  analyse (chiffres en badges, « lecture seule », progression du téléchargement puis des
+  vérifications, « en attente de son tour » sans lame, non concluant et sa raison, aucun
+  fichier de dépendances, pas encore analysé, sauté et pourquoi) ; filtres nom,
+  propriétaire, état (dont « Avec des failles »), forge s'il y en a plusieurs ; masqués
+  comptés, « Les afficher » ; cartes sous 768 px ;
+- barre de sélection : « N dépôts sélectionnés · M mises à jour cochées par défaut », « Tout
+  désélectionner », « Analyser ces N dépôts » (principale, en attendant les PR de E18) ;
+- « Analyser un autre dépôt » : un dépôt public, par `owner/nom` ou son adresse (aussi sans
+  compte connecté) ;
+- états : chargement (squelettes), erreur (« Dépôts indisponibles », « Réessayer »), sans
+  compte (« Connecter un compte », et le champ du dépôt public), compte sans dépôt, hors
+  ligne (bandeau, analyses désactivées avec la raison), filtres sans résultat.
+- **Pas encore** : la colonne « PR / MR », le compteur des PR ouvertes et « Préparer N PR »
+  (E18) ; GitLab et Bitbucket (E19, E20).
+
 ## 8. PR / MR (E18, E19, E20)
 
 **But** : envoyer les mises à jour en pull requests (merge requests sur GitLab), après un
@@ -350,7 +383,7 @@ Relevé en concevant les écrans ; ajouté au plan (E13 ne touche pas à l'API) 
 | Dire si un chemin récent est un dossier ou un fichier (`recent` : `{path, kind}`), pour son icône | 1, 2 | fait (E14) |
 | La répartition par gravité des failles (« 13 élevées · 14 moyennes ») et de tous les constats (la barre), sans recompter dans le navigateur (`summary.vulnerabilities`, `summary.severities`) | 4 | fait (E14) |
 | Comptes : lister, connecter (OAuth, device flow, token, `gh`), déconnecter, droits | 6 | fait (E16) |
-| Dépôts : drapeaux (archivé, fork, vide, privé, droit de push), organisations qui restreignent l'accès, requêtes restantes ; analyses groupées avec progression par dépôt et annulation ; **synthèse multi-dépôts calculée par le serveur** | 7 | E17 |
+| Dépôts : drapeaux (archivé, fork, vide, privé, droit de push), organisations qui restreignent l'accès, requêtes restantes ; analyses groupées avec progression par dépôt et annulation ; **synthèse multi-dépôts calculée par le serveur** | 7 | fait (E17) ; les PR ouvertes : E18 |
 | PR : récapitulatif avant envoi (par dépôt : PR existante, sélection, lockfiles), envoi suivi, liens | 8 | E18 |
 | Réglages et vidage du cache | 9 | E29 (déjà prévu) |
 

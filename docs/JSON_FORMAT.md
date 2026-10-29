@@ -536,9 +536,16 @@ curl -H "Authorization: Bearer $JETON" "http://127.0.0.1:$PORT/api/scans"
 | `POST /api/accounts/{forge}/gh` | | `201` [compte](#compte) de GitHub CLI (`gh auth token`) |
 | `POST /api/accounts/{forge}/verify` | | `200` [compte](#compte), droits relus auprès de la forge |
 | `DELETE /api/accounts/{forge}` | | `200` [déconnexion](#déconnexion) |
+| `GET /api/repositories?reload=` | | `200` [liste des dépôts](#liste-des-dépôts) des comptes connectés, avec la synthèse ; `reload=true` la redemande aux forges |
+| `POST /api/repositories/batches` | [demande d'analyse groupée](#demande-danalyse-groupée) | `202` [analyse groupée](#analyse-groupée), lancée en tâche de fond |
+| `GET /api/repositories/batches/{id}` | | `200` [analyse groupée](#analyse-groupée) |
+| `DELETE /api/repositories/batches/{id}` | | `200` [analyse groupée](#analyse-groupée) : ses analyses pas finies sont annulées |
+| `POST /api/repositories/scans` | `{"repository": "owner/nom ou adresse", …}` | `202` [analyse](#analyse) d'un dépôt, même d'un autre compte s'il est public |
 
 `{forge}` : `github`, `gitlab` ou `bitbucket` (sinon `422`) ; GitLab et Bitbucket
-répondent `409` tant que leur connexion n'est pas prête (E19, E20).
+répondent `409` tant que leur connexion n'est pas prête (E19, E20). Un plan
+(`POST /api/updates/plan`) sur l'analyse d'un dépôt est refusé (`409`) : un dépôt se mettra à
+jour par une PR (E18).
 
 Une erreur rend `{"detail": "…"}`, une phrase en français : `400` (requête invalide :
 chemin relatif, sélection qui ne correspond pas au rapport, nom de fichier refusé ; token
@@ -566,8 +573,10 @@ disque.
 | Champ | Type | Sens |
 |---|---|---|
 | `id` | chaîne | identifiant de l'analyse |
-| `source` | chaîne | le chemin analysé ; pour un fichier envoyé, son nom |
-| `kind` | chaîne | `folder`, `file`, ou `upload` (un fichier envoyé) |
+| `source` | chaîne | le chemin analysé ; pour un fichier envoyé, son nom ; pour un dépôt, `owner/nom` |
+| `kind` | chaîne | `folder`, `file`, `upload` (un fichier envoyé) ou `repository` (un [dépôt d'une forge](#dépôts-des-forges)) |
+| `repository` | objet ou `null` | un dépôt : `{"forge", "host", "full_name", "url", "commit", "truncated"}` ; `commit` est celui lu (la branche par défaut au début de l'analyse ; `null` avant que l'arborescence soit lue) ; `truncated` : la forge n'a pas rendu toute l'arborescence (GitHub, plus de 100 000 entrées), l'analyse est partielle |
+| `batch` | chaîne ou `null` | l'[analyse groupée](#analyse-groupée) dont elle fait partie |
 | `status` | chaîne | `running`, puis `done`, `failed` ou `cancelled` |
 | `options` | [options](#options) | |
 | `started_at`, `finished_at` | dates | `finished_at` : `null` tant qu'elle tourne |
@@ -668,7 +677,9 @@ data: {"status":"done","error":null}
 | `ecosystem` | chaîne ou `null` | `package_checked` : l'écosystème du paquet |
 | `name` | chaîne ou `null` | `package_checked` : le paquet ; `regenerating` : le lockfile |
 
-Une analyse : `reading`, `projects_found` (`total` projets), `checking` (`total`
+Une analyse : `downloading` (un dépôt seulement : ses fichiers de dépendances téléchargés,
+`done` sur `total` ; le total grandit quand un fichier en désigne d'autres), `reading`,
+`projects_found` (`total` projets), `checking` (`total`
 vérifications : une par paquet, plus une pour les failles), `package_checked` et
 `vulnerabilities_checked` (`done` sur `total`), `finished`. L'application d'un plan :
 `written` (`total` fichiers réécrits), `regenerating` (un par outil lancé : `done`
@@ -809,3 +820,116 @@ Lancée par cette page, la navigation vient du serveur lui-même.
 
 GitHub ne revient que vers `127.0.0.1` (l'adresse enregistrée, sur n'importe quel port) :
 `POST …/oauth` est refusé (`409`) si l'interface est ouverte par `localhost`.
+
+## Dépôts des forges
+
+Les dépôts des comptes connectés (E17), analysés **sans les cloner** : l'arborescence du
+dernier commit de la branche par défaut vient de l'API de la forge, puis seuls les fichiers que
+les parseurs lisent sont téléchargés (manifestes, lockfiles, et ce qu'ils désignent : les `-r`
+et `-c` d'un `requirements.txt`, le `pyproject.toml` racine d'un workspace uv, un
+`pnpm-workspace.yaml` parent). Le rapport est ensuite celui d'un dossier : même JSON, `source`
+vaut `owner/nom`. Le token ne quitte pas le serveur.
+
+La liste est demandée aux forges au premier `GET /api/repositories`, puis gardée le temps de la
+session (`reload=true` la redemande ; un compte reconnecté la recharge). Les dépôts archivés,
+les forks et les dépôts vides sont listés mais **masqués et sautés par défaut** (`hidden`) ; un
+dépôt vide n'est jamais analysé.
+
+### Liste des dépôts
+
+| Champ | Type | Sens |
+|---|---|---|
+| `accounts` | liste de [comptes et leurs dépôts](#compte-et-ses-dépôts) | un par compte connecté |
+| `repositories` | liste de [dépôts](#dépôt) | par forge, puis par nom |
+| `synthesis` | [synthèse](#synthèse-multi-dépôts) | les chiffres de tous les dépôts, calculés par le serveur |
+| `batch` | [analyse groupée](#analyse-groupée) ou `null` | la dernière |
+
+### Compte et ses dépôts
+
+| Champ | Type | Sens |
+|---|---|---|
+| `forge`, `host`, `login`, `access` | | comme dans le [compte](#compte) |
+| `problem` | chaîne ou `null` | la forge refuse le token (au chargement de la liste, ou pendant une analyse) |
+| `listed_at` | date ou `null` | le dernier chargement réussi de la liste |
+| `error` | chaîne ou `null` | pourquoi le dernier chargement a échoué ; la liste d'avant reste |
+| `repositories` | entier | |
+| `restrictions` | liste de `{"organization", "kind", "url"}` | les organisations du compte dont les dépôts ne sont pas tous lisibles : `kind` vaut `app_access` (elle restreint l'accès des applications OAuth : ses dépôts privés n'apparaissent qu'après l'accord d'un propriétaire ; `url` : où le demander) ou `sso` (elle exige d'autoriser le token pour son SSO ; `url` : où le faire). GitHub : `GET /user/orgs` (portée `read:org`), puis un `403` sur la liste de ses dépôts. Sans `read:org`, rien n'est su |
+| `rate_limit` | `{"limit", "remaining", "reset_at"}` ou `null` | les requêtes d'API restantes, d'après la dernière réponse de la forge |
+
+### Dépôt
+
+| Champ | Type | Sens |
+|---|---|---|
+| `forge`, `host` | chaînes | |
+| `full_name`, `owner`, `name` | chaînes | `octo/app`, `octo`, `app` |
+| `url` | chaîne | sa page sur la forge |
+| `default_branch` | chaîne ou `null` | `null` pour un dépôt vide |
+| `private`, `archived`, `fork`, `empty` | booléens | |
+| `can_push` | booléen | le compte peut pousser une branche et ouvrir une PR ; sinon : lecture seule |
+| `pushed_at` | date ou `null` | le dernier push |
+| `hidden` | booléen | archivé, fork ou vide : masqué par défaut, et pas analysé avec les autres |
+| `languages` | liste de chaînes | ceux de la dernière analyse ; avant, ou si elle n'a trouvé aucun fichier de code, le langage principal d'après la forge |
+| `state` | chaîne | `not_scanned` (ou analyse annulée), `running` (en cours, ou en attente de son tour), `to_update`, `up_to_date`, `inconclusive` (pas tout vérifié : registre, OSV ou forge muets, arborescence tronquée, ou analyse échouée), `no_dependencies`, `skipped` (vide ; archivé ou fork pas encore analysé) |
+| `reason` | chaîne ou `null` | pourquoi : `vide`, `archivé`, `fork` ; ce qui n'a pas répondu ; l'erreur ; `analyse annulée` |
+| `counts` | objet ou `null` | la dernière analyse finie : `vulnerabilities`, `critical`, `worst` (la gravité de la faille la plus grave, `null` sans faille), `to_update`, `inconclusive`, `updates` (les mises à jour pré-cochées) |
+| `scan` | [analyse](#analyse) ou `null` | la dernière analyse du dépôt, groupée ou non (sa progression s'il tourne ; son rapport par `GET /api/scans/{id}`) |
+
+`to_update` : au moins un constat à mettre à jour. `up_to_date` ne se dit que si rien n'est
+resté sans réponse et que toute l'arborescence a été lue (`report.synthesis.verdict`).
+
+### Synthèse multi-dépôts
+
+Calculée par le serveur sur la dernière analyse de chaque dépôt listé : le navigateur ne
+recompte rien.
+
+| Champ | Type | Sens |
+|---|---|---|
+| `repositories`, `hidden`, `archived`, `forks`, `empty` | entiers | dépôts listés ; masqués par défaut (archivés, forks, vides) |
+| `analyzed` | entier | ceux dont la dernière analyse a abouti |
+| `running`, `not_scanned`, `skipped`, `to_update`, `up_to_date`, `inconclusive`, `no_dependencies` | entiers | les dépôts par `state` |
+| `vulnerabilities`, `critical` | entiers | les failles de tous les dépôts (un même paquet dans deux dépôts compte deux fois), dont critiques |
+| `vulnerable_repositories` | entier | les dépôts qui ont au moins une faille |
+| `findings` | objet | les constats par type, additionnés, tous les types présents |
+| `severities` | objet | les constats à mettre à jour par gravité, additionnés |
+
+Les PR ouvertes par forceupdate s'y ajouteront à E18.
+
+### Demande d'analyse groupée
+
+| Champ | Type | Sens |
+|---|---|---|
+| `forge` | chaîne | la forge du compte connecté |
+| `repositories` | liste de chaînes | les dépôts (`owner/nom`), parmi ceux de la liste (sinon `400`) ; les vides sont sautés |
+| `dev`, `transitive`, `include_tests`, `cache` | booléens | les [options](#options) ; jamais hors ligne |
+
+`404` sans compte connecté à cette forge, `409` pour une forge pas encore prête.
+
+`POST /api/repositories/scans` prend `repository` (`owner/nom`, `https://github.com/owner/nom`,
+`…/nom.git`, `git@github.com:owner/nom.git`, une page du dépôt) et les mêmes options : avec le
+token du compte connecté à sa forge s'il y en a un, sans token sinon (GitHub : 60 requêtes par
+heure, dépôts publics seulement). `400` nom illisible ou forge inconnue, `404` dépôt introuvable
+(ou privé et invisible), `409` dépôt vide, forge pas prête ou limite d'API atteinte, `502` forge
+injoignable.
+
+### Analyse groupée
+
+Une analyse par dépôt, dans la boucle des analyses, `concurrency` dépôts à la fois (4), avec le
+même client HTTP et le même cache des registres ; les requêtes à un même hôte sont en plus
+limitées à 8 à la fois. Chaque analyse se suit comme une autre (`GET /api/scans/{id}`, SSE).
+
+| Champ | Type | Sens |
+|---|---|---|
+| `id` | chaîne | |
+| `forge`, `host` | chaînes | |
+| `status` | chaîne | `running`, puis `done` (toutes finies, abouties ou non) ou `cancelled` |
+| `started_at`, `finished_at` | dates | |
+| `concurrency` | entier | |
+| `scans` | liste de chaînes | les identifiants de ses analyses |
+| `total`, `finished`, `failed` | entiers | |
+| `skipped` | liste de chaînes | les dépôts demandés mais vides |
+| `requests` | entier | les requêtes d'API envoyées à la forge par ce lot |
+| `rate_limit` | objet ou `null` | les requêtes restantes, d'après la dernière réponse |
+
+Annuler (`DELETE`) arrête les analyses pas finies ; celles qui le sont gardent leur rapport.
+Les analyses gardées en mémoire sont les 20 plus récentes, **plus la dernière de chaque
+dépôt**.

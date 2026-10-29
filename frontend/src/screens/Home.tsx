@@ -34,7 +34,8 @@ import { Card, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAccounts } from '@/hooks/useAccounts'
-import { DEFAULT_OPTIONS, rescanRequest, useScanOptions, useStartScan, useUpload } from '@/hooks/useScanActions'
+import { useRepositories } from '@/hooks/useRepositories'
+import { DEFAULT_OPTIONS, useRescan, useScanOptions, useStartScan, useUpload } from '@/hooks/useScanActions'
 import { useOnline } from '@/hooks/useStatus'
 import { basename, count, formatTime, fr } from '@/lib/format'
 import { KINDS, KIND_WORD, SEVERITIES } from '@/lib/report'
@@ -47,6 +48,7 @@ export function Home() {
   const upload = useUpload()
   const accounts = useAccounts()
   const connected = (accounts.data?.forges ?? []).filter((forge) => forge.account !== null)
+  const repositories = useRepositories({ enabled: connected.length > 0 })
 
   return (
     <>
@@ -118,9 +120,21 @@ export function Home() {
               icon={FolderGit2}
               title="Mes dépôts"
               action={
-                <Link to="/comptes" className={buttonVariants({ variant: 'secondary' })}>
-                  {connected.length > 0 ? 'Gérer les comptes' : 'Connecter un compte'}
-                </Link>
+                connected.length > 0 ? (
+                  <>
+                    <Link to="/depots" className={buttonVariants({ variant: 'secondary' })}>
+                      <FolderGit2 aria-hidden="true" />
+                      Voir mes dépôts
+                    </Link>
+                    <Link to="/comptes" className={buttonVariants({ variant: 'ghost' })}>
+                      Gérer les comptes
+                    </Link>
+                  </>
+                ) : (
+                  <Link to="/comptes" className={buttonVariants({ variant: 'secondary' })}>
+                    Connecter un compte
+                  </Link>
+                )
               }
             >
               <p>
@@ -128,15 +142,26 @@ export function Home() {
                 mettre à jour.
               </p>
               {connected.length > 0 ? (
-                <ul className="flex flex-col gap-1 text-sm">
-                  {connected.map(({ forge, name, account }) => (
-                    <li key={forge} className="flex items-center gap-2 text-fg">
-                      <ForgeLogo forge={forge} className="size-4" />
-                      {name}
-                      <span className="font-mono">@{account?.login}</span>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <ul className="flex flex-col gap-1 text-sm">
+                    {connected.map(({ forge, name, account }) => (
+                      <li key={forge} className="flex items-center gap-2 text-fg">
+                        <ForgeLogo forge={forge} className="size-4" />
+                        {name}
+                        <span className="font-mono">@{account?.login}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {repositories.data ? (
+                    <p className="text-sm text-fg">
+                      {count(repositories.data.synthesis.repositories, 'dépôt')}
+                      {repositories.data.synthesis.analyzed > 0 &&
+                        ` · ${count(repositories.data.synthesis.analyzed, 'analysé', 'analysés')}`}
+                    </p>
+                  ) : (
+                    repositories.isPending && <Skeleton className="h-4 w-28" />
+                  )}
+                </>
               ) : accounts.isPending ? (
                 <Skeleton className="h-4 w-40" />
               ) : (
@@ -266,6 +291,7 @@ function RecentScans() {
   const id = useId()
   const online = useOnline()
   const start = useStartScan()
+  const rescan = useRescan()
   const scans = useQuery({
     queryKey: queryKeys.scans,
     queryFn: api.listScans,
@@ -274,6 +300,8 @@ function RecentScans() {
   })
   const starts = useQuery({ queryKey: queryKeys.folder(null), queryFn: () => api.listFolder() })
   const recent = starts.data?.recent ?? []
+  // Celles d'une analyse groupée sont sur l'écran des dépôts.
+  const session = (scans.data ?? []).filter((scan) => scan.batch === null)
 
   let body: React.ReactNode
   if (scans.isPending || starts.isPending) {
@@ -284,7 +312,7 @@ function RecentScans() {
         <p>Elles reviendront dès que le serveur répondra.</p>
       </EmptyState>
     )
-  } else if (scans.data.length === 0 && recent.length === 0) {
+  } else if (session.length === 0 && recent.length === 0) {
     body = (
       <EmptyState icon={History} title="Aucune analyse pour l'instant">
         <p>Choisir un dossier ou un fichier ci-dessus. Les chemins analysés seront proposés ici les fois suivantes.</p>
@@ -293,16 +321,16 @@ function RecentScans() {
   } else {
     body = (
       <>
-        {scans.data.length > 0 && (
+        {session.length > 0 && (
           <div className="flex flex-col gap-4">
             <h3 className="text-base">Cette session</h3>
             <ul className="rounded-md border border-border bg-surface">
-              {scans.data.map((scan) => (
+              {session.map((scan) => (
                 <ScanItem
                   key={scan.id}
                   scan={scan}
-                  onRescan={() => start.mutate(rescanRequest(scan, online ? {} : { offline: true }))}
-                  rescanning={start.isPending}
+                  onRescan={() => rescan.mutate({ scan, overrides: online ? {} : { offline: true } })}
+                  rescanning={rescan.isPending}
                 />
               ))}
             </ul>
@@ -324,17 +352,17 @@ function RecentScans() {
             </ul>
           </div>
         )}
-        {start.error && (
+        {(start.error ?? rescan.error) && (
           <p role="alert" className="flex items-center gap-2 text-sm text-danger">
             <CircleX className="size-4" aria-hidden="true" />
-            {start.error.message}
+            {(start.error ?? rescan.error)?.message}
           </p>
         )}
       </>
     )
   }
 
-  const filled = !scans.isPending && !scans.isError && (scans.data.length > 0 || recent.length > 0)
+  const filled = !scans.isPending && !scans.isError && (session.length > 0 || recent.length > 0)
   return (
     <Section aria-labelledby={`${id}-titre`}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -371,8 +399,8 @@ function RecentSkeleton() {
 
 function ScanItem({ scan, onRescan, rescanning }: { scan: ScanSummary; onRescan: () => void; rescanning: boolean }) {
   const upload = scan.kind === 'upload'
-  const name = upload ? scan.source : basename(scan.source)
-  const Icon = scan.kind === 'folder' ? Folder : File
+  const name = upload || scan.repository ? scan.source : basename(scan.source)
+  const Icon = scan.kind === 'folder' ? Folder : scan.kind === 'repository' ? FolderGit2 : File
   const report = `/analyses/${scan.id}`
   const progress = scan.progress
   const counted = progress && progress.total > 0 && ['checking', 'package_checked', 'vulnerabilities_checked'].includes(progress.kind)
@@ -409,7 +437,9 @@ function ScanItem({ scan, onRescan, rescanning }: { scan: ScanSummary; onRescan:
         ) : (
           <span className="font-mono font-bold">{name}</span>
         )}
-        <div className="font-mono text-xs break-all text-fg-muted">{upload ? 'fichier envoyé' : scan.source}</div>
+        <div className={cn('text-xs break-all text-fg-muted', scan.kind !== 'upload' && !scan.repository && 'font-mono')}>
+          {origin(scan)}
+        </div>
         {scan.status === 'running' && (
           <Blade
             label={`Analyse de ${name}`}
@@ -425,6 +455,15 @@ function ScanItem({ scan, onRescan, rescanning }: { scan: ScanSummary; onRescan:
       {action && <div className="col-start-2 justify-self-start md:col-start-auto">{action}</div>}
     </li>
   )
+}
+
+const FORGE_NAME = { github: 'GitHub', gitlab: 'GitLab', bitbucket: 'Bitbucket' } as const
+
+/** D'où vient une analyse, sous son nom : le chemin, « fichier envoyé », « dépôt GitHub ». */
+function origin(scan: ScanSummary): string {
+  if (scan.kind === 'upload') return 'fichier envoyé'
+  if (scan.repository) return `dépôt ${FORGE_NAME[scan.repository.forge]}`
+  return scan.source
 }
 
 /** L'état d'une analyse de la session, et ses chiffres une fois finie. */

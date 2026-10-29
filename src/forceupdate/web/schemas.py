@@ -20,8 +20,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from forceupdate.forges.accounts import Account, ConnectMethod
-from forceupdate.forges.base import ForgeKind
-from forceupdate.models import Event, ScanOptions
+from forceupdate.forges.base import Access, ForgeKind, RateLimit, Restriction
+from forceupdate.models import Event, FindingKind, ScanOptions, Severity
 from forceupdate.report.json import Document, SummaryDocument
 from forceupdate.update.lockfiles import Installed, Job, LockKind, LockStatus, Reach, Regenerated
 from forceupdate.update.writers import Choice, Skipped
@@ -74,6 +74,43 @@ class ApplyRequest:
 
 
 @dataclass(frozen=True, kw_only=True)
+class RepositoryOptions:
+    """Ce que vérifie l'analyse d'un dépôt (voir ``models.ScanOptions``). Jamais hors ligne :
+    l'arborescence et les fichiers viennent de la forge."""
+
+    dev: bool = True
+    transitive: bool = False
+    include_tests: bool = False
+    cache: bool = True
+
+    def options(self) -> ScanOptions:
+        return ScanOptions(
+            include_tests=self.include_tests,
+            dev=self.dev,
+            transitive=self.transitive,
+            offline=False,
+            cache=self.cache,
+        )
+
+
+@dataclass(frozen=True, kw_only=True)
+class BatchRequest(RepositoryOptions):
+    """Des dépôts d'un compte connecté à analyser ensemble."""
+
+    forge: ForgeKind
+    repositories: list[str]
+    """Leurs noms (``owner/nom``), parmi ceux de ``GET /api/repositories``."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class RepositoryRequest(RepositoryOptions):
+    """Un dépôt à analyser, même d'un autre compte s'il est public."""
+
+    repository: str
+    """``owner/nom``, ou son adresse (``https://github.com/owner/nom``)."""
+
+
+@dataclass(frozen=True, kw_only=True)
 class TokenRequest:
     """Un token collé, pour connecter un compte. Le navigateur l'envoie au serveur ; le serveur
     ne le renvoie jamais."""
@@ -92,6 +129,26 @@ class SourceKind(enum.StrEnum):
     UPLOAD = "upload"
     """Un fichier envoyé par l'interface (glisser-déposer) : on télécharge sa version
     réécrite, rien n'est écrit sur le disque de la personne."""
+    REPOSITORY = "repository"
+    """Un dépôt d'une forge, lu par son API sans le cloner (E17)."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class RepositoryRef:
+    """Le dépôt d'une analyse de dépôt."""
+
+    forge: ForgeKind
+    host: str
+    full_name: str
+    """``owner/nom``."""
+    url: str
+    """Sa page sur la forge."""
+    commit: str | None
+    """Le commit lu (celui de la branche par défaut au début de l'analyse) ; ``null`` tant
+    que l'arborescence n'est pas lue."""
+    truncated: bool
+    """La forge n'a pas rendu toute l'arborescence (GitHub : plus de 100 000 entrées) :
+    l'analyse est partielle."""
 
 
 class TaskStatus(enum.StrEnum):
@@ -111,8 +168,13 @@ class ScanSummary:
 
     id: str
     source: str
-    """Le chemin analysé, absolu ; pour un fichier envoyé, son nom."""
+    """Le chemin analysé, absolu ; pour un fichier envoyé, son nom ; pour un dépôt,
+    ``owner/nom``."""
     kind: SourceKind
+    repository: RepositoryRef | None
+    """Un dépôt d'une forge : lequel, à quel commit."""
+    batch: str | None
+    """L'analyse groupée dont elle fait partie (écran 7), s'il y en a une."""
     status: TaskStatus
     """``running``, puis ``done``, ``failed`` ou ``cancelled``."""
     options: ScanOptions
@@ -380,6 +442,174 @@ class Disconnection:
     forge injoignable) ; ``null`` pour un token collé ou celui de gh, qui ne sont pas à
     forceupdate et restent valables."""
     message: str
+
+
+# -- Dépôts -----------------------------------------------------------------------
+
+
+class RepositoryState(enum.StrEnum):
+    """Où en est un dépôt (écran 7), d'après sa dernière analyse."""
+
+    NOT_SCANNED = "not_scanned"
+    """Pas encore analysé (ou analyse annulée)."""
+    RUNNING = "running"
+    """Analyse en cours, ou en attente de son tour."""
+    TO_UPDATE = "to_update"
+    UP_TO_DATE = "up_to_date"
+    INCONCLUSIVE = "inconclusive"
+    """L'analyse n'a pas tout vérifié (registre, OSV ou forge muets, arborescence tronquée),
+    ou n'a pas abouti : ni « à jour », ni « à mettre à jour »."""
+    NO_DEPENDENCIES = "no_dependencies"
+    """Aucun fichier de dépendances."""
+    SKIPPED = "skipped"
+    """Pas analysé : vide (toujours), archivé ou fork (par défaut)."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class RepositoryCounts:
+    """Les chiffres de la dernière analyse d'un dépôt."""
+
+    vulnerabilities: int
+    critical: int
+    """Les failles critiques, parmi ``vulnerabilities``."""
+    worst: Severity | None
+    """La gravité de la faille la plus grave ; ``null`` sans faille."""
+    to_update: int
+    """Les constats à mettre à jour (``summary.to_update``)."""
+    inconclusive: int
+    """Les constats « non concluant »."""
+    updates: int
+    """Les mises à jour pré-cochées (celles qu'une PR porterait par défaut)."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class RepositoryRow:
+    """Un dépôt d'un compte connecté, ses drapeaux, et sa dernière analyse."""
+
+    forge: ForgeKind
+    host: str
+    full_name: str
+    owner: str
+    name: str
+    url: str
+    default_branch: str | None
+    private: bool
+    archived: bool
+    fork: bool
+    empty: bool
+    can_push: bool
+    """Le compte peut pousser une branche et ouvrir une PR ; sinon : lecture seule."""
+    pushed_at: datetime | None
+    hidden: bool
+    """Archivé, fork ou vide : masqué par défaut, et pas analysé avec les autres."""
+    languages: tuple[str, ...]
+    """Ceux de la dernière analyse ; avant, le langage principal d'après la forge."""
+    state: RepositoryState
+    reason: str | None
+    """Pourquoi : sauté (« vide », « archivé », « fork »), non concluant (l'erreur, ou ce qui
+    n'a pas répondu), annulé."""
+    counts: RepositoryCounts | None
+    """Les chiffres de la dernière analyse finie."""
+    scan: ScanSummary | None
+    """La dernière analyse du dépôt (sa progression, s'il tourne)."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class RepositoryAccount:
+    """Un compte connecté, vu depuis ses dépôts."""
+
+    forge: ForgeKind
+    host: str
+    login: str
+    access: Access
+    problem: str | None
+    """La forge refuse le token (voir l'écran Comptes)."""
+    listed_at: datetime | None
+    """Le dernier chargement de la liste de ses dépôts ; ``null`` s'il n'a jamais abouti."""
+    error: str | None
+    """Pourquoi le dernier chargement a échoué (la liste est alors celle d'avant, s'il y en a
+    une)."""
+    repositories: int
+    restrictions: tuple[Restriction, ...]
+    """Les organisations du compte dont les dépôts ne sont pas tous lisibles : à dire, pas à
+    cacher."""
+    rate_limit: RateLimit | None
+    """Les requêtes d'API restantes, d'après la dernière réponse de la forge."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class RepositorySynthesis:
+    """La synthèse de tous les dépôts listés, calculée par le serveur."""
+
+    repositories: int
+    hidden: int
+    """Masqués par défaut : archivés, forks, vides."""
+    archived: int
+    forks: int
+    empty: int
+    analyzed: int
+    """Ceux dont la dernière analyse a abouti."""
+    running: int
+    not_scanned: int
+    skipped: int
+    to_update: int
+    up_to_date: int
+    inconclusive: int
+    no_dependencies: int
+    vulnerabilities: int
+    """Les failles, tous dépôts confondus (un même paquet dans deux dépôts compte deux
+    fois)."""
+    critical: int
+    vulnerable_repositories: int
+    """Les dépôts qui ont au moins une faille."""
+    findings: dict[FindingKind, int]
+    """Les constats par type, additionnés, tous les types présents."""
+    severities: dict[Severity, int]
+    """Les constats à mettre à jour par gravité, additionnés."""
+
+
+class BatchStatus(enum.StrEnum):
+    RUNNING = "running"
+    DONE = "done"
+    """Toutes ses analyses sont finies (abouties ou non)."""
+    CANCELLED = "cancelled"
+
+
+@dataclass(frozen=True, kw_only=True)
+class RepositoryBatch:
+    """Une analyse groupée : des dépôts analysés ensemble, ``concurrency`` à la fois, avec le
+    même client et le même cache des registres."""
+
+    id: str
+    forge: ForgeKind
+    host: str
+    status: BatchStatus
+    started_at: datetime
+    finished_at: datetime | None
+    concurrency: int
+    scans: tuple[str, ...]
+    """Les identifiants de ses analyses, une par dépôt."""
+    total: int
+    finished: int
+    """Les analyses finies (abouties, échouées ou annulées)."""
+    failed: int
+    skipped: tuple[str, ...]
+    """Les dépôts demandés mais pas analysés (vides)."""
+    requests: int
+    """Les requêtes d'API envoyées à la forge."""
+    rate_limit: RateLimit | None
+
+
+@dataclass(frozen=True, kw_only=True)
+class RepositoryList:
+    """Les dépôts des comptes connectés (écran 7)."""
+
+    accounts: tuple[RepositoryAccount, ...]
+    repositories: tuple[RepositoryRow, ...]
+    """Par forge, puis par nom."""
+    synthesis: RepositorySynthesis
+    batch: RepositoryBatch | None
+    """La dernière analyse groupée."""
 
 
 @dataclass(frozen=True, kw_only=True)

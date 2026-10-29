@@ -468,6 +468,9 @@ class EventKind(enum.StrEnum):
     """Les étapes d'une analyse, puis celles d'une mise à jour, dans l'ordre où elles
     arrivent."""
 
+    DOWNLOADING = "downloading"
+    """Dépôt d'une forge : ses manifestes et lockfiles téléchargés par l'API, ``done`` sur
+    ``total`` (E17). Avant ``reading``."""
     READING = "reading"
     """Lecture de la source : langages, projets, dépendances."""
     PROJECTS_FOUND = "projects_found"

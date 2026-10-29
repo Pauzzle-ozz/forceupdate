@@ -7,7 +7,8 @@ REST de la forge, avec le ``HttpClient`` commun, et par git pour cloner et pouss
 Ce que fait chaque méthode, et à quelle étape elle arrive :
 
 - ``whoami`` : qui est connecté, et ce que le token permet (E16) ;
-- ``list_repos``, ``tree``, ``read_file`` : les dépôts, et de quoi les analyser sans les
+- ``list_repos``, ``repository``, ``restrictions``, ``tree``, ``read_file`` : les dépôts (et
+  les organisations dont ils ne sont pas tous lisibles), et de quoi les analyser sans les
   cloner (E17) ;
 - ``clone``, ``push_branch`` : cloner pour mettre à jour, pousser la branche (E18) ;
 - ``find_open_request``, ``open_or_update_request`` : la PR (MR sur GitLab), idempotente (E18).
@@ -91,6 +92,42 @@ class Repository:
     """La page du dépôt, sur la forge."""
     clone_url: str
     """L'adresse HTTPS pour cloner, sans identifiants."""
+    empty: bool = False
+    """Aucun commit : rien à analyser."""
+    language: str | None = None
+    """Le langage principal, d'après la forge ; l'analyse donne les autres."""
+    pushed_at: datetime | None = None
+    """Le dernier push."""
+
+    @property
+    def owner(self) -> str:
+        """Le propriétaire : compte, organisation, ou groupe (GitLab)."""
+        return self.full_name.rpartition("/")[0]
+
+    @property
+    def name(self) -> str:
+        return self.full_name.rpartition("/")[2]
+
+
+class RestrictionKind(enum.StrEnum):
+    """Pourquoi les dépôts d'une organisation ne sont pas tous lisibles."""
+
+    APP_ACCESS = "app_access"
+    """L'organisation restreint l'accès des applications OAuth (GitHub) : ses dépôts privés
+    n'apparaissent qu'après l'accord d'un de ses propriétaires."""
+    SSO = "sso"
+    """L'organisation exige que le token soit autorisé pour son SSO (SAML)."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class Restriction:
+    """Une organisation dont le compte est membre, mais dont les dépôts ne sont pas tous
+    lisibles avec ce token (``Forge.restrictions``) : à dire, pas à cacher."""
+
+    organization: str
+    kind: RestrictionKind
+    url: str | None
+    """Où demander l'accès, ou autoriser le token."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -140,8 +177,25 @@ class AccessDenied(ForgeError):
     """403 : le token n'a pas le droit (portée, organisation, SSO)."""
 
 
+class AppRestricted(AccessDenied):
+    """403 : l'organisation restreint l'accès des applications OAuth (GitHub)."""
+
+
+class SsoRequired(AccessDenied):
+    """403 : l'organisation exige d'autoriser le token pour son SSO (SAML)."""
+
+    def __init__(self, message: str, *, url: str | None = None) -> None:
+        super().__init__(message)
+        self.url = url
+
+
 class NotFound(ForgeError):
-    """404 : la ressource n'existe pas, ou le token ne la voit pas."""
+    """404 : la ressource n'existe pas, ou le token ne la voit pas. Un dépôt privé que le
+    token ne voit pas rend aussi 404 (pas 403) sur GitHub."""
+
+
+class EmptyRepository(ForgeError):
+    """Le dépôt n'a aucun commit : rien à lire."""
 
 
 class RateLimited(ForgeError):
@@ -163,14 +217,31 @@ class Forge(abc.ABC):
         """Le compte du token, et ce que le token permet. Lève ``TokenRefused`` si la forge
         le refuse."""
 
+    requests: int
+    """Les requêtes d'API envoyées par ce client, pour dire ce qu'une analyse consomme."""
+    rate_limit: RateLimit | None
+    """Les requêtes d'API restantes, d'après la dernière réponse ; ``None`` avant la
+    première, ou si la forge ne les dit pas."""
+
     @abc.abstractmethod
     async def list_repos(self) -> list[Repository]:
         """Tous les dépôts accessibles : les siens, ceux où le compte est collaborateur, ceux
         de ses organisations ou groupes."""
 
     @abc.abstractmethod
+    async def repository(self, full_name: str) -> Repository:
+        """Un dépôt par son nom (``owner/nom``), même d'un autre compte s'il est public. Lève
+        ``NotFound`` s'il n'existe pas ou que le token ne le voit pas."""
+
+    async def restrictions(self) -> list[Restriction]:
+        """Les organisations du compte dont les dépôts ne sont pas tous lisibles avec ce
+        token. Aucune par défaut : seul GitHub a ces restrictions."""
+        return []
+
+    @abc.abstractmethod
     async def tree(self, repo: Repository, ref: str | None = None) -> Tree:
-        """L'arborescence de ``ref`` (par défaut, la branche par défaut)."""
+        """L'arborescence de ``ref`` (par défaut, la branche par défaut). Lève
+        ``EmptyRepository`` pour un dépôt sans commit."""
 
     @abc.abstractmethod
     async def read_file(self, repo: Repository, path: str, ref: str) -> bytes | None:

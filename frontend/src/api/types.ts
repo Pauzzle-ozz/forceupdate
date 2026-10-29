@@ -67,3 +67,17 @@ export type ConnectMethod = Schemas['ConnectMethod']
 export type AccountConnection = Response<'start_device', 201>
 export type ConnectionStatus = Schemas['ConnectionStatus']
 export type Disconnection = Response<'disconnect'>
+
+export type RepositoryList = Response<'list_repositories'>
+export type RepositoryRow = Schemas['RepositoryRow']
+export type RepositoryAccount = Schemas['RepositoryAccount']
+export type RepositorySynthesis = Schemas['RepositorySynthesis']
+export type RepositoryState = Schemas['RepositoryState']
+export type RepositoryCounts = Schemas['RepositoryCounts']
+export type RepositoryBatch = Response<'start_batch', 202>
+export type BatchStatus = Schemas['BatchStatus']
+export type RepositoryRef = Schemas['RepositoryRef']
+export type Restriction = Schemas['Restriction']
+export type RateLimit = Schemas['RateLimit']
+export type BatchRequest = Schemas['BatchRequest']
+export type RepositoryRequest = Schemas['RepositoryRequest']

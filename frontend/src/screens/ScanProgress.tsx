@@ -13,6 +13,8 @@ import { useScanEvents, type ScanProgress as Progress } from '@/hooks/useScanEve
 import { basename, count, formatDuration, fr } from '@/lib/format'
 import { Breadcrumb, Container, useDocumentTitle } from '@/shell/Page'
 
+const FORGE_NAME = { github: 'GitHub', gitlab: 'GitLab', bitbucket: 'Bitbucket' } as const
+
 /** Le nom du paquet n'est annoncé aux lecteurs d'écran qu'au plus toutes les 5 s. */
 const ANNOUNCE_EVERY = 5000
 
@@ -25,16 +27,31 @@ interface Step {
   detail?: React.ReactNode
 }
 
-function steps(progress: Progress): Step[] {
+function steps(progress: Progress, repository: boolean): Step[] {
   const { seen } = progress
   const finished = seen.has('finished')
   const checking = seen.has('checking')
   const projects = progress.projects
+  const downloaded = progress.downloaded
+  const download: Step[] = repository
+    ? [
+        {
+          key: 'downloading',
+          label: downloaded
+            ? fr(`Téléchargement des fichiers de dépendances : ${downloaded.done} sur ${downloaded.total}`)
+            : seen.has('reading')
+              ? 'Aucun fichier de dépendances à télécharger'
+              : 'Lecture du dépôt et de son arborescence',
+          state: seen.has('reading') || finished ? 'done' : 'running',
+        },
+      ]
+    : []
   return [
+    ...download,
     {
       key: 'reading',
       label: 'Lecture des fichiers',
-      state: seen.has('projects_found') || finished ? 'done' : 'running',
+      state: seen.has('projects_found') || finished ? 'done' : repository && !seen.has('reading') ? 'pending' : 'running',
     },
     {
       key: 'projects',
@@ -64,12 +81,13 @@ function steps(progress: Progress): Step[] {
 const STEP_ICON: Record<State, LucideIcon> = { done: CircleCheck, running: LoaderCircle, pending: CircleDashed }
 
 /** L'étape à annoncer : la dernière commencée (sans les nombres, qui changent sans cesse). */
-function announcement(progress: Progress): string {
+function announcement(progress: Progress, repository: boolean): string {
   const { seen } = progress
   if (seen.has('finished')) return 'Analyse terminée.'
   if (seen.has('vulnerabilities_checked')) return 'Failles cherchées. Vérification des paquets en cours.'
   if (seen.has('checking')) return 'Vérification des paquets et recherche des failles en cours.'
   if (progress.projects !== null) return `${count(progress.projects, 'projet')} ${progress.projects >= 2 ? 'trouvés' : 'trouvé'}.`
+  if (repository && !seen.has('reading')) return 'Téléchargement des fichiers de dépendances.'
   return 'Lecture des fichiers.'
 }
 
@@ -79,15 +97,16 @@ function announcement(progress: Progress): string {
  * connu.
  */
 export function ScanProgress({ scan, onEnd }: { scan: ScanDetail; onEnd?: () => void }) {
-  const name = scan.kind === 'upload' ? scan.source : basename(scan.source)
+  const repository = scan.repository
+  const name = scan.kind === 'upload' || repository ? scan.source : basename(scan.source)
   useDocumentTitle(`Analyse de ${name}`)
   const progress = useScanEvents(scan.id, onEnd)
   const cancel = useMutation({ mutationFn: () => api.cancelScan(scan.id) })
   const elapsed = useElapsed(scan.started_at)
   const announcedPackage = useThrottled(progress.last ? `${progress.last.ecosystem} ${progress.last.name}` : '', ANNOUNCE_EVERY)
 
-  const list = steps(progress)
-  const searching = list[3].state === 'running'
+  const list = steps(progress, repository !== null)
+  const searching = list.some((step) => step.key === 'vulnerabilities' && step.state === 'running')
   const determinate = progress.seen.has('checking') && progress.total > 0
 
   return (
@@ -102,14 +121,20 @@ export function ScanProgress({ scan, onEnd }: { scan: ScanDetail; onEnd?: () => 
         </Alert>
       )}
       <Container narrow className="max-w-160">
-        <Breadcrumb items={[{ label: 'Analyser', to: '/' }, { label: name, mono: true }]} />
+        <Breadcrumb
+          items={[repository ? { label: 'Mes dépôts', to: '/depots' } : { label: 'Analyser', to: '/' }, { label: name, mono: true }]}
+        />
         <Card className="flex flex-col gap-5">
           <div className="flex flex-col gap-2">
             <h1 className="text-2xl">
               Analyse de <span className="font-mono">{name}</span>
             </h1>
-            <p className="font-mono text-sm break-all text-fg-muted">
-              {scan.kind === 'upload' ? 'fichier envoyé' : scan.source}
+            <p className={cn('text-sm break-all text-fg-muted', scan.kind !== 'upload' && !repository && 'font-mono')}>
+              {scan.kind === 'upload'
+                ? 'fichier envoyé'
+                : repository
+                  ? `dépôt ${FORGE_NAME[repository.forge]}, lu par l'API sans le cloner`
+                  : scan.source}
             </p>
             <OptionBadges options={scan.options} />
           </div>
@@ -156,7 +181,7 @@ export function ScanProgress({ scan, onEnd }: { scan: ScanDetail; onEnd?: () => 
           </ol>
 
           <div className="sr-only" aria-live="polite">
-            {announcement(progress)}
+            {announcement(progress, repository !== null)}
           </div>
           <div className="sr-only" aria-live="polite">
             {announcedPackage && `Paquet vérifié : ${announcedPackage}`}

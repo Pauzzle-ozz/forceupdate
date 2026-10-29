@@ -28,6 +28,11 @@ from forceupdate.web.schemas import (
 
 router = APIRouter(prefix="/api/updates", tags=["mises à jour"])
 
+REPOSITORY = (
+    "Un dépôt d'une forge se met à jour par une pull request, pas en réécrivant des fichiers "
+    "de cet ordinateur : ce n'est pas encore disponible."
+)
+
 
 @router.post(
     "/plan", status_code=201, response_model=UpdatePlan, responses=errors(400, 401, 403, 404, 409)
@@ -39,16 +44,19 @@ async def plan_update(body: PlanRequest, jobs: CurrentJobs) -> JSONResponse:
     if scan.report is None:
         state = "n'est pas finie" if scan.status is TaskStatus.RUNNING else "n'a pas abouti"
         raise HTTPException(409, f"L'analyse {state} : pas de rapport sur lequel préparer.")
+    source = scan.local
+    if source is None:
+        raise HTTPException(409, REPOSITORY)
     upload = scan.kind is SourceKind.UPLOAD
     try:
         prepared = await asyncio.to_thread(
-            local.prepare, scan.source, scan.report, body.selection, regenerate=not upload
+            local.prepare, source, scan.report, body.selection, regenerate=not upload
         )
     except ValueError as err:
         raise HTTPException(400, sentence(str(err))) from err
     uncommitted = None
     if not upload:
-        uncommitted = await asyncio.to_thread(local.uncommitted, scan.source, prepared)
+        uncommitted = await asyncio.to_thread(local.uncommitted, source, prepared)
     plan = jobs.add_plan(scan, body.selection, prepared, uncommitted)
     return respond(plan.document(), 201, location=f"/api/updates/{plan.id}")
 
@@ -63,7 +71,8 @@ async def apply_update(body: ApplyRequest, jobs: CurrentJobs) -> JSONResponse:
     plan = find_plan(jobs, body.plan)
     _check_applicable(plan)
     if not body.force:
-        dirty = await asyncio.to_thread(local.uncommitted, plan.scan.source, plan.prepared)
+        assert plan.scan.local is not None  # un dépôt n'a pas de plan
+        dirty = await asyncio.to_thread(local.uncommitted, plan.scan.local, plan.prepared)
         plan.uncommitted = dirty
         if dirty:
             raise HTTPException(

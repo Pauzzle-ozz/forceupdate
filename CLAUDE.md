@@ -66,18 +66,24 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   ├── src/styles/         ← tokens.css (ceux de MASTER), app.css (Tailwind, polices)
 │   ├── src/components/ui/  ← les composants shadcn/ui, habillés par les tokens ; sheet.tsx, dialog.tsx : <dialog> natif
 │   ├── src/screens/        ← les écrans (Home, Choose, ScanProgress, report/…, update/ : l'écran 5,
-│   │                         accounts/ : l'écran 6) ; tests *.test.tsx à côté
+│   │                         accounts/ : l'écran 6, repositories/ : l'écran 7) ; tests *.test.tsx à côté
 │   ├── src/test/           ← mise en place de Vitest, fetch et EventSource simulés, rapport d'exemple
 │   └── e2e/                ← tests Playwright (vrai serveur, front construit, CSP, axe-core) ;
-│                             helpers.ts : copie d'un mini-projet dans un dossier temporaire
+│                             helpers.ts : copie d'un mini-projet dans un dossier temporaire ;
+│                             forges.spec.ts : écrans 6 et 7, en série (compte du serveur partagé)
 ├── src/forceupdate/        ← le code de l'outil (architecture cible : PLAN.md)
-│   ├── forges/             ← interface Forge (base.py), GitHub (github.py : REST, OAuth, device flow, gh),
-│   │                         comptes connectés (accounts.py : tokens dans le trousseau, keyring)
-│   └── web/                ← le serveur de ui (FastAPI) ; openapi.json, exporté, donne les types du front ;
+│   ├── forges/             ← interface Forge (base.py), GitHub (github.py : REST, dépôts, arborescence,
+│   │                         fichiers, OAuth, device flow, gh), comptes connectés (accounts.py : tokens
+│   │                         dans le trousseau, keyring)
+│   ├── sources/            ← d'où vient le code : local.py (dossier, fichier), forge.py (un dépôt lu par
+│   │                         l'API : seuls les fichiers que lisent les parseurs sont téléchargés)
+│   └── web/                ← le serveur de ui (FastAPI) ; repositories.py : les dépôts des comptes et leurs
+│                             analyses groupées ; openapi.json, exporté, donne les types du front ;
 │                             static/ : le front construit (npm run build), ignoré par git, livré dans le paquet
 └── tests/                  ← les tests ; conftest.py gère le marqueur network
-    ├── e2e_server.py       ← le serveur de ui hors ligne pour Playwright (npm, uv, gh, GitHub et trousseau
-    │                         simulés), et les rapports d'exemple du front
+    ├── e2e_server.py       ← le serveur de ui hors ligne pour Playwright (npm, uv, gh, GitHub et ses
+    │                         dépôts, trousseau simulés), et les rapports d'exemple du front
+    ├── fake_forge.py       ← GitHub simulé pour les dépôts (liste, arborescence, fichiers, organisations)
     ├── fixtures/           ← réponses HTTP enregistrées ; record.py les ré-enregistre
     └── projects/           ← mini-projets par outil, lockfiles produits par les vrais outils
 ```
@@ -128,7 +134,8 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   et OSV avec les réponses de `tests/fixtures/` ; `fake_tools("npm", "uv")` simule les
   outils (`FakeTools`) ; `keychain` est le trousseau en mémoire du test ; `api` est le
   serveur de `ui` (client de test de FastAPI, jeton compris), `finished` attend la fin
-  d'une tâche. GitHub se simule avec respx (`tests/test_web_accounts.py`, `FakeGitHub`).
+  d'une tâche. GitHub se simule avec respx (`tests/test_web_accounts.py`, `FakeGitHub` pour les
+  comptes ; `tests/fake_forge.py`, `FakeGitHubRepos`, pour les dépôts, faits des mini-projets).
 - Le retour d'OAuth (`/oauth/github/callback`) est la seule adresse que le garde du serveur
   laisse passer sans jeton : ne pas en ajouter d'autre sans la même protection (`state`).
   L'essayer pour de vrai : `forceupdate ui`, par l'adresse `127.0.0.1` (pas `localhost`) ;

@@ -11,10 +11,14 @@ import type {
   AccountConnection,
   AccountList,
   ApplyRequest,
+  BatchRequest,
   Disconnection,
   ForgeKind,
   Listing,
   PlanRequest,
+  RepositoryBatch,
+  RepositoryList,
+  RepositoryRequest,
   ScanDetail,
   ScanRequest,
   ScanSummary,
@@ -155,6 +159,24 @@ export const api = {
   verifyAccount: (forge: ForgeKind) => request<Account>('POST', `/api/accounts/${forge}/verify`),
 
   disconnect: (forge: ForgeKind) => request<Disconnection>('DELETE', `/api/accounts/${forge}`),
+
+  /**
+   * Les dépôts des comptes connectés, l'état de leur dernière analyse et la synthèse. La liste
+   * est demandée aux forges la première fois ; `reload` la redemande.
+   */
+  listRepositories: (reload = false) =>
+    request<RepositoryList>('GET', reload ? '/api/repositories?reload=true' : '/api/repositories'),
+
+  /** Analyse ensemble des dépôts d'un compte connecté, sans les cloner. */
+  startBatch: (body: BatchRequest) => request<RepositoryBatch>('POST', '/api/repositories/batches', json(body)),
+
+  /** Annule les analyses du lot qui ne sont pas finies. */
+  cancelBatch: (id: string) =>
+    request<RepositoryBatch>('DELETE', `/api/repositories/batches/${encodeURIComponent(id)}`),
+
+  /** Analyse un dépôt donné par son nom ou son adresse, même d'un autre compte s'il est public. */
+  scanRepository: (body: RepositoryRequest) =>
+    request<ScanSummary>('POST', '/api/repositories/scans', json(body)),
 }
 
 export const queryKeys = {
@@ -163,5 +185,6 @@ export const queryKeys = {
   plan: (id: string) => ['plan', id] as const,
   folder: (path: string | null) => ['fs', path] as const,
   accounts: ['accounts'] as const,
+  repositories: ['repositories'] as const,
   connection: (id: string) => ['connection', id] as const,
 }

@@ -404,6 +404,21 @@ son ou nom de personnage repris.
 - vérifié par axe-core (non connecté, device flow, connecté, confirmation) en clair et en
   sombre, à 1440 et 375 px ; pas de défilement horizontal.
 
+**Fait à E17** (l'écran 7, `frontend/src/screens/repositories/`) :
+
+- compteurs de la synthèse comme ceux du rapport (bordure de sens, un compteur non nul filtre,
+  `aria-pressed`) ; « aucune connue » (vert) seulement une fois toutes les analyses finies ;
+- badges d'une ligne : critiques en plein, failles teintées de la gravité la plus grave
+  (`counts.worst`, donné par le serveur), « à mettre à jour » en contour, « non concluant » en
+  pointillé, « lecture seule » neutre avec `eye-off` ; « privé » est une icône nommée
+  (`role="img"`, `aria-label`) ;
+- barre d'actions de la sélection collante en bas (pleine largeur sous 640 px), la même que
+  celle de l'écran 5 ; lignes cochées sur `--primary-soft` ;
+- vérifié par axe-core (liste, sélection, sans compte) en clair et en sombre, à 1440 et
+  375 px ; pas de défilement horizontal de 375 à 1440 px. **Trouvé** : une grille sans
+  `minmax(0, 1fr)` s'élargit à son plus long contenu insécable (un chemin en chasse fixe) :
+  la vue d'ensemble du rapport débordait à 375 px.
+
 ## Anti-motifs
 
 - Couleur seule pour dire une gravité ou un état ; vert pour l'accent.

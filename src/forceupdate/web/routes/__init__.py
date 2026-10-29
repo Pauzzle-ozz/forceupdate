@@ -1,6 +1,7 @@
 """Les routes de l'API, une par module : ``fs`` (dossiers), ``scans`` (analyses), ``updates``
-(plans et mises à jour), ``files`` (fichier envoyé), ``accounts`` (comptes des forges) ; hors de
-``/api``, ``oauth`` (l'adresse de retour des forges après une autorisation).
+(plans et mises à jour), ``files`` (fichier envoyé), ``accounts`` (comptes des forges),
+``repositories`` (leurs dépôts, analysés sans les cloner) ; hors de ``/api``, ``oauth``
+(l'adresse de retour des forges après une autorisation).
 
 Pas de logique métier ici : les routes appellent ``engine`` (par ``web.jobs``),
 ``update.local``, ``detect``, comme le fait ``cli.py``. Les réponses sont écrites par

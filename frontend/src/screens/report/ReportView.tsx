@@ -1,4 +1,4 @@
-import { CircleCheck, CircleHelp, FolderOpen, Info, ListChecks, RefreshCw, Upload, WifiOff } from 'lucide-react'
+import { CircleCheck, CircleHelp, FolderGit2, FolderOpen, Info, ListChecks, RefreshCw, TriangleAlert, Upload, WifiOff } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import type { FindingKind, Report, ScanDetail } from '@/api/types'
@@ -7,7 +7,8 @@ import { OptionBadges } from '@/components/OptionBadges'
 import { Alert, AlertActions, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { rescanRequest, useStartScan } from '@/hooks/useScanActions'
+import { ExternalLink } from '@/components/ExternalLink'
+import { useRescan } from '@/hooks/useScanActions'
 import { useOnline } from '@/hooks/useStatus'
 import {
   NBSP,
@@ -38,6 +39,8 @@ import { Ignored, Notices } from './Extras'
 import { Overview } from './Overview'
 import { Synthesis } from './Synthesis'
 
+const FORGE_NAME = { github: 'GitHub', gitlab: 'GitLab', bitbucket: 'Bitbucket' } as const
+
 /** Le paquet ouvert dans l'adresse : `?paquet=PyPI:flask` (et `&projet=` s'il y a plusieurs projets). */
 function packageParam(row: Row): string {
   return `${row.dependency.ecosystem}:${row.dependency.name}`
@@ -49,10 +52,11 @@ function packageParam(row: Row): string {
  */
 export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; report: Report; focusTitle: boolean }) {
   const upload = scan.kind === 'upload'
-  const name = upload ? scan.source : basename(scan.source)
+  const repository = scan.repository
+  const name = upload || repository ? scan.source : basename(scan.source)
   useDocumentTitle(`Rapport · ${name}`)
   const online = useOnline()
-  const start = useStartScan()
+  const start = useRescan()
   const title = useRef<HTMLHeadingElement>(null)
   const table = useRef<HTMLElement>(null)
   const [params, setParams] = useSearchParams()
@@ -96,8 +100,8 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
     table.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const rescan = (overrides = {}) => start.mutate(rescanRequest(scan, { offline: !online || scan.options.offline, ...overrides }))
-  const rescanOnline = () => start.mutate(rescanRequest(scan, { offline: false }))
+  const rescan = (overrides = {}) => start.mutate({ scan, overrides: { offline: !online || scan.options.offline, ...overrides } })
+  const rescanOnline = () => start.mutate({ scan, overrides: { offline: false } })
 
   const actions = (
     <>
@@ -112,7 +116,7 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
           Relancer l'analyse
         </Button>
       )}
-      {updates && (
+      {updates && !repository && (
         <Link to={`/analyses/${scan.id}/mise-a-jour`} className={buttonVariants({ variant: 'primary' })}>
           <ListChecks aria-hidden="true" />
           Mettre à jour
@@ -130,12 +134,30 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
 
   return (
     <Container>
-      <Breadcrumb items={[{ label: 'Analyser', to: '/' }, { label: name, mono: true }]} />
+      <Breadcrumb
+        items={[repository ? { label: 'Mes dépôts', to: '/depots' } : { label: 'Analyser', to: '/' }, { label: name, mono: true }]}
+      />
       <PageHead actions={report.projects.length > 0 ? actions : undefined}>
         <h1 ref={title} tabIndex={-1} className="font-mono text-2xl break-all">
           {name}
         </h1>
-        <p className="font-mono text-sm break-all text-fg-muted">{upload ? 'fichier envoyé' : report.source}</p>
+        {repository ? (
+          <p className="flex flex-wrap items-center gap-x-2 text-sm text-fg-muted">
+            <span>dépôt {FORGE_NAME[repository.forge]}, lu par l'API sans le cloner</span>
+            {repository.commit && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>
+                  commit <code title={repository.commit}>{repository.commit.slice(0, 7)}</code>
+                </span>
+              </>
+            )}
+            <span aria-hidden="true">·</span>
+            <ExternalLink href={repository.url}>Voir sur {FORGE_NAME[repository.forge]}</ExternalLink>
+          </p>
+        ) : (
+          <p className="font-mono text-sm break-all text-fg-muted">{upload ? 'fichier envoyé' : report.source}</p>
+        )}
         <p className="text-sm text-fg-muted">
           {offline
             ? fr(
@@ -156,8 +178,21 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
         </p>
       )}
 
-      {(offline || inconclusive > 0 || report.projects.some((project) => project.notices.length > 0)) && (
+      {(offline || inconclusive > 0 || repository?.truncated || report.projects.some((project) => project.notices.length > 0)) && (
         <div className="mb-6 flex flex-col gap-4">
+          {repository?.truncated && (
+            <Alert variant="warning" role="status">
+              <TriangleAlert aria-hidden="true" />
+              <AlertTitle>Analyse partielle : arborescence incomplète</AlertTitle>
+              <AlertDescription>
+                <p>
+                  {fr(
+                    `${FORGE_NAME[repository.forge]} n'a pas rendu toute l'arborescence du dépôt (plus de 100 000 fichiers) : des fichiers de dépendances peuvent manquer. Ce n'est pas « à jour ».`,
+                  )}
+                </p>
+              </AlertDescription>
+            </Alert>
+          )}
           {offline && (
             <Alert variant="warning" role="status">
               <WifiOff aria-hidden="true" />
@@ -207,9 +242,9 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
 
       {report.projects.length === 0 ? (
         <EmptyState
-          icon={FolderOpen}
+          icon={repository ? FolderGit2 : FolderOpen}
           level="h2"
-          title="Aucun fichier de dépendances dans ce dossier"
+          title={repository ? 'Aucun fichier de dépendances dans ce dépôt' : 'Aucun fichier de dépendances dans ce dossier'}
           actions={
             <>
               {!upload && !options?.include_tests && (
@@ -217,9 +252,15 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
                   Analyser aussi les dossiers de tests
                 </Button>
               )}
-              <Link to="/choisir?mode=dossier" className={buttonVariants({ variant: 'secondary' })}>
-                Choisir un autre dossier
-              </Link>
+              {repository ? (
+                <Link to="/depots" className={buttonVariants({ variant: 'secondary' })}>
+                  Revenir aux dépôts
+                </Link>
+              ) : (
+                <Link to="/choisir?mode=dossier" className={buttonVariants({ variant: 'secondary' })}>
+                  Choisir un autre dossier
+                </Link>
+              )}
             </>
           }
         >
@@ -261,7 +302,7 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
         </>
       )}
 
-      <DependencyDetail rows={opened} report={report} scanId={scan.id} onClose={closeDetail} />
+      <DependencyDetail rows={opened} report={report} scanId={repository ? null : scan.id} onClose={closeDetail} />
     </Container>
   )
 }

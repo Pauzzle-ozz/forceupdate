@@ -14,16 +14,19 @@ export interface ScanProgress {
   total: number
   /** Le dernier paquet vérifié. */
   last: { ecosystem: string; name: string } | null
+  /** Un dépôt : ses fichiers de dépendances téléchargés sur le total. */
+  downloaded: { done: number; total: number } | null
   /** Le flux est perdu et le serveur ne répond plus. */
   lost: boolean
 }
 
-const START: ScanProgress = { seen: new Set(), projects: null, done: 0, total: 0, last: null, lost: false }
+const START: ScanProgress = { seen: new Set(), projects: null, done: 0, total: 0, last: null, downloaded: null, lost: false }
 
 export function reduce(state: ScanProgress, event: ScanEvent): ScanProgress {
   const seen = new Set(state.seen).add(event.kind)
   const next: ScanProgress = { ...state, seen }
   if (event.kind === 'projects_found') next.projects = event.total
+  if (event.kind === 'downloading') next.downloaded = { done: event.done, total: event.total }
   if (event.kind === 'checking' || event.kind === 'package_checked' || event.kind === 'vulnerabilities_checked') {
     next.done = event.done
     next.total = event.total

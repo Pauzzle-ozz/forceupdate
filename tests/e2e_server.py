@@ -16,7 +16,10 @@ leur commande demande. Les autres outils sont absents (« commande à lancer »)
 
 Jamais le vrai trousseau ni le vrai GitHub (E16) : le trousseau est en mémoire
 (``conftest.MemoryKeyring``), GitHub est simulé (``FakeGitHub`` : l'échange du code, le device
-flow, ``/user``, la révocation), ``gh`` aussi (connecté, token ``gho_e2e_gh``). La page
+flow, ``/user``, la révocation), ``gh`` aussi (connecté, token ``gho_e2e_gh``). Ses dépôts
+(E17) aussi (``fake_forge.FakeGitHubRepos``, ``REPOSITORIES`` : des mini-projets de
+``tests/projects``, une organisation qui restreint l'accès des applications, un dépôt public
+d'un autre compte). La page
 d'autorisation est servie par un petit serveur sur ``localhost`` et un autre port : pour le
 navigateur, c'est un autre site, comme github.com. Elle renvoie aussitôt vers l'adresse de
 retour, avec le code ``e2e-code`` : le retour d'OAuth se teste pour de vrai (cookie
@@ -50,6 +53,7 @@ import respx
 sys.path.insert(0, str(Path(__file__).parent))
 
 from conftest import MemoryKeyring, recorded_responses
+from fake_forge import FakeGitHubRepos, FakeRepo, from_directory
 
 from forceupdate import engine
 from forceupdate.forges import github
@@ -116,6 +120,29 @@ TOKENS: dict[str, str | None] = {
     "github_pat_e2e": None,
 }
 """Les tokens que le faux GitHub accepte, avec leurs portées (``None`` : fine-grained)."""
+
+PROJECTS = Path(__file__).parent / "projects"
+
+REPOSITORIES = [
+    from_directory("octo-e2e/vulnerable", PROJECTS / "vulnerable", private=True, language="Python"),
+    FakeRepo(
+        full_name="octo-e2e/a-jour",
+        files={"requirements.txt": b"werkzeug==3.1.9\n", "app.py": b"print(1)\n"},
+        language="Python",
+    ),
+    FakeRepo(full_name="octo-e2e/docs", files={"README.md": b"# docs\n"}, language="Markdown"),
+    from_directory("atelier-e2e/outils", PROJECTS / "pip", push=False, language="Python"),
+    FakeRepo(full_name="octo-e2e/ancien", archived=True, files={"requirements.txt": b"flask\n"}),
+    FakeRepo(full_name="octo-e2e/neuf", empty=True),
+    FakeRepo(
+        full_name="pallets-e2e/flask",
+        files={"requirements.txt": b"flask==0.12\n"},
+        member=False,
+        language="Python",
+    ),
+]
+"""Les dépôts du faux GitHub : ceux du compte connecté, et un dépôt public d'un autre compte
+(``pallets-e2e/flask``)."""
 
 
 class FakeGitHub:
@@ -232,7 +259,17 @@ def main() -> None:
     options = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="forceupdate-e2e-") as tmp:
         cache_module.default_cache_path = lambda: Path(tmp) / "cache.sqlite3"
-        with recorded_responses(FakeGitHub().routes):
+        repositories = FakeGitHubRepos(
+            REPOSITORIES,
+            tokens=set(TOKENS),
+            organizations={"atelier-e2e": "ok", "nord-e2e": "restricted"},
+        )
+
+        def routes(router: respx.MockRouter) -> None:
+            FakeGitHub().routes(router)
+            repositories.routes(router)
+
+        with recorded_responses(routes):
             if options.report is not None:
                 report(options.report.resolve(), options.source)
             else:

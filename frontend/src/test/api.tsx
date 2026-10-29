@@ -14,6 +14,11 @@ import type {
   ForgeStatus,
   Listing,
   Report,
+  RepositoryAccount,
+  RepositoryBatch,
+  RepositoryList,
+  RepositoryRow,
+  RepositorySynthesis,
   ScanDetail,
   ScanSummary,
   UpdatePlan,
@@ -90,6 +95,8 @@ export function scanDetail(overrides: Partial<ScanDetail> = {}): ScanDetail {
     id: 'a1',
     source: 'C:/Projets/vulnerable',
     kind: 'folder',
+    repository: null,
+    batch: null,
     status: 'done',
     options: OPTIONS,
     started_at: '2026-10-28T17:30:00+00:00',
@@ -289,6 +296,101 @@ export function deviceConnection(overrides: Partial<AccountConnection> = {}): Ac
     interval: 5,
     error: null,
     account: null,
+    ...overrides,
+  }
+}
+
+/** Un dépôt de `octo`, pas encore analysé. */
+export function repositoryRow(overrides: Partial<RepositoryRow> = {}): RepositoryRow {
+  const fullName = overrides.full_name ?? 'octo/app'
+  const [owner, name] = fullName.split('/')
+  return {
+    forge: 'github',
+    host: 'github.com',
+    full_name: fullName,
+    owner,
+    name,
+    url: `https://github.com/${fullName}`,
+    default_branch: 'main',
+    private: false,
+    archived: false,
+    fork: false,
+    empty: false,
+    can_push: true,
+    pushed_at: '2026-10-28T15:30:00+00:00',
+    hidden: false,
+    languages: ['Python'],
+    state: 'not_scanned',
+    reason: null,
+    counts: null,
+    scan: null,
+    ...overrides,
+  }
+}
+
+/** Le compte GitHub `octo`, vu depuis ses dépôts. */
+export function repositoryAccount(overrides: Partial<RepositoryAccount> = {}): RepositoryAccount {
+  return {
+    forge: 'github',
+    host: 'github.com',
+    login: 'octo',
+    access: 'write',
+    problem: null,
+    listed_at: '2026-10-28T17:30:00+00:00',
+    error: null,
+    repositories: 0,
+    restrictions: [],
+    rate_limit: { limit: 5000, remaining: 4210, reset_at: '2026-10-28T19:00:00+00:00' },
+    ...overrides,
+  }
+}
+
+export function synthesis(overrides: Partial<RepositorySynthesis> = {}): RepositorySynthesis {
+  return {
+    repositories: 0,
+    hidden: 0,
+    archived: 0,
+    forks: 0,
+    empty: 0,
+    analyzed: 0,
+    running: 0,
+    not_scanned: 0,
+    skipped: 0,
+    to_update: 0,
+    up_to_date: 0,
+    inconclusive: 0,
+    no_dependencies: 0,
+    vulnerabilities: 0,
+    critical: 0,
+    vulnerable_repositories: 0,
+    findings: { vulnerable: 0, eol: 0, yanked: 0, deprecated: 0, outdated: 0, unverifiable: 0, inconclusive: 0 },
+    severities: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+    ...overrides,
+  }
+}
+
+/** `GET /api/repositories` : par défaut, aucun compte connecté. */
+export function repositoryList(overrides: Partial<RepositoryList> = {}): RepositoryList {
+  return { accounts: [], repositories: [], synthesis: synthesis(), batch: null, ...overrides }
+}
+
+/** Une analyse groupée de `total` dépôts, en cours. */
+export function batch(overrides: Partial<RepositoryBatch> = {}): RepositoryBatch {
+  return {
+    id: 'b1',
+    forge: 'github',
+    host: 'github.com',
+    status: 'running',
+    started_at: '2026-10-28T17:31:00+00:00',
+    finished_at: null,
+    concurrency: 4,
+    scans: ['s1', 's2', 's3'],
+    total: 3,
+    finished: 1,
+    failed: 0,
+    skipped: [],
+    requests: 42,
+    rate_limit: { limit: 5000, remaining: 4100, reset_at: '2026-10-28T19:00:00+00:00' },
     ...overrides,
   }
 }

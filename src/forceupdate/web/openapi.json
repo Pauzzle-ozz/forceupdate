@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "forceupdate",
-    "description": "L'API du serveur local de forceupdate : analyser un dossier ou un fichier, préparer et appliquer les mises à jour. Chaque requête porte le jeton de session (cookie posé par l'adresse que donne « forceupdate ui », ou « Authorization: Bearer <jeton> »).",
+    "description": "L'API du serveur local de forceupdate : analyser un dossier, un fichier ou les dépôts des comptes connectés, préparer et appliquer les mises à jour. Chaque requête porte le jeton de session (cookie posé par l'adresse que donne « forceupdate ui », ou « Authorization: Bearer <jeton> »).",
     "version": "0.1.0"
   },
   "paths": {
@@ -1697,6 +1697,408 @@
           }
         }
       }
+    },
+    "/api/repositories": {
+      "get": {
+        "tags": [
+          "dépôts"
+        ],
+        "summary": "List Repositories",
+        "description": "Les dépôts des comptes connectés, l'état de leur dernière analyse, et la synthèse. La\nliste est demandée aux forges la première fois, puis gardée le temps de la session ;\n``reload`` la redemande. Un refus de la forge est dit dans ``accounts[].error``.",
+        "operationId": "list_repositories",
+        "parameters": [
+          {
+            "name": "reload",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Reload"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoryList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/repositories/batches": {
+      "post": {
+        "tags": [
+          "dépôts"
+        ],
+        "summary": "Start Batch",
+        "description": "Analyse ensemble des dépôts du compte connecté à ``forge``, sans les cloner : quelques\ndépôts à la fois, une analyse par dépôt (``scans``), qui se suit comme les autres. Les\ndépôts vides sont sautés.",
+        "operationId": "start_batch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoryBatch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Impossible dans l'état actuel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/repositories/batches/{batch_id}": {
+      "get": {
+        "tags": [
+          "dépôts"
+        ],
+        "summary": "Get Batch",
+        "description": "Où en est une analyse groupée.",
+        "operationId": "get_batch",
+        "parameters": [
+          {
+            "name": "batch_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Batch Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoryBatch"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "dépôts"
+        ],
+        "summary": "Cancel Batch",
+        "description": "Annule les analyses du lot qui ne sont pas finies ; celles qui le sont restent.",
+        "operationId": "cancel_batch",
+        "parameters": [
+          {
+            "name": "batch_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Batch Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoryBatch"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/repositories/scans": {
+      "post": {
+        "tags": [
+          "dépôts"
+        ],
+        "summary": "Scan Repository",
+        "description": "Analyse un dépôt donné par son nom (``owner/nom``) ou son adresse, même d'un autre compte\ns'il est public : avec le token du compte connecté à sa forge, sans token sinon (GitHub :\n60 requêtes par heure). Se suit comme une autre analyse.",
+        "operationId": "scan_repository",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepositoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Impossible dans l'état actuel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "La forge ne répond pas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1962,6 +2364,56 @@
         ],
         "title": "ApplyRequest",
         "description": "Un plan à appliquer."
+      },
+      "BatchRequest": {
+        "properties": {
+          "dev": {
+            "type": "boolean",
+            "title": "Dev",
+            "default": true
+          },
+          "transitive": {
+            "type": "boolean",
+            "title": "Transitive",
+            "default": false
+          },
+          "include_tests": {
+            "type": "boolean",
+            "title": "Include Tests",
+            "default": false
+          },
+          "cache": {
+            "type": "boolean",
+            "title": "Cache",
+            "default": true
+          },
+          "forge": {
+            "$ref": "#/components/schemas/ForgeKind"
+          },
+          "repositories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Repositories"
+          }
+        },
+        "type": "object",
+        "required": [
+          "forge",
+          "repositories"
+        ],
+        "title": "BatchRequest",
+        "description": "Des dépôts d'un compte connecté à analyser ensemble."
+      },
+      "BatchStatus": {
+        "type": "string",
+        "enum": [
+          "running",
+          "done",
+          "cancelled"
+        ],
+        "title": "BatchStatus"
       },
       "Chosen": {
         "properties": {
@@ -2403,6 +2855,7 @@
       "EventKind": {
         "type": "string",
         "enum": [
+          "downloading",
           "reading",
           "projects_found",
           "checking",
@@ -3176,6 +3629,31 @@
         "title": "Project",
         "description": "Un projet : un dossier qui contient au moins un manifeste ou un lockfile.\n\nUn monorepo en donne plusieurs (``backend/`` en Python, ``frontend/`` en npm)."
       },
+      "RateLimit": {
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "remaining": {
+            "type": "integer",
+            "title": "Remaining"
+          },
+          "reset_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Reset At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "limit",
+          "remaining",
+          "reset_at"
+        ],
+        "title": "RateLimit",
+        "description": "Les requêtes d'API restantes, d'après la dernière réponse de la forge."
+      },
       "Reach": {
         "type": "string",
         "enum": [
@@ -3205,6 +3683,659 @@
         "title": "RecentPath",
         "description": "Un chemin analysé récemment."
       },
+      "RepositoryAccount": {
+        "properties": {
+          "forge": {
+            "$ref": "#/components/schemas/ForgeKind"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "login": {
+            "type": "string",
+            "title": "Login"
+          },
+          "access": {
+            "$ref": "#/components/schemas/Access"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          },
+          "listed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listed At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "repositories": {
+            "type": "integer",
+            "title": "Repositories"
+          },
+          "restrictions": {
+            "items": {
+              "$ref": "#/components/schemas/Restriction"
+            },
+            "type": "array",
+            "title": "Restrictions"
+          },
+          "rate_limit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RateLimit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "forge",
+          "host",
+          "login",
+          "access",
+          "problem",
+          "listed_at",
+          "error",
+          "repositories",
+          "restrictions",
+          "rate_limit"
+        ],
+        "title": "RepositoryAccount",
+        "description": "Un compte connecté, vu depuis ses dépôts."
+      },
+      "RepositoryBatch": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "forge": {
+            "$ref": "#/components/schemas/ForgeKind"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BatchStatus"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "concurrency": {
+            "type": "integer",
+            "title": "Concurrency"
+          },
+          "scans": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scans"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "finished": {
+            "type": "integer",
+            "title": "Finished"
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed"
+          },
+          "skipped": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skipped"
+          },
+          "requests": {
+            "type": "integer",
+            "title": "Requests"
+          },
+          "rate_limit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RateLimit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "forge",
+          "host",
+          "status",
+          "started_at",
+          "finished_at",
+          "concurrency",
+          "scans",
+          "total",
+          "finished",
+          "failed",
+          "skipped",
+          "requests",
+          "rate_limit"
+        ],
+        "title": "RepositoryBatch",
+        "description": "Une analyse groupée : des dépôts analysés ensemble, ``concurrency`` à la fois, avec le\nmême client et le même cache des registres."
+      },
+      "RepositoryCounts": {
+        "properties": {
+          "vulnerabilities": {
+            "type": "integer",
+            "title": "Vulnerabilities"
+          },
+          "critical": {
+            "type": "integer",
+            "title": "Critical"
+          },
+          "worst": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Severity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "to_update": {
+            "type": "integer",
+            "title": "To Update"
+          },
+          "inconclusive": {
+            "type": "integer",
+            "title": "Inconclusive"
+          },
+          "updates": {
+            "type": "integer",
+            "title": "Updates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "vulnerabilities",
+          "critical",
+          "worst",
+          "to_update",
+          "inconclusive",
+          "updates"
+        ],
+        "title": "RepositoryCounts",
+        "description": "Les chiffres de la dernière analyse d'un dépôt."
+      },
+      "RepositoryList": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/RepositoryAccount"
+            },
+            "type": "array",
+            "title": "Accounts"
+          },
+          "repositories": {
+            "items": {
+              "$ref": "#/components/schemas/RepositoryRow"
+            },
+            "type": "array",
+            "title": "Repositories"
+          },
+          "synthesis": {
+            "$ref": "#/components/schemas/RepositorySynthesis"
+          },
+          "batch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RepositoryBatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "accounts",
+          "repositories",
+          "synthesis",
+          "batch"
+        ],
+        "title": "RepositoryList",
+        "description": "Les dépôts des comptes connectés (écran 7)."
+      },
+      "RepositoryRef": {
+        "properties": {
+          "forge": {
+            "$ref": "#/components/schemas/ForgeKind"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "forge",
+          "host",
+          "full_name",
+          "url",
+          "commit",
+          "truncated"
+        ],
+        "title": "RepositoryRef",
+        "description": "Le dépôt d'une analyse de dépôt."
+      },
+      "RepositoryRequest": {
+        "properties": {
+          "dev": {
+            "type": "boolean",
+            "title": "Dev",
+            "default": true
+          },
+          "transitive": {
+            "type": "boolean",
+            "title": "Transitive",
+            "default": false
+          },
+          "include_tests": {
+            "type": "boolean",
+            "title": "Include Tests",
+            "default": false
+          },
+          "cache": {
+            "type": "boolean",
+            "title": "Cache",
+            "default": true
+          },
+          "repository": {
+            "type": "string",
+            "title": "Repository"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repository"
+        ],
+        "title": "RepositoryRequest",
+        "description": "Un dépôt à analyser, même d'un autre compte s'il est public."
+      },
+      "RepositoryRow": {
+        "properties": {
+          "forge": {
+            "$ref": "#/components/schemas/ForgeKind"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "owner": {
+            "type": "string",
+            "title": "Owner"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "default_branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Branch"
+          },
+          "private": {
+            "type": "boolean",
+            "title": "Private"
+          },
+          "archived": {
+            "type": "boolean",
+            "title": "Archived"
+          },
+          "fork": {
+            "type": "boolean",
+            "title": "Fork"
+          },
+          "empty": {
+            "type": "boolean",
+            "title": "Empty"
+          },
+          "can_push": {
+            "type": "boolean",
+            "title": "Can Push"
+          },
+          "pushed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pushed At"
+          },
+          "hidden": {
+            "type": "boolean",
+            "title": "Hidden"
+          },
+          "languages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Languages"
+          },
+          "state": {
+            "$ref": "#/components/schemas/RepositoryState"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "counts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RepositoryCounts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScanSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "forge",
+          "host",
+          "full_name",
+          "owner",
+          "name",
+          "url",
+          "default_branch",
+          "private",
+          "archived",
+          "fork",
+          "empty",
+          "can_push",
+          "pushed_at",
+          "hidden",
+          "languages",
+          "state",
+          "reason",
+          "counts",
+          "scan"
+        ],
+        "title": "RepositoryRow",
+        "description": "Un dépôt d'un compte connecté, ses drapeaux, et sa dernière analyse."
+      },
+      "RepositoryState": {
+        "type": "string",
+        "enum": [
+          "not_scanned",
+          "running",
+          "to_update",
+          "up_to_date",
+          "inconclusive",
+          "no_dependencies",
+          "skipped"
+        ],
+        "title": "RepositoryState",
+        "description": "Où en est un dépôt (écran 7), d'après sa dernière analyse."
+      },
+      "RepositorySynthesis": {
+        "properties": {
+          "repositories": {
+            "type": "integer",
+            "title": "Repositories"
+          },
+          "hidden": {
+            "type": "integer",
+            "title": "Hidden"
+          },
+          "archived": {
+            "type": "integer",
+            "title": "Archived"
+          },
+          "forks": {
+            "type": "integer",
+            "title": "Forks"
+          },
+          "empty": {
+            "type": "integer",
+            "title": "Empty"
+          },
+          "analyzed": {
+            "type": "integer",
+            "title": "Analyzed"
+          },
+          "running": {
+            "type": "integer",
+            "title": "Running"
+          },
+          "not_scanned": {
+            "type": "integer",
+            "title": "Not Scanned"
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped"
+          },
+          "to_update": {
+            "type": "integer",
+            "title": "To Update"
+          },
+          "up_to_date": {
+            "type": "integer",
+            "title": "Up To Date"
+          },
+          "inconclusive": {
+            "type": "integer",
+            "title": "Inconclusive"
+          },
+          "no_dependencies": {
+            "type": "integer",
+            "title": "No Dependencies"
+          },
+          "vulnerabilities": {
+            "type": "integer",
+            "title": "Vulnerabilities"
+          },
+          "critical": {
+            "type": "integer",
+            "title": "Critical"
+          },
+          "vulnerable_repositories": {
+            "type": "integer",
+            "title": "Vulnerable Repositories"
+          },
+          "findings": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/FindingKind"
+            },
+            "type": "object",
+            "title": "Findings"
+          },
+          "severities": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/Severity"
+            },
+            "type": "object",
+            "title": "Severities"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repositories",
+          "hidden",
+          "archived",
+          "forks",
+          "empty",
+          "analyzed",
+          "running",
+          "not_scanned",
+          "skipped",
+          "to_update",
+          "up_to_date",
+          "inconclusive",
+          "no_dependencies",
+          "vulnerabilities",
+          "critical",
+          "vulnerable_repositories",
+          "findings",
+          "severities"
+        ],
+        "title": "RepositorySynthesis",
+        "description": "La synthèse de tous les dépôts listés, calculée par le serveur."
+      },
+      "Restriction": {
+        "properties": {
+          "organization": {
+            "type": "string",
+            "title": "Organization"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RestrictionKind"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "organization",
+          "kind",
+          "url"
+        ],
+        "title": "Restriction",
+        "description": "Une organisation dont le compte est membre, mais dont les dépôts ne sont pas tous\nlisibles avec ce token (``Forge.restrictions``) : à dire, pas à cacher."
+      },
+      "RestrictionKind": {
+        "type": "string",
+        "enum": [
+          "app_access",
+          "sso"
+        ],
+        "title": "RestrictionKind",
+        "description": "Pourquoi les dépôts d'une organisation ne sont pas tous lisibles."
+      },
       "ScanDetail": {
         "properties": {
           "id": {
@@ -3217,6 +4348,27 @@
           },
           "kind": {
             "$ref": "#/components/schemas/SourceKind"
+          },
+          "repository": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RepositoryRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "batch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch"
           },
           "status": {
             "$ref": "#/components/schemas/TaskStatus"
@@ -3288,6 +4440,8 @@
           "id",
           "source",
           "kind",
+          "repository",
+          "batch",
           "status",
           "options",
           "started_at",
@@ -3391,6 +4545,27 @@
           "kind": {
             "$ref": "#/components/schemas/SourceKind"
           },
+          "repository": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RepositoryRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "batch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch"
+          },
           "status": {
             "$ref": "#/components/schemas/TaskStatus"
           },
@@ -3451,6 +4626,8 @@
           "id",
           "source",
           "kind",
+          "repository",
+          "batch",
           "status",
           "options",
           "started_at",
@@ -3515,7 +4692,8 @@
         "enum": [
           "folder",
           "file",
-          "upload"
+          "upload",
+          "repository"
         ],
         "title": "SourceKind",
         "description": "Ce qui est analysé."

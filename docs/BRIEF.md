@@ -273,7 +273,16 @@ chaque fois) :
   - arborescence tronquée au-delà de 100 000 entrées ;
   - l'API « contents » ne renvoie pas le contenu au-delà de 1 Mo : passer par
     `Accept: application/vnd.github.raw` ;
-  - l'en-tête `X-OAuth-Scopes` n'existe que pour les tokens « classic ».
+  - l'en-tête `X-OAuth-Scopes` n'existe que pour les tokens « classic » ;
+  - **constaté à E17** : la liste des dépôts ne dit pas qu'un dépôt est vide (`size`, en Ko
+    arrondis, vaut 0 aussi pour un petit dépôt) : `commits?per_page=1` répond 409 pour un vide ;
+    `git/trees/{branche}` rend le SHA de l'arbre, pas du commit : demander d'abord le commit
+    (`Accept: application/vnd.github.sha`), puis lire arbre et fichiers à ce commit ;
+    `contents` avec `Accept: application/vnd.github.raw` donne le contenu jusqu'à 100 Mo ; une
+    organisation qui restreint les OAuth Apps répond 403 « OAuth App access restrictions » sur
+    `/orgs/{org}/repos` (ses dépôts publics restent dans `/user/repos`) ; sans token, 60
+    requêtes par heure ; un dépôt privé invisible rend 404. Analyser les 7 dépôts du compte de
+    l'utilisateur a pris 15 s et 32 requêtes.
 - **GitLab** : les projets sont rangés dans des groupes et des sous-groupes ;
   l'arborescence est paginée ; on parle de « merge request ».
 - **Bitbucket** :
