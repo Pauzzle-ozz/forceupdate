@@ -24,6 +24,7 @@ import type { RecentPath, ScanSummary, Summary } from '@/api/types'
 import { Blade } from '@/components/Blade'
 import { EmptyState } from '@/components/EmptyState'
 import { FileDrop, UPLOAD_LIMITS } from '@/components/FileDrop'
+import { ForgeLogo } from '@/components/ForgeLogo'
 import { ScanOptionsFields } from '@/components/ScanOptionsFields'
 import { KIND_ICON } from '@/components/icons'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -32,6 +33,7 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useAccounts } from '@/hooks/useAccounts'
 import { DEFAULT_OPTIONS, rescanRequest, useScanOptions, useStartScan, useUpload } from '@/hooks/useScanActions'
 import { useOnline } from '@/hooks/useStatus'
 import { basename, count, formatTime, fr } from '@/lib/format'
@@ -43,6 +45,8 @@ export function Home() {
   useDocumentTitle('Analyser')
   const online = useOnline()
   const upload = useUpload()
+  const accounts = useAccounts()
+  const connected = (accounts.data?.forges ?? []).filter((forge) => forge.account !== null)
 
   return (
     <>
@@ -115,18 +119,32 @@ export function Home() {
               title="Mes dépôts"
               action={
                 <Link to="/comptes" className={buttonVariants({ variant: 'secondary' })}>
-                  Connecter un compte
+                  {connected.length > 0 ? 'Gérer les comptes' : 'Connecter un compte'}
                 </Link>
               }
             >
               <p>
-                GitHub, GitLab, Bitbucket : tous les dépôts du compte, analysés sans les cloner. Une PR par dépôt à
+                GitHub, GitLab, Bitbucket : tous les dépôts du compte, analysés sans les cloner. Une PR par dépôt à
                 mettre à jour.
               </p>
-              <p className="flex items-center gap-2 text-sm">
-                <Unplug className="size-4" aria-hidden="true" />
-                Aucun compte connecté
-              </p>
+              {connected.length > 0 ? (
+                <ul className="flex flex-col gap-1 text-sm">
+                  {connected.map(({ forge, name, account }) => (
+                    <li key={forge} className="flex items-center gap-2 text-fg">
+                      <ForgeLogo forge={forge} className="size-4" />
+                      {name}
+                      <span className="font-mono">@{account?.login}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : accounts.isPending ? (
+                <Skeleton className="h-4 w-40" />
+              ) : (
+                <p className="flex items-center gap-2 text-sm">
+                  <Unplug className="size-4" aria-hidden="true" />
+                  Aucun compte connecté
+                </p>
+              )}
             </SourceCard>
           </div>
           {upload.error && <UploadError error={upload.error} />}

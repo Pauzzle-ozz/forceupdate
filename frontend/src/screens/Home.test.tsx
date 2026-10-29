@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import { DOWN, Status, listing, mockApi, renderApp, scanSummary } from '@/test/api'
+import { DOWN, accountList, Status, listing, mockApi, renderApp, scanSummary } from '@/test/api'
 
 describe('l’accueil (écran 1)', () => {
   it('premier lancement : les trois sources, et « Aucune analyse pour l’instant »', async () => {
@@ -110,7 +110,7 @@ describe('l’accueil (écran 1)', () => {
   })
 
   it('serveur arrêté : le bandeau commun, et la liste « indisponible »', async () => {
-    mockApi({ 'GET /api/scans': DOWN, 'GET /api/fs': DOWN })
+    mockApi({ 'GET /api/scans': DOWN, 'GET /api/fs': DOWN, 'GET /api/accounts': DOWN })
     renderApp('/')
     expect(await screen.findByText('Le serveur local ne répond plus')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
@@ -118,7 +118,11 @@ describe('l’accueil (écran 1)', () => {
   })
 
   it('session terminée (401) : le bandeau dit d’ouvrir la nouvelle adresse', async () => {
-    mockApi({ 'GET /api/scans': new Status(401), 'GET /api/fs': new Status(401) })
+    mockApi({
+      'GET /api/scans': new Status(401),
+      'GET /api/fs': new Status(401),
+      'GET /api/accounts': new Status(401),
+    })
     renderApp('/')
     expect(await screen.findByText('Session terminée')).toBeInTheDocument()
     expect(screen.getByText(/son jeton a changé/)).toBeInTheDocument()
@@ -129,6 +133,7 @@ describe('l’accueil (écran 1)', () => {
     mockApi({
       'GET /api/scans': () => (up ? [] : DOWN),
       'GET /api/fs': () => (up ? listing() : DOWN),
+      'GET /api/accounts': () => (up ? accountList() : DOWN),
     })
     const user = userEvent.setup()
     renderApp('/')

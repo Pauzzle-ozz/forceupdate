@@ -221,10 +221,262 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Accounts
+         * @description Les forges, comment s'y connecter, et les comptes connectés (sans leur token). Rien
+         *     n'est demandé aux forges : ``POST …/verify`` relit les droits.
+         */
+        get: operations["list_accounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{forge}/oauth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Oauth
+         * @description Commence une connexion par la page d'autorisation de la forge : le navigateur doit aller
+         *     à ``authorize_url``. La forge le renverra sur le serveur, qui échange le code contre le
+         *     token, puis vers ``/comptes?connexion=<id>``.
+         */
+        post: operations["start_oauth"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{forge}/device": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Device
+         * @description Commence une connexion par device flow : la forge donne un code (``user_code``) à taper
+         *     sur ``verification_uri`` ; le serveur attend, la connexion se suit sur
+         *     ``GET /api/accounts/connections/{id}``.
+         */
+        post: operations["start_device"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/connections/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Connection
+         * @description Où en est une connexion : ``pending``, puis ``done`` (avec le compte), ``failed``,
+         *     ``expired`` ou ``cancelled`` (avec la raison).
+         */
+        get: operations["get_connection"];
+        put?: never;
+        post?: never;
+        /**
+         * Cancel Connection
+         * @description Abandonne une connexion en attente (le device flow cesse d'attendre).
+         */
+        delete: operations["cancel_connection"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{forge}/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Connect Token
+         * @description Connecte un compte avec un token collé (classic ou fine-grained), une fois que la forge
+         *     l'a accepté.
+         */
+        post: operations["connect_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{forge}/gh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Connect Gh
+         * @description Connecte le compte avec lequel GitHub CLI (``gh``) est connecté : son token est lu par
+         *     ``gh auth token``, puis rangé dans le trousseau de forceupdate.
+         */
+        post: operations["connect_gh"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{forge}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Account
+         * @description Redemande à la forge qui est connecté et avec quels droits. Un token refusé (révoqué sur
+         *     la forge) est dit dans ``problem`` : le compte reste affiché, pour qu'on se reconnecte.
+         */
+        post: operations["verify_account"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{forge}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect
+         * @description Déconnecte le compte : efface son token du trousseau, et le révoque auprès de la forge
+         *     s'il a été donné à forceupdate (OAuth, device flow).
+         */
+        delete: operations["disconnect"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * Access
+         * @description Ce que permet un token, d'après ses droits.
+         * @enum {string}
+         */
+        Access: "write" | "public" | "read" | "unknown";
+        /**
+         * Account
+         * @description Un compte connecté. Jamais son token.
+         */
+        Account: {
+            forge: components["schemas"]["ForgeKind"];
+            /** Host */
+            host: string;
+            /** Login */
+            login: string;
+            /** Name */
+            name: string | null;
+            /** Url */
+            url: string;
+            access: components["schemas"]["Access"];
+            /** Scopes */
+            scopes: string[] | null;
+            /** Warnings */
+            warnings: string[];
+            method: components["schemas"]["ConnectMethod"];
+            /**
+             * Connected At
+             * Format: date-time
+             */
+            connected_at: string;
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            /** Problem */
+            problem: string | null;
+        };
+        /**
+         * AccountConnection
+         * @description Une connexion en cours ou finie, par OAuth ou par device flow.
+         */
+        AccountConnection: {
+            /** Id */
+            id: string;
+            forge: components["schemas"]["ForgeKind"];
+            method: components["schemas"]["ConnectMethod"];
+            status: components["schemas"]["ConnectionStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Authorize Url */
+            authorize_url: string | null;
+            /** User Code */
+            user_code: string | null;
+            /** Verification Uri */
+            verification_uri: string | null;
+            /** Interval */
+            interval: number | null;
+            /** Error */
+            error: string | null;
+            account: components["schemas"]["Account"] | null;
+        };
+        /** AccountList */
+        AccountList: {
+            /** Keyring */
+            keyring: string | null;
+            /** Forges */
+            forges: components["schemas"]["ForgeStatus"][];
+        };
         /**
          * ApplyRequest
          * @description Un plan à appliquer.
@@ -248,6 +500,18 @@ export interface components {
             /** Version */
             version: string;
         };
+        /**
+         * ConnectMethod
+         * @description Comment un compte a été connecté.
+         * @enum {string}
+         */
+        ConnectMethod: "oauth" | "device" | "token" | "gh";
+        /**
+         * ConnectionStatus
+         * @description Où en est la connexion d'un compte.
+         * @enum {string}
+         */
+        ConnectionStatus: "pending" | "done" | "failed" | "expired" | "cancelled";
         /**
          * Dependency
          * @description Une dépendance d'un projet.
@@ -282,6 +546,19 @@ export interface components {
             location: components["schemas"]["Location"] | null;
             /** Unverifiable Reason */
             unverifiable_reason: string | null;
+        };
+        /**
+         * Disconnection
+         * @description Un compte déconnecté : son token est effacé du trousseau.
+         */
+        Disconnection: {
+            forge: components["schemas"]["ForgeKind"];
+            /** Login */
+            login: string;
+            /** Revoked */
+            revoked: boolean | null;
+            /** Message */
+            message: string;
         };
         /**
          * Document
@@ -444,6 +721,32 @@ export interface components {
          * @enum {string}
          */
         FindingKind: "outdated" | "vulnerable" | "eol" | "yanked" | "deprecated" | "unverifiable" | "inconclusive";
+        /**
+         * ForgeKind
+         * @enum {string}
+         */
+        ForgeKind: "github" | "gitlab" | "bitbucket";
+        /**
+         * ForgeStatus
+         * @description Une forge : peut-on s'y connecter, comment, et qui y est connecté.
+         */
+        ForgeStatus: {
+            forge: components["schemas"]["ForgeKind"];
+            /** Name */
+            name: string;
+            /** Host */
+            host: string;
+            /** Available */
+            available: boolean;
+            /** Methods */
+            methods: components["schemas"]["ConnectMethod"][];
+            /** Scopes */
+            scopes: string[];
+            /** Token Url */
+            token_url: string | null;
+            account: components["schemas"]["Account"] | null;
+            connection: components["schemas"]["AccountConnection"] | null;
+        };
         /**
          * Gap
          * @description L'écart entre deux versions.
@@ -857,6 +1160,15 @@ export interface components {
          * @enum {string}
          */
         TaskStatus: "planned" | "running" | "done" | "failed" | "cancelled";
+        /**
+         * TokenRequest
+         * @description Un token collé, pour connecter un compte. Le navigateur l'envoie au serveur ; le serveur
+         *     ne le renvoie jamais.
+         */
+        TokenRequest: {
+            /** Token */
+            token: string;
+        };
         /**
          * Tool
          * @description L'outil qui a fait le rapport.
@@ -1757,6 +2069,584 @@ export interface operations {
             };
             /** @description Fichier trop gros */
             413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_accounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountList"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    start_oauth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                forge: components["schemas"]["ForgeKind"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountConnection"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Impossible dans l'état actuel */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_device: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                forge: components["schemas"]["ForgeKind"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountConnection"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Impossible dans l'état actuel */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description La forge ne répond pas */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get_connection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountConnection"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Introuvable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_connection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountConnection"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Introuvable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                forge: components["schemas"]["ForgeKind"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            /** @description Requête invalide */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Impossible dans l'état actuel */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description La forge ne répond pas */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    connect_gh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                forge: components["schemas"]["ForgeKind"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            /** @description Requête invalide */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Impossible dans l'état actuel */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description La forge ne répond pas */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    verify_account: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                forge: components["schemas"]["ForgeKind"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Introuvable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Impossible dans l'état actuel */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description La forge ne répond pas */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    disconnect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                forge: components["schemas"]["ForgeKind"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Disconnection"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Introuvable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Impossible dans l'état actuel */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

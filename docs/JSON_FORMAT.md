@@ -502,6 +502,8 @@ chemins envoyés sont absolus ; ceux que rend l'API aussi, au format POSIX
 - `Host` doit être `127.0.0.1:<port>` ou `localhost:<port>` (sinon `400`) ; `Origin`,
   s'il y en a un, l'adresse du serveur, et `Sec-Fetch-Site`, s'il y en a un,
   `same-origin` ou `none` (sinon `403`). Pas de CORS.
+- Seule exception : l'[adresse de retour d'OAuth](#adresse-de-retour-doauth), où la forge
+  renvoie le navigateur.
 
 Avec curl :
 
@@ -525,13 +527,28 @@ curl -H "Authorization: Bearer $JETON" "http://127.0.0.1:$PORT/api/scans"
 | `GET /api/updates/{id}/events` | | `200` [progression](#progression-sse) de l'application ; `409` si le plan n'est pas appliqué |
 | `GET /api/updates/{id}/files/{chemin}` | | `200` le fichier tel que le plan le réécrit, à télécharger |
 | `POST /api/files?name=<nom>` | le contenu du fichier | `202` [analyse](#analyse) d'un [fichier envoyé](#fichier-envoyé) |
+| `GET /api/accounts` | | `200` [liste des comptes](#liste-des-comptes) : les forges, et qui y est connecté |
+| `POST /api/accounts/{forge}/oauth` | | `201` [connexion](#connexion) OAuth : aller à `authorize_url` |
+| `POST /api/accounts/{forge}/device` | | `201` [connexion](#connexion) par device flow : le code à taper |
+| `GET /api/accounts/connections/{id}` | | `200` [connexion](#connexion) : où elle en est |
+| `DELETE /api/accounts/connections/{id}` | | `200` [connexion](#connexion) annulée |
+| `POST /api/accounts/{forge}/token` | `{"token": "…"}` | `201` [compte](#compte), une fois le token accepté par la forge |
+| `POST /api/accounts/{forge}/gh` | | `201` [compte](#compte) de GitHub CLI (`gh auth token`) |
+| `POST /api/accounts/{forge}/verify` | | `200` [compte](#compte), droits relus auprès de la forge |
+| `DELETE /api/accounts/{forge}` | | `200` [déconnexion](#déconnexion) |
+
+`{forge}` : `github`, `gitlab` ou `bitbucket` (sinon `422`) ; GitLab et Bitbucket
+répondent `409` tant que leur connexion n'est pas prête (E19, E20).
 
 Une erreur rend `{"detail": "…"}`, une phrase en français : `400` (requête invalide :
-chemin relatif, sélection qui ne correspond pas au rapport, nom de fichier refusé),
-`401`, `403`, `404` (analyse, plan, chemin inconnus), `409` (impossible dans l'état
-actuel : analyse pas finie, plan déjà appliqué, changements que git n'a pas en commit,
-rien à appliquer), `413` (fichier envoyé trop gros). Un corps mal formé rend le `422`
-de FastAPI, dont `detail` est une liste.
+chemin relatif, sélection qui ne correspond pas au rapport, nom de fichier refusé ; token
+refusé par la forge), `401`, `403`, `404` (analyse, plan, chemin, connexion inconnus ;
+aucun compte connecté), `409` (impossible dans l'état actuel : analyse pas finie, plan
+déjà appliqué, changements que git n'a pas en commit, rien à appliquer ; trousseau
+indisponible, limite d'API de la forge atteinte), `413` (fichier envoyé trop gros), `502`
+(la forge ne répond pas). Un corps mal formé rend le `422` de FastAPI, dont `detail` est
+une liste. **Un refus de la forge n'est jamais un `401`** : celui-là veut toujours dire
+« jeton de session manquant ».
 
 Les analyses et les plans restent en mémoire le temps de la session (les 20 analyses
 les plus récentes, avec leurs plans) ; seuls les chemins récents sont gardés sur le
@@ -682,3 +699,113 @@ l'ordinateur (`kind: "upload"`) : même progression, même rapport (`source` est
 nom), même plan. Mais rien ne s'écrit sur le disque de la personne et aucun outil
 n'est lancé : le plan n'a pas de lockfiles, ne s'applique pas (`409`), et sa version
 réécrite se télécharge par `GET /api/updates/{id}/files/{nom}`.
+
+## Comptes des forges
+
+Chaque personne connecte son propre compte (E16 : GitHub ; GitLab à E19, Bitbucket à
+E20). **Le token reste sur le serveur** : rangé dans le trousseau du système (`keyring`),
+jamais renvoyé au navigateur, jamais dans un journal ni dans `accounts.json` (qui garde le
+reste, dans le dossier d'état de l'utilisateur). Le navigateur n'envoie un token que quand
+la personne le colle.
+
+Quatre façons de se connecter (`method`) :
+
+- `oauth` : `POST …/oauth` rend `authorize_url`, la page d'autorisation de la forge, où
+  le navigateur doit aller ; la forge le renvoie sur l'[adresse de retour](#adresse-de-retour-doauth),
+  qui échange le code contre le token puis renvoie vers `/comptes?connexion=<id>` ;
+- `device` (device flow) : `POST …/device` rend un code (`user_code`) à taper sur
+  `verification_uri` ; le serveur attend l'autorisation tout seul, le navigateur suit la
+  connexion par `GET /api/accounts/connections/{id}` ;
+- `token` : un token collé (`POST …/token`) ;
+- `gh` : le token de GitHub CLI (`POST …/gh`), lu par `gh auth token`.
+
+Portées demandées à GitHub : `repo` et `read:org`.
+
+### Liste des comptes
+
+| Champ | Type | Sens |
+|---|---|---|
+| `keyring` | chaîne ou `null` | pourquoi le trousseau du système ne peut pas garder de token (aucun n'est utilisable) ; `null` s'il marche |
+| `forges` | liste | une entrée par forge, dans l'ordre GitHub, GitLab, Bitbucket (ci-dessous) |
+
+Chaque forge :
+
+| Champ | Type | Sens |
+|---|---|---|
+| `forge` | chaîne | `github`, `gitlab`, `bitbucket` |
+| `name`, `host` | chaînes | `GitHub`, `github.com` |
+| `available` | booléen | la connexion est prête ; sinon elle arrive à une étape à venir |
+| `methods` | liste de chaînes | les façons de se connecter possibles maintenant : `gh` seulement s'il est installé, `oauth` seulement si l'application a son secret |
+| `scopes` | liste de chaînes | les portées demandées par `oauth` et `device` |
+| `token_url` | chaîne ou `null` | où créer un token à coller, portées pré-cochées |
+| `account` | [compte](#compte) ou `null` | le compte connecté |
+| `connection` | [connexion](#connexion) ou `null` | une connexion en attente (un device flow se retrouve après un rechargement) |
+
+Rien n'est demandé aux forges pour lister : `POST …/verify` relit les droits.
+
+### Compte
+
+| Champ | Type | Sens |
+|---|---|---|
+| `forge`, `host` | chaînes | |
+| `login` | chaîne | l'identifiant (`octo`) |
+| `name` | chaîne ou `null` | le nom affiché |
+| `url` | chaîne | son profil sur la forge |
+| `access` | chaîne | ce que permet le token : `write` (lire, pousser, ouvrir des PR, dépôts publics et privés), `public` (la même chose, dépôts publics seulement), `read` (lire les dépôts publics), `unknown` (droits non vérifiés : la forge ne les dit pas, token « fine-grained » de GitHub) |
+| `scopes` | liste ou `null` | les portées du token (`X-OAuth-Scopes` de GitHub) ; `null` si la forge ne les dit pas |
+| `warnings` | liste de chaînes | ce qui manquera avec ces droits (`read:org` absente…) |
+| `method` | chaîne | `oauth`, `device`, `token`, `gh` |
+| `connected_at` | date | |
+| `checked_at` | date | la dernière fois que la forge a accepté le token |
+| `problem` | chaîne ou `null` | ce qui n'allait pas au dernier contrôle : la forge refuse le token (révoqué sur la forge) ; le compte reste, pour qu'on se reconnecte |
+
+### Connexion
+
+| Champ | Type | Sens |
+|---|---|---|
+| `id` | chaîne | |
+| `forge`, `method` | chaînes | `method` : `oauth` ou `device` |
+| `status` | chaîne | `pending`, puis `done`, `failed`, `expired` (pas d'autorisation à temps : 10 min pour OAuth, la durée du code pour le device flow) ou `cancelled` (annulée, ou remplacée par une autre connexion à la même forge) |
+| `created_at`, `expires_at` | dates | |
+| `authorize_url` | chaîne ou `null` | OAuth, tant qu'elle attend : la page d'autorisation |
+| `user_code`, `verification_uri` | chaînes ou `null` | device flow : le code, et où le taper |
+| `interval` | entier ou `null` | device flow : secondes entre deux demandes du serveur à la forge |
+| `error` | chaîne ou `null` | `failed`, `expired` : ce qui s'est passé |
+| `account` | [compte](#compte) ou `null` | `done` : le compte connecté |
+
+Les connexions vivent en mémoire, le temps de la session (les 20 dernières).
+
+### Déconnexion
+
+`DELETE /api/accounts/{forge}` efface le token du trousseau et le compte. Un token obtenu
+par `oauth` ou `device` est aussi révoqué auprès de la forge ; un token collé, ou celui
+de `gh`, n'appartient pas à forceupdate et reste valable.
+
+| Champ | Type | Sens |
+|---|---|---|
+| `forge`, `login` | chaînes | |
+| `revoked` | booléen ou `null` | `true` : révoqué ; `false` : la forge n'a pas pu le révoquer (injoignable) ; `null` : token collé ou de `gh`, pas à révoquer |
+| `message` | chaîne | ce qui a été fait, à montrer |
+
+### Adresse de retour d'OAuth
+
+`GET /oauth/github/callback?code=…&state=…` : la forge y renvoie le navigateur après
+l'autorisation. Elle n'est pas dans `/api` ni dans le schéma OpenAPI : le front ne
+l'appelle jamais.
+
+C'est une navigation venue d'un autre site (github.com) : le cookie de session
+(`SameSite=Strict`) n'y est pas envoyé, et `Sec-Fetch-Site` vaut `cross-site`. Le garde
+la laisse donc passer sans jeton de session, mais seulement en `GET`, en navigation
+(`Sec-Fetch-Mode: navigate` et `Sec-Fetch-Dest: document` s'ils sont là), sans `Origin`
+étrangère (sinon `403`), et toujours avec le bon `Host`. Ce qui la protège est le
+`state`, tiré par le serveur pour une connexion lancée avec le jeton de session, gardé en
+mémoire, valable 10 minutes et **une seule fois** ; PKCE (`S256`) s'ajoute au secret de
+l'application. Sans `state` connu, la page ne fait rien (`400`).
+
+Elle rend une petite page HTML qui renvoie aussitôt vers `/comptes?connexion=<id>`
+(`<meta http-equiv="refresh">`, avec un lien) : une redirection HTTP laisserait la page
+suivante « d'un autre site » (la chaîne de redirections part de github.com), sans cookie.
+Lancée par cette page, la navigation vient du serveur lui-même.
+
+GitHub ne revient que vers `127.0.0.1` (l'adresse enregistrée, sur n'importe quel port) :
+`POST …/oauth` est refusé (`409`) si l'interface est ouverte par `localhost`.

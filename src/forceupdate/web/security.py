@@ -22,6 +22,15 @@ ouverte dans le même navigateur ne doit rien pouvoir lui demander.
 
 Le cookie porte le port dans son nom : les cookies ne distinguent pas les ports, deux serveurs
 lancés en même temps garderaient sinon le même.
+
+**Adresses de retour d'OAuth** (``returns``, E16 : ``/oauth/github/callback``) : la forge y
+renvoie le navigateur après l'autorisation. C'est une navigation venue d'un autre site : le
+cookie ``SameSite=Strict`` n'y est pas envoyé, ``Sec-Fetch-Site`` vaut ``cross-site``. Elles
+passent donc sans jeton de session ni contrôle de ``Sec-Fetch-Site``, mais seulement en ``GET``,
+en navigation (``Sec-Fetch-Mode: navigate``, ``Sec-Fetch-Dest: document`` s'ils sont là), sans
+``Origin`` étrangère, et toujours avec le bon ``Host``. La route vérifie le ``state`` qu'elle a
+tiré (``web.routes.oauth``) ; sans lui, elle ne fait rien. Toutes les autres adresses gardent
+toutes les règles.
 """
 
 import json
@@ -63,12 +72,13 @@ class Guard:
     """Le middleware ASGI qui applique ces règles à chaque requête (voir la docstring du
     module)."""
 
-    def __init__(self, app: ASGIApp, *, token: str, port: int) -> None:
+    def __init__(self, app: ASGIApp, *, token: str, port: int, returns: Iterable[str] = ()) -> None:
         self.app = app
         self._token = token.encode()
         self._cookie = cookie_name(port)
         self._hosts = frozenset({f"127.0.0.1:{port}", f"localhost:{port}"})
         self._origins = frozenset(f"http://{host}" for host in self._hosts)
+        self._returns = frozenset(returns)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "lifespan":
@@ -83,13 +93,16 @@ class Guard:
             await _refuse(send, 400, "Hôte refusé : le serveur ne répond qu'à 127.0.0.1.")
             return
         origin = headers.get("origin")
+        url = URL(scope=scope)
+        if url.path in self._returns:
+            await self._return(scope, receive, send, headers)
+            return
         site = headers.get("sec-fetch-site")
         if (origin is not None and origin not in self._origins) or (
             site is not None and site not in _SAME_ORIGIN
         ):
             await _refuse(send, 403, "Requête venue d'un autre site : refusée.")
             return
-        url = URL(scope=scope)
         given = QueryParams(scope.get("query_string", b"")).get(TOKEN_PARAMETER)
         if given is not None and scope["method"] == "GET" and not _is_api(url.path):
             await self._enter(send, url, given)
@@ -117,6 +130,22 @@ class Guard:
 
     def _matches(self, value: str) -> bool:
         return secrets.compare_digest(value.encode(), self._token)
+
+    async def _return(self, scope: Scope, receive: Receive, send: Send, headers: Headers) -> None:
+        """Une adresse de retour d'OAuth : seulement une navigation ``GET``, sans ``Origin``
+        étrangère ; ni jeton ni ``Sec-Fetch-Site`` exigés (voir la docstring du module)."""
+        origin = headers.get("origin")
+        mode = headers.get("sec-fetch-mode")
+        destination = headers.get("sec-fetch-dest")
+        if (
+            scope["method"] != "GET"
+            or (origin is not None and origin not in self._origins)
+            or (mode is not None and mode != "navigate")
+            or (destination is not None and destination != "document")
+        ):
+            await _refuse(send, 403, "Adresse de retour d'une forge : seule une navigation y mène.")
+            return
+        await self.app(scope, receive, send)
 
     async def _enter(self, send: Send, url: URL, given: str) -> None:
         """L'adresse d'entrée (``/?token=…``) : pose le cookie, puis renvoie vers la même page,

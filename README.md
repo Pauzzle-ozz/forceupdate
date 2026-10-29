@@ -55,6 +55,13 @@ de chaque fichier, les lockfiles à régénérer et le garde-fou git, on appliqu
 voit les versions obtenues. Un fichier déposé ne s'écrit pas : sa version mise à
 jour se télécharge. Ctrl+C l'arrête.
 
+L'écran « Comptes » connecte son compte GitHub : par la page d'autorisation de
+GitHub, par un code à taper sur github.com, par un token collé, ou en reprenant
+celui de GitHub CLI (`gh`). Le token est rangé dans le trousseau du système, jamais
+envoyé au navigateur ; se déconnecter l'efface (et le révoque, s'il a été donné à
+forceupdate). La liste des dépôts et leur analyse arrivent ensuite, puis GitLab et
+Bitbucket.
+
 ```bash
 forceupdate ui                           # un port libre, et le navigateur
 forceupdate ui --port 8765 --no-browser  # l'adresse seulement, jeton compris

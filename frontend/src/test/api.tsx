@@ -7,7 +7,17 @@ import { render } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { vi } from 'vitest'
 import { AppRoutes, createQueryClient } from '@/App'
-import type { Listing, Report, ScanDetail, ScanSummary, UpdatePlan } from '@/api/types'
+import type {
+  Account,
+  AccountConnection,
+  AccountList,
+  ForgeStatus,
+  Listing,
+  Report,
+  ScanDetail,
+  ScanSummary,
+  UpdatePlan,
+} from '@/api/types'
 import vulnerable from './fixtures/vulnerable.json'
 
 /** Le rapport de `tests/projects/vulnerable` (`tests/e2e_server.py --report`). */
@@ -33,8 +43,10 @@ type Reply = Handler | Status | typeof DOWN | object
 /**
  * Remplace `fetch` : `routes` donne, par « MÉTHODE /chemin » (sans la requête), la réponse
  * (un objet, une `Status`, `DOWN`, ou une fonction de la requête). Rend la liste des appels.
+ * Par défaut, `GET /api/accounts` rend les forges sans compte connecté (l'accueil les demande).
  */
-export function mockApi(routes: Record<string, Reply>) {
+export function mockApi(given: Record<string, Reply>) {
+  const routes: Record<string, Reply> = { 'GET /api/accounts': accountList(), ...given }
   const calls: { method: string; url: URL; init: RequestInit }[] = []
   const fetch = vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = new URL(String(input), 'http://127.0.0.1:8765')
@@ -204,6 +216,79 @@ export function listing(overrides: Partial<Listing> = {}): Listing {
     truncated: false,
     home: 'C:/Users/moi',
     recent: [],
+    ...overrides,
+  }
+}
+
+/** Le compte GitHub `@octo`, connecté par OAuth, avec les portées demandées. */
+export function account(overrides: Partial<Account> = {}): Account {
+  return {
+    forge: 'github',
+    host: 'github.com',
+    login: 'octo',
+    name: 'Octo Cat',
+    url: 'https://github.com/octo',
+    access: 'write',
+    scopes: ['repo', 'read:org'],
+    warnings: [],
+    method: 'oauth',
+    connected_at: '2026-10-28T17:30:00+00:00',
+    checked_at: '2026-10-28T17:30:00+00:00',
+    problem: null,
+    ...overrides,
+  }
+}
+
+/** GitHub dans la liste des forges : sans compte par défaut, toutes les façons de s'y connecter sauf gh. */
+export function githubStatus(overrides: Partial<ForgeStatus> = {}): ForgeStatus {
+  return {
+    forge: 'github',
+    name: 'GitHub',
+    host: 'github.com',
+    available: true,
+    methods: ['oauth', 'device', 'token'],
+    scopes: ['repo', 'read:org'],
+    token_url: 'https://github.com/settings/tokens/new?scopes=repo,read:org&description=forceupdate',
+    account: null,
+    connection: null,
+    ...overrides,
+  }
+}
+
+/** `GET /api/accounts` : GitHub (`githubStatus(github)`), puis GitLab et Bitbucket « bientôt ». */
+export function accountList(github: Partial<ForgeStatus> = {}, keyring: string | null = null): AccountList {
+  const soon = (forge: 'gitlab' | 'bitbucket', name: string, host: string): ForgeStatus => ({
+    forge,
+    name,
+    host,
+    available: false,
+    methods: [],
+    scopes: [],
+    token_url: null,
+    account: null,
+    connection: null,
+  })
+  return {
+    keyring,
+    forges: [githubStatus(github), soon('gitlab', 'GitLab', 'gitlab.com'), soon('bitbucket', 'Bitbucket', 'bitbucket.org')],
+  }
+}
+
+/** Une connexion par device flow, en attente du code `WDJB-MJHT`. */
+export function deviceConnection(overrides: Partial<AccountConnection> = {}): AccountConnection {
+  return {
+    id: 'c1',
+    forge: 'github',
+    method: 'device',
+    status: 'pending',
+    created_at: '2026-10-28T17:30:00+00:00',
+    expires_at: '2026-10-28T17:45:00+00:00',
+    authorize_url: null,
+    user_code: 'WDJB-MJHT',
+    verification_uri: 'https://github.com/login/device',
+    interval: 5,
+    error: null,
+    account: null,
     ...overrides,
   }
 }

@@ -21,8 +21,18 @@ ROUTES = [
     ("GET", "/api/updates/abc/events"),
     ("GET", "/api/updates/abc/files/package.json"),
     ("POST", "/api/files?name=package.json"),
+    ("GET", "/api/accounts"),
+    ("POST", "/api/accounts/github/oauth"),
+    ("POST", "/api/accounts/github/device"),
+    ("GET", "/api/accounts/connections/abc"),
+    ("DELETE", "/api/accounts/connections/abc"),
+    ("POST", "/api/accounts/github/token"),
+    ("POST", "/api/accounts/github/gh"),
+    ("POST", "/api/accounts/github/verify"),
+    ("DELETE", "/api/accounts/github"),
     ("GET", "/"),
     ("GET", "/une/page"),
+    ("GET", "/comptes"),
 ]
 
 COOKIE = security.cookie_name(API_PORT)
@@ -183,3 +193,86 @@ def test_tokens_are_random() -> None:
     tokens = {security.new_token() for _ in range(20)}
     assert len(tokens) == 20
     assert all(len(token) >= 43 for token in tokens)
+
+
+# -- L'adresse de retour d'OAuth ------------------------------------------------------
+
+CALLBACK = "/oauth/github/callback"
+NAVIGATION = {
+    "Sec-Fetch-Site": "cross-site",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Dest": "document",
+}
+"""Ce qu'envoie un navigateur que github.com renvoie vers le serveur : ni cookie
+(``SameSite=Strict``), ni ``Origin``."""
+
+
+def test_the_oauth_return_passes_without_the_token_from_another_site(
+    anonymous: TestClient,
+) -> None:
+    """La forge y renvoie le navigateur : le garde la laisse passer, c'est la route qui
+    vérifie le ``state`` (inconnu ici : elle ne fait rien)."""
+    for headers in (NAVIGATION, {}):
+        response = anonymous.get(f"{CALLBACK}?code=c&state=s", headers=headers)
+        assert response.status_code == 400
+        assert "Lien de connexion inconnu ou déjà utilisé." in response.text
+        for name, value in security.SECURITY_HEADERS:
+            assert response.headers[name] == value
+        assert "set-cookie" not in response.headers
+
+
+@pytest.mark.parametrize(
+    ("method", "headers"),
+    [
+        ("POST", NAVIGATION),
+        ("GET", {**NAVIGATION, "Sec-Fetch-Mode": "cors"}),
+        ("GET", {**NAVIGATION, "Sec-Fetch-Mode": "no-cors", "Sec-Fetch-Dest": "image"}),
+        ("GET", {**NAVIGATION, "Sec-Fetch-Dest": "iframe"}),
+        ("GET", {**NAVIGATION, "Origin": "https://evil.example"}),
+    ],
+)
+def test_the_oauth_return_is_only_a_navigation(
+    anonymous: TestClient, method: str, headers: dict[str, str]
+) -> None:
+    response = anonymous.request(method, f"{CALLBACK}?code=c&state=s", headers=headers)
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Adresse de retour d'une forge : seule une navigation y mène."
+    }
+
+
+def test_the_oauth_return_keeps_the_host_check(anonymous: TestClient) -> None:
+    response = anonymous.get(CALLBACK, headers={**NAVIGATION, "Host": "evil.example"})
+    assert response.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/comptes",
+        "/comptes?connexion=abc",
+        "/api/accounts",
+        "/oauth/github/callback/",
+        "/oauth/github/callback/autre",
+        "/oauth/github",
+        "/oauth/gitlab/callback",
+    ],
+)
+def test_every_other_address_still_refuses_another_site(api: TestClient, path: str) -> None:
+    """Seule l'adresse de retour exacte échappe au contrôle de ``Sec-Fetch-Site``."""
+    response = api.get(path, headers=NAVIGATION)
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Requête venue d'un autre site : refusée."}
+
+
+def test_the_page_after_the_oauth_return_is_same_origin(anonymous: TestClient) -> None:
+    """La page de retour renvoie vers ``/comptes`` par une navigation qu'elle lance : même
+    origine, cookie compris. Une redirection HTTP serait restée « d'un autre site »."""
+    response = anonymous.get(f"{CALLBACK}?state=s", headers=NAVIGATION, follow_redirects=False)
+    assert response.status_code == 400
+    assert "location" not in response.headers
+    assert '<meta http-equiv="refresh" content="0; url=/comptes">' in response.text
+    same_origin = {"Sec-Fetch-Site": "same-origin", "Sec-Fetch-Mode": "navigate"}
+    assert anonymous.get("/comptes", headers=same_origin).status_code == 401  # sans cookie
+    cookie = {"Cookie": f"{COOKIE}={API_TOKEN}"}
+    assert anonymous.get("/comptes", headers={**same_origin, **cookie}).status_code == 200

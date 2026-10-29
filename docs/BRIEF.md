@@ -133,7 +133,7 @@ Prises pour pouvoir planifier. Si l'une change : modifier ce tableau, puis les
 | 10 | Interface ? | **Interface web en V1**, qui tourne sur l'ordinateur de la personne, pas un site en ligne : `forceupdate ui` ouvre le navigateur. Conçue avec le skill `ui-ux-pro-max`. La ligne de commande reste (`scan`, `update`) pour les scripts et la CI | **Confirmé.** Accès direct aux dossiers et aux fichiers à réécrire ; rien à héberger ; les tokens restent sur la machine. Un site en ligne serait un autre projet, bien plus gros (serveur, comptes, isolation) : l'API de E12 pourrait lui servir de base plus tard |
 | 11 | Comment mettre à jour en local ? | Sélection → diff → validation. Réécriture ciblée du texte des manifestes (la mise en forme et les commentaires restent). Lockfile régénéré par l'outil natif (npm, uv…), sans jamais lancer les scripts du projet | Un diff minimal, relisible, sans surprise |
 | 12 | Quelles mises à jour sont proposées par défaut ? | Correctifs, mineures et failles pré-cochés. Majeures proposées mais **jamais cochées d'office** : c'est la personne qui les coche (voir « Les trois niveaux »). En ligne de commande : `--level minor` par défaut | **Confirmé.** Une majeure peut demander d'adapter le code |
-| 13 | Connexion aux forges ? | Chaque personne connecte son propre compte depuis l'interface (OAuth). L'outil est enregistré une fois auprès de chaque forge par son auteur, l'utilisateur de ce projet. Repli : token collé, ou `gh`. Tokens dans le trousseau du système | **Confirmé.** « Je lie mon compte, l'outil a accès » |
+| 13 | Connexion aux forges ? | Chaque personne connecte son propre compte depuis l'interface (OAuth). L'outil est enregistré une fois auprès de chaque forge par son auteur, l'utilisateur de ce projet. Repli : token collé, ou `gh`. Tokens dans le trousseau du système. **GitHub (E16)** : une OAuth App (pas une GitHub App), portées `repo` et `read:org`, tokens sans expiration ; device flow en repli ; se déconnecter révoque le token donné à forceupdate | **Confirmé.** « Je lie mon compte, l'outil a accès ». OAuth App plutôt que GitHub App : un clic et tous les dépôts, sans installer l'app sur chaque compte et organisation (comme `gh`) |
 | 14 | Mettre à jour sur une forge ? | Une PR (ou MR) par dépôt, idempotente. Jamais de push sur la branche par défaut | **Confirmé.** La CI du dépôt teste la PR, un humain la fusionne |
 | 15 | Analyser sur une forge ? | Par l'API, sans cloner (arborescence + manifestes). Clone superficiel seulement pour mettre à jour, ou si l'API ne donne pas l'arborescence | Rapide sur des dizaines de dépôts |
 | 16 | Quelles forges en V1 ? | GitHub, GitLab (gitlab.com et auto-hébergé), Bitbucket Cloud | **Confirmé.** Demandé par l'utilisateur |
@@ -141,6 +141,7 @@ Prises pour pouvoir planifier. Si l'une change : modifier ce tableau, puis les
 | 18 | Nom ? | `forceupdate` : nom sur PyPI, paquet Python, commande. Fichier de configuration `forceupdate.toml`, branche des PR `forceupdate/dependencies` | **Confirmé.** Choisi par l'utilisateur, en clin d'œil à Star Wars. Libre sur PyPI le 2026-10-27 ; `update-checker` était pris |
 | 19 | Publication ? | Sur PyPI, gratuitement, code public : on installe avec `uv tool install forceupdate`. Une première version (0.1.0) est publiée dès que l'analyse marche, pour réserver le nom : **fait le 2026-10-28** (E09), par un workflow GitHub Actions et « Trusted Publisher », sans token | **Confirmé.** Gratuit ; le code public ne gêne pas l'utilisateur |
 | 20 | Licence ? | MIT : fichier `LICENSE` à la racine, déclaré dans `pyproject.toml` (E01) | **Confirmé.** La plus simple : chacun peut utiliser, modifier et redistribuer le code, en gardant la mention de l'auteur |
+| 21 | Logos des forges ? | Les logos officiels de GitHub, GitLab et Bitbucket (tracés de Simple Icons, CC0), en une couleur, sans modification, à côté du nom (MASTER, « Icônes ») | **Confirmé** (E16). Lucide n'a plus de logos de marque ; les chartes permettent cet usage pour désigner le service |
 
 ## Questions encore ouvertes
 
@@ -152,8 +153,9 @@ chaque fois) :
 
 - ~~créer un compte PyPI et y relier le dépôt GitHub~~ : fait à E09, la 0.1.0 est
   publiée ; les versions suivantes partent d'une étiquette `v*` ;
-- enregistrer l'outil auprès de GitHub (E16), de GitLab (E19) et de Bitbucket
-  (E20).
+- ~~enregistrer l'outil auprès de GitHub~~ : fait à E16 (OAuth App « forceupdate »,
+  client id `Ov23lihqeEYz35ddy5Pm`, dans `forges/github.py`) ;
+- enregistrer l'outil auprès de GitLab (E19) et de Bitbucket (E20).
 
 ## Pièges connus
 
@@ -257,6 +259,16 @@ chaque fois) :
 - **Cas à gérer** : dépôts archivés (lecture seule), vides, forks, ou sans droit
   d'écriture.
 - **GitHub** :
+  - **constaté à E16** (OAuth App) : le formulaire d'enregistrement parle maintenant de
+    « Redirect URIs » (jusqu'à 10) et coche d'office « Expire user access tokens » (tokens
+    de 8 h à renouveler : décoché, voir E29) ; une adresse de retour `http://127.0.0.1/…`
+    accepte n'importe quel port ; PKCE (`S256`) est accepté, mais le secret reste exigé
+    pour échanger le code ; les points d'OAuth répondent 200 même pour une erreur
+    (`error` dans le corps), et acceptent un corps JSON ;
+  - **le retour d'OAuth** vient d'un autre site : un cookie `SameSite=Strict` n'y est pas
+    envoyé, et une redirection HTTP vers une page du serveur reste « d'un autre site »
+    (la chaîne part de github.com). D'où une page qui renvoie elle-même vers l'écran
+    (`<meta http-equiv="refresh">`), et le `state` gardé côté serveur ;
   - 5 000 requêtes par heure avec un token ;
   - arborescence tronquée au-delà de 100 000 entrées ;
   - l'API « contents » ne renvoie pas le contenu au-delà de 1 Mo : passer par

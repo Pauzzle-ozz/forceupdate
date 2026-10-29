@@ -16,9 +16,11 @@ schéma marque requis tous les champs des réponses (``web.openapi``).
 """
 
 import enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
+from forceupdate.forges.accounts import Account, ConnectMethod
+from forceupdate.forges.base import ForgeKind
 from forceupdate.models import Event, ScanOptions
 from forceupdate.report.json import Document, SummaryDocument
 from forceupdate.update.lockfiles import Installed, Job, LockKind, LockStatus, Reach, Regenerated
@@ -69,6 +71,14 @@ class ApplyRequest:
     """L'identifiant du plan (``POST /api/updates/plan``)."""
     force: bool = False
     """Écrire même si des fichiers à toucher ont des changements que git n'a pas en commit."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class TokenRequest:
+    """Un token collé, pour connecter un compte. Le navigateur l'envoie au serveur ; le serveur
+    ne le renvoie jamais."""
+
+    token: str = field(repr=False)
 
 
 # -- Analyses ---------------------------------------------------------------------
@@ -285,6 +295,91 @@ class Listing:
     """Le dossier personnel."""
     recent: tuple[RecentPath, ...]
     """Les derniers chemins analysés qui existent encore, du plus récent au plus ancien."""
+
+
+# -- Comptes ----------------------------------------------------------------------
+
+
+class ConnectionStatus(enum.StrEnum):
+    """Où en est la connexion d'un compte."""
+
+    PENDING = "pending"
+    """En attente : de l'autorisation sur la forge, ou du code tapé (device flow)."""
+    DONE = "done"
+    FAILED = "failed"
+    EXPIRED = "expired"
+    """Pas d'autorisation à temps (10 min pour OAuth, la durée du code pour le device
+    flow)."""
+    CANCELLED = "cancelled"
+    """Annulée, ou remplacée par une autre connexion à la même forge."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class AccountConnection:
+    """Une connexion en cours ou finie, par OAuth ou par device flow."""
+
+    id: str
+    forge: ForgeKind
+    method: ConnectMethod
+    """``oauth`` ou ``device``."""
+    status: ConnectionStatus
+    created_at: datetime
+    expires_at: datetime
+    authorize_url: str | None
+    """OAuth : la page d'autorisation de la forge, où envoyer le navigateur."""
+    user_code: str | None
+    """Device flow : le code à taper sur la forge."""
+    verification_uri: str | None
+    """Device flow : où le taper."""
+    interval: int | None
+    """Device flow : secondes entre deux demandes à la forge."""
+    error: str | None
+    """``failed``, ``expired`` : ce qui s'est passé."""
+    account: Account | None
+    """``done`` : le compte connecté."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class ForgeStatus:
+    """Une forge : peut-on s'y connecter, comment, et qui y est connecté."""
+
+    forge: ForgeKind
+    name: str
+    host: str
+    available: bool
+    """La connexion est prête ; sinon, elle arrive à une étape à venir (GitLab : E19,
+    Bitbucket : E20)."""
+    methods: tuple[ConnectMethod, ...]
+    """Les façons de se connecter possibles maintenant : ``gh`` seulement s'il est installé,
+    ``oauth`` seulement si l'application a son secret."""
+    scopes: tuple[str, ...]
+    """Les portées demandées par OAuth et par le device flow."""
+    token_url: str | None
+    """Où créer un token à coller, portées pré-cochées."""
+    account: Account | None
+    connection: AccountConnection | None
+    """La connexion en attente, s'il y en a une (un device flow se retrouve après un
+    rechargement)."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class AccountList:
+    keyring: str | None
+    """Pourquoi le trousseau du système ne peut pas garder de token ; ``null`` s'il marche."""
+    forges: tuple[ForgeStatus, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
+class Disconnection:
+    """Un compte déconnecté : son token est effacé du trousseau."""
+
+    forge: ForgeKind
+    login: str
+    revoked: bool | None
+    """Le token est aussi révoqué auprès de la forge (``true``), ne l'a pas été (``false`` :
+    forge injoignable) ; ``null`` pour un token collé ou celui de gh, qui ne sont pas à
+    forceupdate et restent valables."""
+    message: str
 
 
 @dataclass(frozen=True, kw_only=True)

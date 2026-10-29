@@ -44,3 +44,25 @@ def test_no_real_lockfile_tool_outside_network_tests() -> None:
     assert lockfiles._which("uv") is None
     with pytest.raises(RuntimeError, match="outil réel refusé"):
         lockfiles._spawn(["npm", "install"])
+
+
+def test_the_system_keyring_and_gh_are_never_touched(keychain: object) -> None:
+    """Le trousseau est en mémoire, neuf pour chaque test ; gh est absent, et le lancer est
+    refusé."""
+    import keyring
+
+    from forceupdate.forges import github
+
+    assert keyring.get_keyring() is keychain
+    assert keyring.get_password("forceupdate", "github:github.com") is None
+    keyring.set_password("forceupdate", "essai", "secret")
+    assert keychain.passwords == {("forceupdate", "essai"): "secret"}  # type: ignore[attr-defined]
+    assert not github.gh_installed()
+    with pytest.raises(RuntimeError, match="vrai gh refusé"):
+        github._run(["gh", "auth", "token"])
+
+
+def test_each_test_has_a_new_keyring() -> None:
+    import keyring
+
+    assert keyring.get_password("forceupdate", "essai") is None

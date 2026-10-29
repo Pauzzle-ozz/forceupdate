@@ -1,0 +1,602 @@
+"""GitHub : le client REST (``GitHub``), et la connexion d'un compte.
+
+**Connexion** (E16) : forceupdate est enregistré auprès de GitHub comme OAuth App
+(``CLIENT_ID``), une fois, par son auteur ; chaque personne y connecte son propre compte :
+
+- **OAuth** (``authorization_url`` puis ``exchange_code``) : la page d'autorisation de GitHub
+  renvoie vers le serveur local, ``http://127.0.0.1:<port>/oauth/github/callback`` (GitHub
+  accepte n'importe quel port pour une adresse de retour en 127.0.0.1). ``state`` contre les
+  requêtes forgées, PKCE (``S256``) en plus du secret ;
+- **device flow** (``start_device`` puis ``wait_device``) : un code à taper sur
+  github.com/login/device, sans retour vers le serveur ;
+- **un token collé** (classic ou fine-grained), ou **celui de gh** (``gh_token``).
+
+Portées demandées : ``repo`` (lire les dépôts privés, pousser une branche, ouvrir une PR) et
+``read:org`` (lister les organisations, pour signaler celles qui restreignent l'accès des OAuth
+Apps, E17). Les tokens n'expirent pas (case « Expire user access tokens » décochée dans les
+réglages de l'application) ; se déconnecter révoque le token obtenu par OAuth (``revoke``).
+
+**Client REST** : ``Authorization: Bearer``, version d'API fixée, pagination par l'en-tête
+``Link``, requêtes restantes (``rate_limit``), et une ``ForgeError`` au message clair pour 401,
+403 (limite atteinte, SSO, droits) et 404. Le token n'est jamais dans une URL, un message ni un
+journal.
+"""
+
+import asyncio
+import base64
+import hashlib
+import os
+import re
+import secrets
+import shutil
+import subprocess
+import time
+import urllib.parse
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, ClassVar
+
+import httpx
+
+from forceupdate.forges.base import (
+    Access,
+    AccessDenied,
+    ChangeRequest,
+    Forge,
+    ForgeError,
+    ForgeKind,
+    Identity,
+    NotFound,
+    RateLimit,
+    RateLimited,
+    Repository,
+    TokenRefused,
+    Tree,
+)
+from forceupdate.net import HttpClient, NetworkError
+from forceupdate.net.http import Response
+
+HOST = "github.com"
+API_URL = "https://api.github.com"
+WEB_URL = "https://github.com"
+AUTHORIZE_URL = f"{WEB_URL}/login/oauth/authorize"
+TOKEN_URL = f"{WEB_URL}/login/oauth/access_token"
+DEVICE_URL = f"{WEB_URL}/login/device/code"
+API_VERSION = "2022-11-28"
+
+SCOPES = ("repo", "read:org")
+"""Les portées demandées à la connexion."""
+
+CALLBACK_PATH = "/oauth/github/callback"
+"""Le chemin de l'adresse de retour : celui enregistré auprès de GitHub
+(``http://127.0.0.1/oauth/github/callback``), sur le port du serveur."""
+
+TOKEN_SETTINGS_URL = (
+    f"{WEB_URL}/settings/tokens/new?scopes={','.join(SCOPES)}&description=forceupdate"
+)
+"""Où créer un token classic, portées pré-cochées."""
+
+CLIENT_ID = "Ov23lihqeEYz35ddy5Pm"
+CLIENT_SECRET = "6a2170a499fc479d8c9018859228b5aff8d75663"
+"""L'OAuth App « forceupdate », enregistrée par l'auteur de l'outil (E16). Le secret d'une
+application installée chez les gens ne peut pas rester secret (``gh`` fait de même) : il permet
+seulement de présenter une page d'autorisation au nom de forceupdate, jamais d'obtenir un token
+sans l'accord de la personne. ``FORCEUPDATE_GITHUB_CLIENT_ID`` et ``…_CLIENT_SECRET`` le
+remplacent (une autre application, un fork)."""
+
+ENV_CLIENT_ID = "FORCEUPDATE_GITHUB_CLIENT_ID"
+ENV_CLIENT_SECRET = "FORCEUPDATE_GITHUB_CLIENT_SECRET"
+
+GH_TIMEOUT = 15.0
+"""Délai maximal de ``gh auth token``, en secondes."""
+
+MIN_INTERVAL = 1.0
+"""Attente minimale entre deux demandes du device flow, en secondes, quoi que dise GitHub."""
+
+_JSON = "application/vnd.github+json"
+_LINK = re.compile(r'<([^>]+)>\s*;\s*rel="([^"]+)"')
+
+
+@dataclass(frozen=True, kw_only=True)
+class OAuthApp:
+    """L'application auprès de qui on se connecte."""
+
+    client_id: str
+    client_secret: str = field(repr=False)
+    """Vide : seul le device flow marche (il n'en a pas besoin)."""
+
+    @classmethod
+    def default(cls) -> "OAuthApp":
+        """Celle de forceupdate, ou celle des variables d'environnement."""
+        client_id = os.environ.get(ENV_CLIENT_ID, "").strip()
+        if client_id:
+            return cls(client_id=client_id, client_secret=os.environ.get(ENV_CLIENT_SECRET, ""))
+        return cls(client_id=CLIENT_ID, client_secret=CLIENT_SECRET)
+
+    @property
+    def web_flow(self) -> bool:
+        """L'autorisation par la page de GitHub est possible (il faut le secret)."""
+        return bool(self.client_secret)
+
+
+# -- Client REST ----------------------------------------------------------------------
+
+
+class GitHub(Forge):
+    """GitHub, vu avec un token."""
+
+    kind: ClassVar[ForgeKind] = ForgeKind.GITHUB
+
+    def __init__(self, http: HttpClient, token: str, *, api_url: str = API_URL) -> None:
+        self.host = HOST
+        self._http = http
+        self._token = token
+        self._api = api_url.rstrip("/")
+        self.rate_limit: RateLimit | None = None
+        """Les requêtes restantes, d'après la dernière réponse."""
+
+    def __repr__(self) -> str:
+        return f"GitHub({self._api})"
+
+    async def request(
+        self, method: str, path: str, *, json: Any = None, accept: str = _JSON
+    ) -> Response:
+        """``method path`` (un chemin de l'API, ou une URL complète de l'API) ; lève une
+        ``ForgeError`` pour une réponse d'erreur."""
+        url = path if path.startswith(("https://", "http://")) else f"{self._api}{path}"
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "Accept": accept,
+            "X-GitHub-Api-Version": API_VERSION,
+        }
+        response = await self._http.request(method, url, headers=headers, json=json)
+        self.rate_limit = _rate_limit(response.headers) or self.rate_limit
+        if response.status_code >= 400:
+            raise _error(response, path)
+        return response
+
+    async def get(self, path: str) -> Any:
+        """``GET path``, en JSON."""
+        return _json(await self.request("GET", path))
+
+    async def paginate(self, path: str) -> AsyncIterator[Any]:
+        """Les éléments de toutes les pages de ``path`` (une liste JSON par page), en suivant
+        l'en-tête ``Link`` (``rel="next"``), 100 par page."""
+        separator = "&" if "?" in path else "?"
+        url: str | None = f"{path}{separator}per_page=100"
+        while url is not None:
+            response = await self.request("GET", url)
+            page = _json(response)
+            if not isinstance(page, list):
+                raise ForgeError(f"Réponse inattendue de GitHub pour {_path(path)}.")
+            for item in page:
+                yield item
+            url = _next_link(response.headers)
+
+    async def whoami(self) -> Identity:
+        response = await self.request("GET", "/user")
+        user = _json(response)
+        if not isinstance(user, dict) or not isinstance(user.get("login"), str):
+            raise ForgeError("Réponse inattendue de GitHub pour /user.")
+        scopes = _scopes(response.headers)
+        access = access_of(scopes)
+        return Identity(
+            forge=ForgeKind.GITHUB,
+            host=self.host,
+            login=user["login"],
+            name=user.get("name") or None,
+            url=user.get("html_url") or f"{WEB_URL}/{user['login']}",
+            access=access,
+            scopes=scopes,
+            warnings=warnings_of(access, scopes),
+        )
+
+    async def list_repos(self) -> list[Repository]:
+        raise NotImplementedError("les dépôts GitHub arrivent à E17")
+
+    async def tree(self, repo: Repository, ref: str | None = None) -> Tree:
+        raise NotImplementedError("l'arborescence d'un dépôt GitHub arrive à E17")
+
+    async def read_file(self, repo: Repository, path: str, ref: str) -> bytes | None:
+        raise NotImplementedError("la lecture d'un fichier GitHub arrive à E17")
+
+    async def clone(self, repo: Repository, destination: Path) -> None:
+        raise NotImplementedError("le clone d'un dépôt GitHub arrive à E18")
+
+    async def push_branch(self, repo: Repository, checkout: Path, branch: str) -> None:
+        raise NotImplementedError("le push vers GitHub arrive à E18")
+
+    async def find_open_request(self, repo: Repository, branch: str) -> ChangeRequest | None:
+        raise NotImplementedError("les PR GitHub arrivent à E18")
+
+    async def open_or_update_request(
+        self, repo: Repository, *, branch: str, title: str, body: str
+    ) -> ChangeRequest:
+        raise NotImplementedError("les PR GitHub arrivent à E18")
+
+
+def access_of(scopes: tuple[str, ...] | None) -> Access:
+    """Ce que permettent les portées d'un token classic ou OAuth ; ``None`` (pas
+    d'``X-OAuth-Scopes`` : token fine-grained, ou d'une GitHub App) : non vérifié."""
+    if scopes is None:
+        return Access.UNKNOWN
+    if "repo" in scopes:
+        return Access.WRITE
+    if "public_repo" in scopes:
+        return Access.PUBLIC
+    return Access.READ
+
+
+def warnings_of(access: Access, scopes: tuple[str, ...] | None) -> tuple[str, ...]:
+    """Ce qui manquera avec ces droits."""
+    if access is Access.UNKNOWN:
+        return (
+            "Token fine-grained : GitHub ne dit pas ses droits. Pour les dépôts à mettre à "
+            "jour, il lui faut « Contents » et « Pull requests » en écriture, et « Metadata » "
+            "en lecture.",
+        )
+    found: list[str] = []
+    if access is Access.READ:
+        found.append(
+            "Sans la portée repo, seuls les dépôts publics sont lus, et aucune PR ne peut "
+            "être ouverte."
+        )
+    elif access is Access.PUBLIC:
+        found.append("Portée public_repo : les dépôts privés ne sont pas accessibles.")
+    if scopes is not None and not {"read:org", "write:org", "admin:org"} & set(scopes):
+        found.append(
+            "Sans la portée read:org, les organisations qui restreignent l'accès des "
+            "applications ne pourront pas être signalées."
+        )
+    return tuple(found)
+
+
+def _scopes(headers: httpx.Headers) -> tuple[str, ...] | None:
+    value = headers.get("x-oauth-scopes")
+    if value is None:
+        return None
+    return tuple(scope.strip() for scope in value.split(",") if scope.strip())
+
+
+def _rate_limit(headers: httpx.Headers) -> RateLimit | None:
+    try:
+        return RateLimit(
+            limit=int(headers["x-ratelimit-limit"]),
+            remaining=int(headers["x-ratelimit-remaining"]),
+            reset_at=datetime.fromtimestamp(int(headers["x-ratelimit-reset"]), UTC),
+        )
+    except (KeyError, ValueError):
+        return None
+
+
+def _next_link(headers: httpx.Headers) -> str | None:
+    for url, relation in _LINK.findall(headers.get("link", "")):
+        if relation == "next":
+            return str(url)
+    return None
+
+
+def _json(response: Response) -> Any:
+    try:
+        return response.json()
+    except ValueError:
+        raise ForgeError(
+            f"Réponse illisible de GitHub (HTTP {response.status_code}, pas du JSON)."
+        ) from None
+
+
+def _path(path: str) -> str:
+    """Le chemin d'une requête, sans l'adresse de l'API ni ses paramètres."""
+    return urllib.parse.urlsplit(path).path or path
+
+
+def _error(response: Response, path: str) -> ForgeError:
+    """La ``ForgeError`` d'une réponse d'erreur de GitHub."""
+    status = response.status_code
+    message = _message(response)
+    headers = response.headers
+    if status == 401:
+        return TokenRefused(
+            "GitHub refuse le token (401) : révoqué, expiré, ou mal copié. Se reconnecter."
+        )
+    if status in (403, 429):
+        rate = _rate_limit(headers)
+        if rate is not None and rate.remaining == 0:
+            when = rate.reset_at.astimezone().strftime("%H:%M")
+            return RateLimited(
+                f"Limite de l'API GitHub atteinte ({rate.limit} requêtes par heure) : elle se "
+                f"lève à {when}.",
+                reset_at=rate.reset_at,
+            )
+        wait = headers.get("retry-after", "").strip()
+        if wait.isdigit() or "rate limit" in message.lower():
+            delay = f"dans {wait} s" if wait.isdigit() else "dans quelques minutes"
+            return RateLimited(f"GitHub limite le débit (limite secondaire) : réessayer {delay}.")
+    if status == 403:
+        sso = headers.get("x-github-sso", "")
+        if sso.startswith("required"):
+            url = sso.partition("url=")[2].strip()
+            where = f" : {url}" if url else ""
+            return AccessDenied(
+                f"Cette organisation exige d'autoriser le token pour son SSO (SAML){where}."
+            )
+        return AccessDenied(f"GitHub refuse l'accès (403) à {_path(path)} : {message}")
+    if status == 404:
+        return NotFound(
+            f"Introuvable sur GitHub (404) : {_path(path)} n'existe pas, ou le token n'y a "
+            "pas accès."
+        )
+    return ForgeError(f"GitHub refuse la requête (HTTP {status}) sur {_path(path)} : {message}")
+
+
+def _message(response: Response) -> str:
+    """Le message d'erreur de GitHub (en anglais), en une phrase."""
+    try:
+        body = response.json()
+    except ValueError:
+        body = None
+    text = body.get("message") if isinstance(body, dict) else None
+    if not isinstance(text, str) or not text.strip():
+        return "pas de détail."
+    text = " ".join(text.split())
+    return text if text.endswith(".") else f"{text}."
+
+
+# -- Connexion : OAuth ----------------------------------------------------------------
+
+
+def new_verifier() -> str:
+    """Le secret PKCE d'une connexion (``code_verifier``)."""
+    return secrets.token_urlsafe(48)
+
+
+def challenge_of(verifier: str) -> str:
+    """Le ``code_challenge`` (S256) d'un ``code_verifier``."""
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+def redirect_uri(port: int) -> str:
+    """L'adresse de retour vers le serveur local."""
+    return f"http://127.0.0.1:{port}{CALLBACK_PATH}"
+
+
+def authorization_url(app: OAuthApp, *, redirect_to: str, state: str, verifier: str) -> str:
+    """La page d'autorisation de GitHub, où envoyer la personne."""
+    parameters = {
+        "client_id": app.client_id,
+        "redirect_uri": redirect_to,
+        "scope": " ".join(SCOPES),
+        "state": state,
+        "code_challenge": challenge_of(verifier),
+        "code_challenge_method": "S256",
+    }
+    return f"{AUTHORIZE_URL}?{urllib.parse.urlencode(parameters)}"
+
+
+_EXCHANGE_ERRORS = {
+    "bad_verification_code": "Le code d'autorisation a expiré ou a déjà servi : recommencer.",
+    "incorrect_client_credentials": (
+        "GitHub ne reconnaît pas l'application forceupdate (client id ou secret)."
+    ),
+    "redirect_uri_mismatch": (
+        "GitHub refuse l'adresse de retour : elle doit être celle enregistrée pour "
+        "l'application (http://127.0.0.1/oauth/github/callback)."
+    ),
+    "access_denied": "Autorisation refusée sur GitHub.",
+}
+
+
+async def exchange_code(
+    http: HttpClient, app: OAuthApp, *, code: str, redirect_to: str, verifier: str
+) -> str:
+    """Le token, contre le code que GitHub a donné au retour."""
+    body = await _token_request(
+        http,
+        {
+            "client_id": app.client_id,
+            "client_secret": app.client_secret,
+            "code": code,
+            "redirect_uri": redirect_to,
+            "code_verifier": verifier,
+        },
+        retry=False,  # un code ne sert qu'une fois
+    )
+    token = body.get("access_token")
+    if isinstance(token, str) and token:
+        return token
+    raise ForgeError(_oauth_error(body, _EXCHANGE_ERRORS, "l'échange du code"))
+
+
+def authorization_error(error: str, description: str = "") -> str:
+    """Le message d'une erreur renvoyée par GitHub sur l'adresse de retour."""
+    return _oauth_error(
+        {"error": error, "error_description": description},
+        _EXCHANGE_ERRORS,
+        "l'autorisation",
+    )
+
+
+async def revoke(http: HttpClient, app: OAuthApp, token: str) -> bool:
+    """Révoque auprès de GitHub un token obtenu par l'application (OAuth ou device flow).
+    Rend ``False`` si GitHub n'a pas pu le faire (réseau, secret absent…)."""
+    if not app.web_flow:
+        return False
+    credentials = base64.b64encode(f"{app.client_id}:{app.client_secret}".encode()).decode()
+    url = f"{API_URL}/applications/{app.client_id}/token"
+    headers = {
+        "Authorization": f"Basic {credentials}",
+        "Accept": _JSON,
+        "X-GitHub-Api-Version": API_VERSION,
+    }
+    try:
+        response = await http.request("DELETE", url, headers=headers, json={"access_token": token})
+    except NetworkError:
+        return False
+    # 404 : le token n'existe déjà plus (révoqué sur github.com).
+    return response.status_code in (204, 404)
+
+
+# -- Connexion : device flow ------------------------------------------------------------
+
+
+@dataclass(frozen=True, kw_only=True)
+class DeviceCode:
+    """Un code à taper sur github.com (``start_device``)."""
+
+    device_code: str = field(repr=False)
+    user_code: str
+    verification_uri: str
+    expires_in: int
+    """Secondes."""
+    interval: int
+    """Secondes entre deux demandes du token."""
+
+
+class DeviceExpired(ForgeError):
+    """Le code a expiré avant d'être saisi."""
+
+
+_DEVICE_ERRORS = {
+    "access_denied": "Autorisation refusée sur GitHub.",
+    "device_flow_disabled": (
+        "Le device flow n'est pas activé pour l'application forceupdate sur GitHub."
+    ),
+    "incorrect_client_credentials": "GitHub ne reconnaît pas l'application forceupdate.",
+    "expired_token": "Le code a expiré avant d'être saisi : en demander un autre.",
+}
+
+
+async def start_device(http: HttpClient, app: OAuthApp) -> DeviceCode:
+    """Demande un code à GitHub."""
+    body = await _token_request(
+        http, {"client_id": app.client_id, "scope": " ".join(SCOPES)}, url=DEVICE_URL
+    )
+    try:
+        return DeviceCode(
+            device_code=str(body["device_code"]),
+            user_code=str(body["user_code"]),
+            verification_uri=str(body["verification_uri"]),
+            expires_in=int(body.get("expires_in", 900)),
+            interval=int(body.get("interval", 5)),
+        )
+    except (KeyError, TypeError, ValueError):
+        raise ForgeError(_oauth_error(body, _DEVICE_ERRORS, "la demande de code")) from None
+
+
+async def wait_device(
+    http: HttpClient,
+    app: OAuthApp,
+    device: DeviceCode,
+    *,
+    sleep: Callable[[float], Awaitable[object]] = asyncio.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> str:
+    """Le token, une fois le code saisi et l'accès autorisé sur github.com. Demande toutes les
+    ``interval`` secondes (5 de plus à chaque ``slow_down``) ; lève ``DeviceExpired`` quand le
+    code expire, ``ForgeError`` si la personne refuse."""
+    deadline = clock() + device.expires_in
+    interval = float(device.interval)
+    while True:
+        await sleep(max(interval, MIN_INTERVAL))
+        if clock() >= deadline:
+            raise DeviceExpired(_DEVICE_ERRORS["expired_token"])
+        body = await _token_request(
+            http,
+            {
+                "client_id": app.client_id,
+                "device_code": device.device_code,
+                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+            },
+            retry=True,  # demander de nouveau ne change rien
+        )
+        token = body.get("access_token")
+        if isinstance(token, str) and token:
+            return token
+        error = body.get("error")
+        if error == "authorization_pending":
+            continue
+        if error == "slow_down":
+            given = body.get("interval")
+            interval = float(given) if isinstance(given, int | float) else interval + 5
+            continue
+        message = _oauth_error(body, _DEVICE_ERRORS, "la connexion")
+        raise DeviceExpired(message) if error == "expired_token" else ForgeError(message)
+
+
+async def _token_request(
+    http: HttpClient, fields: Mapping[str, str], *, url: str = TOKEN_URL, retry: bool = False
+) -> dict[str, Any]:
+    """Un ``POST`` aux points d'OAuth de GitHub, réponse en JSON. GitHub y répond 200 même
+    pour une erreur, décrite par ``error``."""
+    response = await http.request(
+        "POST", url, headers={"Accept": "application/json"}, json=dict(fields), retry=retry
+    )
+    try:
+        body = response.json()
+    except ValueError:
+        body = None
+    if not isinstance(body, dict):
+        raise ForgeError(f"Réponse inattendue de GitHub (HTTP {response.status_code}).")
+    return body
+
+
+def _oauth_error(body: Mapping[str, Any], known: Mapping[str, str], what: str) -> str:
+    error = str(body.get("error") or "")
+    if error in known:
+        return known[error]
+    detail = str(body.get("error_description") or error or "pas de détail").strip()
+    return f"GitHub refuse {what} : {detail.rstrip('.')}."
+
+
+# -- Le token de gh ---------------------------------------------------------------------
+
+
+def gh_installed() -> bool:
+    """GitHub CLI (``gh``) est sur le ``PATH``."""
+    return _which("gh") is not None
+
+
+def gh_token(host: str = HOST) -> str:
+    """Le token avec lequel ``gh`` est connecté à ``host`` (``gh auth token``). Il arrive par la
+    sortie de gh, jamais par des arguments ; il n'est jamais écrit dans un message."""
+    program = _which("gh")
+    if program is None:
+        raise ForgeError("GitHub CLI (gh) n'est pas installé.")
+    env = {**os.environ, "GH_PROMPT_DISABLED": "1", "NO_COLOR": "1", "GH_NO_UPDATE_NOTIFIER": "1"}
+    try:
+        result = _run(
+            [program, "auth", "token", "--hostname", host],
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            timeout=GH_TIMEOUT,
+            env=env,
+        )
+    except subprocess.TimeoutExpired:
+        raise ForgeError(f"gh ne répond pas (plus de {GH_TIMEOUT:.0f} s).") from None
+    except OSError as err:
+        raise ForgeError(f"gh n'a pas pu être lancé ({err.strerror or err}).") from None
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="replace").strip().splitlines()
+        reason = f" ({detail[0].strip()})" if detail else ""
+        raise ForgeError(
+            f"gh n'est pas connecté à {host}{reason} : lancer « gh auth login », ou se "
+            "connecter autrement."
+        )
+    token = result.stdout.decode("utf-8", errors="replace").strip()
+    if not token or any(character.isspace() for character in token):
+        raise ForgeError("gh n'a pas rendu de token.")
+    return token
+
+
+def _which(program: str) -> str | None:
+    """L'exécutable de ``program`` sur le ``PATH``. Les tests le remplacent : jamais de vrai
+    ``gh`` dans les tests."""
+    return shutil.which(program)
+
+
+def _run(command: list[str], **options: Any) -> subprocess.CompletedProcess[bytes]:
+    """``subprocess.run``, sans shell. Les tests le remplacent."""
+    return subprocess.run(command, shell=False, check=False, **options)

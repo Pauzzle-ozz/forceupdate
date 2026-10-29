@@ -6,7 +6,20 @@
  * serveur (`connection`) : une erreur réseau, c'est le serveur arrêté ; un 401, la session
  * terminée (le serveur a redémarré, son jeton a changé). La coquille en fait des bandeaux.
  */
-import type { ApplyRequest, Listing, PlanRequest, ScanDetail, ScanRequest, ScanSummary, UpdatePlan } from './types'
+import type {
+  Account,
+  AccountConnection,
+  AccountList,
+  ApplyRequest,
+  Disconnection,
+  ForgeKind,
+  Listing,
+  PlanRequest,
+  ScanDetail,
+  ScanRequest,
+  ScanSummary,
+  UpdatePlan,
+} from './types'
 
 export type Connection = 'ok' | 'down' | 'session'
 
@@ -115,6 +128,33 @@ export const api = {
   /** Un fichier tel que le plan le réécrit (fichier envoyé : sa version mise à jour). */
   planFileUrl: (id: string, path: string) =>
     `/api/updates/${encodeURIComponent(id)}/files/${path.split('/').map(encodeURIComponent).join('/')}`,
+
+  /** Les forges, comment s'y connecter, et les comptes connectés (jamais leur token). */
+  listAccounts: () => request<AccountList>('GET', '/api/accounts'),
+
+  /** Commence une connexion par la page d'autorisation de la forge (aller à `authorize_url`). */
+  startOAuth: (forge: ForgeKind) => request<AccountConnection>('POST', `/api/accounts/${forge}/oauth`),
+
+  /** Commence une connexion par device flow : un code à taper sur la forge. */
+  startDevice: (forge: ForgeKind) => request<AccountConnection>('POST', `/api/accounts/${forge}/device`),
+
+  getConnection: (id: string) =>
+    request<AccountConnection>('GET', `/api/accounts/connections/${encodeURIComponent(id)}`),
+
+  cancelConnection: (id: string) =>
+    request<AccountConnection>('DELETE', `/api/accounts/connections/${encodeURIComponent(id)}`),
+
+  /** Connecte un compte avec un token collé : envoyé au serveur, jamais renvoyé. */
+  connectToken: (forge: ForgeKind, token: string) =>
+    request<Account>('POST', `/api/accounts/${forge}/token`, json({ token })),
+
+  /** Reprend le compte de GitHub CLI (`gh`). */
+  connectGh: (forge: ForgeKind) => request<Account>('POST', `/api/accounts/${forge}/gh`),
+
+  /** Redemande à la forge qui est connecté et avec quels droits. */
+  verifyAccount: (forge: ForgeKind) => request<Account>('POST', `/api/accounts/${forge}/verify`),
+
+  disconnect: (forge: ForgeKind) => request<Disconnection>('DELETE', `/api/accounts/${forge}`),
 }
 
 export const queryKeys = {
@@ -122,4 +162,6 @@ export const queryKeys = {
   scan: (id: string) => ['scan', id] as const,
   plan: (id: string) => ['plan', id] as const,
   folder: (path: string | null) => ['fs', path] as const,
+  accounts: ['accounts'] as const,
+  connection: (id: string) => ['connection', id] as const,
 }

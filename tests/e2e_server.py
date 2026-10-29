@@ -14,6 +14,14 @@ Jamais de vrai outil de lockfile non plus : npm et uv sont simulés (``fake_whic
 ``fake_spawn``, comme ``conftest.FakeTools``) ; ils écrivent dans le lockfile les versions que
 leur commande demande. Les autres outils sont absents (« commande à lancer »).
 
+Jamais le vrai trousseau ni le vrai GitHub (E16) : le trousseau est en mémoire
+(``conftest.MemoryKeyring``), GitHub est simulé (``FakeGitHub`` : l'échange du code, le device
+flow, ``/user``, la révocation), ``gh`` aussi (connecté, token ``gho_e2e_gh``). La page
+d'autorisation est servie par un petit serveur sur ``localhost`` et un autre port : pour le
+navigateur, c'est un autre site, comme github.com. Elle renvoie aussitôt vers l'adresse de
+retour, avec le code ``e2e-code`` : le retour d'OAuth se teste pour de vrai (cookie
+``SameSite=Strict`` absent, ``Sec-Fetch-Site: cross-site``).
+
 Un rapport d'exemple (``--report`` : le JSON de ``scan --format json``, celui de
 ``GET /api/scans/{id}``, avec le chemin analysé remplacé par ``--source`` et des dates fixes)
 pour les tests du front (``frontend/src/test/fixtures/``) ::
@@ -23,19 +31,28 @@ pour les tests du front (``frontend/src/test/fixtures/``) ::
 """
 
 import argparse
+import http.server
+import itertools
 import json
 import re
 import subprocess
 import sys
 import tempfile
+import threading
+import urllib.parse
 from pathlib import Path, PurePath
 from typing import Any
 
+import httpx
+import keyring
+import respx
+
 sys.path.insert(0, str(Path(__file__).parent))
 
-from conftest import recorded_responses
+from conftest import MemoryKeyring, recorded_responses
 
 from forceupdate import engine
+from forceupdate.forges import github
 from forceupdate.models import ScanOptions
 from forceupdate.net import cache as cache_module
 from forceupdate.report import json as json_report
@@ -89,10 +106,105 @@ def _uv(output: Path, arguments: list[str]) -> None:
     output.write_text(text, encoding="utf-8", newline="\n")
 
 
+USER = {"login": "octo-e2e", "name": "Octo E2E", "html_url": "https://github.com/octo-e2e"}
+
+TOKENS: dict[str, str | None] = {
+    "gho_e2e_oauth": "repo, read:org",
+    "gho_e2e_device": "repo, read:org",
+    "gho_e2e_gh": "repo, read:org, gist",
+    "ghp_e2e_classic": "repo, read:org",
+    "github_pat_e2e": None,
+}
+"""Les tokens que le faux GitHub accepte, avec leurs portées (``None`` : fine-grained)."""
+
+
+class FakeGitHub:
+    """GitHub simulé pour le serveur de test : chaque code de device flow est en attente aux
+    deux premières demandes (le temps de le voir à l'écran), puis donne ``gho_e2e_device``."""
+
+    def __init__(self) -> None:
+        self._codes = itertools.count(1)
+        self._asked: dict[str, int] = {}
+
+    def routes(self, router: respx.MockRouter) -> None:
+        router.post("https://github.com/login/device/code").mock(side_effect=self._device)
+        router.post("https://github.com/login/oauth/access_token").mock(side_effect=self._token)
+        router.get("https://api.github.com/user").mock(side_effect=self._user)
+        router.delete(url__regex=r"^https://api\.github\.com/applications/[^/]+/token$").respond(
+            204
+        )
+
+    def _device(self, request: httpx.Request) -> httpx.Response:
+        code = f"appareil-{next(self._codes)}"
+        return httpx.Response(
+            200,
+            json={
+                "device_code": code,
+                "user_code": "WDJB-MJHT",
+                "verification_uri": "https://github.com/login/device",
+                "expires_in": 900,
+                "interval": 1,
+            },
+        )
+
+    def _token(self, request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        if "device_code" in body:
+            asked = self._asked[body["device_code"]] = self._asked.get(body["device_code"], 0) + 1
+            if asked <= 2:
+                return httpx.Response(200, json={"error": "authorization_pending"})
+            return httpx.Response(200, json={"access_token": "gho_e2e_device"})
+        if body.get("code") != "e2e-code":
+            return httpx.Response(200, json={"error": "bad_verification_code"})
+        return httpx.Response(200, json={"access_token": "gho_e2e_oauth", "scope": "repo,read:org"})
+
+    def _user(self, request: httpx.Request) -> httpx.Response:
+        token = request.headers.get("authorization", "").removeprefix("Bearer ")
+        if token not in TOKENS:
+            return httpx.Response(401, json={"message": "Bad credentials"})
+        scopes = TOKENS[token]
+        headers = {} if scopes is None else {"X-OAuth-Scopes": scopes}
+        return httpx.Response(200, json=USER, headers=headers)
+
+
+class _Authorize(http.server.BaseHTTPRequestHandler):
+    """La page d'autorisation de GitHub : accepte tout de suite, et renvoie vers l'adresse de
+    retour avec le code ``e2e-code`` et le ``state`` reçu."""
+
+    def do_GET(self) -> None:
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        target = query["redirect_uri"][0]
+        state = query["state"][0]
+        location = f"{target}?{urllib.parse.urlencode({'code': 'e2e-code', 'state': state})}"
+        self.send_response(302)
+        self.send_header("Location", location)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def log_message(self, format: str, *args: Any) -> None:
+        pass
+
+
+def fake_authorize() -> str:
+    """Lance la fausse page d'autorisation ; rend son adresse, sur ``localhost`` (un autre site
+    que 127.0.0.1 pour le navigateur)."""
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Authorize)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return f"http://localhost:{server.server_address[1]}/login/oauth/authorize"
+
+
+def fake_gh_run(command: list[str], **options: Any) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.CompletedProcess(command, 0, b"gho_e2e_gh\n", b"")
+
+
 def serve(port: int, token: str, state_dir: Path) -> None:
     security.new_token = lambda: token
     lockfiles._which = fake_which
     lockfiles._spawn = fake_spawn
+    keyring.set_keyring(MemoryKeyring())
+    github._which = lambda program: "/outils-e2e/gh" if program == "gh" else None
+    github._run = fake_gh_run
+    github.AUTHORIZE_URL = fake_authorize()
     app.serve(
         port=port,
         browser=False,
@@ -120,7 +232,7 @@ def main() -> None:
     options = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="forceupdate-e2e-") as tmp:
         cache_module.default_cache_path = lambda: Path(tmp) / "cache.sqlite3"
-        with recorded_responses():
+        with recorded_responses(FakeGitHub().routes):
             if options.report is not None:
                 report(options.report.resolve(), options.source)
             else:

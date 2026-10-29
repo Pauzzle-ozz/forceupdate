@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { FolderGit2, GitPullRequest, KeyRound, Settings } from 'lucide-react'
+import { FolderGit2, GitPullRequest, Settings } from 'lucide-react'
 import { useState } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import { Choose } from '@/screens/Choose'
+import { AccountsPage } from '@/screens/accounts/AccountsPage'
 import { Home } from '@/screens/Home'
 import { ScanPage } from '@/screens/ScanPage'
 import { PlanPage } from '@/screens/update/PlanPage'
@@ -35,23 +36,16 @@ export function AppRoutes() {
           path="depots"
           element={
             <ComingSoon title="Mes dépôts" icon={FolderGit2}>
-              <p>Les dépôts GitHub, GitLab et Bitbucket arrivent avec la connexion des comptes.</p>
+              <p>La liste des dépôts des comptes connectés, et leur analyse sans les cloner, arrivent bientôt.</p>
             </ComingSoon>
           }
         />
-        <Route
-          path="comptes"
-          element={
-            <ComingSoon title="Comptes" icon={KeyRound}>
-              <p>La connexion à GitHub, GitLab et Bitbucket n'est pas encore disponible.</p>
-            </ComingSoon>
-          }
-        />
+        <Route path="comptes" element={<AccountsPage />} />
         <Route
           path="pr"
           element={
             <ComingSoon title="PR et MR" icon={GitPullRequest}>
-              <p>Les pull requests arrivent avec la connexion des comptes.</p>
+              <p>Les pull requests arrivent avec la liste des dépôts.</p>
             </ComingSoon>
           }
         />

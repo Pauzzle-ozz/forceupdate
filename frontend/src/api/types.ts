@@ -57,3 +57,13 @@ export type LockResult = Schemas['LockResult']
 export type LockStatus = Schemas['LockStatus']
 export type InstalledVersion = Schemas['InstalledVersion']
 export type Reach = Schemas['Reach']
+
+export type AccountList = Response<'list_accounts'>
+export type ForgeStatus = Schemas['ForgeStatus']
+export type ForgeKind = Schemas['ForgeKind']
+export type Account = Response<'connect_token', 201>
+export type Access = Schemas['Access']
+export type ConnectMethod = Schemas['ConnectMethod']
+export type AccountConnection = Response<'start_device', 201>
+export type ConnectionStatus = Schemas['ConnectionStatus']
+export type Disconnection = Response<'disconnect'>

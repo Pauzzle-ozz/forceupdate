@@ -4,12 +4,14 @@ Les tests qui touchent le vrai réseau sont marqués ``network`` : ils sont saut
 par défaut, et lancés avec ``--run-network``. Les autres tournent hors ligne, sur
 des réponses HTTP enregistrées dans ``tests/fixtures/``.
 
-Quatre garde-fous valent pour tous les tests : le cache de l'utilisateur n'est jamais
+Cinq garde-fous valent pour tous les tests : le cache de l'utilisateur n'est jamais
 touché (``Cache.default()`` en ouvre un dans le dossier du test), un test qui n'est pas
 marqué ``network`` ne peut pas ouvrir de connexion (une requête non simulée par ``respx``
-échoue au lieu de partir sur le réseau), ni lancer un vrai outil de lockfile (npm, uv… :
-``update.lockfiles`` les croit absents ; un test les simule avec ``FakeTools``), et aucun
-test n'ouvre le navigateur (``webbrowser.open`` échoue).
+échoue au lieu de partir sur le réseau : jamais le vrai GitHub), ni lancer un vrai outil de
+lockfile (npm, uv… : ``update.lockfiles`` les croit absents ; un test les simule avec
+``FakeTools``), aucun test n'ouvre le navigateur (``webbrowser.open`` échoue), et aucun ne
+touche le trousseau du système ni ``gh`` (``keychain`` : un trousseau en mémoire, propre au
+test ; ``gh`` est absent, et le lancer échoue).
 
 Le serveur de l'interface se teste avec ``api``, le client de test de FastAPI.
 """
@@ -27,10 +29,14 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 import httpx
+import keyring.backend
+import keyring.core
+import keyring.errors
 import pytest
 import respx
 from fastapi.testclient import TestClient
 
+from forceupdate.forges import github
 from forceupdate.net import Cache, HttpClient
 from forceupdate.net import cache as cache_module
 from forceupdate.registries import Registry
@@ -88,6 +94,41 @@ def _no_browser(monkeypatch: pytest.MonkeyPatch) -> None:
         raise RuntimeError(f"test : navigateur refusé ({url})")
 
     monkeypatch.setattr(webbrowser, "open", refuse)
+
+
+class MemoryKeyring(keyring.backend.KeyringBackend):
+    """Un trousseau en mémoire : ``passwords[(service, nom)]``."""
+
+    priority = 1  # type: ignore[assignment]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.passwords: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service: str, username: str) -> str | None:
+        return self.passwords.get((service, username))
+
+    def set_password(self, service: str, username: str, password: str) -> None:
+        self.passwords[(service, username)] = password
+
+    def delete_password(self, service: str, username: str) -> None:
+        if self.passwords.pop((service, username), None) is None:
+            raise keyring.errors.PasswordDeleteError(username)
+
+
+@pytest.fixture(autouse=True)
+def keychain(monkeypatch: pytest.MonkeyPatch) -> MemoryKeyring:
+    """Le trousseau des tests : en mémoire, neuf pour chaque test, jamais celui du système. Et
+    GitHub CLI n'est pas installé : le lancer est une erreur du test."""
+    memory = MemoryKeyring()
+    monkeypatch.setattr(keyring.core, "_keyring_backend", memory)
+
+    def refuse(command: list[str], **options: object) -> None:
+        raise RuntimeError(f"test : vrai gh refusé ({command[0]})")
+
+    monkeypatch.setattr(github, "_which", lambda program: None)
+    monkeypatch.setattr(github, "_run", refuse)
+    return memory
 
 
 @dataclass
@@ -189,10 +230,15 @@ def recorded() -> Iterator[dict[str, respx.Route]]:
 
 
 @contextlib.contextmanager
-def recorded_responses() -> Iterator[dict[str, respx.Route]]:
+def recorded_responses(
+    extra: Callable[[respx.MockRouter], None] | None = None,
+) -> Iterator[dict[str, respx.Route]]:
     """Ce que fait la fixture ``recorded``, hors de pytest : le serveur des tests de bout en
-    bout du front s'en sert (``tests/e2e_server.py``)."""
+    bout du front s'en sert (``tests/e2e_server.py``), avec ses propres routes (``extra`` : un
+    GitHub simulé)."""
     with respx.mock(assert_all_called=False) as router:
+        if extra is not None:
+            extra(router)
         routes = {}
         for path in sorted((FIXTURES / "pypi").glob("*.json")):
             routes[path.stem] = router.get(f"https://pypi.org/simple/{path.stem}/").respond(

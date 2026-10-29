@@ -159,6 +159,15 @@ def test_the_schema_describes_every_route() -> None:
         ("GET", "/api/updates/{plan_id}/events"): "plan_events",
         ("GET", "/api/updates/{plan_id}/files/{path}"): "download_file",
         ("POST", "/api/files"): "upload_file",
+        ("GET", "/api/accounts"): "list_accounts",
+        ("POST", "/api/accounts/{forge}/oauth"): "start_oauth",
+        ("POST", "/api/accounts/{forge}/device"): "start_device",
+        ("GET", "/api/accounts/connections/{connection_id}"): "get_connection",
+        ("DELETE", "/api/accounts/connections/{connection_id}"): "cancel_connection",
+        ("POST", "/api/accounts/{forge}/token"): "connect_token",
+        ("POST", "/api/accounts/{forge}/gh"): "connect_gh",
+        ("POST", "/api/accounts/{forge}/verify"): "verify_account",
+        ("DELETE", "/api/accounts/{forge}"): "disconnect",
     }
 
 

@@ -989,10 +989,961 @@
           }
         }
       }
+    },
+    "/api/accounts": {
+      "get": {
+        "tags": [
+          "comptes"
+        ],
+        "summary": "List Accounts",
+        "description": "Les forges, comment s'y connecter, et les comptes connectés (sans leur token). Rien\nn'est demandé aux forges : ``POST …/verify`` relit les droits.",
+        "operationId": "list_accounts",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/accounts/{forge}/oauth": {
+      "post": {
+        "tags": [
+          "comptes"
+        ],
+        "summary": "Start Oauth",
+        "description": "Commence une connexion par la page d'autorisation de la forge : le navigateur doit aller\nà ``authorize_url``. La forge le renverra sur le serveur, qui échange le code contre le\ntoken, puis vers ``/comptes?connexion=<id>``.",
+        "operationId": "start_oauth",
+        "parameters": [
+          {
+            "name": "forge",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ForgeKind"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountConnection"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Impossible dans l'état actuel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/accounts/{forge}/device": {
+      "post": {
+        "tags": [
+          "comptes"
+        ],
+        "summary": "Start Device",
+        "description": "Commence une connexion par device flow : la forge donne un code (``user_code``) à taper\nsur ``verification_uri`` ; le serveur attend, la connexion se suit sur\n``GET /api/accounts/connections/{id}``.",
+        "operationId": "start_device",
+        "parameters": [
+          {
+            "name": "forge",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ForgeKind"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountConnection"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Impossible dans l'état actuel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "La forge ne répond pas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/accounts/connections/{connection_id}": {
+      "get": {
+        "tags": [
+          "comptes"
+        ],
+        "summary": "Get Connection",
+        "description": "Où en est une connexion : ``pending``, puis ``done`` (avec le compte), ``failed``,\n``expired`` ou ``cancelled`` (avec la raison).",
+        "operationId": "get_connection",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountConnection"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "comptes"
+        ],
+        "summary": "Cancel Connection",
+        "description": "Abandonne une connexion en attente (le device flow cesse d'attendre).",
+        "operationId": "cancel_connection",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountConnection"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/accounts/{forge}/token": {
+      "post": {
+        "tags": [
+          "comptes"
+        ],
+        "summary": "Connect Token",
+        "description": "Connecte un compte avec un token collé (classic ou fine-grained), une fois que la forge\nl'a accepté.",
+        "operationId": "connect_token",
+        "parameters": [
+          {
+            "name": "forge",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ForgeKind"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Impossible dans l'état actuel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "La forge ne répond pas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/accounts/{forge}/gh": {
+      "post": {
+        "tags": [
+          "comptes"
+        ],
+        "summary": "Connect Gh",
+        "description": "Connecte le compte avec lequel GitHub CLI (``gh``) est connecté : son token est lu par\n``gh auth token``, puis rangé dans le trousseau de forceupdate.",
+        "operationId": "connect_gh",
+        "parameters": [
+          {
+            "name": "forge",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ForgeKind"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Impossible dans l'état actuel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "La forge ne répond pas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/accounts/{forge}/verify": {
+      "post": {
+        "tags": [
+          "comptes"
+        ],
+        "summary": "Verify Account",
+        "description": "Redemande à la forge qui est connecté et avec quels droits. Un token refusé (révoqué sur\nla forge) est dit dans ``problem`` : le compte reste affiché, pour qu'on se reconnecte.",
+        "operationId": "verify_account",
+        "parameters": [
+          {
+            "name": "forge",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ForgeKind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Impossible dans l'état actuel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "La forge ne répond pas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/accounts/{forge}": {
+      "delete": {
+        "tags": [
+          "comptes"
+        ],
+        "summary": "Disconnect",
+        "description": "Déconnecte le compte : efface son token du trousseau, et le révoque auprès de la forge\ns'il a été donné à forceupdate (OAuth, device flow).",
+        "operationId": "disconnect",
+        "parameters": [
+          {
+            "name": "forge",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ForgeKind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Disconnection"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Impossible dans l'état actuel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "Access": {
+        "type": "string",
+        "enum": [
+          "write",
+          "public",
+          "read",
+          "unknown"
+        ],
+        "title": "Access",
+        "description": "Ce que permet un token, d'après ses droits."
+      },
+      "Account": {
+        "properties": {
+          "forge": {
+            "$ref": "#/components/schemas/ForgeKind"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "login": {
+            "type": "string",
+            "title": "Login"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "access": {
+            "$ref": "#/components/schemas/Access"
+          },
+          "scopes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scopes"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "method": {
+            "$ref": "#/components/schemas/ConnectMethod"
+          },
+          "connected_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Connected At"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Checked At"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          }
+        },
+        "type": "object",
+        "required": [
+          "forge",
+          "host",
+          "login",
+          "name",
+          "url",
+          "access",
+          "scopes",
+          "warnings",
+          "method",
+          "connected_at",
+          "checked_at",
+          "problem"
+        ],
+        "title": "Account",
+        "description": "Un compte connecté. Jamais son token."
+      },
+      "AccountConnection": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "forge": {
+            "$ref": "#/components/schemas/ForgeKind"
+          },
+          "method": {
+            "$ref": "#/components/schemas/ConnectMethod"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ConnectionStatus"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "authorize_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorize Url"
+          },
+          "user_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Code"
+          },
+          "verification_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Uri"
+          },
+          "interval": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "account": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Account"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "forge",
+          "method",
+          "status",
+          "created_at",
+          "expires_at",
+          "authorize_url",
+          "user_code",
+          "verification_uri",
+          "interval",
+          "error",
+          "account"
+        ],
+        "title": "AccountConnection",
+        "description": "Une connexion en cours ou finie, par OAuth ou par device flow."
+      },
+      "AccountList": {
+        "properties": {
+          "keyring": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keyring"
+          },
+          "forges": {
+            "items": {
+              "$ref": "#/components/schemas/ForgeStatus"
+            },
+            "type": "array",
+            "title": "Forges"
+          }
+        },
+        "type": "object",
+        "required": [
+          "keyring",
+          "forges"
+        ],
+        "title": "AccountList"
+      },
       "ApplyRequest": {
         "properties": {
           "plan": {
@@ -1030,6 +1981,29 @@
         ],
         "title": "Chosen",
         "description": "Une option de mise à jour, désignée dans le rapport de l'analyse."
+      },
+      "ConnectMethod": {
+        "type": "string",
+        "enum": [
+          "oauth",
+          "device",
+          "token",
+          "gh"
+        ],
+        "title": "ConnectMethod",
+        "description": "Comment un compte a été connecté."
+      },
+      "ConnectionStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "done",
+          "failed",
+          "expired",
+          "cancelled"
+        ],
+        "title": "ConnectionStatus",
+        "description": "Où en est la connexion d'un compte."
       },
       "Dependency": {
         "properties": {
@@ -1129,6 +2103,41 @@
         ],
         "title": "Dependency",
         "description": "Une dépendance d'un projet.\n\nUne directe vient du manifeste (``package.json``, ``pyproject.toml``…). Une\ntransitive vient seulement du lockfile : ``direct=False``, sans ``location``."
+      },
+      "Disconnection": {
+        "properties": {
+          "forge": {
+            "$ref": "#/components/schemas/ForgeKind"
+          },
+          "login": {
+            "type": "string",
+            "title": "Login"
+          },
+          "revoked": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "forge",
+          "login",
+          "revoked",
+          "message"
+        ],
+        "title": "Disconnection",
+        "description": "Un compte déconnecté : son token est effacé du trousseau."
       },
       "Document": {
         "properties": {
@@ -1570,6 +2579,93 @@
         ],
         "title": "FindingKind",
         "description": "Le type d'un constat : les quatre types du brief, et ce qui n'a pas pu être vérifié."
+      },
+      "ForgeKind": {
+        "type": "string",
+        "enum": [
+          "github",
+          "gitlab",
+          "bitbucket"
+        ],
+        "title": "ForgeKind"
+      },
+      "ForgeStatus": {
+        "properties": {
+          "forge": {
+            "$ref": "#/components/schemas/ForgeKind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "methods": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectMethod"
+            },
+            "type": "array",
+            "title": "Methods"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scopes"
+          },
+          "token_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Url"
+          },
+          "account": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Account"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "connection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountConnection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "forge",
+          "name",
+          "host",
+          "available",
+          "methods",
+          "scopes",
+          "token_url",
+          "account",
+          "connection"
+        ],
+        "title": "ForgeStatus",
+        "description": "Une forge : peut-on s'y connecter, comment, et qui y est connecté."
       },
       "Gap": {
         "type": "string",
@@ -2520,6 +3616,20 @@
         ],
         "title": "TaskStatus",
         "description": "Où en est une analyse, ou l'application d'un plan."
+      },
+      "TokenRequest": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "TokenRequest",
+        "description": "Un token collé, pour connecter un compte. Le navigateur l'envoie au serveur ; le serveur\nne le renvoie jamais."
       },
       "Tool": {
         "properties": {

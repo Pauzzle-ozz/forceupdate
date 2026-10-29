@@ -244,6 +244,25 @@ ce que l'outil peut faire.
 | Hors ligne | Connexion impossible : boutons désactivés avec la raison ; les comptes connectés restent affichés |
 | Non concluant | Droits du token inconnus (token « fine-grained » de GitHub sans `X-OAuth-Scopes`) : « droits non vérifiés » |
 
+**Fait à E16** (GitHub ; GitLab et Bitbucket en cartes « Bientôt ») :
+
+- adresse `/comptes` ; `/comptes?connexion=<id>` au retour d'une autorisation OAuth, dont la
+  carte montre l'issue ;
+- non connectée : « Se connecter avec GitHub », puis « Autres façons de se connecter » :
+  avec un code (device flow), avec GitHub CLI (seulement si `gh` est installé), token collé
+  (lien « Créer un token sur github.com », portées pré-cochées) ;
+- les droits sont relus auprès de la forge une fois à l'ouverture de l'écran (« Vérifié :
+  maintenant ») et par « Vérifier les droits » : un token révoqué sur github.com se voit
+  aussitôt (alerte, « Se reconnecter ») ; forge injoignable : « Droits non revérifiés », le
+  compte reste ;
+- pas d'avatar (il viendrait de github.com, refusé par la CSP ; le servir par le serveur
+  local n'apportait rien) ;
+- états : chargement (squelettes), erreur (« Comptes indisponibles », « Réessayer »),
+  trousseau indisponible (alerte, connexions désactivées), hors ligne (connexions
+  désactivées avec la raison), connexion refusée, expirée, annulée.
+- l'accueil (écran 1) : la carte « Mes dépôts » montre les comptes connectés (logo, forge,
+  `@identifiant`) et « Gérer les comptes ».
+
 ## 7. Mes dépôts (E17, E19, E20)
 
 **But** : tous les dépôts des comptes connectés, les analyser en groupe, choisir ceux à
@@ -330,7 +349,7 @@ Relevé en concevant les écrans ; ajouté au plan (E13 ne touche pas à l'API) 
 | Les chiffres d'une analyse finie dans la liste des analyses (`GET /api/scans` : `summary` du rapport, `null` avant la fin), pour « 28 failles » sans charger chaque rapport | 1 | fait (E14) |
 | Dire si un chemin récent est un dossier ou un fichier (`recent` : `{path, kind}`), pour son icône | 1, 2 | fait (E14) |
 | La répartition par gravité des failles (« 13 élevées · 14 moyennes ») et de tous les constats (la barre), sans recompter dans le navigateur (`summary.vulnerabilities`, `summary.severities`) | 4 | fait (E14) |
-| Comptes : lister, connecter (OAuth, device flow, token, `gh`), déconnecter, droits | 6 | E16 |
+| Comptes : lister, connecter (OAuth, device flow, token, `gh`), déconnecter, droits | 6 | fait (E16) |
 | Dépôts : drapeaux (archivé, fork, vide, privé, droit de push), organisations qui restreignent l'accès, requêtes restantes ; analyses groupées avec progression par dépôt et annulation ; **synthèse multi-dépôts calculée par le serveur** | 7 | E17 |
 | PR : récapitulatif avant envoi (par dépôt : PR existante, sélection, lockfiles), envoi suivi, liens | 8 | E18 |
 | Réglages et vidage du cache | 9 | E29 (déjà prévu) |

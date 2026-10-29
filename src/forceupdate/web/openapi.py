@@ -9,8 +9,8 @@ jour) ::
 FastAPI le tire des dataclasses (``models``, ``report.json.Document``, ``web.schemas``). Une
 retouche : un champ qui a une valeur par défaut y serait facultatif, alors que les réponses
 portent toujours tous leurs champs (``models.to_dict``). Tous les champs des objets que rendent
-les réponses (2xx) sont donc marqués requis ; un type ne doit pas servir à la fois en entrée et
-en sortie.
+les réponses (2xx) sont donc marqués requis ; un objet ne doit pas servir à la fois en entrée et
+en sortie (une énumération le peut).
 """
 
 import copy
@@ -37,7 +37,9 @@ def document(app: FastAPI | None = None) -> dict[str, Any]:
     components = schema.get("components", {}).get("schemas", {})
     inputs = _reachable(_request_schemas(schema), components)
     outputs = _reachable(_response_schemas(schema), components)
-    shared = inputs & outputs
+    # Une énumération (ForgeKind, dans un chemin et dans une réponse) n'a pas de champs à
+    # rendre requis : elle peut servir des deux côtés.
+    shared = {name for name in inputs & outputs if "properties" in components[name]}
     if shared:
         raise ValueError(f"types à la fois en entrée et en sortie : {', '.join(sorted(shared))}")
     for name in sorted(outputs):

@@ -1,0 +1,10 @@
+Logos de GitHub, GitLab et Bitbucket (frontend/src/components/ForgeLogo.tsx)
+
+Tracés SVG repris de Simple Icons 16.36.0 (https://simpleicons.org,
+https://github.com/simple-icons/simple-icons), publiés sous CC0 1.0 Universal
+(https://creativecommons.org/publicdomain/zero/1.0/) : versés au domaine public.
+
+Les logos restent des marques de leurs propriétaires (GitHub, Inc. ; GitLab Inc. ;
+Atlassian). forceupdate s'en sert seulement pour désigner ces services, en une
+couleur et sans les modifier, comme le permettent leurs chartes. Il n'est ni
+affilié à ces sociétés, ni approuvé par elles.

@@ -24,9 +24,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, PlainTextResponse, Response
 
 from forceupdate import __version__
+from forceupdate.forges.accounts import Accounts
 from forceupdate.web import security
+from forceupdate.web.connections import Connections
 from forceupdate.web.jobs import Jobs, Recent
-from forceupdate.web.routes import files, fs, scans, updates
+from forceupdate.web.routes import accounts, files, fs, oauth, scans, updates
 
 STATIC_DIR = Path(__file__).parent / "static"
 """Le front construit (``npm run build``, E14)."""
@@ -47,7 +49,8 @@ class Settings:
     port: int
     """Le port d'écoute : les en-têtes ``Host`` et ``Origin`` doivent le porter."""
     state_dir: Path
-    """Où garder les chemins récemment analysés."""
+    """Où garder les chemins récemment analysés, et les comptes connectés (sans leurs
+    tokens, qui sont dans le trousseau)."""
     static_dir: Path = STATIC_DIR
 
 
@@ -59,9 +62,13 @@ def create_app(settings: Settings) -> FastAPI:
         jobs = Jobs(recent=Recent(settings.state_dir / "recent.json"))
         jobs.start()
         app.state.jobs = jobs
+        app.state.connections = Connections(
+            accounts=Accounts(settings.state_dir / "accounts.json"), port=settings.port
+        )
         try:
             yield
         finally:
+            await app.state.connections.close()
             await jobs.close()
 
     app = FastAPI(
@@ -75,9 +82,11 @@ def create_app(settings: Settings) -> FastAPI:
         # operationId : le nom de la fonction (start_scan…), pour le client généré du front.
         generate_unique_id_function=lambda route: route.name,
     )
-    for module in (fs, scans, updates, files):
+    for module in (fs, scans, updates, files, accounts, oauth):
         app.include_router(module.router)
-    app.add_middleware(security.Guard, token=settings.token, port=settings.port)
+    app.add_middleware(
+        security.Guard, token=settings.token, port=settings.port, returns=oauth.RETURN_PATHS
+    )
 
     @app.get("/{path:path}", include_in_schema=False)
     async def page(path: str) -> Response:

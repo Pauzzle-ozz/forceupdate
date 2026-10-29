@@ -202,10 +202,13 @@ Aplats des graphiques (barre des gravités), toujours avec légende et nombres :
   | PR / MR | `git-pull-request` ; compte : `key-round` ; connecter : `plug` |
   | à faire à la main | `ban` ; paquet malveillant : `octagon-alert` |
 
-- **Logos des forges** : Lucide n'en a plus (marques retirées en 1.0). À E16 : le nom de
-  la forge en texte, avec une icône neutre (`git-branch`) ; ou leurs logos officiels
-  (Simple Icons, CC0), en respectant les chartes de GitHub, GitLab et Bitbucket. À
-  trancher à E16.
+- **Logos des forges** (tranché à E16 avec l'utilisateur) : Lucide n'en a plus (marques
+  retirées en 1.0) ; les logos officiels de GitHub, GitLab et Bitbucket, tracés de Simple
+  Icons (CC0), **tels quels et en une couleur, celle du texte** (`fill: currentColor`),
+  toujours à côté du nom de la forge (`aria-hidden`). C'est l'usage que permettent leurs
+  chartes pour désigner le service ; pas de couleurs de marque, pas de logo modifié ni
+  seul. `frontend/src/components/ForgeLogo.tsx` ; licence et mention des marques dans
+  `public/licenses/LICENSE-simple-icons.txt`.
 
 ## Composants
 
@@ -378,6 +381,28 @@ son ou nom de personnage repris.
 - diff (`components/Diff.tsx`), tokens `--diff-*` ajoutés au `@theme` de Tailwind ;
 - vérifié par axe-core sur Choisir, Vérifier, la confirmation et Résultat, en clair et en
   sombre, à 1440 et 375 px ; pas de défilement horizontal de 375 à 1440 px.
+
+**Fait à E16** (l'écran 6, `frontend/src/screens/accounts/`) :
+
+- une carte par forge prête (`ForgeCard.tsx`) : badge d'état (« Non connecté », « Connexion en
+  cours », « Connecté » : icône et mot), l'issue d'une connexion en alerte dans la carte
+  (« Fermer », « Réessayer »), le compte en liste de définitions (`dl`) ; GitLab et Bitbucket
+  en petites cartes « Bientôt », sans bouton ;
+- une seule action principale : « Se connecter avec GitHub » (avec le logo) ; si l'application
+  n'a pas de secret, « Se connecter avec un code » le devient. Le reste en boutons secondaires,
+  « Se déconnecter… » en bouton risqué confirmé (`ConfirmDialog`) ;
+- device flow : le code en chasse fixe, 30 px, espacé, « Copier » (`hooks/useCopy.ts`, partagé
+  avec `Command`), le lien vers la forge en bouton principal (nouvel onglet), la lame
+  indéterminée, l'heure d'expiration ;
+- token collé : champ masqué (`type="password"`) avec un bouton « Afficher le token »
+  (`aria-pressed`), l'aide et l'erreur en `aria-describedby`, le champ vidé après succès ;
+- droits : « Lecture et PR » (réussite), « Lecture seule » ou « dépôts publics seulement »
+  (avertissement), « Droits non vérifiés » (non concluant, bord pointillé) ;
+- **trouvé** : un lien au milieu d'une phrase doit être souligné (axe-core,
+  `link-in-text-block` : le reset de Tailwind retire le soulignement) ; un `display: flex` sur
+  un `<li>` d'une liste numérotée efface son numéro (le mettre sur un `div` dedans) ;
+- vérifié par axe-core (non connecté, device flow, connecté, confirmation) en clair et en
+  sombre, à 1440 et 375 px ; pas de défilement horizontal.
 
 ## Anti-motifs
 
