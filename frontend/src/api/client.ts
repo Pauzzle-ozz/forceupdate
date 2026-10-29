@@ -16,6 +16,8 @@ import type {
   ForgeKind,
   Listing,
   PlanRequest,
+  Proposal,
+  ProposalRequest,
   RepositoryBatch,
   RepositoryList,
   RepositoryRequest,
@@ -177,6 +179,15 @@ export const api = {
   /** Analyse un dépôt donné par son nom ou son adresse, même d'un autre compte s'il est public. */
   scanRepository: (body: RepositoryRequest) =>
     request<ScanSummary>('POST', '/api/repositories/scans', json(body)),
+
+  /** Le récapitulatif des PR de quelques dépôts : rien n'est cloné ni poussé. */
+  createProposal: (body: ProposalRequest) => request<Proposal>('POST', '/api/proposals', json(body)),
+
+  getProposal: (id: string) => request<Proposal>('GET', `/api/proposals/${encodeURIComponent(id)}`),
+
+  /** Envoie les dépôts cochés du récapitulatif, en tâche de fond. */
+  sendProposal: (id: string, repositories: string[]) =>
+    request<Proposal>('POST', `/api/proposals/${encodeURIComponent(id)}/send`, json({ repositories })),
 }
 
 export const queryKeys = {
@@ -187,4 +198,5 @@ export const queryKeys = {
   accounts: ['accounts'] as const,
   repositories: ['repositories'] as const,
   connection: (id: string) => ['connection', id] as const,
+  proposal: (id: string) => ['proposal', id] as const,
 }

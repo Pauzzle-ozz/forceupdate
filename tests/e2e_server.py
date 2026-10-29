@@ -19,7 +19,9 @@ Jamais le vrai trousseau ni le vrai GitHub (E16) : le trousseau est en mémoire
 flow, ``/user``, la révocation), ``gh`` aussi (connecté, token ``gho_e2e_gh``). Ses dépôts
 (E17) aussi (``fake_forge.FakeGitHubRepos``, ``REPOSITORIES`` : des mini-projets de
 ``tests/projects``, une organisation qui restreint l'accès des applications, un dépôt public
-d'un autre compte). La page
+d'un autre compte). Pour les PR (E18), chaque dépôt a un vrai dépôt git « bare » dans le
+dossier temporaire (``fake_forge.make_remote``) : git y clone et y pousse, jamais vers GitHub ;
+le faux GitHub ouvre et met à jour les PR. La page
 d'autorisation est servie par un petit serveur sur ``localhost`` et un autre port : pour le
 navigateur, c'est un autre site, comme github.com. Elle renvoie aussitôt vers l'adresse de
 retour, avec le code ``e2e-code`` : le retour d'OAuth se teste pour de vrai (cookie
@@ -53,7 +55,7 @@ import respx
 sys.path.insert(0, str(Path(__file__).parent))
 
 from conftest import MemoryKeyring, recorded_responses
-from fake_forge import FakeGitHubRepos, FakeRepo, from_directory
+from fake_forge import FakeGitHubRepos, FakeRepo, from_directory, make_remote, remotes_url
 
 from forceupdate import engine
 from forceupdate.forges import github
@@ -110,7 +112,12 @@ def _uv(output: Path, arguments: list[str]) -> None:
     output.write_text(text, encoding="utf-8", newline="\n")
 
 
-USER = {"login": "octo-e2e", "name": "Octo E2E", "html_url": "https://github.com/octo-e2e"}
+USER = {
+    "id": 4242,
+    "login": "octo-e2e",
+    "name": "Octo E2E",
+    "html_url": "https://github.com/octo-e2e",
+}
 
 TOKENS: dict[str, str | None] = {
     "gho_e2e_oauth": "repo, read:org",
@@ -259,6 +266,12 @@ def main() -> None:
     options = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="forceupdate-e2e-") as tmp:
         cache_module.default_cache_path = lambda: Path(tmp) / "cache.sqlite3"
+        if options.report is None:
+            remotes = Path(tmp) / "distants"
+            for repo in REPOSITORIES:
+                if not repo.empty:
+                    make_remote(repo, remotes)
+            github.GIT_URL = remotes_url(remotes)
         repositories = FakeGitHubRepos(
             REPOSITORIES,
             tokens=set(TOKENS),

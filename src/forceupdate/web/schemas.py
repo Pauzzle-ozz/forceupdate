@@ -20,9 +20,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from forceupdate.forges.accounts import Account, ConnectMethod
-from forceupdate.forges.base import Access, ForgeKind, RateLimit, Restriction
-from forceupdate.models import Event, FindingKind, ScanOptions, Severity
+from forceupdate.forges.base import Access, ChangeRequest, ForgeKind, RateLimit, Restriction
+from forceupdate.models import Ecosystem, Event, FindingKind, Gap, ScanOptions, Severity
 from forceupdate.report.json import Document, SummaryDocument
+from forceupdate.update.forge import Step
 from forceupdate.update.lockfiles import Installed, Job, LockKind, LockStatus, Reach, Regenerated
 from forceupdate.update.writers import Choice, Skipped
 
@@ -111,6 +112,33 @@ class RepositoryRequest(RepositoryOptions):
 
 
 @dataclass(frozen=True, kw_only=True)
+class ProposedSelection:
+    """Un dépôt à mettre dans un récapitulatif de PR."""
+
+    repository: str
+    """``owner/nom``, parmi ceux de ``GET /api/repositories``."""
+    selection: dict[str, str] | None = None
+    """Les mises à jour choisies sur sa dernière analyse (comme ``PlanRequest.selection``) ;
+    ``null`` : la sélection par défaut (les ``selected`` du rapport)."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class ProposalRequest:
+    """Des dépôts d'un compte connecté pour lesquels préparer une PR chacun."""
+
+    forge: ForgeKind
+    repositories: list[ProposedSelection]
+
+
+@dataclass(frozen=True, kw_only=True)
+class SendRequest:
+    """Les dépôts d'un récapitulatif à envoyer : rien ne part sans cette validation."""
+
+    repositories: list[str]
+    """``owner/nom``, parmi ceux prêts du récapitulatif."""
+
+
+@dataclass(frozen=True, kw_only=True)
 class TokenRequest:
     """Un token collé, pour connecter un compte. Le navigateur l'envoie au serveur ; le serveur
     ne le renvoie jamais."""
@@ -147,8 +175,11 @@ class RepositoryRef:
     """Le commit lu (celui de la branche par défaut au début de l'analyse) ; ``null`` tant
     que l'arborescence n'est pas lue."""
     truncated: bool
-    """La forge n'a pas rendu toute l'arborescence (GitHub : plus de 100 000 entrées) :
-    l'analyse est partielle."""
+    """La forge n'a pas rendu toute l'arborescence (GitHub : plus de 100 000 entrées), et le
+    dépôt n'a pas pu être cloné : l'analyse est partielle."""
+    cloned: bool
+    """La forge n'a pas rendu toute l'arborescence : le dépôt a été cloné (superficiellement),
+    et c'est le clone qui est analysé."""
 
 
 class TaskStatus(enum.StrEnum):
@@ -512,6 +543,9 @@ class RepositoryRow:
     """Les chiffres de la dernière analyse finie."""
     scan: ScanSummary | None
     """La dernière analyse du dépôt (sa progression, s'il tourne)."""
+    request: ChangeRequest | None
+    """La PR de forceupdate ouverte sur le dépôt, d'après ce qu'on en sait de plus récent
+    (dernière analyse, dernier récapitulatif ou dernier envoi)."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -566,6 +600,8 @@ class RepositorySynthesis:
     """Les constats par type, additionnés, tous les types présents."""
     severities: dict[Severity, int]
     """Les constats à mettre à jour par gravité, additionnés."""
+    open_requests: int
+    """Les dépôts qui ont une PR de forceupdate ouverte."""
 
 
 class BatchStatus(enum.StrEnum):
@@ -610,6 +646,145 @@ class RepositoryList:
     synthesis: RepositorySynthesis
     batch: RepositoryBatch | None
     """La dernière analyse groupée."""
+
+
+# -- PR / MR ----------------------------------------------------------------------
+
+
+class ProposalStatus(enum.StrEnum):
+    """Où en est un récapitulatif de PR."""
+
+    PLANNED = "planned"
+    """Préparé : rien n'est poussé tant qu'il n'est pas envoyé."""
+    RUNNING = "running"
+    """Envoi en cours, dépôt par dépôt."""
+    DONE = "done"
+
+
+class ProposedState(enum.StrEnum):
+    """Où en est un dépôt d'un récapitulatif."""
+
+    READY = "ready"
+    """Prêt à envoyer."""
+    SKIPPED = "skipped"
+    """Pas de PR : archivé, lecture seule, pas analysé, rien à mettre à jour, pas coché à
+    l'envoi (``reason``)."""
+    WAITING = "waiting"
+    """Envoi : en attente de son tour."""
+    SENDING = "sending"
+    """Envoi : en cours (``step``)."""
+    OPENED = "opened"
+    """Une PR ouverte."""
+    UPDATED = "updated"
+    """La PR déjà ouverte, mise à jour."""
+    NOTHING = "nothing"
+    """Rien à faire sur le dépôt tel qu'il est : rien n'est poussé."""
+    FAILED = "failed"
+    """Pas de PR (``error``) ; les autres dépôts continuent."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class ProposedUpdate:
+    """Une mise à jour qu'une PR porte, avec ce qu'il faut pour la dire."""
+
+    update: str
+    """``Update.id``."""
+    name: str
+    ecosystem: Ecosystem
+    project: str
+    """Le dossier du projet (``.`` : la racine)."""
+    direct: bool
+    current: str | None
+    """La version utilisée."""
+    version: str
+    """La version choisie."""
+    gap: Gap | None
+    fixes: tuple[str, ...]
+    """Les failles qu'elle corrige (le premier identifiant de chacune)."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class ProposedSkip:
+    """Une mise à jour choisie qu'une PR ne portera pas, et pourquoi."""
+
+    update: str
+    name: str
+    version: str
+    reason: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class ProposedRepository:
+    """Un dépôt d'un récapitulatif : ce que sa PR fera, puis ce qu'elle a fait."""
+
+    forge: ForgeKind
+    host: str
+    full_name: str
+    url: str
+    default_branch: str | None
+    """La branche visée, jamais poussée directement."""
+    branch: str
+    """La branche de la PR (``forceupdate/dependencies``)."""
+    scan: str | None
+    """L'analyse dont vient la sélection."""
+    commit: str | None
+    """Le commit analysé."""
+    state: ProposedState
+    reason: str | None
+    """``skipped`` : pourquoi."""
+    inconclusive: bool
+    """L'analyse n'a pas tout vérifié : signalé, et pas coché par défaut."""
+    checked: bool
+    """À envoyer par défaut : prêt, et analyse concluante."""
+    request: ChangeRequest | None
+    """La PR déjà ouverte (elle sera mise à jour) ; après l'envoi, celle ouverte ou mise à
+    jour."""
+    selection: dict[str, str]
+    """La sélection préparée (``Update.id`` → version)."""
+    applied: tuple[ProposedUpdate, ...]
+    """Les mises à jour que la PR porte."""
+    skipped: tuple[ProposedSkip, ...]
+    """Les options choisies qui ne seront pas appliquées, et pourquoi."""
+    files: tuple[FileDiff, ...]
+    """Les fichiers réécrits et leurs diffs, d'après l'analyse."""
+    lockfiles: tuple[LockJob, ...]
+    """Les lockfiles à régénérer : outil trouvé, ou commande écrite dans la description."""
+    step: Step | None
+    """``sending`` : l'étape (clone, mise à jour, push, PR)."""
+    progress: Event | None
+    """Le dernier événement de la mise à jour (``regenerating`` : le lockfile en cours)."""
+    pushed: bool
+    """La branche a été poussée (faux : rien à faire, ou elle avait déjà ce contenu)."""
+    base: str | None
+    """Le commit de la branche par défaut sur lequel la mise à jour a été faite."""
+    results: tuple[LockResult, ...]
+    """Ce qu'il est advenu de chaque lockfile, sur le clone."""
+    committed: tuple[str, ...]
+    """Les fichiers du commit."""
+    error: str | None
+    """``failed`` : ce qui s'est passé."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class Proposal:
+    """Un récapitulatif de PR (écran 8) : préparé sans rien pousser, puis envoyé dépôt par
+    dépôt, une fois validé."""
+
+    id: str
+    forge: ForgeKind
+    host: str
+    status: ProposalStatus
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    repositories: tuple[ProposedRepository, ...]
+    """Dans l'ordre demandé."""
+    ready: int
+    """Les dépôts prêts à envoyer."""
+    existing: int
+    """Parmi eux, ceux qui ont déjà une PR ouverte (elle sera mise à jour)."""
+    error: str | None
+    """Pourquoi l'envoi n'a pas pu commencer (token refusé…)."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -668,4 +843,28 @@ def lock_result(result: Regenerated) -> LockResult:
         installed=tuple(installed_version(item) for item in result.installed),
         changed=result.changed,
         warnings=result.warnings,
+    )
+
+
+def proposed_update(choice: Choice) -> ProposedUpdate:
+    project, update, option = choice
+    return ProposedUpdate(
+        update=update.id,
+        name=update.name,
+        ecosystem=update.ecosystem,
+        project=project.path,
+        direct=update.direct,
+        current=update.current_version,
+        version=option.version,
+        gap=option.gap,
+        fixes=option.fixes,
+    )
+
+
+def proposed_skip(skipped: Skipped) -> ProposedSkip:
+    return ProposedSkip(
+        update=skipped.update.id,
+        name=skipped.update.name,
+        version=skipped.option.version,
+        reason=skipped.reason,
     )

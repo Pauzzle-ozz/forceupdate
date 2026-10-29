@@ -4,14 +4,16 @@ Les tests qui touchent le vrai réseau sont marqués ``network`` : ils sont saut
 par défaut, et lancés avec ``--run-network``. Les autres tournent hors ligne, sur
 des réponses HTTP enregistrées dans ``tests/fixtures/``.
 
-Cinq garde-fous valent pour tous les tests : le cache de l'utilisateur n'est jamais
+Six garde-fous valent pour tous les tests : le cache de l'utilisateur n'est jamais
 touché (``Cache.default()`` en ouvre un dans le dossier du test), un test qui n'est pas
 marqué ``network`` ne peut pas ouvrir de connexion (une requête non simulée par ``respx``
 échoue au lieu de partir sur le réseau : jamais le vrai GitHub), ni lancer un vrai outil de
 lockfile (npm, uv… : ``update.lockfiles`` les croit absents ; un test les simule avec
-``FakeTools``), aucun test n'ouvre le navigateur (``webbrowser.open`` échoue), et aucun ne
-touche le trousseau du système ni ``gh`` (``keychain`` : un trousseau en mémoire, propre au
-test ; ``gh`` est absent, et le lancer échoue).
+``FakeTools``), ni lancer git vers autre chose qu'un dépôt local (``forges.git`` : une adresse
+``https://`` est refusée ; les tests clonent et poussent vers des dépôts « bare » de leur
+dossier, ``fake_forge.make_remote``), aucun test n'ouvre le navigateur (``webbrowser.open``
+échoue), et aucun ne touche le trousseau du système ni ``gh`` (``keychain`` : un trousseau en
+mémoire, propre au test ; ``gh`` est absent, et le lancer échoue).
 
 Le serveur de l'interface se teste avec ``api``, le client de test de FastAPI.
 """
@@ -20,6 +22,7 @@ import asyncio
 import asyncio.base_events
 import contextlib
 import json
+import re
 import subprocess
 import time
 import webbrowser
@@ -36,6 +39,7 @@ import pytest
 import respx
 from fastapi.testclient import TestClient
 
+from forceupdate.forges import git as forge_git
 from forceupdate.forges import github
 from forceupdate.net import Cache, HttpClient
 from forceupdate.net import cache as cache_module
@@ -84,6 +88,26 @@ def _no_lock_tools(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(lockfiles, "_which", lambda program: None)
     monkeypatch.setattr(lockfiles, "_spawn", refuse)
+
+
+_REMOTE_ADDRESS = re.compile(r"^(?!file://)[a-z][a-z0-9+.-]*://|^[^/\s]+@[^/\s]+:", re.I)
+
+
+@pytest.fixture(autouse=True)
+def _no_git_network(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hors des tests ``network``, git ne parle qu'à des dépôts locaux (``file://``, un
+    chemin) : jamais à GitHub."""
+    if "network" in request.keywords:
+        return
+    spawn = forge_git._spawn
+
+    def guarded(command: list[str], **options: Any) -> subprocess.CompletedProcess[bytes]:
+        remote = [argument for argument in command if _REMOTE_ADDRESS.match(argument)]
+        if remote:
+            raise RuntimeError(f"test hors ligne : git vers {remote[0]} refusé")
+        return spawn(command, **options)
+
+    monkeypatch.setattr(forge_git, "_spawn", guarded)
 
 
 @pytest.fixture(autouse=True)

@@ -29,7 +29,7 @@ _SPECIAL = re.compile(r"([\\`*_{}\[\]<>()#+!|~])")
 def render(report: Report) -> str:
     """Le rapport en Markdown, terminé par un saut de ligne."""
     lines = ["# Rapport forceupdate", ""]
-    lines.append(f"Source : `{_code(report.source)}`")
+    lines.append(f"Source : `{code(report.source)}`")
     if report.scanned_at is not None:
         lines += ["", f"Analyse du {format_date(report.scanned_at)}."]
         if report.options is not None and report.options.offline:
@@ -53,7 +53,7 @@ def render(report: Report) -> str:
         for language in report.languages:
             ecosystem = language.ecosystem or "aucun gestionnaire de paquets reconnu"
             share = format_share(language.bytes, total).strip()
-            lines.append(f"| {_escape(language.name)} | {share} | {ecosystem} |")
+            lines.append(f"| {escape(language.name)} | {share} | {ecosystem} |")
     if not report.projects:
         lines += ["", "## Projets", "", "Aucun."]
     for project in report.projects:
@@ -66,7 +66,7 @@ def render(report: Report) -> str:
             "Rangés dans des dossiers de tests ou d'exemples, ce ne sont pas de vrais projets :",
             "",
         ]
-        lines += [f"- `{_code(path)}`" for path in report.ignored_manifests]
+        lines += [f"- `{code(path)}`" for path in report.ignored_manifests]
     return "\n".join(lines) + "\n"
 
 
@@ -97,7 +97,7 @@ def _summary(summary: Summary) -> list[str]:
 
 
 def _project(project: Project, report: Report) -> list[str]:
-    title = f"## Projet `{_code(project.path)}`"
+    title = f"## Projet `{code(project.path)}`"
     if project.ecosystems:
         title += f" ({', '.join(project.ecosystems)})"
     lines = ["", title, ""]
@@ -121,18 +121,18 @@ def _project(project: Project, report: Report) -> list[str]:
             dependency = finding.dependency
             name = ""
             if dependency is not None:
-                name = f"`{_code(dependency.name)}`"
+                name = f"`{code(dependency.name)}`"
                 if not dependency.direct and dependency.installed:
-                    name += f" {_escape(dependency.installed)}"
+                    name += f" {escape(dependency.installed)}"
                 name += " (indirecte) : " if not dependency.direct else " : "
             link = ""
             if finding.kind is FindingKind.VULNERABLE and finding.url:
                 link = f" [Avis]({finding.url})"
-            lines.append(f"- **{label(finding)}** — {name}{_escape(finding.message)}{link}")
+            lines.append(f"- **{label(finding)}** — {name}{escape(finding.message)}{link}")
     if project.notices:
         lines += ["", "### Remarques", ""]
         lines += [
-            f"- `{_code(notice.file)}` : {_escape(notice.message)}" for notice in project.notices
+            f"- `{code(notice.file)}` : {escape(notice.message)}" for notice in project.notices
         ]
     return lines
 
@@ -143,27 +143,27 @@ def _table(found: list[Row]) -> list[str]:
         "|---|---|---|---|---|---|",
     ]
     for row in found:
-        name = f"`{_code(row.name)}`"
+        name = f"`{code(row.name)}`"
         if row.notes:
-            name += f" ({_escape(', '.join(row.notes))})"
-        constraint = f"`{_code(row.constraint)}`" if row.constraint != "-" else "-"
+            name += f" ({escape(', '.join(row.notes))})"
+        constraint = f"`{code(row.constraint)}`" if row.constraint != "-" else "-"
         lines.append(
-            f"| {name} | {constraint} | {_escape(row.current)} | {_escape(row.wanted)} "
-            f"| {_escape(row.latest)} | {_escape(', '.join(row.states))} |"
+            f"| {name} | {constraint} | {escape(row.current)} | {escape(row.wanted)} "
+            f"| {escape(row.latest)} | {escape(', '.join(row.states))} |"
         )
     return lines
 
 
 def _files(paths: list[str]) -> str:
-    return ", ".join(f"`{_code(path)}`" for path in paths) or "aucun"
+    return ", ".join(f"`{code(path)}`" for path in paths) or "aucun"
 
 
-def _escape(text: str) -> str:
+def escape(text: str) -> str:
     """Du texte ordinaire : les caractères de Markdown échappés, sur une ligne."""
     return _SPECIAL.sub(r"\\\1", " ".join(text.split()))
 
 
-def _code(text: str) -> str:
+def code(text: str) -> str:
     """Du texte entre accents graves : sans accent grave, et ``|`` échappé (dans un tableau,
     GitHub coupe la cellule même dans du code)."""
     return " ".join(text.replace("`", "'").split()).replace("|", "\\|")

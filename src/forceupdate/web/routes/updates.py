@@ -30,7 +30,7 @@ router = APIRouter(prefix="/api/updates", tags=["mises à jour"])
 
 REPOSITORY = (
     "Un dépôt d'une forge se met à jour par une pull request, pas en réécrivant des fichiers "
-    "de cet ordinateur : ce n'est pas encore disponible."
+    "de cet ordinateur : préparer sa PR (POST /api/proposals)."
 )
 
 

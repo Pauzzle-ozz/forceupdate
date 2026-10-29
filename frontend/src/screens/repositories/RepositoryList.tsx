@@ -7,6 +7,7 @@ import {
   ExternalLink,
   EyeOff,
   FilterX,
+  GitPullRequest,
   Lock,
   OctagonAlert,
   RefreshCw,
@@ -28,6 +29,7 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { count, formatDateTime, formatRelative, fr } from '@/lib/format'
+import { requestNumber, requestWord } from '@/lib/proposals'
 import {
   NO_REPOSITORY_FILTERS,
   STATE_FILTERS,
@@ -57,8 +59,12 @@ interface ListProps {
   selected: ReadonlySet<string>
   onSelect: (keys: string[], checked: boolean) => void
   onAnalyze: (rows: RepositoryRow[]) => void
+  /** Préparer les PR des dépôts sélectionnés (écran 8). */
+  onPropose: (rows: RepositoryRow[]) => void
   /** Pourquoi analyser n'est pas possible maintenant (hors ligne, en cours) ; `null` si ça l'est. */
   blocked: string | null
+  /** Pourquoi préparer les PR n'est pas possible maintenant (hors ligne) ; `null` si ça l'est. */
+  proposeBlocked: string | null
   pending: boolean
 }
 
@@ -67,7 +73,7 @@ interface ListProps {
  * sous 768 px), cases à cocher et barre d'actions de la sélection.
  */
 export function RepositoryList(props: ListProps) {
-  const { all, shown, synthesis, filters, onFilters, selected, onSelect, onAnalyze, blocked, pending } = props
+  const { all, shown, synthesis, filters, onFilters, selected, onSelect, onAnalyze, onPropose, blocked, proposeBlocked, pending } = props
   const id = useId()
   const wide = useMediaQuery('(min-width: 768px)')
   const forges = forgesOf(all)
@@ -203,14 +209,18 @@ export function RepositoryList(props: ListProps) {
             {updates > 0 && (
               <span className="text-fg-muted"> · {count(updates, 'mise à jour cochée par défaut', 'mises à jour cochées par défaut')}</span>
             )}
-            {blocked && <span className="block text-fg-muted">{blocked}</span>}
+            {(proposeBlocked ?? blocked) && <span className="block text-fg-muted">{proposeBlocked ?? blocked}</span>}
           </span>
           <Button variant="ghost" onClick={() => onSelect(picked.map(repositoryKey), false)}>
             Tout désélectionner
           </Button>
-          <Button variant="primary" onClick={() => onAnalyze(picked)} disabled={blocked !== null || pending}>
+          <Button onClick={() => onAnalyze(picked)} disabled={blocked !== null || pending}>
             <RefreshCw aria-hidden="true" />
             {picked.length >= 2 ? `Analyser ces ${picked.length} dépôts` : 'Analyser ce dépôt'}
+          </Button>
+          <Button variant="primary" onClick={() => onPropose(picked)} disabled={proposeBlocked !== null}>
+            <GitPullRequest aria-hidden="true" />
+            {picked.length >= 2 ? `Préparer ${picked.length} PR` : 'Préparer la PR'}
           </Button>
         </div>
       )}
@@ -282,6 +292,7 @@ function RepositoryTable({ shown, selected, onSelect, sort, onSort }: ListProps)
             <SortButton label="Dernier push" column="pushed" sort={sort} onSort={onSort} />
           </TableHead>
           <TableHead scope="col">Analyse</TableHead>
+          <TableHead scope="col">PR</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -314,6 +325,9 @@ function RepositoryTable({ shown, selected, onSelect, sort, onSort }: ListProps)
               </TableCell>
               <TableCell className="min-w-45">
                 <Analysis row={row} />
+              </TableCell>
+              <TableCell>
+                <RequestCell row={row} />
               </TableCell>
             </TableRow>
           )
@@ -353,6 +367,10 @@ function RepositoryCards({ shown, selected, onSelect }: ListProps) {
                     <dt className="text-fg-muted">Dernier push</dt>
                     <dd>
                       <Pushed row={row} />
+                    </dd>
+                    <dt className="text-fg-muted">{requestWord(row.forge)}</dt>
+                    <dd>
+                      <RequestCell row={row} />
                     </dd>
                   </dl>
                   <Analysis row={row} />
@@ -431,6 +449,30 @@ function Pushed({ row }: { row: RepositoryRow }) {
       {formatRelative(row.pushed_at)}
     </time>
   )
+}
+
+/** La PR de forceupdate ouverte sur le dépôt (`#41`, lien vers la forge), ou pourquoi il n'y en a pas. */
+function RequestCell({ row }: { row: RepositoryRow }) {
+  const word = requestWord(row.forge)
+  if (row.request) {
+    const number = requestNumber(row.forge, row.request)
+    return (
+      <a
+        href={row.request.url}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex min-h-6 items-center gap-1 font-mono text-sm whitespace-nowrap text-link underline pointer-coarse:min-h-11"
+        aria-label={`${word} ${number} de ${row.full_name} sur ${FORGE_NAME[row.forge]} (nouvel onglet)`}
+      >
+        <GitPullRequest className="size-4" aria-hidden="true" />
+        {number}
+      </a>
+    )
+  }
+  if (!row.can_push || row.archived) {
+    return <span className="text-sm text-fg-muted">{row.archived ? 'archivé' : 'pas de droit de push'}</span>
+  }
+  return <span className="text-sm text-fg-muted">—</span>
 }
 
 const SKIPPED_TEXT: Record<string, string> = {

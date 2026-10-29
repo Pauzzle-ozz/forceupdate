@@ -541,11 +541,14 @@ curl -H "Authorization: Bearer $JETON" "http://127.0.0.1:$PORT/api/scans"
 | `GET /api/repositories/batches/{id}` | | `200` [analyse groupée](#analyse-groupée) |
 | `DELETE /api/repositories/batches/{id}` | | `200` [analyse groupée](#analyse-groupée) : ses analyses pas finies sont annulées |
 | `POST /api/repositories/scans` | `{"repository": "owner/nom ou adresse", …}` | `202` [analyse](#analyse) d'un dépôt, même d'un autre compte s'il est public |
+| `POST /api/proposals` | [demande de récapitulatif](#demande-de-récapitulatif) | `201` [récapitulatif](#récapitulatif-de-pr) des PR de quelques dépôts : rien n'est poussé |
+| `GET /api/proposals/{id}` | | `200` [récapitulatif](#récapitulatif-de-pr) ; pendant et après l'envoi, où en est chaque dépôt |
+| `POST /api/proposals/{id}/send` | `{"repositories": ["owner/nom", …]}` | `202` [récapitulatif](#récapitulatif-de-pr), envoyé en tâche de fond |
 
 `{forge}` : `github`, `gitlab` ou `bitbucket` (sinon `422`) ; GitLab et Bitbucket
 répondent `409` tant que leur connexion n'est pas prête (E19, E20). Un plan
-(`POST /api/updates/plan`) sur l'analyse d'un dépôt est refusé (`409`) : un dépôt se mettra à
-jour par une PR (E18).
+(`POST /api/updates/plan`) sur l'analyse d'un dépôt est refusé (`409`) : un dépôt se met à jour
+par une PR ([PR des dépôts](#pr-des-dépôts)).
 
 Une erreur rend `{"detail": "…"}`, une phrase en français : `400` (requête invalide :
 chemin relatif, sélection qui ne correspond pas au rapport, nom de fichier refusé ; token
@@ -575,7 +578,7 @@ disque.
 | `id` | chaîne | identifiant de l'analyse |
 | `source` | chaîne | le chemin analysé ; pour un fichier envoyé, son nom ; pour un dépôt, `owner/nom` |
 | `kind` | chaîne | `folder`, `file`, `upload` (un fichier envoyé) ou `repository` (un [dépôt d'une forge](#dépôts-des-forges)) |
-| `repository` | objet ou `null` | un dépôt : `{"forge", "host", "full_name", "url", "commit", "truncated"}` ; `commit` est celui lu (la branche par défaut au début de l'analyse ; `null` avant que l'arborescence soit lue) ; `truncated` : la forge n'a pas rendu toute l'arborescence (GitHub, plus de 100 000 entrées), l'analyse est partielle |
+| `repository` | objet ou `null` | un dépôt : `{"forge", "host", "full_name", "url", "commit", "truncated", "cloned"}` ; `commit` est celui lu (la branche par défaut au début de l'analyse ; `null` avant que l'arborescence soit lue) ; `cloned` : la forge n'a pas rendu toute l'arborescence (GitHub, plus de 100 000 entrées), le dépôt a été cloné (superficiellement) et c'est le clone qui est analysé ; `truncated` : la même chose, mais le clone n'a pas pu être fait, l'analyse est partielle |
 | `batch` | chaîne ou `null` | l'[analyse groupée](#analyse-groupée) dont elle fait partie |
 | `status` | chaîne | `running`, puis `done`, `failed` ou `cancelled` |
 | `options` | [options](#options) | |
@@ -678,7 +681,8 @@ data: {"status":"done","error":null}
 | `name` | chaîne ou `null` | `package_checked` : le paquet ; `regenerating` : le lockfile |
 
 Une analyse : `downloading` (un dépôt seulement : ses fichiers de dépendances téléchargés,
-`done` sur `total` ; le total grandit quand un fichier en désigne d'autres), `reading`,
+`done` sur `total` ; le total grandit quand un fichier en désigne d'autres), `cloning` (un dépôt
+à l'arborescence tronquée : son clone superficiel, analysé à la place), `reading`,
 `projects_found` (`total` projets), `checking` (`total`
 vérifications : une par paquet, plus une pour les failles), `package_checked` et
 `vulnerabilities_checked` (`done` sur `total`), `finished`. L'application d'un plan :
@@ -873,6 +877,7 @@ dépôt vide n'est jamais analysé.
 | `reason` | chaîne ou `null` | pourquoi : `vide`, `archivé`, `fork` ; ce qui n'a pas répondu ; l'erreur ; `analyse annulée` |
 | `counts` | objet ou `null` | la dernière analyse finie : `vulnerabilities`, `critical`, `worst` (la gravité de la faille la plus grave, `null` sans faille), `to_update`, `inconclusive`, `updates` (les mises à jour pré-cochées) |
 | `scan` | [analyse](#analyse) ou `null` | la dernière analyse du dépôt, groupée ou non (sa progression s'il tourne ; son rapport par `GET /api/scans/{id}`) |
+| `request` | [PR](#pr) ou `null` | la PR de forceupdate ouverte sur le dépôt, d'après ce qu'on en sait de plus récent : cherchée à chaque analyse (pas pour un dépôt en lecture seule), puis à chaque récapitulatif et à chaque envoi |
 
 `to_update` : au moins un constat à mettre à jour. `up_to_date` ne se dit que si rien n'est
 resté sans réponse et que toute l'arborescence a été lue (`report.synthesis.verdict`).
@@ -891,8 +896,7 @@ recompte rien.
 | `vulnerable_repositories` | entier | les dépôts qui ont au moins une faille |
 | `findings` | objet | les constats par type, additionnés, tous les types présents |
 | `severities` | objet | les constats à mettre à jour par gravité, additionnés |
-
-Les PR ouvertes par forceupdate s'y ajouteront à E18.
+| `open_requests` | entier | les dépôts qui ont une PR de forceupdate ouverte (`request`) |
 
 ### Demande d'analyse groupée
 
@@ -933,3 +937,103 @@ limitées à 8 à la fois. Chaque analyse se suit comme une autre (`GET /api/sca
 Annuler (`DELETE`) arrête les analyses pas finies ; celles qui le sont gardent leur rapport.
 Les analyses gardées en mémoire sont les 20 plus récentes, **plus la dernière de chaque
 dépôt**.
+
+## PR des dépôts
+
+Un dépôt d'une forge se met à jour par une PR (une MR sur GitLab), jamais par un push sur sa
+branche par défaut (E18). En deux temps : un **récapitulatif**, préparé sans rien cloner ni
+pousser, puis l'**envoi**, une fois validé.
+
+- **Le récapitulatif** (`POST /api/proposals`) : pour chaque dépôt demandé, sa dernière
+  analyse, la sélection (donnée, ou celle par défaut : les `selected` du rapport) préparée comme
+  pour un dossier, sur les fichiers téléchargés à l'analyse : les diffs, ce qui ne sera pas
+  appliqué, les lockfiles (outil trouvé sur cet ordinateur, ou commande qui sera écrite dans la
+  description de la PR) ; et la PR déjà ouverte, qui sera mise à jour. Un dépôt sans PR possible
+  est sauté, avec la raison. Rien n'est poussé.
+- **L'envoi** (`POST /api/proposals/{id}/send`) : les dépôts cochés, un à la fois. Pour chacun :
+  un clone superficiel de la branche par défaut (dans un dossier temporaire, effacé ensuite ; le
+  token passe à git par un credential helper éphémère, jamais dans ses arguments ni dans une
+  adresse) ; la sélection préparée de nouveau sur le clone (un fichier qui a changé depuis
+  l'analyse : ses options sont sautées, avec la raison), écrite, les lockfiles régénérés ; un
+  commit des fichiers changés au nom du compte (pas ceux qu'un outil en échec a remis comme
+  avant) ; la branche `forceupdate/dependencies` poussée à la place de l'ancienne
+  (`--force-with-lease`) ; la PR ouverte, ou celle déjà ouverte mise à jour (titre,
+  description). Sa description dit ce qui a été fait (mises à jour, lockfiles, commandes à
+  lancer, erreurs), puis donne le rapport Markdown de l'analyse (raccourci au-delà de 60 000
+  caractères). Un dépôt qui échoue n'arrête pas les autres. Un envoi ne s'annule pas.
+- **Relancer** met à jour la même PR : la branche est refaite sur la branche par défaut du
+  moment ; si elle a déjà ce contenu, rien n'est poussé. Si la branche a des commits qui ne
+  viennent pas de forceupdate (une correction poussée à la main), rien n'est poussé : on ne les
+  écrase pas. Une fusion de la branche par défaut (« Update branch ») n'en est pas un. Rien à
+  faire : rien n'est poussé.
+
+Les commits de forceupdate finissent par la ligne `Generated-by: forceupdate <version>`.
+L'auteur est le compte du token (GitHub : son adresse `noreply`). Les 10 derniers
+récapitulatifs restent en mémoire, le temps de la session ; l'envoi se suit en relisant
+`GET /api/proposals/{id}` (le front le fait chaque seconde).
+
+### Demande de récapitulatif
+
+| Champ | Type | Sens |
+|---|---|---|
+| `forge` | chaîne | la forge du compte connecté |
+| `repositories` | liste de `{"repository", "selection"}` | `repository` : `owner/nom`, parmi ceux de la [liste](#liste-des-dépôts) (sinon `400`) ; `selection` : comme celle d'un [plan](#plan-de-mise-à-jour), sur la dernière analyse du dépôt, ou `null` pour la sélection par défaut |
+
+`400` : aucun dépôt, dépôt inconnu, sélection qui ne correspond pas au rapport, token refusé
+par la forge ; `404` : aucun compte connecté ; `409` : forge pas prête, token absent du
+trousseau.
+
+`POST /api/proposals/{id}/send` prend `{"repositories": [...]}`, des dépôts prêts (`ready`) du
+récapitulatif (sinon `400`) ; `409` : déjà envoyé, git absent, token absent du trousseau.
+
+### Récapitulatif de PR
+
+| Champ | Type | Sens |
+|---|---|---|
+| `id` | chaîne | |
+| `forge`, `host` | chaînes | |
+| `status` | chaîne | `planned` (rien n'est poussé), `running` (envoi en cours), `done` |
+| `created_at`, `started_at`, `finished_at` | dates | `started_at` et `finished_at` : de l'envoi |
+| `repositories` | liste de [dépôts du récapitulatif](#dépôt-du-récapitulatif) | dans l'ordre demandé |
+| `ready` | entier | les dépôts prêts à envoyer |
+| `existing` | entier | parmi eux, ceux qui ont déjà une PR ouverte (elle sera mise à jour) |
+| `error` | chaîne ou `null` | pourquoi l'envoi n'a pas pu commencer (token refusé…) |
+
+### Dépôt du récapitulatif
+
+| Champ | Type | Sens |
+|---|---|---|
+| `forge`, `host`, `full_name`, `url` | chaînes | |
+| `default_branch` | chaîne ou `null` | la branche visée, jamais poussée directement |
+| `branch` | chaîne | la branche de la PR : `forceupdate/dependencies` |
+| `scan` | chaîne ou `null` | l'analyse dont vient la sélection |
+| `commit` | chaîne ou `null` | le commit analysé |
+| `state` | chaîne | `ready`, `skipped` (pas de PR : `reason`), puis à l'envoi `waiting`, `sending`, et `opened` (PR ouverte), `updated` (PR déjà ouverte, mise à jour), `nothing` (rien à faire sur le dépôt tel qu'il est : rien n'est poussé) ou `failed` (`error`) |
+| `reason` | chaîne ou `null` | `skipped` : `archivé : lecture seule`, `lecture seule : pas de droit de push`, `vide`, `pas encore analysé`, `analyse en cours`, `analyse échouée…`, `aucune mise à jour cochée`, `rien à mettre à jour`, `pas coché à l'envoi` |
+| `inconclusive` | booléen | l'analyse n'a pas tout vérifié (un registre ou OSV muet, une arborescence tronquée) : la PR peut manquer des mises à jour |
+| `checked` | booléen | à envoyer par défaut : prêt, et `inconclusive` faux |
+| `request` | [PR](#pr) ou `null` | la PR déjà ouverte ; après l'envoi, celle ouverte ou mise à jour |
+| `selection` | objet | la sélection préparée |
+| `applied` | liste | les mises à jour que la PR porte : `{"update", "name", "ecosystem", "project", "direct", "current", "version", "gap", "fixes"}` (`update` : l'`id` de la [mise à jour](#mise-à-jour) ; `current` : la version utilisée ; `fixes` : les failles corrigées) |
+| `skipped` | liste | les options choisies qui ne seront pas appliquées : `{"update", "name", "version", "reason"}` |
+| `files`, `lockfiles` | listes | comme dans le [plan](#plan-de-mise-à-jour) |
+
+`applied`, `skipped`, `files` et `lockfiles` viennent de l'analyse dans le récapitulatif, du
+clone après l'envoi.
+| `step` | chaîne ou `null` | `sending` : `cloning`, `updating` (réécriture, lockfiles, commit), `pushing`, `requesting` |
+| `progress` | [événement](#événement) ou `null` | le dernier de la mise à jour (`regenerating` : le lockfile en cours) |
+| `pushed` | booléen | la branche a été poussée (faux : rien à faire, ou elle avait déjà ce contenu) |
+| `base` | chaîne ou `null` | le commit de la branche par défaut sur lequel la mise à jour a été faite |
+| `results` | liste de [lockfiles régénérés](#lockfile-régénéré) | sur le clone |
+| `committed` | liste de chemins | les fichiers du commit |
+| `error` | chaîne ou `null` | `failed` : ce qui s'est passé (push refusé, branche protégée, commits d'un autre sur la branche, token fine-grained sans les droits…) |
+
+### PR
+
+| Champ | Type | Sens |
+|---|---|---|
+| `number` | entier | `#41` sur GitHub et Bitbucket, `!12` sur GitLab |
+| `url` | chaîne | sa page sur la forge |
+| `title` | chaîne | |
+| `branch` | chaîne | la branche proposée (`forceupdate/dependencies`) |
+| `base` | chaîne | la branche visée (celle par défaut) |

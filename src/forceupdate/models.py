@@ -471,6 +471,9 @@ class EventKind(enum.StrEnum):
     DOWNLOADING = "downloading"
     """Dépôt d'une forge : ses manifestes et lockfiles téléchargés par l'API, ``done`` sur
     ``total`` (E17). Avant ``reading``."""
+    CLONING = "cloning"
+    """Dépôt d'une forge dont l'API n'a pas rendu toute l'arborescence : un clone superficiel,
+    analysé à la place (E18). Avant ``reading``."""
     READING = "reading"
     """Lecture de la source : langages, projets, dépendances."""
     PROJECTS_FOUND = "projects_found"

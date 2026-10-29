@@ -5,5 +5,6 @@
 - ``writers/`` : réécrire les contraintes choisies dans les manifestes, avec leur diff ;
 - ``lockfiles.py`` : régénérer ensuite les lockfiles, avec l'outil de chacun ;
 - ``git.py`` : le garde-fou, les fichiers qui ont des changements que git n'a pas en commit ;
-- ``local.py`` : tout cela enchaîné sur une source locale, pour ``forceupdate update`` et l'API.
+- ``local.py`` : tout cela enchaîné sur une source locale, pour ``forceupdate update`` et l'API ;
+- ``forge.py`` : la même chose sur le clone d'un dépôt d'une forge, jusqu'à la PR (E18).
 """

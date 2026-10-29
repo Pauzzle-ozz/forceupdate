@@ -10,7 +10,8 @@ Ce que fait chaque méthode, et à quelle étape elle arrive :
 - ``list_repos``, ``repository``, ``restrictions``, ``tree``, ``read_file`` : les dépôts (et
   les organisations dont ils ne sont pas tous lisibles), et de quoi les analyser sans les
   cloner (E17) ;
-- ``clone``, ``push_branch`` : cloner pour mettre à jour, pousser la branche (E18) ;
+- ``clone``, ``branch``, ``push_branch`` : cloner pour mettre à jour, voir où en est la branche
+  de forceupdate sur la forge, la pousser (E18) ;
 - ``find_open_request``, ``open_or_update_request`` : la PR (MR sur GitLab), idempotente (E18).
 
 Une réponse d'erreur de la forge lève une ``ForgeError`` (message en français, fait pour être
@@ -63,6 +64,9 @@ class Identity:
     pas (``Access.UNKNOWN``)."""
     warnings: tuple[str, ...]
     """Ce qui manquera, avec ces droits (une portée absente…)."""
+    email: str | None = None
+    """L'adresse des commits faits au nom du compte (GitHub : son adresse ``noreply``, qui les
+    rattache au compte sans dévoiler la vraie)."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -164,6 +168,34 @@ class ChangeRequest:
     """La branche visée (celle par défaut)."""
 
 
+@dataclass(frozen=True, kw_only=True)
+class BranchCommit:
+    """Un commit d'une branche, qui n'est pas sur la branche par défaut."""
+
+    sha: str
+    message: str
+    merge: bool
+    """Un commit de fusion (plusieurs parents) : « Update branch » de GitHub, qui ne fait
+    qu'apporter la branche par défaut."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class Branch:
+    """Une branche d'un dépôt, sur la forge (``Forge.branch``)."""
+
+    name: str
+    head: str
+    """Son dernier commit."""
+    tree: str | None
+    """L'arbre de son dernier commit ; ``None`` si elle n'a aucun commit à elle (déjà fusionnée,
+    ou en retard sur la branche par défaut)."""
+    commits: tuple[BranchCommit, ...]
+    """Ses commits qui ne sont pas sur la branche par défaut, du plus ancien au plus récent
+    (la forge peut n'en rendre qu'une partie : ``ahead`` dit combien il y en a)."""
+    ahead: int
+    """Le nombre de ses commits qui ne sont pas sur la branche par défaut."""
+
+
 class ForgeError(Exception):
     """La forge a refusé une requête. Le message, en français, dit ce qui s'est passé et quoi
     faire ; il ne contient jamais de token."""
@@ -253,8 +285,18 @@ class Forge(abc.ABC):
         à git sans jamais apparaître dans ses arguments ni dans un message."""
 
     @abc.abstractmethod
-    async def push_branch(self, repo: Repository, checkout: Path, branch: str) -> None:
-        """Pousse ``branch`` du clone ``checkout``. Jamais la branche par défaut."""
+    async def branch(self, repo: Repository, name: str) -> Branch | None:
+        """La branche ``name`` sur la forge, avec ses commits qui ne sont pas sur la branche
+        par défaut ; ``None`` si elle n'existe pas."""
+
+    @abc.abstractmethod
+    async def push_branch(
+        self, repo: Repository, checkout: Path, branch: str, *, expected: str | None
+    ) -> None:
+        """Pousse ``HEAD`` du clone ``checkout`` sur ``branch``, en la remplaçant si elle pointe
+        toujours sur ``expected`` (``None`` : elle ne doit pas exister) ; si quelqu'un l'a
+        changée entre-temps, rien n'est poussé. Jamais sur la branche par défaut : lève
+        ``ForgeError``."""
 
     @abc.abstractmethod
     async def find_open_request(self, repo: Repository, branch: str) -> ChangeRequest | None:

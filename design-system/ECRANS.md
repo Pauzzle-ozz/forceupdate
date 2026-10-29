@@ -324,8 +324,16 @@ mettre à jour. Page à part : [pages/depots.md](pages/depots.md). Maquette :
 - états : chargement (squelettes), erreur (« Dépôts indisponibles », « Réessayer »), sans
   compte (« Connecter un compte », et le champ du dépôt public), compte sans dépôt, hors
   ligne (bandeau, analyses désactivées avec la raison), filtres sans résultat.
-- **Pas encore** : la colonne « PR / MR », le compteur des PR ouvertes et « Préparer N PR »
-  (E18) ; GitLab et Bitbucket (E19, E20).
+- **Pas encore** : GitLab et Bitbucket (E19, E20).
+
+**Fait à E18** : la colonne « PR » (`#41`, lien vers la forge, nouvel onglet ; « pas de droit de
+push » pour un dépôt en lecture seule ; « — » sinon), sous 768 px une ligne « PR » de la carte ;
+le compteur « PR ouvertes » de la synthèse (du serveur, `open_requests` ; il ne filtre pas) ; la
+barre de sélection : « Préparer N PR » en action principale, « Analyser ces N dépôts » en
+secondaire, hors ligne les deux désactivés avec la raison ; une arborescence tronquée est
+analysée sur un clone (étape « Clone superficiel » de l'écran 3, « cloné » dans l'en-tête du
+rapport) ; le rapport d'un dépôt a « Préparer la PR » (vers l'écran 5 pour ce dépôt), et le
+panneau de détail son lien « Choisir la version ».
 
 ## 8. PR / MR (E18, E19, E20)
 
@@ -350,6 +358,27 @@ récapitulatif, et retrouver les liens.
 | Erreur | Par dépôt : push refusé, branche protégée, conflit, outil en échec (fichiers non commités) ; les autres dépôts continuent |
 | Hors ligne | Envoi impossible : bouton désactivé avec la raison |
 | Non concluant | Dépôts à l'analyse non concluante : signalés dans le récapitulatif, décochés par défaut |
+
+**Fait à E18** (GitHub ; `frontend/src/screens/proposals/`) :
+
+- adresses : `/pr?forge=github&depots=owner/a,owner/b` (depuis l'écran 7) prépare le
+  récapitulatif, puis `/pr/{id}` le montre (le retour du navigateur ne le refait pas) ; sans
+  dépôt, l'état vide renvoie à l'écran 7 ; un récapitulatif oublié (serveur redémarré) le dit ;
+- l'écran 5 sait choisir pour un dépôt (`/analyses/{id}/mise-a-jour`, « Préparer la PR » au lieu
+  de « Vérifier le plan ») ; « Modifier la sélection » d'un récapitulatif y mène avec `?pr=<id>`,
+  et le nouveau récapitulatif garde les autres dépôts ;
+- récapitulatif : « N dépôts, M PR à envoyer (dont K déjà ouvertes, mises à jour) » ; par dépôt
+  prêt : la case, PR existante ou nouvelle, la branche et la branche visée, le commit analysé, les
+  mises à jour (versions, écart, failles corrigées), les options qui ne seront pas appliquées, les
+  diffs (repliés), les lockfiles (outil trouvé, ou commande écrite dans la description),
+  « Modifier la sélection », « Voir le rapport » ; les sautés et pourquoi ; « Envoyer N PR »
+  (désactivé sans case cochée, ou hors ligne, avec la raison) ;
+- envoi suivi (relu chaque seconde) : un dépôt à la fois, l'étape en cours (clone, réécriture et
+  lockfile en cours, push, PR) ; résultat : « 1 PR ouverte · 1 mise à jour · 1 en échec », le lien
+  de chaque PR, « elle avait déjà ces changements, rien n'est poussé », l'erreur d'un dépôt, les
+  lockfiles à reprendre, « Retour à mes dépôts ».
+- **Pas encore** : GitLab (« MR », `!12` : déjà prévus par `lib/proposals.ts`) et Bitbucket (E19,
+  E20) ; plusieurs forges dans une même sélection.
 
 ## 9. Réglages (E29)
 
@@ -383,8 +412,8 @@ Relevé en concevant les écrans ; ajouté au plan (E13 ne touche pas à l'API) 
 | Dire si un chemin récent est un dossier ou un fichier (`recent` : `{path, kind}`), pour son icône | 1, 2 | fait (E14) |
 | La répartition par gravité des failles (« 13 élevées · 14 moyennes ») et de tous les constats (la barre), sans recompter dans le navigateur (`summary.vulnerabilities`, `summary.severities`) | 4 | fait (E14) |
 | Comptes : lister, connecter (OAuth, device flow, token, `gh`), déconnecter, droits | 6 | fait (E16) |
-| Dépôts : drapeaux (archivé, fork, vide, privé, droit de push), organisations qui restreignent l'accès, requêtes restantes ; analyses groupées avec progression par dépôt et annulation ; **synthèse multi-dépôts calculée par le serveur** | 7 | fait (E17) ; les PR ouvertes : E18 |
-| PR : récapitulatif avant envoi (par dépôt : PR existante, sélection, lockfiles), envoi suivi, liens | 8 | E18 |
+| Dépôts : drapeaux (archivé, fork, vide, privé, droit de push), organisations qui restreignent l'accès, requêtes restantes ; analyses groupées avec progression par dépôt et annulation ; **synthèse multi-dépôts calculée par le serveur** | 7 | fait (E17) ; les PR ouvertes : fait (E18) |
+| PR : récapitulatif avant envoi (par dépôt : PR existante, sélection, lockfiles), envoi suivi, liens | 8 | fait (E18) |
 | Réglages et vidage du cache | 9 | E29 (déjà prévu) |
 
 Rien d'autre ne manque pour les écrans 1 à 5 : la progression par projet n'existe pas

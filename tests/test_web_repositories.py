@@ -13,9 +13,10 @@ from typing import Any
 
 import pytest
 from conftest import recorded_responses
-from fake_forge import FakeGitHubRepos, FakeRepo, from_directory
+from fake_forge import FakeGitHubRepos, FakeRepo, from_directory, make_remote, remotes_url
 from fastapi.testclient import TestClient
 
+from forceupdate.forges import github as github_module
 from forceupdate.forges.accounts import Accounts, ConnectMethod
 from forceupdate.forges.base import Access, ForgeKind, Identity
 from forceupdate.net import http as http_module
@@ -47,7 +48,7 @@ def repos() -> list[FakeRepo]:
 
 
 @pytest.fixture
-def github(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeGitHubRepos]:
+def github(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[FakeGitHubRepos]:
     monkeypatch.setattr(http_module, "_backoff", lambda attempt: 0.0)
     other = FakeRepo(
         full_name="ailleurs/public", files={"requirements.txt": b"flask==0.12\n"}, member=False
@@ -55,6 +56,9 @@ def github(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeGitHubRepos]:
     fake = FakeGitHubRepos(
         [*repos(), other], tokens={TOKEN}, organizations={"atelier": "ok", "nord": "restricted"}
     )
+    # L'arborescence tronquée : le dépôt est cloné, depuis un dépôt « bare » du test.
+    make_remote(fake.repos["octo/immense"], tmp_path / "distants")
+    monkeypatch.setattr(github_module, "GIT_URL", remotes_url(tmp_path / "distants"))
     with recorded_responses(extra=fake.routes):
         yield fake
 
@@ -194,7 +198,7 @@ def test_the_last_list_stays_when_github_does_not_answer(
 # -- Les analyses groupées ----------------------------------------------------------
 
 
-def test_a_batch_analyzes_each_repository_without_cloning(
+def test_a_batch_analyzes_each_repository_without_cloning_but_a_truncated_one(
     api: TestClient, github: FakeGitHubRepos, finished: Finished
 ) -> None:
     connect(api)
@@ -206,7 +210,7 @@ def test_a_batch_analyzes_each_repository_without_cloning(
     assert batch["concurrency"] == 4
     assert batch["requests"] > 0
     assert batch["rate_limit"]["remaining"] < 5000
-    # Rien n'est cloné : seuls les fichiers de dépendances sont lus.
+    # Seuls les fichiers de dépendances sont lus (le dépôt tronqué est ensuite cloné).
     downloaded = {item.split(":")[1] for item in github.contents()}
     assert downloaded == {
         "package.json",
@@ -234,15 +238,19 @@ def test_a_batch_analyzes_each_repository_without_cloning(
     assert vulnerable["scan"]["repository"]["commit"] == github.repos["octo/vulnerable"].commit
     assert found["octo/a-jour"]["state"] == "up_to_date"
     assert found["octo/docs"]["state"] == "no_dependencies"
-    assert found["octo/immense"]["state"] == "inconclusive"
-    assert (
-        found["octo/immense"]["reason"] == "arborescence tronquée par la forge : analyse partielle"
-    )
+    # L'arborescence tronquée par GitHub : c'est un clone superficiel qui est analysé, en entier.
+    immense = found["octo/immense"]
+    assert immense["state"] == "up_to_date"
+    assert immense["scan"]["repository"]["cloned"]
+    assert not immense["scan"]["repository"]["truncated"]
+    assert immense["scan"]["repository"]["commit"] == github.repos["octo/immense"].commit
+    events = api.get(f"/api/scans/{immense['scan']['id']}/events").text
+    assert events.index('"kind":"cloning"') < events.index('"kind":"reading"')
     # Un package.json sans dépendance : rien n'est en retard.
     assert found["atelier/site"]["state"] == "up_to_date"
     synthesis = document["synthesis"]
     assert synthesis["analyzed"] == 5
-    assert (synthesis["to_update"], synthesis["up_to_date"], synthesis["inconclusive"]) == (1, 2, 1)
+    assert (synthesis["to_update"], synthesis["up_to_date"], synthesis["inconclusive"]) == (1, 3, 0)
     assert synthesis["no_dependencies"] == 1
     assert synthesis["skipped"] == 3
     assert (synthesis["vulnerabilities"], synthesis["vulnerable_repositories"]) == (28, 1)
@@ -262,6 +270,24 @@ def test_a_batch_analyzes_each_repository_without_cloning(
     # La progression passe par le téléchargement des fichiers.
     text = api.get(f"/api/scans/{detail['id']}/events").text
     assert text.index('"kind":"downloading"') < text.index('"kind":"reading"')
+
+
+def test_a_truncated_repository_that_cannot_be_cloned_stays_partial(
+    api: TestClient,
+    github: FakeGitHubRepos,
+    finished: Finished,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(github_module, "GIT_URL", remotes_url(tmp_path / "nulle-part"))
+    connect(api)
+    api.get("/api/repositories")
+    run_batch(api, finished, ["octo/immense"])
+    immense = rows(api.get("/api/repositories").json())["octo/immense"]
+    assert immense["state"] == "inconclusive"
+    assert immense["reason"] == "arborescence tronquée par la forge : analyse partielle"
+    assert immense["scan"]["repository"]["truncated"]
+    assert not immense["scan"]["repository"]["cloned"]
 
 
 def test_a_batch_refuses_what_it_cannot_do(api: TestClient, github: FakeGitHubRepos) -> None:

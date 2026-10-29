@@ -171,6 +171,7 @@ test('mes dépôts : la liste, l’analyse groupée sans cloner, la synthèse, p
   await expect(page.getByRole('link', { name: /Voir sur GitHub/ })).toHaveAttribute('href', 'https://github.com/octo-e2e/vulnerable')
   await expect(page.getByRole('navigation', { name: "Fil d'Ariane" }).getByRole('link', { name: 'Mes dépôts' })).toBeVisible()
   await expect(page.getByRole('link', { name: /Mettre à jour/ })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: /Préparer la PR/ })).toBeVisible()
   const counters = page.getByRole('group', { name: /Constats par type/ })
   await expect(counters.getByRole('button', { name: /Failles/ })).toContainText('28')
   expect(errors).toEqual([])
@@ -192,6 +193,92 @@ test('un dépôt public d’un autre compte, par son adresse', async ({ page }) 
   // Le navigateur consigne la réponse 404 du dépôt inconnu : c'est la seule erreur attendue.
   expect(errors).toEqual(['Failed to load resource: the server responded with a status of 404 (Not Found)'])
 })
+
+// -- Écran 8 : une PR par dépôt -------------------------------------------------------
+
+/** Analyse `octo-e2e/vulnerable` (par l'API), si un test d'avant ne l'a pas déjà fait. */
+async function analyzeVulnerable(page: Page) {
+  const response = await page.request.post('/api/repositories/batches', {
+    data: { forge: 'github', repositories: ['octo-e2e/vulnerable'] },
+  })
+  expect(response.status()).toBe(202)
+  const { id } = (await response.json()) as { id: string }
+  await expect
+    .poll(async () => ((await (await page.request.get(`/api/repositories/batches/${id}`)).json()) as { status: string }).status, {
+      timeout: 30_000,
+    })
+    .toBe('done')
+}
+
+test('une PR par dépôt : le récapitulatif, l’envoi, la PR ouverte ; relancer met à jour la même', async ({ page }) => {
+  const errors = watchConsole(page)
+  await repositories(page)
+  await analyzeVulnerable(page)
+  await page.reload()
+
+  // Écran 7 : deux dépôts sélectionnés, dont un en lecture seule.
+  await page.getByRole('checkbox', { name: 'Sélectionner octo-e2e/vulnerable' }).check()
+  await page.getByRole('checkbox', { name: 'Sélectionner atelier-e2e/outils' }).check()
+  const bar = page.getByRole('region', { name: 'Actions sur la sélection' })
+  await expect(bar.getByRole('button', { name: 'Analyser ces 2 dépôts' })).toBeVisible()
+  await bar.getByRole('button', { name: 'Préparer 2 PR' }).click()
+
+  // Le récapitulatif : rien n'est poussé avant « Envoyer ».
+  await expect(page.getByRole('heading', { level: 1, name: 'Préparer les PR' })).toBeVisible()
+  await expect(page).toHaveURL(/\/pr\/[0-9a-f]+$/)
+  const card = page.locator('[data-slot="card"]').filter({ has: page.getByRole('heading', { name: 'octo-e2e/vulnerable' }) })
+  await expect(card.getByText('nouvelle PR')).toBeVisible()
+  await expect(card.getByRole('checkbox', { name: 'Envoyer la PR de octo-e2e/vulnerable' })).toBeChecked()
+  await expect(card.getByText('lodash', { exact: true })).toBeVisible()
+  await expect(card.getByText('régénéré par npm')).toBeVisible()
+  await expect(card.getByText('régénéré par uv pip compile')).toBeVisible()
+  const skipped = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Sautés' }) })
+  await expect(skipped.getByText('lecture seule : pas de droit de push')).toBeVisible()
+  await page.getByRole('button', { name: 'Envoyer la PR' }).click()
+
+  // L'envoi, puis le résultat avec le lien de la PR.
+  await expect(page.getByRole('heading', { level: 1, name: 'PR envoyées' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('1 PR ouverte', { exact: false })).toBeVisible()
+  const link = page.getByRole('link', { name: /Voir la PR #41 sur GitHub/ })
+  await expect(link).toHaveAttribute('href', 'https://github.com/octo-e2e/vulnerable/pull/41')
+  await expect(page.getByText(/package-lock\.json/).first()).toBeVisible()
+
+  // Écran 7 : la colonne PR et le compteur.
+  await page.getByRole('link', { name: 'Retour à mes dépôts' }).click()
+  await expect(row(page, 'octo-e2e/vulnerable').getByRole('link', { name: /PR #41 de octo-e2e\/vulnerable/ })).toBeVisible()
+  await expect(page.getByRole('group', { name: /Synthèse des dépôts/ }).getByText('PR ouvertes')).toBeVisible()
+
+  // Relancer depuis le rapport du dépôt : la même PR, mise à jour.
+  await row(page, 'octo-e2e/vulnerable').getByRole('link', { name: 'octo-e2e/vulnerable', exact: true }).click()
+  await page.getByRole('link', { name: /Préparer la PR/ }).click()
+  await expect(page.getByRole('heading', { level: 1, name: /Préparer la PR de/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Préparer la PR' }).first().click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Préparer les PR' })).toBeVisible()
+  await expect(page.getByText('met à jour la PR #41')).toBeVisible()
+  await page.getByRole('button', { name: 'Envoyer la PR' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'PR envoyées' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText(/PR #41 mise à jour/).first()).toBeVisible()
+  await expect(page.getByRole('link', { name: /Voir la PR #41 sur GitHub/ })).toBeVisible()
+  expect(errors).toEqual([])
+})
+
+for (const scheme of ['light', 'dark'] as const) {
+  for (const width of [1440, 375]) {
+    test(`écran 8, ${scheme === 'light' ? 'clair' : 'sombre'}, ${width} px`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' })
+      await page.setViewportSize({ width, height: 900 })
+      await repositories(page)
+      await analyzeVulnerable(page)
+      await page.goto('/pr?forge=github&depots=octo-e2e/vulnerable,atelier-e2e/outils')
+      await expect(page.getByRole('button', { name: 'Envoyer la PR' })).toBeVisible()
+      await page.locator('details').first().evaluate((element) => element.setAttribute('open', ''))
+      await audit(page, 'récapitulatif')
+      await page.getByRole('button', { name: 'Envoyer la PR' }).click()
+      await expect(page.getByRole('heading', { level: 1, name: 'PR envoyées' })).toBeVisible({ timeout: 30_000 })
+      await audit(page, 'résultat')
+    })
+  }
+}
 
 for (const scheme of ['light', 'dark'] as const) {
   for (const width of [1440, 375]) {

@@ -6,7 +6,6 @@ import asyncio
 import json
 import subprocess
 from collections.abc import Awaitable, Callable
-from pathlib import Path
 from typing import Any, TypeVar
 from urllib.parse import parse_qs, urlsplit
 
@@ -23,7 +22,6 @@ from forceupdate.forges.base import (
     ForgeKind,
     NotFound,
     RateLimited,
-    Repository,
     TokenRefused,
 )
 from forceupdate.forges.github import DeviceCode, DeviceExpired, GitHub, OAuthApp
@@ -253,6 +251,7 @@ def test_the_forge_interface_is_fixed() -> None:
         "tree",
         "read_file",
         "clone",
+        "branch",
         "push_branch",
         "find_open_request",
         "open_or_update_request",
@@ -264,40 +263,6 @@ def test_the_forge_interface_is_fixed() -> None:
 
     with pytest.raises(TypeError):
         Partial()  # type: ignore[abstract]
-
-
-def test_what_github_does_not_do_yet_says_when_it_comes(tmp_path: Path) -> None:
-    repo = Repository(
-        forge=ForgeKind.GITHUB,
-        host="github.com",
-        full_name="octo/demo",
-        default_branch="main",
-        private=False,
-        archived=False,
-        fork=False,
-        can_push=True,
-        url="https://github.com/octo/demo",
-        clone_url="https://github.com/octo/demo.git",
-    )
-
-    async def calls(http: HttpClient) -> list[str]:
-        forge = GitHub(http, TOKEN)
-        found = []
-        for call in (
-            forge.clone(repo, tmp_path),
-            forge.push_branch(repo, tmp_path, "forceupdate/dependencies"),
-            forge.find_open_request(repo, "forceupdate/dependencies"),
-            forge.open_or_update_request(repo, branch="b", title="t", body="d"),
-        ):
-            try:
-                await call
-            except NotImplementedError as err:
-                found.append(str(err))
-        return found
-
-    found = run(calls)
-    assert len(found) == 4
-    assert all(" E18" in text for text in found)
 
 
 def test_the_forges_and_their_client() -> None:

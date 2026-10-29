@@ -27,6 +27,12 @@ de ses organisations), ``repository`` (un dépôt par son nom, même d'un autre 
 ``restrictions`` (les organisations qui restreignent l'accès des applications OAuth, ou exigent
 le SSO), ``tree`` (l'arborescence d'un commit, en un appel) et ``read_file`` (le contenu brut
 d'un fichier, ``application/vnd.github.raw`` : l'API « contents » en JSON s'arrête à 1 Mo).
+
+**Mise à jour** (E18) : ``clone`` (superficiel, par git, le token passé par un credential
+helper éphémère : ``forges.git``), ``branch`` (la branche de forceupdate et ses commits propres,
+par ``git/ref`` puis ``compare``), ``push_branch`` (avec ``--force-with-lease``, jamais sur la
+branche par défaut), ``find_open_request`` et ``open_or_update_request`` (``pulls`` : la PR
+ouverte depuis la branche vers la branche par défaut, mise à jour plutôt que doublée).
 """
 
 import asyncio
@@ -47,10 +53,13 @@ from typing import Any, ClassVar
 
 import httpx
 
+from forceupdate.forges import git
 from forceupdate.forges.base import (
     Access,
     AccessDenied,
     AppRestricted,
+    Branch,
+    BranchCommit,
     ChangeRequest,
     EmptyRepository,
     Forge,
@@ -77,6 +86,9 @@ WEB_URL = "https://github.com"
 AUTHORIZE_URL = f"{WEB_URL}/login/oauth/authorize"
 TOKEN_URL = f"{WEB_URL}/login/oauth/access_token"
 DEVICE_URL = f"{WEB_URL}/login/device/code"
+GIT_URL = WEB_URL
+"""D'où git clone et où il pousse (``{GIT_URL}/owner/nom.git``). Les tests le font pointer vers
+un dossier de dépôts « bare » (``fake_forge.remotes_url``)."""
 API_VERSION = "2022-11-28"
 
 SCOPES = ("repo", "read:org")
@@ -115,6 +127,9 @@ GH_TIMEOUT = 15.0
 MIN_INTERVAL = 1.0
 """Attente minimale entre deux demandes du device flow, en secondes, quoi que dise GitHub."""
 
+GIT_USERNAME = "x-access-token"
+"""Le nom que git présente avec un token, sur GitHub (le token est le mot de passe)."""
+
 _JSON = "application/vnd.github+json"
 _RAW = "application/vnd.github.raw"
 _SHA_ONLY = "application/vnd.github.sha"
@@ -152,12 +167,21 @@ class GitHub(Forge):
 
     kind: ClassVar[ForgeKind] = ForgeKind.GITHUB
 
-    def __init__(self, http: HttpClient, token: str | None, *, api_url: str = API_URL) -> None:
+    def __init__(
+        self,
+        http: HttpClient,
+        token: str | None,
+        *,
+        api_url: str = API_URL,
+        git_url: str | None = None,
+    ) -> None:
         self.host = HOST
         self._http = http
         self._token = token
         """``None`` : sans compte, les dépôts publics seulement."""
         self._api = api_url.rstrip("/")
+        self._git = (git_url or GIT_URL).rstrip("/")
+        """D'où git clone : ``GIT_URL`` par défaut."""
         self.rate_limit: RateLimit | None = None
         self.requests = 0
 
@@ -205,6 +229,7 @@ class GitHub(Forge):
             raise ForgeError("Réponse inattendue de GitHub pour /user.")
         scopes = _scopes(response.headers)
         access = access_of(scopes)
+        user_id = user.get("id")
         return Identity(
             forge=ForgeKind.GITHUB,
             host=self.host,
@@ -214,6 +239,11 @@ class GitHub(Forge):
             access=access,
             scopes=scopes,
             warnings=warnings_of(access, scopes),
+            email=(
+                f"{user_id}+{user['login']}@users.noreply.github.com"
+                if isinstance(user_id, int)
+                else None
+            ),
         )
 
     async def list_repos(self) -> list[Repository]:
@@ -333,19 +363,149 @@ class GitHub(Forge):
             pass
         return repo
 
-    async def clone(self, repo: Repository, destination: Path) -> None:
-        raise NotImplementedError("le clone d'un dépôt GitHub arrive à E18")
+    # -- mise à jour : git, puis la PR ------------------------------------------------
 
-    async def push_branch(self, repo: Repository, checkout: Path, branch: str) -> None:
-        raise NotImplementedError("le push vers GitHub arrive à E18")
+    async def clone(self, repo: Repository, destination: Path) -> None:
+        """Un clone superficiel de la branche par défaut, par git (dans un thread)."""
+        if repo.empty or repo.default_branch is None:
+            raise EmptyRepository(_EMPTY)
+        try:
+            await asyncio.to_thread(
+                git.clone,
+                self._clone_url(repo),
+                destination,
+                branch=repo.default_branch,
+                credentials=self._credentials(),
+            )
+        except git.GitError as err:
+            raise self._git_error(err, repo, "lire") from None
+
+    async def branch(self, repo: Repository, name: str) -> Branch | None:
+        """Le dernier commit de la branche (``git/ref``), puis ses commits qui ne sont pas sur
+        la branche par défaut (``compare``, 100 au plus)."""
+        base = f"/repos/{_quote(repo.full_name)}"
+        try:
+            ref = await self.get(f"{base}/git/ref/heads/{_quote(name)}")
+        except NotFound:
+            return None
+        target = ref.get("object") if isinstance(ref, dict) else None
+        head = target.get("sha") if isinstance(target, dict) else None
+        if not isinstance(head, str) or not _COMMIT.fullmatch(head):
+            raise ForgeError(f"Réponse inattendue de GitHub pour {base}/git/ref/heads/{name}.")
+        if repo.default_branch is None:
+            return Branch(name=name, head=head, tree=None, commits=(), ahead=0)
+        compared = await self.get(
+            f"{base}/compare/{_quote(repo.default_branch)}...{head}?per_page=100"
+        )
+        items = compared.get("commits") if isinstance(compared, dict) else None
+        if not isinstance(items, list):
+            raise ForgeError(f"Réponse inattendue de GitHub pour {base}/compare.")
+        commits = tuple(_branch_commit(item) for item in items if isinstance(item, dict))
+        ahead = compared.get("ahead_by")
+        last = items[-1] if items and isinstance(items[-1], dict) else {}
+        tree = None
+        if last.get("sha") == head:
+            found = (last.get("commit") or {}).get("tree") or {}
+            tree = found.get("sha") if isinstance(found.get("sha"), str) else None
+        return Branch(
+            name=name,
+            head=head,
+            tree=tree,
+            commits=commits,
+            ahead=ahead if isinstance(ahead, int) else len(commits),
+        )
+
+    async def push_branch(
+        self, repo: Repository, checkout: Path, branch: str, *, expected: str | None
+    ) -> None:
+        if repo.default_branch is None or branch == repo.default_branch:
+            raise ForgeError(
+                f"Push refusé : forceupdate ne pousse jamais sur la branche par défaut "
+                f"({repo.default_branch or 'inconnue'})."
+            )
+        try:
+            await asyncio.to_thread(
+                git.push,
+                checkout,
+                self._clone_url(repo),
+                branch,
+                credentials=self._credentials(),
+                expected=expected,
+            )
+        except git.GitError as err:
+            raise self._git_error(err, repo, "pousser une branche dans") from None
 
     async def find_open_request(self, repo: Repository, branch: str) -> ChangeRequest | None:
-        raise NotImplementedError("les PR GitHub arrivent à E18")
+        """La PR ouverte depuis ``branch`` (du dépôt même) vers la branche par défaut."""
+        if repo.default_branch is None:
+            return None
+        query = urllib.parse.urlencode(
+            {
+                "state": "open",
+                "head": f"{repo.owner}:{branch}",
+                "base": repo.default_branch,
+                "per_page": "10",
+            }
+        )
+        items = await self.get(f"/repos/{_quote(repo.full_name)}/pulls?{query}")
+        if not isinstance(items, list):
+            raise ForgeError(f"Réponse inattendue de GitHub pour /repos/{repo.full_name}/pulls.")
+        found = [_change_request(item) for item in items]
+        return next((request for request in found if request is not None), None)
 
     async def open_or_update_request(
         self, repo: Repository, *, branch: str, title: str, body: str
     ) -> ChangeRequest:
-        raise NotImplementedError("les PR GitHub arrivent à E18")
+        if repo.default_branch is None or branch == repo.default_branch:
+            raise ForgeError(
+                "Une PR se propose depuis une autre branche que la branche par défaut."
+            )
+        pulls = f"/repos/{_quote(repo.full_name)}/pulls"
+        found = await self.find_open_request(repo, branch)
+        if found is None:
+            fields = {"title": title, "body": body, "head": branch, "base": repo.default_branch}
+            try:
+                created = await self.request("POST", pulls, json=fields)
+            except ForgeError as err:
+                # Ouverte entre-temps (une autre fenêtre, un autre outil) : la mettre à jour.
+                if "already exists" not in str(err).lower():
+                    raise
+                found = await self.find_open_request(repo, branch)
+                if found is None:
+                    raise
+            else:
+                return self._parsed_request(_json(created), pulls)
+        updated = await self.request(
+            "PATCH", f"{pulls}/{found.number}", json={"title": title, "body": body}
+        )
+        return self._parsed_request(_json(updated), pulls)
+
+    def _parsed_request(self, item: Any, path: str) -> ChangeRequest:
+        request = _change_request(item)
+        if request is None:
+            raise ForgeError(f"Réponse inattendue de GitHub pour {path}.")
+        return request
+
+    def _clone_url(self, repo: Repository) -> str:
+        """L'adresse du dépôt pour git, construite ici : jamais celle d'une réponse ni de la
+        personne. Sans identifiants (ils passent par ``forges.git``)."""
+        return f"{self._git}/{repo.full_name}.git"
+
+    def _credentials(self) -> git.Credentials | None:
+        return git.Credentials(GIT_USERNAME, self._token) if self._token else None
+
+    def _git_error(self, err: git.GitError, repo: Repository, action: str) -> ForgeError:
+        """L'erreur de git, en erreur de la forge quand elle en est une."""
+        if err.failure is git.GitFailure.AUTH:
+            return TokenRefused(
+                "GitHub refuse le token (git) : révoqué, expiré, ou mal copié. Se reconnecter."
+            )
+        if err.failure is git.GitFailure.DENIED:
+            return AccessDenied(
+                f"GitHub refuse de {action} {repo.full_name} (403) : le compte n'y a pas le "
+                "droit d'écriture, ou l'organisation restreint l'accès des applications OAuth."
+            )
+        return err
 
 
 def access_of(scopes: tuple[str, ...] | None) -> Access:
@@ -493,7 +653,8 @@ def _date(value: Any) -> datetime | None:
 
 
 def _message(response: Response) -> str:
-    """Le message d'erreur de GitHub (en anglais), en une phrase."""
+    """Le message d'erreur de GitHub (en anglais), en une phrase ; avec le détail d'une
+    validation refusée (422 : « A pull request already exists… »)."""
     try:
         body = response.json()
     except ValueError:
@@ -501,8 +662,44 @@ def _message(response: Response) -> str:
     text = body.get("message") if isinstance(body, dict) else None
     if not isinstance(text, str) or not text.strip():
         return "pas de détail."
+    errors = body.get("errors") if isinstance(body, dict) else None
+    details = [
+        item["message"]
+        for item in (errors if isinstance(errors, list) else [])
+        if isinstance(item, dict) and isinstance(item.get("message"), str)
+    ]
+    if details:
+        text = f"{text.rstrip('.')} : {' ; '.join(details)}"
     text = " ".join(text.split())
     return text if text.endswith(".") else f"{text}."
+
+
+def _branch_commit(item: dict[str, Any]) -> BranchCommit:
+    commit = item.get("commit") if isinstance(item.get("commit"), dict) else {}
+    message = commit.get("message")
+    parents = item.get("parents")
+    return BranchCommit(
+        sha=str(item.get("sha") or ""),
+        message=message if isinstance(message, str) else "",
+        merge=isinstance(parents, list) and len(parents) > 1,
+    )
+
+
+def _change_request(item: Any) -> ChangeRequest | None:
+    """Une PR de l'API ; ``None`` si la réponse n'en est pas une."""
+    if not isinstance(item, dict):
+        return None
+    number, url = item.get("number"), item.get("html_url")
+    head, base = item.get("head"), item.get("base")
+    if not isinstance(number, int) or not isinstance(url, str):
+        return None
+    return ChangeRequest(
+        number=number,
+        url=url,
+        title=str(item.get("title") or ""),
+        branch=str(head.get("ref") or "") if isinstance(head, dict) else "",
+        base=str(base.get("ref") or "") if isinstance(base, dict) else "",
+    )
 
 
 # -- Connexion : OAuth ----------------------------------------------------------------

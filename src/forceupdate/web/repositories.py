@@ -9,7 +9,9 @@ synthèse de l'ensemble, calculée ici et pas dans le navigateur.
   (``Jobs.start_repository_scan``), ``CONCURRENCY`` dépôts à la fois, avec une forge créée sur
   le client de cette boucle : ses requêtes en partent, et elle compte celles du lot.
 - **Chaque dépôt** a l'état de sa dernière analyse (groupée ou non), et **la synthèse** les
-  additionne (``report.synthesis``).
+  additionne (``report.synthesis``). Sa PR de forceupdate ouverte est la plus récente qu'on
+  connaisse : trouvée par sa dernière analyse, par un récapitulatif ou par un envoi
+  (``remember``, E18).
 
 Le token ne quitte jamais le serveur : il est lu dans le trousseau (``Accounts.token``, dans un
 thread) au moment de parler à la forge. Un token refusé est noté sur le compte
@@ -26,6 +28,7 @@ from datetime import UTC, datetime
 from forceupdate import forges
 from forceupdate.forges.accounts import Account, AccountsError
 from forceupdate.forges.base import (
+    ChangeRequest,
     Forge,
     ForgeError,
     ForgeKind,
@@ -43,7 +46,7 @@ from forceupdate.report.synthesis import Verdict, combine, verdict
 from forceupdate.sources.forge import ForgeSource
 from forceupdate.web import schemas
 from forceupdate.web.connections import Connections, failure
-from forceupdate.web.jobs import Jobs, RepositoryTarget, Scan
+from forceupdate.web.jobs import Jobs, RepositoryTarget, Scan, same
 from forceupdate.web.schemas import BatchStatus, RepositoryState, TaskStatus
 
 logger = logging.getLogger(__name__)
@@ -143,6 +146,8 @@ class Repositories:
         self._listings: dict[tuple[ForgeKind, str], Listing] = {}
         self._loading: dict[tuple[ForgeKind, str], asyncio.Lock] = {}
         self._summaries: dict[str, Summary] = {}
+        self._requests: list[tuple[Repository, ChangeRequest | None, datetime]] = []
+        """Les PR ouvertes apprises par un récapitulatif ou un envoi (``remember``)."""
 
     # -- la liste ------------------------------------------------------------------
 
@@ -165,6 +170,22 @@ class Repositories:
             synthesis=self._synthesis(rows),
             batch=batch.document() if batch is not None else None,
         )
+
+    def remember(self, repo: Repository, request: ChangeRequest | None) -> None:
+        """Note la PR de forceupdate ouverte sur ``repo`` (``None`` : aucune), apprise à
+        l'instant."""
+        self._requests = [entry for entry in self._requests if not same(entry[0], repo)]
+        self._requests.append((repo, request, _now()))
+
+    def request(self, repo: Repository, scan: Scan | None) -> ChangeRequest | None:
+        """La PR de forceupdate ouverte sur ``repo``, d'après ce qu'on en sait de plus récent :
+        sa dernière analyse (``scan``), un récapitulatif, un envoi."""
+        known: list[tuple[datetime, ChangeRequest | None]] = [
+            (when, request) for found, request, when in self._requests if same(found, repo)
+        ]
+        if scan is not None and scan.request_checked:
+            known.append((scan.finished_at or scan.started_at, scan.request))
+        return max(known, key=lambda entry: entry[0])[1] if known else None
 
     def listed(self, forge: ForgeKind, full_name: str) -> Repository | None:
         """Le dépôt ``full_name`` de la dernière liste de ``forge``."""
@@ -200,7 +221,7 @@ class Repositories:
                 listed_at=current.listed_at if current else None,
                 connected_at=account.connected_at,
             )
-            token = await self._token(account)
+            token = await self.token(account)
             if token is None:
                 listing.error = "Le token n'est plus dans le trousseau : se reconnecter."
             else:
@@ -223,7 +244,7 @@ class Repositories:
             self._listings[key] = listing
             return listing
 
-    async def _token(self, account: Account) -> str | None:
+    async def token(self, account: Account) -> str | None:
         try:
             return await asyncio.to_thread(
                 self.connections.accounts.token, account.forge, account.host
@@ -312,6 +333,7 @@ class Repositories:
             reason=reason,
             counts=counts,
             scan=scan.summary() if scan is not None else None,
+            request=self.request(repo, scan),
         )
 
     def _summary(self, scan: Scan) -> Summary:
@@ -352,6 +374,7 @@ class Repositories:
             vulnerable_repositories=combined.vulnerable_reports,
             findings=combined.findings,
             severities=combined.severities,
+            open_requests=sum(1 for row in rows if row.request is not None),
         )
 
     # -- les analyses --------------------------------------------------------------
@@ -361,7 +384,7 @@ class Repositories:
     ) -> Batch:
         """Analyse ensemble les dépôts ``names`` du compte connecté à ``forge_kind`` ; les
         vides sont sautés. Lève ``RepositoryError``."""
-        account = await self._connected(forge_kind)
+        account = await self.connected(forge_kind)
         if not names:
             raise RepositoryError(400, "Aucun dépôt à analyser.")
         repos: list[Repository] = []
@@ -377,12 +400,12 @@ class Repositories:
                 400,
                 f"{', '.join(unknown)} : pas dans la liste des dépôts du compte (la recharger).",
             )
-        token = await self._token(account)
+        token = await self.token(account)
         if token is None:
             raise RepositoryError(409, "Le token n'est plus dans le trousseau : se reconnecter.")
-        forge = self._worker_forge(forge_kind, token)
+        forge = self.worker_forge(forge_kind, token)
         slots = asyncio.Semaphore(CONCURRENCY)
-        refused = _refused(self.connections, account)
+        refused = refused_callback(self.connections, account)
         batch = Batch(id=secrets.token_hex(6), forge=forge, scans=[], skipped=[])
         for repo in repos:
             if repo.empty:
@@ -414,7 +437,7 @@ class Repositories:
                 409, f"{forge_info.name} : l'analyse de ses dépôts n'est pas encore disponible."
             )
         account = await self._account_of(forge_info.kind)
-        token = await self._token(account) if account is not None else None
+        token = await self.token(account) if account is not None else None
         lookup = forges.client(forge_info.kind, self.connections.http, token)
         try:
             repo = self.listed(forge_info.kind, full_name) or await lookup.repository(full_name)
@@ -438,14 +461,14 @@ class Repositories:
         if repo.empty:
             raise RepositoryError(409, f"{repo.full_name} est vide : rien à analyser.")
         target = RepositoryTarget(
-            forge=self._worker_forge(forge_info.kind, token),
+            forge=self.worker_forge(forge_info.kind, token),
             repo=repo,
             slots=asyncio.Semaphore(1),
-            refused=_refused(self.connections, account) if account is not None else None,
+            refused=refused_callback(self.connections, account) if account is not None else None,
         )
         return self.jobs.start_repository_scan(target, options)
 
-    def _worker_forge(self, kind: ForgeKind, token: str | None) -> Forge:
+    def worker_forge(self, kind: ForgeKind, token: str | None) -> Forge:
         """La forge des analyses : sur le client de la boucle des analyses, d'où partiront ses
         requêtes."""
         http = self.jobs.worker.http
@@ -455,7 +478,7 @@ class Repositories:
     async def _account_of(self, kind: ForgeKind) -> Account | None:
         return next((a for a in await self._accounts() if a.forge is kind), None)
 
-    async def _connected(self, kind: ForgeKind) -> Account:
+    async def connected(self, kind: ForgeKind) -> Account:
         if not forges.info(kind).available:
             raise RepositoryError(
                 409, f"{forges.info(kind).name} : la connexion n'est pas encore disponible."
@@ -494,7 +517,7 @@ def _inconclusive_reason(summary: Summary, truncated: bool) -> str:
     return "arborescence tronquée par la forge : analyse partielle"
 
 
-def _refused(connections: Connections, account: Account) -> Callable[[str], None]:
+def refused_callback(connections: Connections, account: Account) -> Callable[[str], None]:
     """Ce qui note sur le compte que la forge refuse son token (appelé dans un thread)."""
     accounts = connections.accounts
 

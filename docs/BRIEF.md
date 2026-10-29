@@ -142,6 +142,7 @@ Prises pour pouvoir planifier. Si l'une change : modifier ce tableau, puis les
 | 19 | Publication ? | Sur PyPI, gratuitement, code public : on installe avec `uv tool install forceupdate`. Une première version (0.1.0) est publiée dès que l'analyse marche, pour réserver le nom : **fait le 2026-10-28** (E09), par un workflow GitHub Actions et « Trusted Publisher », sans token | **Confirmé.** Gratuit ; le code public ne gêne pas l'utilisateur |
 | 20 | Licence ? | MIT : fichier `LICENSE` à la racine, déclaré dans `pyproject.toml` (E01) | **Confirmé.** La plus simple : chacun peut utiliser, modifier et redistribuer le code, en gardant la mention de l'auteur |
 | 21 | Logos des forges ? | Les logos officiels de GitHub, GitLab et Bitbucket (tracés de Simple Icons, CC0), en une couleur, sans modification, à côté du nom (MASTER, « Icônes ») | **Confirmé** (E16). Lucide n'a plus de logos de marque ; les chartes permettent cet usage pour désigner le service |
+| 22 | Que devient la branche d'une PR quand on relance ? | Remplacée : un seul commit, refait sur la branche par défaut du moment, au nom du compte (son adresse `noreply`), marqué `Generated-by: forceupdate`, poussé avec `--force-with-lease`. **Jamais par-dessus le travail d'un autre** : si la branche a un commit sans la marque (une correction poussée à la main), rien n'est poussé, l'erreur le dit ; une fusion de la branche par défaut (« Update branch ») est tolérée. Même contenu : rien n'est poussé, la description seule est refaite | Pris à E18 (à confirmer par l'utilisateur). Une PR toujours relisible d'un coup et à jour de la branche par défaut, comme Dependabot, sans jamais détruire le travail de quelqu'un |
 
 ## Questions encore ouvertes
 
@@ -283,6 +284,16 @@ chaque fois) :
     `/orgs/{org}/repos` (ses dépôts publics restent dans `/user/repos`) ; sans token, 60
     requêtes par heure ; un dépôt privé invisible rend 404. Analyser les 7 dépôts du compte de
     l'utilisateur a pris 15 s et 32 requêtes.
+  - **constaté à E18** : le token passe à git par un credential helper éphémère
+    (`-c credential.helper=` pour écarter ceux de la personne, puis le nôtre, qui lit
+    l'environnement) ; Git pour Windows le lance par son `sh`, et le gestionnaire
+    d'identification de Windows ne garde rien (vérifié avec `cmdkey`) ; `push --porcelain` dit
+    ses refus sur la sortie standard ; `--force-with-lease=ref:<sha>` marche depuis un clone
+    superficiel qui n'a pas ce commit ; `compare/{base}...{sha}` donne les commits propres d'une
+    branche (et leurs parents : une fusion en a deux) ; une PR déjà ouverte donne un 422 dont le
+    détail est dans `errors[].message` ; l'adresse `noreply` d'un compte est
+    `{id}+{login}@users.noreply.github.com`. Les vrais npm et uv redonnent les mêmes lockfiles
+    d'un envoi à l'autre : relancer ne pousse rien ;
 - **GitLab** : les projets sont rangés dans des groupes et des sous-groupes ;
   l'arborescence est paginée ; on parle de « merge request ».
 - **Bitbucket** :

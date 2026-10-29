@@ -173,6 +173,9 @@ def test_the_schema_describes_every_route() -> None:
         ("GET", "/api/repositories/batches/{batch_id}"): "get_batch",
         ("DELETE", "/api/repositories/batches/{batch_id}"): "cancel_batch",
         ("POST", "/api/repositories/scans"): "scan_repository",
+        ("POST", "/api/proposals"): "create_proposal",
+        ("GET", "/api/proposals/{proposal_id}"): "get_proposal",
+        ("POST", "/api/proposals/{proposal_id}/send"): "send_proposal",
     }
 
 

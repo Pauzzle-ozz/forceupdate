@@ -69,7 +69,7 @@ function list(overrides: Partial<RepositoryList> = {}): RepositoryList {
   })
 }
 
-const FLASK = { forge: 'github' as const, host: 'github.com', full_name: 'pallets/flask', url: 'https://github.com/pallets/flask', commit: null, truncated: false }
+const FLASK = { forge: 'github' as const, host: 'github.com', full_name: 'pallets/flask', url: 'https://github.com/pallets/flask', commit: null, truncated: false, cloned: false }
 
 function connected() {
   return { 'GET /api/accounts': accountList(githubStatus({ account: account() })) }
@@ -268,7 +268,8 @@ describe('mes dépôts (écran 7)', () => {
     expect(screen.getByRole('button', { name: 'Analyser tous les dépôts' })).toBeDisabled()
     await user.click(screen.getByRole('checkbox', { name: 'Sélectionner octo/neuf' }))
     expect(screen.getByRole('button', { name: 'Analyser ce dépôt' })).toBeDisabled()
-    expect(screen.getByText('Hors ligne : les analyses attendront le réseau.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Préparer la PR' })).toBeDisabled()
+    expect(screen.getByText('Hors ligne : les analyses et les PR attendront le réseau.')).toBeInTheDocument()
   })
 
   it('sous 768 px : une carte par dépôt', async () => {
@@ -329,7 +330,7 @@ describe('mes dépôts (écran 7)', () => {
 })
 
 describe('le rapport d’un dépôt (écran 4)', () => {
-  const repository = { forge: 'github' as const, host: 'github.com', full_name: 'octo/boutique', url: 'https://github.com/octo/boutique', commit: '4e111271b1494995708a9e878a10829b5e10c7ba', truncated: true }
+  const repository = { forge: 'github' as const, host: 'github.com', full_name: 'octo/boutique', url: 'https://github.com/octo/boutique', commit: '4e111271b1494995708a9e878a10829b5e10c7ba', truncated: true, cloned: false }
 
   it('le dépôt, son commit, le lien vers la forge ; ni plan local, ni « Mettre à jour »', async () => {
     mockApi({
@@ -380,7 +381,7 @@ describe('l’accueil et les dépôts', () => {
     mockApi({
       'GET /api/scans': [
         scanSummary({ id: 'lot', kind: 'repository', source: 'octo/boutique', batch: 'b1' }),
-        scanSummary({ id: 'seul', kind: 'repository', source: 'pallets/flask', repository: { forge: 'github', host: 'github.com', full_name: 'pallets/flask', url: 'https://github.com/pallets/flask', commit: null, truncated: false } }),
+        scanSummary({ id: 'seul', kind: 'repository', source: 'pallets/flask', repository: { forge: 'github', host: 'github.com', full_name: 'pallets/flask', url: 'https://github.com/pallets/flask', commit: null, truncated: false, cloned: false } }),
       ],
       'GET /api/fs': { path: null, parent: null, entries: [], truncated: false, home: 'C:/Users/moi', recent: [] },
     })

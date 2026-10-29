@@ -21,6 +21,10 @@ d'un dossier local, inchangé.
 
 Les fichiers trop gros (``max_read_size`` : 2 Mo, 50 Mo pour un lockfile) ne sont pas
 téléchargés : comme en local, ils ne sont pas lus, et le rapport le dit.
+
+Une arborescence que la forge a tronquée (GitHub : au-delà de 100 000 entrées) donnerait une
+analyse partielle : ``clone`` fait alors un clone superficiel du même dépôt, analysé comme un
+dossier (``ClonedSource``, E18).
 """
 
 import asyncio
@@ -37,9 +41,11 @@ from forceupdate.detect.manifests import (
     max_read_size,
     safe_read_text,
 )
+from forceupdate.forges import git
 from forceupdate.forges.base import Forge, Repository, Tree
 from forceupdate.models import Event, EventKind
 from forceupdate.sources.base import Source, SourceFile
+from forceupdate.sources.local import LocalSource
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +83,35 @@ class ForgeSource(Source):
         """Le fichier téléchargé ; ``None`` s'il ne l'a pas été (absent du dépôt, trop gros).
         Lève ``ValueError`` si ``path`` sort du dépôt."""
         return safe_read_text(self.root / relative(path), max_size=max_read_size(path))
+
+
+class ClonedSource(LocalSource):
+    """Un dépôt cloné (superficiellement) : quand la forge n'en rend pas toute l'arborescence.
+    Lu comme un dossier : ce que ``.gitignore`` écarte ne compte pas."""
+
+    truncated = False
+
+    def __init__(self, repo: Repository, commit: str, root: Path) -> None:
+        super().__init__(root)
+        self.repo = repo
+        self.commit = commit
+        self.origin = repo.full_name
+
+
+async def clone(
+    forge: Forge,
+    repo: Repository,
+    destination: Path,
+    *,
+    on_event: Callable[[Event], None] | None = None,
+) -> ClonedSource:
+    """Le dépôt ``repo``, cloné dans ``destination`` (superficiellement, la branche par
+    défaut). Émet un ``cloning``. Lève une ``ForgeError`` (git absent ou en échec, token
+    refusé…)."""
+    (on_event or _ignore)(Event(kind=EventKind.CLONING))
+    await forge.clone(repo, destination)
+    commit = await asyncio.to_thread(git.head, destination)
+    return await asyncio.to_thread(ClonedSource, repo, commit, destination)
 
 
 def relative(path: str) -> str:

@@ -66,24 +66,33 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   ├── src/styles/         ← tokens.css (ceux de MASTER), app.css (Tailwind, polices)
 │   ├── src/components/ui/  ← les composants shadcn/ui, habillés par les tokens ; sheet.tsx, dialog.tsx : <dialog> natif
 │   ├── src/screens/        ← les écrans (Home, Choose, ScanProgress, report/…, update/ : l'écran 5,
-│   │                         accounts/ : l'écran 6, repositories/ : l'écran 7) ; tests *.test.tsx à côté
+│   │                         accounts/ : l'écran 6, repositories/ : l'écran 7, proposals/ : l'écran 8) ;
+│   │                         tests *.test.tsx à côté
 │   ├── src/test/           ← mise en place de Vitest, fetch et EventSource simulés, rapport d'exemple
 │   └── e2e/                ← tests Playwright (vrai serveur, front construit, CSP, axe-core) ;
 │                             helpers.ts : copie d'un mini-projet dans un dossier temporaire ;
-│                             forges.spec.ts : écrans 6 et 7, en série (compte du serveur partagé)
+│                             forges.spec.ts : écrans 6, 7 et 8, en série (compte du serveur partagé)
 ├── src/forceupdate/        ← le code de l'outil (architecture cible : PLAN.md)
 │   ├── forges/             ← interface Forge (base.py), GitHub (github.py : REST, dépôts, arborescence,
-│   │                         fichiers, OAuth, device flow, gh), comptes connectés (accounts.py : tokens
+│   │                         fichiers, OAuth, device flow, gh, clone, branche, push, PR), git (git.py :
+│   │                         token par un credential helper éphémère, clone superficiel, commit, push
+│   │                         avec bail, dossier de travail), comptes connectés (accounts.py : tokens
 │   │                         dans le trousseau, keyring)
 │   ├── sources/            ← d'où vient le code : local.py (dossier, fichier), forge.py (un dépôt lu par
-│   │                         l'API : seuls les fichiers que lisent les parseurs sont téléchargés)
+│   │                         l'API : seuls les fichiers que lisent les parseurs sont téléchargés ; un
+│   │                         clone superficiel si l'arborescence est tronquée)
+│   ├── update/             ← planner, writers/, lockfiles, local.py (mise à jour d'un dossier), forge.py
+│   │                         (une PR par dépôt : clone, mise à jour, commit, push, PR)
 │   └── web/                ← le serveur de ui (FastAPI) ; repositories.py : les dépôts des comptes et leurs
-│                             analyses groupées ; openapi.json, exporté, donne les types du front ;
+│                             analyses groupées ; proposals.py : le récapitulatif des PR et leur envoi ;
+│                             openapi.json, exporté, donne les types du front ;
 │                             static/ : le front construit (npm run build), ignoré par git, livré dans le paquet
 └── tests/                  ← les tests ; conftest.py gère le marqueur network
     ├── e2e_server.py       ← le serveur de ui hors ligne pour Playwright (npm, uv, gh, GitHub et ses
-    │                         dépôts, trousseau simulés), et les rapports d'exemple du front
-    ├── fake_forge.py       ← GitHub simulé pour les dépôts (liste, arborescence, fichiers, organisations)
+    │                         dépôts, trousseau simulés ; des dépôts « bare » où git pousse), et les
+    │                         rapports d'exemple du front
+    ├── fake_forge.py       ← GitHub simulé pour les dépôts (liste, arborescence, fichiers, organisations,
+    │                         branches, comparaison, PR) ; make_remote : un dépôt « bare » local par dépôt
     ├── fixtures/           ← réponses HTTP enregistrées ; record.py les ré-enregistre
     └── projects/           ← mini-projets par outil, lockfiles produits par les vrais outils
 ```
@@ -126,11 +135,15 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
 - Sous Windows, une sortie redirigée (tube, fichier) est écrite en cp1252 par
   défaut, pas en UTF-8. `forceupdate scan` repasse la sienne en UTF-8 (E07) ; pour
   un autre script, `PYTHONIOENCODING=utf-8`. Un script passé à Python par l'entrée
-  standard (heredoc) abîme les accents : l'écrire dans un fichier.
+  standard (heredoc) abîme les accents, et l'outil Bash réduit `\\` à `\` dans un heredoc :
+  l'écrire dans un fichier (outil d'écriture), puis le lancer.
 - Les tests ne touchent jamais le réseau sans le marqueur `network` (donc jamais le vrai
   GitHub), ni le cache de l'utilisateur, ni un vrai outil de lockfile (npm, uv…), ni le
-  trousseau du système ni `gh`, et n'ouvrent jamais le navigateur : cinq garde-fous
-  automatiques de `tests/conftest.py` y veillent. La fixture `recorded` simule PyPI, npm
+  trousseau du système ni `gh`, ne lancent git que vers des dépôts locaux, et n'ouvrent jamais
+  le navigateur : six garde-fous automatiques de `tests/conftest.py` y veillent. Les tests des
+  PR clonent et poussent pour de vrai, vers des dépôts « bare » du dossier du test
+  (`fake_forge.make_remote`, `github.GIT_URL` vers `remotes_url(…)`). Dans un test, jamais
+  `monkeypatch.undo()` : il défait aussi ces garde-fous (`monkeypatch.context()`). La fixture `recorded` simule PyPI, npm
   et OSV avec les réponses de `tests/fixtures/` ; `fake_tools("npm", "uv")` simule les
   outils (`FakeTools`) ; `keychain` est le trousseau en mémoire du test ; `api` est le
   serveur de `ui` (client de test de FastAPI, jeton compris), `finished` attend la fin
@@ -157,6 +170,9 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   région `aria-live` (`components/Command.tsx`).
 - Les tests e2e qui écrivent travaillent sur une copie (`e2e/helpers.ts`, `copyProject`) ;
   le serveur de test est partagé entre les tests : ses chemins récents s'accumulent.
+- Pour essayer les PR en vrai : le dépôt de test `Pauzzle-ozz/forceupdate-demo` (privé, créé à
+  E18, copie de `tests/projects/vulnerable`), jamais un autre dépôt sans l'accord de
+  l'utilisateur.
 - Pour essayer `forceupdate update` en vrai : sur une copie dans le scratchpad, jamais
   dans `tests/projects/` (les outils réécrivent les lockfiles). yarn, poetry, pdm,
   pipenv et pip-compile ne sont pas installés (choix de l'utilisateur) : `npx yarn@1`,

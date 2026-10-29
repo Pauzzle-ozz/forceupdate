@@ -10,12 +10,15 @@ lockfile plusieurs minutes.
   tâche de cette boucle : l'annuler l'interrompt à sa prochaine attente (une requête).
 - **Les dépôts des forges** (E17) passent par la même boucle : l'arborescence et les fichiers
   de dépendances sont lus par l'API de la forge (``sources.forge.fetch``), avec le client de
-  cette boucle, puis le dépôt est analysé comme un dossier. Les analyses d'un même lot
-  attendent leur tour (``RepositoryTarget.slots`` : ``concurrency`` dépôts à la fois).
-- **Les mises à jour** (``update.local.apply`` : écriture, puis outils de lockfile) tournent
-  dans un thread à part, une à la fois : deux outils ne réécrivent jamais les mêmes fichiers en
-  même temps. Une mise à jour ne s'annule pas : interrompre un outil à mi-chemin laisserait des
-  fichiers à moitié faits (si l'outil échoue, ``lockfiles.regenerate`` remet tout comme avant).
+  cette boucle, puis le dépôt est analysé comme un dossier. Une arborescence tronquée par la
+  forge : le dépôt est cloné (superficiellement) et c'est le clone qui est analysé (E18). La PR
+  de forceupdate déjà ouverte est cherchée au passage (``Scan.request``). Les analyses d'un
+  même lot attendent leur tour (``RepositoryTarget.slots`` : ``concurrency`` dépôts à la fois).
+- **Les mises à jour** (``update.local.apply`` : écriture, puis outils de lockfile ; et celles
+  des PR, ``update.forge.deliver``, par ``in_updates``) tournent dans un thread à part, une à
+  la fois : deux outils ne réécrivent jamais les mêmes fichiers en même temps. Une mise à jour
+  ne s'annule pas : interrompre un outil à mi-chemin laisserait des fichiers à moitié faits (si
+  l'outil échoue, ``lockfiles.regenerate`` remet tout comme avant).
 - **L'état** de chaque tâche (``Scan``, ``Plan`` : statut, événements de progression, résultat)
   n'est modifié que dans la boucle du serveur : les threads lui envoient leurs événements et
   leur résultat par ``call_soon_threadsafe``. Les routes le lisent donc sans verrou.
@@ -41,15 +44,16 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 from forceupdate import engine
-from forceupdate.forges.base import Forge, ForgeError, Repository, TokenRefused
+from forceupdate.forges.base import ChangeRequest, Forge, ForgeError, Repository, TokenRefused
 from forceupdate.models import Event, Report, ScanOptions, to_dict
 from forceupdate.net import Cache, HttpClient, NetworkError
 from forceupdate.report import json as json_report
 from forceupdate.sources import forge as forge_source
 from forceupdate.sources.base import Source, SourceError
-from forceupdate.sources.forge import ForgeSource
+from forceupdate.sources.forge import ClonedSource, ForgeSource
 from forceupdate.sources.local import LocalSource
 from forceupdate.update import local, writers
+from forceupdate.update.forge import BRANCH
 from forceupdate.update.local import Prepared
 from forceupdate.update.lockfiles import Regenerated
 from forceupdate.web import schemas
@@ -159,6 +163,11 @@ class Scan:
     upload_dir: Path | None = None
     """Le dossier temporaire d'un fichier envoyé, ou des fichiers téléchargés d'un dépôt,
     effacé avec l'analyse."""
+    request: ChangeRequest | None = None
+    """La PR de forceupdate ouverte sur le dépôt, trouvée pendant l'analyse."""
+    request_checked: bool = False
+    """La PR a été cherchée (pas pour un dépôt en lecture seule, ni si la forge n'a pas
+    répondu)."""
 
     @property
     def local(self) -> LocalSource | None:
@@ -170,14 +179,20 @@ class Scan:
         repo = self.repository
         if repo is None:
             return None
-        source = self.source if isinstance(self.source, ForgeSource) else None
+        source = self.source
+        commit = None
+        if isinstance(source, ForgeSource):
+            commit = source.tree.commit
+        elif isinstance(source, ClonedSource):
+            commit = source.commit
         return schemas.RepositoryRef(
             forge=repo.forge,
             host=repo.host,
             full_name=repo.full_name,
             url=repo.url,
-            commit=source.tree.commit if source is not None else None,
-            truncated=source.truncated if source is not None else False,
+            commit=commit,
+            truncated=isinstance(source, ForgeSource) and source.truncated,
+            cloned=isinstance(source, ClonedSource),
         )
 
     def summary(self) -> schemas.ScanSummary:
@@ -302,12 +317,17 @@ class Worker:
         options: ScanOptions,
         on_event: Callable[[Event], None],
         destination: Path,
-        on_source: Callable[[ForgeSource], None],
+        on_source: Callable[[Source], None],
+        on_request: Callable[[ChangeRequest | None], None] | None = None,
     ) -> Report:
         """Lit le dépôt par l'API de sa forge (arborescence, fichiers de dépendances, dans
         ``destination``), puis l'analyse comme un dossier ; ``on_source`` reçoit la source dès
-        qu'elle est prête. Attend son tour (``target.slots``)."""
+        qu'elle est prête. Une arborescence tronquée : le dépôt est cloné dans
+        ``destination/clone``, et c'est le clone qui est analysé (s'il ne peut pas l'être,
+        l'analyse reste partielle). ``on_request`` reçoit la PR de forceupdate ouverte sur le
+        dépôt, s'il peut en avoir une. Attend son tour (``target.slots``)."""
         async with target.slots:
+            source: Source
             try:
                 source = await forge_source.fetch(
                     target.forge,
@@ -316,12 +336,46 @@ class Worker:
                     include_tests=options.include_tests,
                     on_event=on_event,
                 )
+                if source.truncated:
+                    source = await self._cloned(target, destination, on_event) or source
+                if on_request is not None and target.repo.can_push and not target.repo.archived:
+                    checked, request = await self._open_request(target)
+                    if checked:
+                        on_request(request)
             except TokenRefused as err:
                 if target.refused is not None:
                     await asyncio.to_thread(target.refused, str(err))
                 raise
             on_source(source)
             return await self.analyze(source, options, on_event)
+
+    async def _cloned(
+        self, target: RepositoryTarget, destination: Path, on_event: Callable[[Event], None]
+    ) -> ClonedSource | None:
+        """Le clone d'un dépôt à l'arborescence tronquée ; ``None`` s'il n'a pas pu être fait
+        (git absent…) : l'analyse partielle reste, le rapport le dit."""
+        try:
+            return await forge_source.clone(
+                target.forge, target.repo, destination / "clone", on_event=on_event
+            )
+        except TokenRefused:
+            raise
+        except (ForgeError, SourceError, OSError) as err:
+            logger.warning(
+                "%s : clone impossible, analyse partielle (%s)", target.repo.full_name, err
+            )
+            return None
+
+    async def _open_request(self, target: RepositoryTarget) -> tuple[bool, ChangeRequest | None]:
+        """La PR de forceupdate ouverte sur le dépôt ; ``(False, None)`` si la forge n'a pas pu
+        le dire (l'analyse continue sans)."""
+        try:
+            return True, await target.forge.find_open_request(target.repo, BRANCH)
+        except TokenRefused:
+            raise
+        except (ForgeError, NetworkError) as err:
+            logger.info("%s : PR ouverte non cherchée (%s)", target.repo.full_name, err)
+            return False, None
 
     def stop(self) -> None:
         """Annule les analyses en cours, ferme le client et le cache, arrête la boucle."""
@@ -397,6 +451,12 @@ class Jobs:
 
     # -- analyses -----------------------------------------------------------------
 
+    def in_updates(self, function: Callable[[], T]) -> "asyncio.Future[T]":
+        """Fait tourner ``function`` dans le thread des mises à jour (après celles qui
+        attendent), depuis une boucle : les outils de lockfile d'une PR ne tournent jamais en
+        même temps que ceux d'une autre mise à jour."""
+        return asyncio.wrap_future(self._updates.submit(function))
+
     def start_scan(
         self,
         source: LocalSource,
@@ -447,11 +507,16 @@ class Jobs:
         def on_event(event: Event) -> None:
             self._post(scan.progress.add, event)
 
-        def on_source(source: ForgeSource) -> None:
+        def on_source(source: Source) -> None:
             self._post(setattr, scan, "source", source)
 
+        def on_request(request: ChangeRequest | None) -> None:
+            self._post(_found_request, scan, request)
+
         scan.future = self.worker.submit(
-            self.worker.analyze_repository(target, options, on_event, directory, on_source)
+            self.worker.analyze_repository(
+                target, options, on_event, directory, on_source, on_request
+            )
         )
         scan.future.add_done_callback(lambda future: self._post(self._scanned, scan, future))
         return scan
@@ -461,7 +526,7 @@ class Jobs:
         found = [
             scan
             for scan in self.scans.values()
-            if scan.repository is not None and _same(scan.repository, repo)
+            if scan.repository is not None and same(scan.repository, repo)
         ]
         return max(found, key=lambda scan: scan.started_at, default=None)
 
@@ -573,14 +638,21 @@ class Jobs:
 
     # -- outils -------------------------------------------------------------------
 
-    def _post(self, callback: Callable[..., object], *args: object) -> None:
+    def post(self, callback: Callable[..., object], *args: object) -> None:
         """Fait exécuter ``callback(*args)`` dans la boucle du serveur, depuis un autre
         thread."""
         with contextlib.suppress(RuntimeError):  # boucle du serveur déjà fermée
             self._loop.call_soon_threadsafe(callback, *args)
 
+    _post = post
 
-def _same(one: Repository, other: Repository) -> bool:
+
+def _found_request(scan: Scan, request: ChangeRequest | None) -> None:
+    scan.request = request
+    scan.request_checked = True
+
+
+def same(one: Repository, other: Repository) -> bool:
     """Le même dépôt (GitHub ne distingue pas les majuscules dans les noms)."""
     return (one.forge, one.host, one.full_name.lower()) == (
         other.forge,

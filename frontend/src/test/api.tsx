@@ -13,6 +13,8 @@ import type {
   AccountList,
   ForgeStatus,
   Listing,
+  Proposal,
+  ProposedRepository,
   Report,
   RepositoryAccount,
   RepositoryBatch,
@@ -324,6 +326,7 @@ export function repositoryRow(overrides: Partial<RepositoryRow> = {}): Repositor
     reason: null,
     counts: null,
     scan: null,
+    request: null,
     ...overrides,
   }
 }
@@ -365,6 +368,7 @@ export function synthesis(overrides: Partial<RepositorySynthesis> = {}): Reposit
     vulnerable_repositories: 0,
     findings: { vulnerable: 0, eol: 0, yanked: 0, deprecated: 0, outdated: 0, unverifiable: 0, inconclusive: 0 },
     severities: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+    open_requests: 0,
     ...overrides,
   }
 }
@@ -391,6 +395,67 @@ export function batch(overrides: Partial<RepositoryBatch> = {}): RepositoryBatch
     skipped: [],
     requests: 42,
     rate_limit: { limit: 5000, remaining: 4100, reset_at: '2026-10-28T19:00:00+00:00' },
+    ...overrides,
+  }
+}
+
+/**
+ * Un dépôt d'un récapitulatif de PR : `octo/boutique`, prêt, la sélection proposée de
+ * `vulnerable` (lodash, flask, jinja2), npm trouvé et uv absent.
+ */
+export function proposedRepository(overrides: Partial<ProposedRepository> = {}): ProposedRepository {
+  const plan = planDocument()
+  const fullName = overrides.full_name ?? 'octo/boutique'
+  return {
+    forge: 'github',
+    host: 'github.com',
+    full_name: fullName,
+    url: `https://github.com/${fullName}`,
+    default_branch: 'main',
+    branch: 'forceupdate/dependencies',
+    scan: 's-boutique',
+    commit: 'abc1234def5678abc1234def5678abc1234def56',
+    state: 'ready',
+    reason: null,
+    inconclusive: false,
+    checked: true,
+    request: null,
+    selection: plan.selection,
+    applied: [
+      { update: '.|npm|lodash', name: 'lodash', ecosystem: 'npm', project: '.', direct: true, current: '4.17.15', version: '4.18.1', gap: 'minor', fixes: ['CVE-2021-23337', 'CVE-2020-8203'] },
+      { update: '.|PyPI|flask', name: 'flask', ecosystem: 'PyPI', project: '.', direct: true, current: '0.12', version: '0.12.5', gap: 'patch', fixes: ['CVE-2018-1000656'] },
+      { update: '.|PyPI|jinja2|2.10', name: 'jinja2', ecosystem: 'PyPI', project: '.', direct: false, current: '2.10', version: '2.11.3', gap: 'minor', fixes: ['CVE-2019-10906'] },
+    ],
+    skipped: [],
+    files: plan.files,
+    lockfiles: [plan.lockfiles[0], { ...plan.lockfiles[1], available: false }],
+    step: null,
+    progress: null,
+    pushed: false,
+    base: null,
+    results: [],
+    committed: [],
+    error: null,
+    ...overrides,
+  }
+}
+
+/** Un récapitulatif de PR préparé (rien n'est encore envoyé). */
+export function proposal(overrides: Partial<Proposal> = {}): Proposal {
+  const repositories = overrides.repositories ?? [proposedRepository()]
+  const ready = repositories.filter((item) => item.state === 'ready')
+  return {
+    id: 'pr1',
+    forge: 'github',
+    host: 'github.com',
+    status: 'planned',
+    created_at: '2026-10-29T10:00:00+00:00',
+    started_at: null,
+    finished_at: null,
+    repositories,
+    ready: ready.length,
+    existing: ready.filter((item) => item.request !== null).length,
+    error: null,
     ...overrides,
   }
 }

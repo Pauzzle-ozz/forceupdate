@@ -7,10 +7,12 @@ import { basename } from '@/lib/format'
 import { Breadcrumb, Container, useDocumentTitle } from '@/shell/Page'
 
 const STEPS = ['Choisir', 'Vérifier', 'Appliquer', 'Résultat']
+/** Les étapes d'une PR : choisir (facultatif), le récapitulatif, l'envoi, le résultat. */
+export const REQUEST_STEPS = ['Choisir', 'Récapitulatif', 'Envoi', 'Résultat']
 
-/** Le nom de ce qui est mis à jour : le dossier, ou le nom du fichier envoyé. */
+/** Le nom de ce qui est mis à jour : le dossier, le nom du fichier envoyé, ou `owner/nom`. */
 export function sourceName(scan: ScanSummary): string {
-  return scan.kind === 'upload' ? scan.source : basename(scan.source)
+  return scan.kind === 'upload' || scan.repository ? scan.source : basename(scan.source)
 }
 
 /**
@@ -18,8 +20,8 @@ export function sourceName(scan: ScanSummary): string {
  * étapes seulement pour un fichier envoyé ; l'étape en cours en `aria-current="step"`. Sous
  * 640 px, sans traits entre les étapes.
  */
-export function Stepper({ current, upload = false }: { current: number; upload?: boolean }) {
-  const steps = upload ? STEPS.slice(0, 2) : STEPS
+export function Stepper({ current, upload = false, steps: given }: { current: number; upload?: boolean; steps?: string[] }) {
+  const steps = given ?? (upload ? STEPS.slice(0, 2) : STEPS)
   return (
     <ol aria-label="Étapes" className="flex flex-wrap gap-x-4 gap-y-2 sm:gap-x-2">
       {steps.map((label, index) => {
@@ -54,24 +56,29 @@ export function Stepper({ current, upload = false }: { current: number; upload?:
   )
 }
 
-/** L'en-tête de l'écran 5 : fil d'Ariane, titre, étapes. */
+/**
+ * L'en-tête de l'écran 5 : fil d'Ariane, titre, étapes. Un dépôt d'une forge se met à jour par
+ * une PR : ses étapes sont celles de l'écran 8.
+ */
 export function UpdateHeader({ scan, step }: { scan: ScanSummary; step: number }) {
   const name = sourceName(scan)
-  useDocumentTitle(`Mise à jour · ${name}`)
+  const repository = scan.repository
+  useDocumentTitle(`${repository ? 'PR' : 'Mise à jour'} · ${name}`)
   return (
     <>
       <Breadcrumb
         items={[
-          { label: 'Analyser', to: '/' },
+          repository ? { label: 'Mes dépôts', to: '/depots' } : { label: 'Analyser', to: '/' },
           { label: name, to: `/analyses/${scan.id}`, mono: true },
-          { label: 'Mise à jour' },
+          { label: repository ? 'PR' : 'Mise à jour' },
         ]}
       />
       <div className="mb-6 flex flex-col gap-2">
         <h1 className="text-2xl [overflow-wrap:anywhere]">
-          Mettre à jour <span className="font-mono">{name}</span>
+          {repository ? 'Préparer la PR de ' : 'Mettre à jour '}
+          <span className="font-mono">{name}</span>
         </h1>
-        <Stepper current={step} upload={scan.kind === 'upload'} />
+        <Stepper current={step} upload={scan.kind === 'upload'} steps={repository ? REQUEST_STEPS : undefined} />
       </div>
     </>
   )
@@ -100,13 +107,19 @@ export function UpdateSkeleton() {
   )
 }
 
-/** « Préparation du plan… » : le serveur réécrit à blanc et relit ; squelettes des diffs. */
-export function PreparingPlan() {
+/**
+ * « Préparation du plan… » : le serveur réécrit à blanc et relit ; squelettes des diffs. Le
+ * récapitulatif des PR (`label`) se prépare de même, et cherche les PR déjà ouvertes.
+ */
+export function PreparingPlan({
+  label = 'Préparation du plan',
+  text = 'Préparation du plan : réécriture à blanc, vérification par les parseurs…',
+}: { label?: string; text?: string } = {}) {
   return (
-    <div className="flex max-w-215 flex-col gap-4" aria-busy="true" aria-label="Préparation du plan">
+    <div className="flex max-w-215 flex-col gap-4" aria-busy="true" aria-label={label}>
       <p className="flex items-center gap-2 text-fg-muted" role="status">
         <LoaderCircle className="size-5 animate-spin" aria-hidden="true" />
-        Préparation du plan : réécriture à blanc, vérification par les parseurs…
+        {text}
       </p>
       {[0, 1].map((index) => (
         <div key={index} className="overflow-hidden rounded-md border border-border bg-surface">

@@ -419,6 +419,25 @@ son ou nom de personnage repris.
   `minmax(0, 1fr)` s'élargit à son plus long contenu insécable (un chemin en chasse fixe) :
   la vue d'ensemble du rapport débordait à 375 px.
 
+**Fait à E18** (l'écran 8, `frontend/src/screens/proposals/`) :
+
+- le récapitulatif reprend la carte et la barre d'actions collante des écrans 5 et 7 : une carte
+  par dépôt prêt (case « Envoyer la PR de … », badge « nouvelle PR » en contour ou « met à jour
+  la PR #41 » en information, « analyse non concluante » en pointillé et pas cochée), les mises
+  à jour en chasse fixe avec leur écart, les diffs repliés dans un `<details>`, une ligne par
+  lockfile (« régénéré par npm » en réussite, « uv absent » en avertissement avec la commande),
+  les dépôts sautés dans une liste à part, avec la raison ; une seule action principale,
+  « Envoyer N PR », dans la barre ;
+- l'envoi : une carte d'ensemble (la lame, « N sur M terminés », « ne s'annule pas »), puis une
+  carte par dépôt avec son état (icône et mot : en attente, l'étape en cours, PR ouverte, mise à
+  jour, rien à faire, échec), le lien de la PR (`ExternalLink`), l'erreur en alerte, ce qui reste
+  à faire (commande, erreur de l'outil) ; les issues s'annoncent dans une région `aria-live` ; le
+  focus va au titre quand l'envoi commence, puis quand il finit ;
+- les étapes d'une PR (`REQUEST_STEPS`) : Choisir → Récapitulatif → Envoi → Résultat, le même fil
+  que l'écran 5 (`Stepper`, qui prend ses étapes) ;
+- vérifié par axe-core (récapitulatif diffs ouverts, résultat) en clair et en sombre, à 1440 et
+  375 px ; pas de défilement horizontal.
+
 ## Anti-motifs
 
 - Couleur seule pour dire une gravité ou un état ; vert pour l'accent.

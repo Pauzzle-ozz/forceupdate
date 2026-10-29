@@ -1,17 +1,18 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, CircleCheck, CircleHelp, CircleX, LoaderCircle, RefreshCw, RotateCcw, TriangleAlert } from 'lucide-react'
+import { ArrowRight, CircleCheck, CircleHelp, CircleX, GitPullRequest, LoaderCircle, RefreshCw, RotateCcw, TriangleAlert } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { cn } from 'cn'
 import { api, queryKeys } from '@/api/client'
-import type { Report, ScanDetail, Selection } from '@/api/types'
+import type { Proposal, ProposedSelection, Report, ScanDetail, Selection } from '@/api/types'
 import { EmptyState } from '@/components/EmptyState'
 import { Alert, AlertActions, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { useCreateProposal, useProposal } from '@/hooks/useProposals'
 import { usePlan, useScan } from '@/hooks/useScan'
-import { rescanRequest, useStartScan } from '@/hooks/useScanActions'
+import { useRescan } from '@/hooks/useScanActions'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { NBSP, count, fr } from '@/lib/format'
 import { choose, defaultSelection, groups, recap, toggle, type Group, type Recap } from '@/lib/update'
@@ -25,21 +26,32 @@ import { UpdateCard } from './UpdateCard'
  * maquette mise-a-jour.html). Avec `?plan=<id>` (« Modifier la sélection », ou le retour du
  * navigateur depuis le plan), la sélection de ce plan revient ; avec `?paquet=<Update.id>`
  * (le panneau de détail du rapport), la carte de ce paquet reçoit le focus.
+ *
+ * Un dépôt d'une forge se met à jour par une PR (E18) : la sélection prépare son récapitulatif
+ * (écran 8). Avec `?pr=<id>` (« Modifier la sélection » d'un récapitulatif), la sélection de ce
+ * dépôt dans ce récapitulatif revient, et le nouveau récapitulatif garde les autres dépôts.
  */
 export function UpdatePage() {
   const { id = '' } = useParams()
   const [params] = useSearchParams()
   const from = params.get('plan')
+  const fromProposal = params.get('pr')
   const scan = useScan(id)
   const previous = usePlan(from ?? '', from !== null)
+  const proposal = useProposal(fromProposal ?? '', fromProposal !== null)
 
-  if (scan.isPending || (from !== null && previous.isPending)) return <UpdateSkeleton />
+  if (scan.isPending || (from !== null && previous.isPending) || (fromProposal !== null && proposal.isPending)) {
+    return <UpdateSkeleton />
+  }
   if (scan.isError) return <ScanError error={scan.error} retry={() => void scan.refetch()} title="Mise à jour" />
 
   const data = scan.data
   if (data.status !== 'done' || !data.report) return <NoReport scan={data} />
-  const initial = previous.data?.scan === id ? previous.data.selection : defaultSelection(data.report)
-  return <SelectStep scan={data} report={data.report} initial={initial} />
+  const proposed = proposal.data?.repositories.find((item) => item.scan === id && item.state === 'ready')
+  let initial = defaultSelection(data.report)
+  if (previous.data?.scan === id) initial = previous.data.selection
+  else if (proposed) initial = proposed.selection
+  return <SelectStep scan={data} report={data.report} initial={initial} proposal={proposal.data ?? null} />
 }
 
 /** L'analyse tourne encore, ou n'a pas abouti : pas de rapport, donc rien à choisir. */
@@ -64,14 +76,27 @@ function NoReport({ scan }: { scan: ScanDetail }) {
   )
 }
 
-function SelectStep({ scan, report, initial }: { scan: ScanDetail; report: Report; initial: Selection }) {
+function SelectStep({
+  scan,
+  report,
+  initial,
+  proposal,
+}: {
+  scan: ScanDetail
+  report: Report
+  initial: Selection
+  /** Le récapitulatif d'où l'on vient (« Modifier la sélection »), pour un dépôt. */
+  proposal: Proposal | null
+}) {
   const [selection, setSelection] = useState<Selection>(initial)
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const client = useQueryClient()
   const wide = useMediaQuery('(min-width: 1024px)')
-  const start = useStartScan()
+  const rescan = useRescan()
+  const prepare = useCreateProposal()
   const upload = scan.kind === 'upload'
+  const repository = scan.repository
   const all = useMemo(() => groups(report), [report])
   const proposed = useMemo(() => defaultSelection(report), [report])
   const sums = recap(report, selection)
@@ -94,11 +119,30 @@ function SelectStep({ scan, report, initial }: { scan: ScanDetail; report: Repor
     },
   })
 
-  if (plan.isPending) {
+  /** Un dépôt : le récapitulatif de sa PR, avec les autres dépôts du récapitulatif d'où l'on vient. */
+  function propose() {
+    if (!repository) return
+    const others: ProposedSelection[] = (proposal?.repositories ?? [])
+      .filter((item) => item.full_name.toLowerCase() !== repository.full_name.toLowerCase())
+      .map((item) => ({ repository: item.full_name, selection: item.state === 'ready' ? item.selection : null }))
+    prepare.mutate(
+      { forge: repository.forge, repositories: [...others, { repository: repository.full_name, selection }] },
+      { onSuccess: (document) => void navigate(`/pr/${document.id}`) },
+    )
+  }
+
+  if (plan.isPending || prepare.isPending) {
     return (
       <Container>
         <UpdateHeader scan={scan} step={1} />
-        <PreparingPlan />
+        {repository ? (
+          <PreparingPlan
+            label="Préparation du récapitulatif"
+            text={fr('Préparation du récapitulatif : réécriture à blanc, recherche de la PR déjà ouverte…')}
+          />
+        ) : (
+          <PreparingPlan />
+        )}
       </Container>
     )
   }
@@ -123,12 +167,19 @@ function SelectStep({ scan, report, initial }: { scan: ScanDetail; report: Repor
     )
   }
 
-  const verify = (
+  const verify = repository ? (
+    <Button variant="primary" className={cn(wide && 'w-full')} disabled={sums.chosen === 0} onClick={propose}>
+      <GitPullRequest aria-hidden="true" />
+      Préparer la PR
+      <ArrowRight aria-hidden="true" />
+    </Button>
+  ) : (
     <Button variant="primary" className={cn(wide && 'w-full')} disabled={sums.chosen === 0} onClick={() => plan.mutate()}>
       Vérifier le plan
       <ArrowRight aria-hidden="true" />
     </Button>
   )
+  const failed = repository ? prepare.error : plan.error
 
   return (
     <Container>
@@ -137,8 +188,8 @@ function SelectStep({ scan, report, initial }: { scan: ScanDetail; report: Repor
         <div className="flex min-w-0 flex-col gap-6">
           <Inconclusive
             report={report}
-            onRescan={upload ? null : () => start.mutate(rescanRequest(scan))}
-            pending={start.isPending}
+            onRescan={upload ? null : () => rescan.mutate({ scan })}
+            pending={rescan.isPending}
           />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-fg-muted">
@@ -170,9 +221,9 @@ function SelectStep({ scan, report, initial }: { scan: ScanDetail; report: Repor
               ))}
             </GroupSection>
           ))}
-          {start.error && (
+          {rescan.error && (
             <p role="alert" className="text-sm text-danger">
-              {start.error.message}
+              {rescan.error.message}
             </p>
           )}
         </div>
@@ -192,14 +243,18 @@ function SelectStep({ scan, report, initial }: { scan: ScanDetail; report: Repor
                 </AlertDescription>
               </Alert>
             )}
-            {plan.error && (
+            {failed && (
               <Alert variant="danger" role="alert">
                 <CircleX aria-hidden="true" />
-                <AlertTitle>Le plan n'a pas pu être préparé</AlertTitle>
+                <AlertTitle>
+                  {repository ? "Le récapitulatif n'a pas pu être préparé" : "Le plan n'a pas pu être préparé"}
+                </AlertTitle>
                 <AlertDescription>
-                  <p>{plan.error.message}</p>
+                  <p>{failed.message}</p>
                   <p className="text-fg-muted">
-                    {fr("Revoir la sélection ; si le dossier a changé depuis l'analyse, la relancer.")}
+                    {fr(
+                      `Revoir la sélection ; si le ${repository ? 'dépôt' : 'dossier'} a changé depuis l'analyse, la relancer.`,
+                    )}
                   </p>
                 </AlertDescription>
               </Alert>
@@ -208,7 +263,9 @@ function SelectStep({ scan, report, initial }: { scan: ScanDetail; report: Repor
             <p className="text-sm text-fg-muted">
               {upload
                 ? fr("Rien ne s'écrit sur le disque : le fichier mis à jour se télécharge à l'étape suivante.")
-                : fr("Rien n'est écrit à cette étape : le plan montre d'abord le diff.")}
+                : repository
+                  ? fr("Rien n'est poussé à cette étape : le récapitulatif montre d'abord le diff et la PR déjà ouverte.")
+                  : fr("Rien n'est écrit à cette étape : le plan montre d'abord le diff.")}
             </p>
           </Card>
         </aside>

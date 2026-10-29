@@ -65,3 +65,14 @@
 - Le nom accessible d'un lien ou d'une case dit le dépôt (« Sélectionner octo/app », « Ouvrir
   octo/app sur GitHub (nouvel onglet) ») ; la case de tête dit combien de dépôts affichés elle
   prend, et passe à l'état indéterminé.
+
+## Fait à E18
+
+- La colonne « PR » est la dernière : `#41` en chasse fixe, souligné, avec l'icône
+  `git-pull-request`, nommé « PR #41 de octo/app sur GitHub (nouvel onglet) » ; « pas de droit
+  de push » (ou « archivé ») atténué ; « — » sinon. Elle s'appellera « PR / MR » quand GitLab
+  sera là.
+- Le compteur « PR ouvertes » est le sixième de la synthèse ; il ne filtre pas le tableau.
+- La barre de sélection suit la maquette : « Préparer N PR » en principale, à droite ;
+  « Analyser ces N dépôts » en secondaire. Le nombre de mises à jour cochées par défaut reste
+  dit (« N mises à jour cochées par défaut »).

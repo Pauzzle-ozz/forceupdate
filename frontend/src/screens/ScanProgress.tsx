@@ -42,8 +42,17 @@ function steps(progress: Progress, repository: boolean): Step[] {
             : seen.has('reading')
               ? 'Aucun fichier de dépendances à télécharger'
               : 'Lecture du dépôt et de son arborescence',
-          state: seen.has('reading') || finished ? 'done' : 'running',
+          state: seen.has('reading') || seen.has('cloning') || finished ? 'done' : 'running',
         },
+        ...(seen.has('cloning')
+          ? [
+              {
+                key: 'cloning',
+                label: "Clone superficiel du dépôt (arborescence trop grande pour l'API)",
+                state: (seen.has('reading') || finished ? 'done' : 'running') as State,
+              },
+            ]
+          : []),
       ]
     : []
   return [
@@ -87,6 +96,7 @@ function announcement(progress: Progress, repository: boolean): string {
   if (seen.has('vulnerabilities_checked')) return 'Failles cherchées. Vérification des paquets en cours.'
   if (seen.has('checking')) return 'Vérification des paquets et recherche des failles en cours.'
   if (progress.projects !== null) return `${count(progress.projects, 'projet')} ${progress.projects >= 2 ? 'trouvés' : 'trouvé'}.`
+  if (repository && seen.has('cloning') && !seen.has('reading')) return 'Clone du dépôt.'
   if (repository && !seen.has('reading')) return 'Téléchargement des fichiers de dépendances.'
   return 'Lecture des fichiers.'
 }

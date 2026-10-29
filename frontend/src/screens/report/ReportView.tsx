@@ -1,4 +1,16 @@
-import { CircleCheck, CircleHelp, FolderGit2, FolderOpen, Info, ListChecks, RefreshCw, TriangleAlert, Upload, WifiOff } from 'lucide-react'
+import {
+  CircleCheck,
+  CircleHelp,
+  FolderGit2,
+  FolderOpen,
+  GitPullRequest,
+  Info,
+  ListChecks,
+  RefreshCw,
+  TriangleAlert,
+  Upload,
+  WifiOff,
+} from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import type { FindingKind, Report, ScanDetail } from '@/api/types'
@@ -116,10 +128,10 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
           Relancer l'analyse
         </Button>
       )}
-      {updates && !repository && (
+      {updates && (
         <Link to={`/analyses/${scan.id}/mise-a-jour`} className={buttonVariants({ variant: 'primary' })}>
-          <ListChecks aria-hidden="true" />
-          Mettre à jour
+          {repository ? <GitPullRequest aria-hidden="true" /> : <ListChecks aria-hidden="true" />}
+          {repository ? 'Préparer la PR' : 'Mettre à jour'}
           <Badge variant="primary" className="ml-1">
             {selected === 0 ? 'aucune cochée' : `${selected} ${selected >= 2 ? 'cochées' : 'cochée'}`}
           </Badge>
@@ -143,7 +155,10 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
         </h1>
         {repository ? (
           <p className="flex flex-wrap items-center gap-x-2 text-sm text-fg-muted">
-            <span>dépôt {FORGE_NAME[repository.forge]}, lu par l'API sans le cloner</span>
+            <span>
+              dépôt {FORGE_NAME[repository.forge]},{' '}
+              {repository.cloned ? "cloné : l'API n'en rendait pas toute l'arborescence" : "lu par l'API sans le cloner"}
+            </span>
             {repository.commit && (
               <>
                 <span aria-hidden="true">·</span>
@@ -302,7 +317,7 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
         </>
       )}
 
-      <DependencyDetail rows={opened} report={report} scanId={repository ? null : scan.id} onClose={closeDetail} />
+      <DependencyDetail rows={opened} report={report} scanId={scan.id} onClose={closeDetail} />
     </Container>
   )
 }

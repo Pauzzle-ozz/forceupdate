@@ -485,6 +485,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Proposal
+         * @description Le récapitulatif des PR de quelques dépôts du compte connecté à ``forge`` : pour
+         *     chacun, la sélection (donnée, ou celle par défaut de sa dernière analyse) préparée sur les
+         *     fichiers de l'analyse (diffs, lockfiles, commandes), la PR déjà ouverte, ou pourquoi il est
+         *     sauté. Rien n'est cloné ni poussé.
+         */
+        post: operations["create_proposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/proposals/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Proposal
+         * @description Le récapitulatif ; pendant et après l'envoi, où en est chaque dépôt, et sa PR.
+         */
+        get: operations["get_proposal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/proposals/{proposal_id}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Proposal
+         * @description Envoie les dépôts cochés du récapitulatif, en tâche de fond, un à la fois : clone,
+         *     mise à jour, commit, push de ``forceupdate/dependencies`` (jamais la branche par défaut),
+         *     PR ouverte ou mise à jour. Se suit par ``GET /api/proposals/{id}``. Ne s'annule pas.
+         */
+        post: operations["send_proposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -614,6 +679,22 @@ export interface components {
          * @enum {string}
          */
         BatchStatus: "running" | "done" | "cancelled";
+        /**
+         * ChangeRequest
+         * @description Une pull request (merge request sur GitLab).
+         */
+        ChangeRequest: {
+            /** Number */
+            number: number;
+            /** Url */
+            url: string;
+            /** Title */
+            title: string;
+            /** Branch */
+            branch: string;
+            /** Base */
+            base: string;
+        };
         /**
          * Chosen
          * @description Une option de mise à jour, désignée dans le rapport de l'analyse.
@@ -790,7 +871,7 @@ export interface components {
          *     arrivent.
          * @enum {string}
          */
-        EventKind: "downloading" | "reading" | "projects_found" | "checking" | "package_checked" | "vulnerabilities_checked" | "written" | "regenerating" | "finished";
+        EventKind: "downloading" | "cloning" | "reading" | "projects_found" | "checking" | "package_checked" | "vulnerabilities_checked" | "written" | "regenerating" | "finished";
         /**
          * FileDiff
          * @description Un fichier à réécrire, et son diff unifié.
@@ -1078,6 +1159,158 @@ export interface components {
             notices: components["schemas"]["Notice"][];
         };
         /**
+         * Proposal
+         * @description Un récapitulatif de PR (écran 8) : préparé sans rien pousser, puis envoyé dépôt par
+         *     dépôt, une fois validé.
+         */
+        Proposal: {
+            /** Id */
+            id: string;
+            forge: components["schemas"]["ForgeKind"];
+            /** Host */
+            host: string;
+            status: components["schemas"]["ProposalStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Started At */
+            started_at: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Repositories */
+            repositories: components["schemas"]["ProposedRepository"][];
+            /** Ready */
+            ready: number;
+            /** Existing */
+            existing: number;
+            /** Error */
+            error: string | null;
+        };
+        /**
+         * ProposalRequest
+         * @description Des dépôts d'un compte connecté pour lesquels préparer une PR chacun.
+         */
+        ProposalRequest: {
+            forge: components["schemas"]["ForgeKind"];
+            /** Repositories */
+            repositories: components["schemas"]["ProposedSelection"][];
+        };
+        /**
+         * ProposalStatus
+         * @description Où en est un récapitulatif de PR.
+         * @enum {string}
+         */
+        ProposalStatus: "planned" | "running" | "done";
+        /**
+         * ProposedRepository
+         * @description Un dépôt d'un récapitulatif : ce que sa PR fera, puis ce qu'elle a fait.
+         */
+        ProposedRepository: {
+            forge: components["schemas"]["ForgeKind"];
+            /** Host */
+            host: string;
+            /** Full Name */
+            full_name: string;
+            /** Url */
+            url: string;
+            /** Default Branch */
+            default_branch: string | null;
+            /** Branch */
+            branch: string;
+            /** Scan */
+            scan: string | null;
+            /** Commit */
+            commit: string | null;
+            state: components["schemas"]["ProposedState"];
+            /** Reason */
+            reason: string | null;
+            /** Inconclusive */
+            inconclusive: boolean;
+            /** Checked */
+            checked: boolean;
+            request: components["schemas"]["ChangeRequest"] | null;
+            /** Selection */
+            selection: {
+                [key: string]: string;
+            };
+            /** Applied */
+            applied: components["schemas"]["ProposedUpdate"][];
+            /** Skipped */
+            skipped: components["schemas"]["ProposedSkip"][];
+            /** Files */
+            files: components["schemas"]["FileDiff"][];
+            /** Lockfiles */
+            lockfiles: components["schemas"]["LockJob"][];
+            step: components["schemas"]["Step"] | null;
+            progress: components["schemas"]["Event"] | null;
+            /** Pushed */
+            pushed: boolean;
+            /** Base */
+            base: string | null;
+            /** Results */
+            results: components["schemas"]["LockResult"][];
+            /** Committed */
+            committed: string[];
+            /** Error */
+            error: string | null;
+        };
+        /**
+         * ProposedSelection
+         * @description Un dépôt à mettre dans un récapitulatif de PR.
+         */
+        ProposedSelection: {
+            /** Repository */
+            repository: string;
+            /** Selection */
+            selection?: {
+                [key: string]: string;
+            } | null;
+        };
+        /**
+         * ProposedSkip
+         * @description Une mise à jour choisie qu'une PR ne portera pas, et pourquoi.
+         */
+        ProposedSkip: {
+            /** Update */
+            update: string;
+            /** Name */
+            name: string;
+            /** Version */
+            version: string;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * ProposedState
+         * @description Où en est un dépôt d'un récapitulatif.
+         * @enum {string}
+         */
+        ProposedState: "ready" | "skipped" | "waiting" | "sending" | "opened" | "updated" | "nothing" | "failed";
+        /**
+         * ProposedUpdate
+         * @description Une mise à jour qu'une PR porte, avec ce qu'il faut pour la dire.
+         */
+        ProposedUpdate: {
+            /** Update */
+            update: string;
+            /** Name */
+            name: string;
+            ecosystem: components["schemas"]["Ecosystem"];
+            /** Project */
+            project: string;
+            /** Direct */
+            direct: boolean;
+            /** Current */
+            current: string | null;
+            /** Version */
+            version: string;
+            gap: components["schemas"]["Gap"] | null;
+            /** Fixes */
+            fixes: string[];
+        };
+        /**
          * RateLimit
          * @description Les requêtes d'API restantes, d'après la dernière réponse de la forge.
          */
@@ -1210,6 +1443,8 @@ export interface components {
             commit: string | null;
             /** Truncated */
             truncated: boolean;
+            /** Cloned */
+            cloned: boolean;
         };
         /**
          * RepositoryRequest
@@ -1278,6 +1513,7 @@ export interface components {
             reason: string | null;
             counts: components["schemas"]["RepositoryCounts"] | null;
             scan: components["schemas"]["ScanSummary"] | null;
+            request: components["schemas"]["ChangeRequest"] | null;
         };
         /**
          * RepositoryState
@@ -1330,6 +1566,8 @@ export interface components {
             severities: {
                 [key: string]: number;
             };
+            /** Open Requests */
+            open_requests: number;
         };
         /**
          * Restriction
@@ -1476,6 +1714,14 @@ export interface components {
          */
         Scope: "runtime" | "dev" | "optional" | "peer" | "build";
         /**
+         * SendRequest
+         * @description Les dépôts d'un récapitulatif à envoyer : rien ne part sans cette validation.
+         */
+        SendRequest: {
+            /** Repositories */
+            repositories: string[];
+        };
+        /**
          * Severity
          * @description Gravité d'un constat, du plus grave au moins grave.
          *
@@ -1501,6 +1747,12 @@ export interface components {
          * @enum {string}
          */
         SourceKind: "folder" | "file" | "upload" | "repository";
+        /**
+         * Step
+         * @description Où en est l'envoi d'un dépôt.
+         * @enum {string}
+         */
+        Step: "cloning" | "updating" | "pushing" | "requesting";
         /**
          * SummaryDocument
          * @description Le résumé, avec ``to_update`` (une propriété de ``Summary``).
@@ -3378,6 +3630,222 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    create_proposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Proposal"];
+                };
+            };
+            /** @description Requête invalide */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Introuvable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Impossible dans l'état actuel */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_proposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Proposal"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Introuvable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_proposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Proposal"];
+                };
+            };
+            /** @description Requête invalide */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Introuvable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Impossible dans l'état actuel */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

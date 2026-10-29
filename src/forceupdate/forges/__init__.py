@@ -3,6 +3,8 @@
 - ``base.py`` : l'interface ``Forge`` et ses types, la seule que connaît le reste de l'outil ;
 - ``github.py`` : le client REST de GitHub, et la connexion d'un compte (OAuth, device flow,
   token collé, ``gh``) ;
+- ``git.py`` : git, pour cloner un dépôt et y pousser une branche, le token passé par un
+  credential helper éphémère (E18) ;
 - ``accounts.py`` : les comptes connectés, leurs tokens dans le trousseau du système.
 
 ``FORGES`` dit lesquelles existent et lesquelles se connectent déjà ; ``client`` rend la forge

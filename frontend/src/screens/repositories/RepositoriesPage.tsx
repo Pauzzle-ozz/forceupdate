@@ -4,6 +4,7 @@ import {
   CircleStop,
   CircleX,
   FolderGit2,
+  GitPullRequest,
   KeyRound,
   ListChecks,
   LoaderCircle,
@@ -19,7 +20,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useId, useMemo, useState, type FormEvent } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { cn } from 'cn'
 import type { Access, RepositoryAccount, RepositoryBatch, RepositoryList as List, RepositoryRow } from '@/api/types'
 import { Blade } from '@/components/Blade'
@@ -35,6 +36,7 @@ import { analyzing, useCancelBatch, useReloadRepositories, useRepositories, useS
 import { REPOSITORY_OPTIONS, useScanRepository } from '@/hooks/useScanActions'
 import { useOnline } from '@/hooks/useStatus'
 import { count, formatDateTime, formatNumber, formatRelative, formatTime, fr } from '@/lib/format'
+import { proposalPath } from '@/lib/proposals'
 import {
   DEFAULT_REPOSITORY_SORT,
   NO_REPOSITORY_FILTERS,
@@ -148,6 +150,7 @@ function NoAccount() {
 
 function Repositories({ data }: { data: List }) {
   const online = useOnline()
+  const navigate = useNavigate()
   const reload = useReloadRepositories()
   const start = useStartBatch()
   const cancel = useCancelBatch()
@@ -166,6 +169,12 @@ function Repositories({ data }: { data: List }) {
   function analyze(rows: RepositoryRow[]) {
     for (const [forge, repositories] of byForge(rows)) start.mutate({ forge, repositories, ...REPOSITORY_OPTIONS })
     setSelected(new Set())
+  }
+
+  /** L'écran 8, pour les dépôts sélectionnés (d'une seule forge à la fois). */
+  function propose(rows: RepositoryRow[]) {
+    const [first] = byForge(rows)
+    if (first) void navigate(proposalPath(first[0], first[1]))
   }
 
   function select(keys: string[], checked: boolean) {
@@ -340,6 +349,8 @@ function Repositories({ data }: { data: List }) {
             selected={selected}
             onSelect={select}
             onAnalyze={analyze}
+            onPropose={propose}
+            proposeBlocked={online ? null : 'Hors ligne : les analyses et les PR attendront le réseau.'}
             blocked={blocked}
             pending={start.isPending}
           />
@@ -489,6 +500,12 @@ function Synthesis({ data, state, onState }: { data: List; state: StateFilter; o
           sense={synthesis.inconclusive > 0 ? 'inconclusive' : null}
           pressed={state === 'inconclusive'}
           onPress={() => onState('inconclusive')}
+        />
+        <Stat
+          icon={GitPullRequest}
+          label="PR ouvertes"
+          value={synthesis.open_requests}
+          detail={synthesis.open_requests > 0 ? 'par forceupdate' : null}
         />
       </div>
     </Section>

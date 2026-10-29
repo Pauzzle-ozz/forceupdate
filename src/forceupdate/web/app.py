@@ -28,15 +28,26 @@ from forceupdate.forges.accounts import Accounts
 from forceupdate.web import security
 from forceupdate.web.connections import Connections
 from forceupdate.web.jobs import Jobs, Recent
+from forceupdate.web.proposals import Proposals
 from forceupdate.web.repositories import Repositories
-from forceupdate.web.routes import accounts, files, fs, oauth, repositories, scans, updates
+from forceupdate.web.routes import (
+    accounts,
+    files,
+    fs,
+    oauth,
+    proposals,
+    repositories,
+    scans,
+    updates,
+)
 
 STATIC_DIR = Path(__file__).parent / "static"
 """Le front construit (``npm run build``, E14)."""
 
 DESCRIPTION = (
     "L'API du serveur local de forceupdate : analyser un dossier, un fichier ou les dépôts des "
-    "comptes connectés, préparer et appliquer les mises à jour. Chaque requête porte le jeton "
+    "comptes connectés, préparer et appliquer les mises à jour, ouvrir une PR par dépôt. "
+    "Chaque requête porte le jeton "
     "de session (cookie posé par l'adresse que donne « forceupdate ui », ou "
     "« Authorization: Bearer <jeton> »)."
 )
@@ -68,6 +79,7 @@ def create_app(settings: Settings) -> FastAPI:
             accounts=Accounts(settings.state_dir / "accounts.json"), port=settings.port
         )
         app.state.repositories = Repositories(jobs=jobs, connections=app.state.connections)
+        app.state.proposals = Proposals(jobs=jobs, repositories=app.state.repositories)
         try:
             yield
         finally:
@@ -85,7 +97,7 @@ def create_app(settings: Settings) -> FastAPI:
         # operationId : le nom de la fonction (start_scan…), pour le client généré du front.
         generate_unique_id_function=lambda route: route.name,
     )
-    for module in (fs, scans, updates, files, accounts, repositories, oauth):
+    for module in (fs, scans, updates, files, accounts, repositories, proposals, oauth):
         app.include_router(module.router)
     app.add_middleware(
         security.Guard, token=settings.token, port=settings.port, returns=oauth.RETURN_PATHS

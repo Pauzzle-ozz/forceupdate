@@ -134,6 +134,7 @@ export function progressOf(scan: ScanSummary | null): Progress {
   if (event.kind === 'downloading') {
     return { text: fr(`téléchargement : ${event.done} sur ${count(event.total, 'fichier')}`), value: event.done, max: event.total }
   }
+  if (event.kind === 'cloning') return { text: 'clone superficiel (arborescence tronquée)' }
   if (['checking', 'package_checked', 'vulnerabilities_checked'].includes(event.kind) && event.total > 0) {
     return { text: `${event.done} sur ${count(event.total, 'vérification')}`, value: event.done, max: event.total }
   }

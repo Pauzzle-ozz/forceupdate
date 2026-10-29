@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "forceupdate",
-    "description": "L'API du serveur local de forceupdate : analyser un dossier, un fichier ou les dépôts des comptes connectés, préparer et appliquer les mises à jour. Chaque requête porte le jeton de session (cookie posé par l'adresse que donne « forceupdate ui », ou « Authorization: Bearer <jeton> »).",
+    "description": "L'API du serveur local de forceupdate : analyser un dossier, un fichier ou les dépôts des comptes connectés, préparer et appliquer les mises à jour, ouvrir une PR par dépôt. Chaque requête porte le jeton de session (cookie posé par l'adresse que donne « forceupdate ui », ou « Authorization: Bearer <jeton> »).",
     "version": "0.1.0"
   },
   "paths": {
@@ -2099,6 +2099,274 @@
           }
         }
       }
+    },
+    "/api/proposals": {
+      "post": {
+        "tags": [
+          "PR"
+        ],
+        "summary": "Create Proposal",
+        "description": "Le récapitulatif des PR de quelques dépôts du compte connecté à ``forge`` : pour\nchacun, la sélection (donnée, ou celle par défaut de sa dernière analyse) préparée sur les\nfichiers de l'analyse (diffs, lockfiles, commandes), la PR déjà ouverte, ou pourquoi il est\nsauté. Rien n'est cloné ni poussé.",
+        "operationId": "create_proposal",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Proposal"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Impossible dans l'état actuel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/proposals/{proposal_id}": {
+      "get": {
+        "tags": [
+          "PR"
+        ],
+        "summary": "Get Proposal",
+        "description": "Le récapitulatif ; pendant et après l'envoi, où en est chaque dépôt, et sa PR.",
+        "operationId": "get_proposal",
+        "parameters": [
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Proposal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Proposal"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/proposals/{proposal_id}/send": {
+      "post": {
+        "tags": [
+          "PR"
+        ],
+        "summary": "Send Proposal",
+        "description": "Envoie les dépôts cochés du récapitulatif, en tâche de fond, un à la fois : clone,\nmise à jour, commit, push de ``forceupdate/dependencies`` (jamais la branche par défaut),\nPR ouverte ou mise à jour. Se suit par ``GET /api/proposals/{id}``. Ne s'annule pas.",
+        "operationId": "send_proposal",
+        "parameters": [
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Proposal Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Proposal"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Impossible dans l'état actuel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2414,6 +2682,40 @@
           "cancelled"
         ],
         "title": "BatchStatus"
+      },
+      "ChangeRequest": {
+        "properties": {
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "branch": {
+            "type": "string",
+            "title": "Branch"
+          },
+          "base": {
+            "type": "string",
+            "title": "Base"
+          }
+        },
+        "type": "object",
+        "required": [
+          "number",
+          "url",
+          "title",
+          "branch",
+          "base"
+        ],
+        "title": "ChangeRequest",
+        "description": "Une pull request (merge request sur GitLab)."
       },
       "Chosen": {
         "properties": {
@@ -2856,6 +3158,7 @@
         "type": "string",
         "enum": [
           "downloading",
+          "cloning",
           "reading",
           "projects_found",
           "checking",
@@ -3629,6 +3932,480 @@
         "title": "Project",
         "description": "Un projet : un dossier qui contient au moins un manifeste ou un lockfile.\n\nUn monorepo en donne plusieurs (``backend/`` en Python, ``frontend/`` en npm)."
       },
+      "Proposal": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "forge": {
+            "$ref": "#/components/schemas/ForgeKind"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProposalStatus"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "repositories": {
+            "items": {
+              "$ref": "#/components/schemas/ProposedRepository"
+            },
+            "type": "array",
+            "title": "Repositories"
+          },
+          "ready": {
+            "type": "integer",
+            "title": "Ready"
+          },
+          "existing": {
+            "type": "integer",
+            "title": "Existing"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "forge",
+          "host",
+          "status",
+          "created_at",
+          "started_at",
+          "finished_at",
+          "repositories",
+          "ready",
+          "existing",
+          "error"
+        ],
+        "title": "Proposal",
+        "description": "Un récapitulatif de PR (écran 8) : préparé sans rien pousser, puis envoyé dépôt par\ndépôt, une fois validé."
+      },
+      "ProposalRequest": {
+        "properties": {
+          "forge": {
+            "$ref": "#/components/schemas/ForgeKind"
+          },
+          "repositories": {
+            "items": {
+              "$ref": "#/components/schemas/ProposedSelection"
+            },
+            "type": "array",
+            "title": "Repositories"
+          }
+        },
+        "type": "object",
+        "required": [
+          "forge",
+          "repositories"
+        ],
+        "title": "ProposalRequest",
+        "description": "Des dépôts d'un compte connecté pour lesquels préparer une PR chacun."
+      },
+      "ProposalStatus": {
+        "type": "string",
+        "enum": [
+          "planned",
+          "running",
+          "done"
+        ],
+        "title": "ProposalStatus",
+        "description": "Où en est un récapitulatif de PR."
+      },
+      "ProposedRepository": {
+        "properties": {
+          "forge": {
+            "$ref": "#/components/schemas/ForgeKind"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "default_branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Branch"
+          },
+          "branch": {
+            "type": "string",
+            "title": "Branch"
+          },
+          "scan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan"
+          },
+          "commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ProposedState"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "inconclusive": {
+            "type": "boolean",
+            "title": "Inconclusive"
+          },
+          "checked": {
+            "type": "boolean",
+            "title": "Checked"
+          },
+          "request": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChangeRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selection": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Selection"
+          },
+          "applied": {
+            "items": {
+              "$ref": "#/components/schemas/ProposedUpdate"
+            },
+            "type": "array",
+            "title": "Applied"
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/ProposedSkip"
+            },
+            "type": "array",
+            "title": "Skipped"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/FileDiff"
+            },
+            "type": "array",
+            "title": "Files"
+          },
+          "lockfiles": {
+            "items": {
+              "$ref": "#/components/schemas/LockJob"
+            },
+            "type": "array",
+            "title": "Lockfiles"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Step"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Event"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pushed": {
+            "type": "boolean",
+            "title": "Pushed"
+          },
+          "base": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/LockResult"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "committed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Committed"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "forge",
+          "host",
+          "full_name",
+          "url",
+          "default_branch",
+          "branch",
+          "scan",
+          "commit",
+          "state",
+          "reason",
+          "inconclusive",
+          "checked",
+          "request",
+          "selection",
+          "applied",
+          "skipped",
+          "files",
+          "lockfiles",
+          "step",
+          "progress",
+          "pushed",
+          "base",
+          "results",
+          "committed",
+          "error"
+        ],
+        "title": "ProposedRepository",
+        "description": "Un dépôt d'un récapitulatif : ce que sa PR fera, puis ce qu'elle a fait."
+      },
+      "ProposedSelection": {
+        "properties": {
+          "repository": {
+            "type": "string",
+            "title": "Repository"
+          },
+          "selection": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repository"
+        ],
+        "title": "ProposedSelection",
+        "description": "Un dépôt à mettre dans un récapitulatif de PR."
+      },
+      "ProposedSkip": {
+        "properties": {
+          "update": {
+            "type": "string",
+            "title": "Update"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "update",
+          "name",
+          "version",
+          "reason"
+        ],
+        "title": "ProposedSkip",
+        "description": "Une mise à jour choisie qu'une PR ne portera pas, et pourquoi."
+      },
+      "ProposedState": {
+        "type": "string",
+        "enum": [
+          "ready",
+          "skipped",
+          "waiting",
+          "sending",
+          "opened",
+          "updated",
+          "nothing",
+          "failed"
+        ],
+        "title": "ProposedState",
+        "description": "Où en est un dépôt d'un récapitulatif."
+      },
+      "ProposedUpdate": {
+        "properties": {
+          "update": {
+            "type": "string",
+            "title": "Update"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "ecosystem": {
+            "$ref": "#/components/schemas/Ecosystem"
+          },
+          "project": {
+            "type": "string",
+            "title": "Project"
+          },
+          "direct": {
+            "type": "boolean",
+            "title": "Direct"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "gap": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Gap"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fixes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fixes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "update",
+          "name",
+          "ecosystem",
+          "project",
+          "direct",
+          "current",
+          "version",
+          "gap",
+          "fixes"
+        ],
+        "title": "ProposedUpdate",
+        "description": "Une mise à jour qu'une PR porte, avec ce qu'il faut pour la dire."
+      },
       "RateLimit": {
         "properties": {
           "limit": {
@@ -3985,6 +4762,10 @@
           "truncated": {
             "type": "boolean",
             "title": "Truncated"
+          },
+          "cloned": {
+            "type": "boolean",
+            "title": "Cloned"
           }
         },
         "type": "object",
@@ -3994,7 +4775,8 @@
           "full_name",
           "url",
           "commit",
-          "truncated"
+          "truncated",
+          "cloned"
         ],
         "title": "RepositoryRef",
         "description": "Le dépôt d'une analyse de dépôt."
@@ -4145,6 +4927,16 @@
                 "type": "null"
               }
             ]
+          },
+          "request": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChangeRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -4167,7 +4959,8 @@
           "state",
           "reason",
           "counts",
-          "scan"
+          "scan",
+          "request"
         ],
         "title": "RepositoryRow",
         "description": "Un dépôt d'un compte connecté, ses drapeaux, et sa dernière analyse."
@@ -4271,6 +5064,10 @@
             },
             "type": "object",
             "title": "Severities"
+          },
+          "open_requests": {
+            "type": "integer",
+            "title": "Open Requests"
           }
         },
         "type": "object",
@@ -4292,7 +5089,8 @@
           "critical",
           "vulnerable_repositories",
           "findings",
-          "severities"
+          "severities",
+          "open_requests"
         ],
         "title": "RepositorySynthesis",
         "description": "La synthèse de tous les dépôts listés, calculée par le serveur."
@@ -4651,6 +5449,23 @@
         "title": "Scope",
         "description": "À quoi sert une dépendance dans son projet."
       },
+      "SendRequest": {
+        "properties": {
+          "repositories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Repositories"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repositories"
+        ],
+        "title": "SendRequest",
+        "description": "Les dépôts d'un récapitulatif à envoyer : rien ne part sans cette validation."
+      },
       "Severity": {
         "type": "string",
         "enum": [
@@ -4697,6 +5512,17 @@
         ],
         "title": "SourceKind",
         "description": "Ce qui est analysé."
+      },
+      "Step": {
+        "type": "string",
+        "enum": [
+          "cloning",
+          "updating",
+          "pushing",
+          "requesting"
+        ],
+        "title": "Step",
+        "description": "Où en est l'envoi d'un dépôt."
       },
       "SummaryDocument": {
         "properties": {
