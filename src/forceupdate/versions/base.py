@@ -101,6 +101,22 @@ class VersionScheme(ABC, Generic[V]):
         """Vrai pour une pré-version : ``1.0.0-beta`` (npm), ``2.0.0rc1`` ou ``1.0.dev1`` (PyPI)."""
         return self._is_pre(self.parse(version))
 
+    def written(self, version: str) -> str:
+        """``version`` telle que l'écrit le manifeste : Go remet le ``v`` que n'ont pas les
+        versions des avis d'OSV (``0.3.8`` → ``v0.3.8``). Telle quelle ailleurs."""
+        return version
+
+    def unlisted(self, version: str) -> bool:
+        """Vrai pour une version que le registre ne liste jamais, sans qu'elle soit dépubliée :
+        une pseudo-version Go (un commit). Faux pour les autres écosystèmes."""
+        return False
+
+    def moved(self, name: str, version: str) -> str | None:
+        """Le nom sous lequel ``version`` de ``name`` est publiée, quand ce n'est pas ``name`` :
+        une autre majeure d'un module Go (``…/v2``), qui ne s'obtient pas en réécrivant la
+        version. ``None`` sinon, et toujours pour les autres écosystèmes."""
+        return None
+
     def sort_key(self, version: str) -> tuple[int, Any]:
         """Une clé de tri qui ne lève jamais : les versions lisibles dans leur ordre, puis
         les autres (une référence git…) dans l'ordre du texte."""

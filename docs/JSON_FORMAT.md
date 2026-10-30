@@ -82,13 +82,14 @@ deux extras) donne deux dépendances, chacune avec son emplacement.
 | `name` | chaîne | nom tel que le registre le connaît (normalisé selon PEP 503 pour PyPI) |
 | `constraint` | chaîne | la contrainte telle qu'écrite (`^4.18.0`, `>=2.0,<3`) ; `""` s'il n'y en a pas |
 | `resolved_constraint` | chaîne ou `null` | la plage que désigne `constraint` quand elle renvoie ailleurs : pour `catalog:` (pnpm), celle de `pnpm-workspace.yaml` ; pour `workspace = true` (Cargo), celle de `[workspace.dependencies]` du `Cargo.toml` de la racine du workspace |
-| `installed` | chaîne ou `null` | version installée, lue dans le lockfile |
-| `lockfile` | chemin ou `null` | le fichier où `installed` a été lu : le lockfile à régénérer pour la mettre à jour (ou un fichier `-c` de pip) ; `null` sans version installée. Pour une indirecte, c'est `file` |
-| `direct` | booléen | `false` pour une dépendance qui ne vient que du lockfile |
+| `installed` | chaîne ou `null` | version installée, lue dans le lockfile (pour Go, dans `go.mod` : il donne la version choisie de chaque module) |
+| `lockfile` | chemin ou `null` | le fichier où `installed` a été lu : le lockfile à régénérer pour la mettre à jour (ou un fichier `-c` de pip) ; `null` sans version installée. Pour une indirecte, c'est `file` ; pour Go, le `go.sum` du module (même absent : `go mod tidy` le refait) |
+| `direct` | booléen | `false` pour une dépendance qui ne vient que du lockfile, ou une indirecte Go (`// indirect` dans `go.mod`) |
 | `scope` | [scope](#scopes) | |
-| `file` | chemin | le fichier qui la déclare (le lockfile pour une indirecte) |
+| `file` | chemin | le fichier qui la déclare (le lockfile pour une indirecte ; `go.mod` pour une indirecte Go, ou le `go.work` dont un `replace` la fixe) |
 | `location` | [emplacement](#emplacement) ou `null` | où est écrite `constraint` dans `file` ; `null` si on ne sait pas la réécrire |
 | `unverifiable_reason` | chaîne ou `null` | pourquoi on ne peut pas la vérifier : `dépendance git`, `chemin local`, `téléchargée depuis une URL`, `membre du workspace`… |
+| `excluded` | liste de chaînes | les versions que le projet écarte (`exclude` de `go.mod`) : jamais proposées ; vide ailleurs |
 
 ### Emplacement
 
@@ -347,7 +348,8 @@ chaque constat, abrégée ici) :
           "scope": "runtime",
           "file": "api/requirements.txt",
           "location": {"line": 1, "column": 8, "end_column": 16},
-          "unverifiable_reason": null
+          "unverifiable_reason": null,
+          "excluded": []
         }
       ],
       "overrides": [],
@@ -626,7 +628,7 @@ comme avant.
 | Champ | Type | Sens |
 |---|---|---|
 | `lockfile` | chemin | |
-| `kind` | chaîne | `npm`, `pnpm`, `yarn1`, `yarn`, `uv`, `poetry`, `pdm`, `pipenv`, `pip-compile`, `uv-pip-compile`, `cargo` |
+| `kind` | chaîne | `npm`, `pnpm`, `yarn1`, `yarn`, `uv`, `poetry`, `pdm`, `pipenv`, `pip-compile`, `uv-pip-compile`, `cargo`, `go` |
 | `tool` | chaîne | le nom de l'outil, pour le dire (`uv pip compile`) |
 | `program` | chaîne | le programme à installer (`uv`) |
 | `available` | booléen | l'outil est installé ; sinon le lockfile n'est pas régénéré, et `command` est à lancer à la main |
@@ -646,7 +648,7 @@ comme avant.
 | `error` | chaîne ou `null` | `failed` : ce que l'outil a dit ; `undone` : quel lockfile a échoué |
 | `restored` | liste de chemins | les fichiers remis comme avant |
 | `installed` | liste | `regenerated` : pour chaque mise à jour, `{"update", "version", "versions", "reach", "held_by"}`, les versions installées relues ; `reach` vaut `exact`, `above` (l'outil a pris la plus haute permise), `below` (retenue par `held_by`, `["debug 4.3.1"]`) ou `unknown` |
-| `changed` | liste de chaînes | les autres paquets que le lockfile a changés (`h11 0.16.0 → 0.14.0`) |
+| `changed` | liste de chaînes | les autres paquets que le lockfile a changés (`h11 0.16.0 → 0.14.0`) ; pour Go, relus dans `go.mod` |
 | `warnings` | liste de chaînes | ce qui s'est passé en route |
 
 ## Progression (SSE)

@@ -1,0 +1,9 @@
+go 1.21
+
+use (
+	./app
+	./lib
+)
+
+// x/text est figée pour tout le workspace.
+replace golang.org/x/text => golang.org/x/text v0.3.8

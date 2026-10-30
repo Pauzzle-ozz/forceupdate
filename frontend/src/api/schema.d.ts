@@ -725,7 +725,8 @@ export interface components {
          * @description Une dépendance d'un projet.
          *
          *     Une directe vient du manifeste (``package.json``, ``pyproject.toml``…). Une
-         *     transitive vient seulement du lockfile : ``direct=False``, sans ``location``.
+         *     transitive vient seulement du lockfile : ``direct=False``, sans ``location``. Sauf pour Go :
+         *     ``go.mod`` écrit aussi les indirectes (``// indirect``), avec leur emplacement.
          */
         Dependency: {
             ecosystem: components["schemas"]["Ecosystem"];
@@ -754,6 +755,11 @@ export interface components {
             location: components["schemas"]["Location"] | null;
             /** Unverifiable Reason */
             unverifiable_reason: string | null;
+            /**
+             * Excluded
+             * @default []
+             */
+            excluded: string[];
         };
         /**
          * Disconnection
@@ -1075,7 +1081,7 @@ export interface components {
          * @description Le format d'un lockfile, donc l'outil qui le régénère.
          * @enum {string}
          */
-        LockKind: "npm" | "pnpm" | "yarn1" | "yarn" | "uv" | "poetry" | "pdm" | "pipenv" | "pip-compile" | "uv-pip-compile" | "cargo";
+        LockKind: "npm" | "pnpm" | "yarn1" | "yarn" | "uv" | "poetry" | "pdm" | "pipenv" | "pip-compile" | "uv-pip-compile" | "cargo" | "go";
         /**
          * LockResult
          * @description Ce qu'il est advenu d'un lockfile (``lockfiles.Regenerated``).

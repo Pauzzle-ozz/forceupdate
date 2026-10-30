@@ -86,8 +86,10 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   │                         trousseau, keyring, en morceaux s'ils sont longs, un compte par forge et par
 │   │                         hôte, renouvellement)
 │   ├── parsers/            ← un module par écosystème : python.py, npm.py, rust.py (Cargo.toml, Cargo.lock,
-│   │                         workspaces) ; lockfiles.py (lien manifeste ↔ lockfile), *_spans.py (positions) ;
-│   │                         versions/ et registries/ de même (cargo.py, crates.py : l'index « sparse »)
+│   │                         workspaces), go.py (go.mod et go.work : un lexer comme celui de modfile) ;
+│   │                         lockfiles.py (lien manifeste ↔ lockfile), *_spans.py (positions) ;
+│   │                         versions/ et registries/ de même (cargo.py, crates.py : l'index « sparse » ;
+│   │                         go.py, goproxy.py : proxy.golang.org, plusieurs requêtes par module)
 │   ├── sources/            ← d'où vient le code : local.py (dossier, fichier), forge.py (un dépôt lu par
 │   │                         l'API : seuls les fichiers que lisent les parseurs sont téléchargés ; un
 │   │                         clone superficiel si l'arborescence est tronquée)
@@ -162,7 +164,8 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   `fake_gitlab.FakeGitLab` (`gitlab.GIT_URL` vers `remotes_url(…)` pour git), Bitbucket avec
   `fake_bitbucket.FakeBitbucket` (`bitbucket.GIT_URL` de même). Le trousseau des tests refuse,
   comme Windows, un secret de plus de 1 280 caractères. La fixture `recorded` simule PyPI, npm,
-  crates.io et OSV avec les réponses de `tests/fixtures/` ; `fake_tools("npm", "uv")` simule les
+  crates.io, le proxy Go et OSV avec les réponses de `tests/fixtures/` (pour Go, toutes celles
+  d'un module dans un fichier : `goproxy/<module>.json`) ; `fake_tools("npm", "uv")` simule les
   outils (`FakeTools`) ; `keychain` est le trousseau en mémoire du test ; `api` est le
   serveur de `ui` (client de test de FastAPI, jeton compris), `finished` attend la fin
   d'une tâche. GitHub se simule avec respx (`tests/test_web_accounts.py`, `FakeGitHub` pour les
@@ -208,6 +211,12 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   `forceupdate update`, `ui` ou `pytest --run-network`. rustup installe tout seul la chaîne
   d'outils que demande un `rust-toolchain.toml` : la retirer ensuite
   (`rustup toolchain uninstall …`).
+- go 1.27.3 est dans `~/sdk/go1.27.3/bin` (E22 : l'archive officielle de go.dev, winget étant
+  bloqué), hors du `PATH` : `export PATH="$HOME/sdk/go1.27.3/bin:$PATH"` avant `forceupdate update`,
+  `ui` ou `pytest --run-network`. Pour un essai à la main, mettre les modules dans le scratchpad
+  (`GOMODCACHE`, `GOCACHE`, `GOFLAGS=-modcacherw` pour pouvoir les effacer) plutôt que dans
+  `~/go` ; forceupdate passe lui-même `GOTOOLCHAIN=local` et `GOFLAGS=-mod=mod`. `go build ./...`
+  laisse un programme dans un module à `package main` : ne pas le copier dans `tests/projects/`.
 
 ## Interface
 

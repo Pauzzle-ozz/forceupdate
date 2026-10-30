@@ -1,7 +1,7 @@
 """Les parseurs : lire les manifestes et lockfiles d'un projet, et en tirer ses dépendances.
 
-Un module par écosystème : Python (E03), npm (E04) et Rust (E21) pour l'instant, les
-autres en phase F. Chacun relie les manifestes (dépendances directes, contraintes et leur
+Un module par écosystème : Python (E03), npm (E04), Rust (E21) et Go (E22) pour l'instant,
+les autres en phase F. Chacun relie les manifestes (dépendances directes, contraintes et leur
 emplacement) aux lockfiles (versions installées, transitives), avec ce qui est
 commun dans ``lockfiles.py``.
 """
@@ -11,7 +11,7 @@ from collections.abc import Callable, Sequence
 
 from forceupdate.detect.manifests import ecosystem_for_manifest
 from forceupdate.models import Ecosystem, Notice, Project
-from forceupdate.parsers import npm, python, rust
+from forceupdate.parsers import go, npm, python, rust
 from forceupdate.parsers.base import ParseError, ReadText
 from forceupdate.parsers.lockfiles import Lockfile
 
@@ -21,6 +21,7 @@ _PARSERS: dict[Ecosystem, Callable[[Project, ReadText, Sequence[str]], None]] = 
     Ecosystem.PYPI: lambda project, read_text, _: python.parse_project(project, read_text),
     Ecosystem.NPM: npm.parse_project,
     Ecosystem.CRATES_IO: lambda project, read_text, _: rust.parse_project(project, read_text),
+    Ecosystem.GO: lambda project, read_text, _: go.parse_project(project, read_text),
 }
 
 _LOCKFILE_PARSERS: dict[str, Callable[[str, str], Lockfile]] = {
@@ -33,6 +34,7 @@ _LOCKFILE_PARSERS: dict[str, Callable[[str, str], Lockfile]] = {
     "pdm.lock": python.parse_pdm_lock,
     "Pipfile.lock": python.parse_pipfile_lock,
     "Cargo.lock": lambda path, text: rust.parse_cargo_lock(path, text).lockfile,
+    "go.mod": go.locked_versions,
 }
 
 
@@ -60,8 +62,9 @@ def parse_project(project: Project, read_text: ReadText, project_dirs: Sequence[
 
 def parse_lockfile(path: str, content: str) -> Lockfile:
     """Un lockfile seul, d'après son nom : ses paquets, et leur graphe s'il en a un. Un
-    ``requirements*.txt`` est lu comme le ``.txt`` compilé de pip-tools. Lève ``ParseError``
-    pour un fichier invalide, ``ValueError`` pour un nom qui n'est pas celui d'un lockfile."""
+    ``requirements*.txt`` est lu comme le ``.txt`` compilé de pip-tools ; un ``go.mod`` comme la
+    liste des versions choisies (``go.sum`` n'en est pas une). Lève ``ParseError`` pour un
+    fichier invalide, ``ValueError`` pour un nom qui n'est pas celui d'un lockfile."""
     parser = _LOCKFILE_PARSERS.get(posixpath.basename(path))
     if parser is not None:
         return parser(path, content)

@@ -2867,6 +2867,14 @@
               }
             ],
             "title": "Unverifiable Reason"
+          },
+          "excluded": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Excluded",
+            "default": []
           }
         },
         "type": "object",
@@ -2881,10 +2889,11 @@
           "scope",
           "file",
           "location",
-          "unverifiable_reason"
+          "unverifiable_reason",
+          "excluded"
         ],
         "title": "Dependency",
-        "description": "Une dépendance d'un projet.\n\nUne directe vient du manifeste (``package.json``, ``pyproject.toml``…). Une\ntransitive vient seulement du lockfile : ``direct=False``, sans ``location``."
+        "description": "Une dépendance d'un projet.\n\nUne directe vient du manifeste (``package.json``, ``pyproject.toml``…). Une\ntransitive vient seulement du lockfile : ``direct=False``, sans ``location``. Sauf pour Go :\n``go.mod`` écrit aussi les indirectes (``// indirect``), avec leur emplacement."
       },
       "Disconnection": {
         "properties": {
@@ -3763,7 +3772,8 @@
           "pipenv",
           "pip-compile",
           "uv-pip-compile",
-          "cargo"
+          "cargo",
+          "go"
         ],
         "title": "LockKind",
         "description": "Le format d'un lockfile, donc l'outil qui le régénère."

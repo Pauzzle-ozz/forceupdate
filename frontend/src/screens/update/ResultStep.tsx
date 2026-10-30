@@ -214,6 +214,8 @@ function ResultCard({
 }) {
   const status = STATUS[result.status]
   const StatusIcon = status.icon
+  // Pour Go, les versions se relisent dans go.mod : go.sum n'en garde que les empreintes.
+  const where = job?.kind === 'go' ? 'go.mod' : 'le lockfile'
   return (
     <Card className="flex flex-col gap-3 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -253,7 +255,7 @@ function ResultCard({
           )}
           {result.changed.length > 0 ? (
             <div className="flex flex-col gap-1 text-sm">
-              <p>{fr('Aussi changé dans le lockfile :')}</p>
+              <p>{fr(`Aussi changé dans ${where} :`)}</p>
               <ul className="flex flex-col gap-0.5 font-mono text-fg-muted">
                 {result.changed.map((change) => (
                   <li key={change}>{change}</li>
@@ -261,7 +263,7 @@ function ResultCard({
               </ul>
             </div>
           ) : (
-            <p className="text-sm text-fg-muted">Rien d'autre n'a changé dans le lockfile.</p>
+            <p className="text-sm text-fg-muted">Rien d'autre n'a changé dans {where}.</p>
           )}
         </>
       )}

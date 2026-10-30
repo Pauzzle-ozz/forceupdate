@@ -18,6 +18,7 @@ from forceupdate.models import Ecosystem
 from forceupdate.net import Cache, CacheKind, HttpClient
 from forceupdate.registries import PackageInfo, PackageNotFound, PackageVersion, RegistryError
 from forceupdate.registries.crates import Crates
+from forceupdate.registries.goproxy import GoProxy
 from forceupdate.registries.npm import Npm
 from forceupdate.registries.pypi import ACCEPT, PyPI
 
@@ -57,8 +58,9 @@ def test_for_ecosystem() -> None:
             assert isinstance(
                 registries.for_ecosystem(Ecosystem.CRATES_IO, http, Cache(None)), Crates
             )
-            with pytest.raises(LookupError, match="Go"):
-                registries.for_ecosystem(Ecosystem.GO, http, Cache(None))
+            assert isinstance(registries.for_ecosystem(Ecosystem.GO, http, Cache(None)), GoProxy)
+            with pytest.raises(LookupError, match="Packagist"):
+                registries.for_ecosystem(Ecosystem.PACKAGIST, http, Cache(None))
 
     asyncio.run(main())
 

@@ -30,8 +30,13 @@ option.
   (« approximative ») : on relève la borne basse ;
 - une indirecte : le lockfile seul (``uv lock --upgrade-package x``, ``npm update x``), sauf
   si une version forcée (``overrides``, ``resolutions``, ``pnpm.overrides``) la fige et
-  n'accepte pas la version visée : c'est elle qu'on réécrit ;
-- une dépendance pair (npm) : sa plage s'élargit au lieu d'être remplacée.
+  n'accepte pas la version visée : c'est elle qu'on réécrit. Une indirecte écrite dans le
+  manifeste (Go : ``// indirect`` dans ``go.mod``) s'y réécrit, comme une directe ;
+- une dépendance pair (npm) : sa plage s'élargit au lieu d'être remplacée ;
+- une majeure publiée sous un autre nom (Go : ``…/v2``, ``VersionScheme.moved``) : proposée, à
+  faire à la main, car les imports du code changent aussi.
+
+Une version que le projet exclut (``exclude`` de ``go.mod``) n'est jamais proposée.
 
 Pour une faille, la nouvelle contrainte n'accepte plus de version concernée (``floor``).
 
@@ -137,13 +142,16 @@ def plan(
 
 
 def proposed_versions(report: Report) -> list[Query]:
-    """Les versions que proposent les mises à jour du rapport, à soumettre à OSV (``audit``)."""
+    """Les versions que proposent les mises à jour du rapport, à soumettre à OSV (``audit``) ;
+    pas celles publiées sous un autre nom (une autre majeure d'un module Go), qu'OSV connaît
+    sous ce nom-là."""
     return sorted(
         {
             (update.ecosystem, update.name, option.version)
             for project in report.projects
             for update in project.updates
             for option in update.options
+            if versions.for_ecosystem(update.ecosystem).moved(update.name, option.version) is None
         }
     )
 
@@ -333,6 +341,7 @@ class _Group:
         self.info = info
         self.overrides = overrides
         self.currents = [current_version(d) for d in dependencies]
+        self.excluded = frozenset(version for d in dependencies for version in d.excluded)
         self.vulns = [f for f in findings if f.kind is FindingKind.VULNERABLE]
         self.fixable = [f for f in self.vulns if f.target_version is not None]
         self.advisories = _advisories(dependencies, self.currents, vulnerabilities)
@@ -388,10 +397,14 @@ class _Group:
         found: dict[str, list[UpdateReason]] = {}
 
         def add(version: str | None, reason: UpdateReason) -> None:
-            if version is not None:
+            if version is not None and version not in self.excluded:
                 found.setdefault(version, []).append(reason)
 
-        fresh = [v.version for v in self.info.versions if not v.yanked and v.deprecated is None]
+        fresh = [
+            v.version
+            for v in self.info.versions
+            if not v.yanked and v.deprecated is None and v.version not in self.excluded
+        ]
         pool = sorted(self.scheme.candidates(fresh, current), key=self.scheme.sort_key)
         above = [v for v in pool if self.scheme.compare(v, current) > 0]
         outdated = next((f for f in self.findings if f.kind is FindingKind.OUTDATED), None)
@@ -430,15 +443,23 @@ class _Group:
         assert self.info is not None
         floor = max((f.target_version or "" for f in self.fixable), key=self.scheme.sort_key)
         available = sorted(
-            self.scheme.candidates(self.info.available(), current), key=self.scheme.sort_key
+            self.scheme.candidates(
+                [v for v in self.info.available() if v not in self.excluded], current
+            ),
+            key=self.scheme.sort_key,
         )
         for choices in (pool, available):
             for version in choices:
+                if self._moved(version) is not None:
+                    continue  # un autre module : ses failles ne sont pas celles-ci
                 if self.scheme.compare(version, floor) >= 0 and not any(
                     self._affected(f, version) for f in self.fixable
                 ):
                     return version
         return None
+
+    def _moved(self, version: str) -> str | None:
+        return self.scheme.moved(self.lead.name, version)
 
     def _affected(self, finding: Finding, version: str) -> bool:
         """Vrai si la faille ``finding`` concerne encore ``version``, d'après ses avis ; faute
@@ -473,9 +494,15 @@ class _Group:
         gap = self.scheme.gap(current, version)
         if gap is None and self.scheme.compare(version, current) == 0:
             return None
-        fixes = tuple(_main_id(f) for f in self.fixable if not self._affected(f, version))
+        moved = self._moved(version)
+        if moved is None:
+            fixes = tuple(_main_id(f) for f in self.fixable if not self._affected(f, version))
+        else:
+            fixes = ()  # un autre module : ses avis ne sont pas ceux-ci
         unfixed = tuple(_main_id(f) for f in self.vulns if _main_id(f) not in fixes)
-        if self.lead.direct:
+        if moved is not None:
+            edits, lockfile, manual = [], None, _moved_manual(self.lead.name, moved, version)
+        elif self.lead.direct or _in_manifest(self.lead):
             edits, lockfile, manual = self._direct_edits(version, floor=bool(fixes))
         else:
             edits, lockfile, manual = self._indirect_edits(version, floor=bool(fixes))
@@ -592,6 +619,21 @@ def _advisories(
             for advisory in result.advisories:
                 found.setdefault(advisory.id, advisory)
     return list(found.values())
+
+
+def _in_manifest(dependency: Dependency) -> bool:
+    """Vrai pour une indirecte écrite dans un manifeste, où elle se réécrit : Go la note
+    ``// indirect`` dans ``go.mod`` (ou la fige par un ``replace`` de ``go.work``). Celle d'un
+    lockfile (un ``.txt`` compilé a aussi des emplacements) se met à jour par son outil."""
+    return dependency.file != dependency.lockfile
+
+
+def _moved_manual(name: str, moved: str, version: str) -> str:
+    """Pourquoi une majeure publiée sous un autre nom ne s'applique pas seule, et comment faire."""
+    return (
+        f"Majeure publiée sous un autre module ({moved}) : les imports de {name} changent aussi "
+        f"dans le code. go get {moved}@{version}, puis remplacer les imports."
+    )
 
 
 def _override(name: str, overrides: Iterable[Override]) -> Override | None:

@@ -204,6 +204,24 @@ cc = "1.0"
 """
 
 
+GO_MOD = """\
+module example.com/app
+
+go 1.21
+
+require (
+\tgithub.com/gin-gonic/gin v1.9.1 // le serveur
+\tgithub.com/google/uuid v1.3.0
+\tgolang.org/x/text v0.3.7 // indirect
+)
+
+require "c.io/d" "v0.1.0"
+
+// uuid est figée par un replace : c'est sa version qui se réécrit.
+replace github.com/google/uuid => github.com/google/uuid v1.4.0
+"""
+
+
 def _replace(text: str, old: str, new: str) -> str:
     assert text.count(old) == 1, old
     return text.replace(old, new)
@@ -260,6 +278,10 @@ def _replace(text: str, old: str, new: str) -> str:
         ),
         ("Cargo.toml", CARGO_TOML, "winapi", "0.4", ('"0.3"', '"0.4"')),
         ("Cargo.toml", CARGO_TOML, "cc", "1.2", ('cc = "1.0"', 'cc = "1.2"')),
+        # go.mod : un bloc require et son commentaire, une chaîne, la version d'un replace.
+        ("go.mod", GO_MOD, "github.com/gin-gonic/gin", "v1.10.0", ("v1.9.1 //", "v1.10.0 //")),
+        ("go.mod", GO_MOD, "c.io/d", "v0.2.0", ('"v0.1.0"', '"v0.2.0"')),
+        ("go.mod", GO_MOD, "github.com/google/uuid", "v1.6.0", ("uuid v1.4.0", "uuid v1.6.0")),
         # setup.cfg : une par ligne, une absente, plusieurs sur une ligne.
         ("setup.cfg", SETUP_CFG, "requests", ">=2.34.2", (">=2.25", ">=2.34.2")),
         ("setup.cfg", SETUP_CFG, "click", ">=8", ("click ;", "click>=8 ;")),

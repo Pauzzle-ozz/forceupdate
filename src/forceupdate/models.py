@@ -149,7 +149,8 @@ class Dependency:
     """Une dépendance d'un projet.
 
     Une directe vient du manifeste (``package.json``, ``pyproject.toml``…). Une
-    transitive vient seulement du lockfile : ``direct=False``, sans ``location``.
+    transitive vient seulement du lockfile : ``direct=False``, sans ``location``. Sauf pour Go :
+    ``go.mod`` écrit aussi les indirectes (``// indirect``), avec leur emplacement.
     """
 
     ecosystem: Ecosystem
@@ -163,12 +164,14 @@ class Dependency:
     (Cargo), celle de ``[workspace.dependencies]`` à la racine du workspace. ``None`` si
     ``constraint`` est elle-même la plage, ou si la plage est introuvable."""
     installed: str | None = None
-    """Version installée, lue dans le lockfile ; ``None`` sans lockfile."""
+    """Version installée, lue dans le lockfile ; ``None`` sans lockfile. Pour Go, lue dans
+    ``go.mod`` : depuis Go 1.17, il donne la version choisie de chaque module."""
     lockfile: str | None = None
     """Le lockfile où ``installed`` a été lu, celui qu'une mise à jour régénère
     (``update.lockfiles``) ; ``None`` sans version installée. Pour une indirecte, c'est
     ``file``. Un fichier de contraintes de pip (``-c``) en tient lieu : il se réécrit comme un
-    manifeste (``update.writers.constraints_file``)."""
+    manifeste (``update.writers.constraints_file``). Pour Go, le ``go.sum`` du module, même
+    absent : ``go mod tidy`` le refait."""
     direct: bool = True
     scope: Scope = Scope.RUNTIME
     file: str
@@ -177,6 +180,8 @@ class Dependency:
     """Emplacement de ``constraint`` dans ``file`` ; ``None`` si on ne sait pas la réécrire."""
     unverifiable_reason: str | None = None
     """Pourquoi on ne peut pas la vérifier (dépendance git, ``file:``, ``workspace:``…)."""
+    excluded: tuple[str, ...] = ()
+    """Les versions que le projet écarte (``exclude`` de ``go.mod``) : jamais proposées."""
 
     @property
     def verifiable(self) -> bool:

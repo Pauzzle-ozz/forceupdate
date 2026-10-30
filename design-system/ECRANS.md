@@ -198,13 +198,16 @@ passé. Page à part : [pages/mise-a-jour.md](pages/mise-a-jour.md). Maquette :
    la commande à copier, `failed` avec la sortie de l'outil et les fichiers remis,
    `undone` avec le lockfile qui a échoué), chaque version obtenue (`reach` : « version
    exacte », « plus haute que choisie » (Yarn, pipenv), « retenue par … » avec
-   `held_by`), « aussi changé » (`changed`), les avertissements. Actions : « Relancer
+   `held_by`), « aussi changé » (`changed` : « dans le lockfile », « dans go.mod » pour Go,
+   dont les versions se relisent là), les avertissements. Actions : « Relancer
    l'analyse » (principale), « Revoir l'ancien rapport ».
 
 Cas particuliers à montrer : option `manual` (grisée, raison), option avec `introduced`
 (faille apportée, en rouge, jamais pré-cochée), `note` d'une `Update` (paquet malveillant :
 pas d'option, retirer le paquet), indirecte (par le lockfile seul, avertissement « le
-paquet qui la tire devra peut-être monter aussi »).
+paquet qui la tire devra peut-être monter aussi » ; une indirecte Go se réécrit dans
+`go.mod`), majeure Go publiée sous un autre module (`manual` : la commande `go get` et les
+imports à changer).
 
 **Fichier envoyé** : étapes Choisir et Vérifier seulement ; à la place d'« Appliquer »,
 « Télécharger *nom* » (`GET /api/updates/{id}/files/{nom}`) ; pas de lockfile (le dire, et

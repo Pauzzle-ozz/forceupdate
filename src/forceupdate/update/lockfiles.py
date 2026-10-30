@@ -21,10 +21,12 @@ Lockfile                      Commande de base
                               ``uv pip compile …``, avec les options connues
 ``Cargo.lock``                ``cargo update --workspace`` (ne résout que ce qui ne colle
                               plus au manifeste ; ``build.rs`` ne tourne pas)
+``go.sum``                    ``go mod tidy`` (``go.mod`` déjà réécrit ; rien n'est compilé)
 ============================  ===========================================================
 
 Vérifié avec npm 11.6, pnpm 12.15, Yarn 1.22 et 4.18, uv 0.10, Poetry 1.8 et 2.5, PDM 2.29,
-pipenv 2026.10, pip-tools 7.6 (voir les notes de E11 dans ``PLAN.md``) et cargo 1.99 (E21).
+pipenv 2026.10, pip-tools 7.6 (voir les notes de E11 dans ``PLAN.md``), cargo 1.99 (E21) et
+Go 1.27 (E22).
 
 **Viser la version choisie.** Régénérer garde les versions déjà figées qui satisfont les
 contraintes : une mise à jour par le lockfile seul (la contrainte accepte déjà la version) ne
@@ -41,6 +43,11 @@ bougerait pas. Chaque outil a sa façon de viser un paquet :
 - Cargo de même : ``=V`` le temps d'un ``cargo update --workspace``. Une indirecte : ``cargo
   update -p x@actuelle --precise V``. Pas ``--precise`` pour une directe : Cargo l'ignore dès que
   la contrainte réécrite n'accepte plus la version figée (il prend alors la plus haute) ;
+- Go : rien à viser, ``go.mod`` dit déjà la version (directes et indirectes, réécrites par
+  ``update.writers``). ``go mod tidy`` la garde, refait ``go.sum``, et fait monter ce que la
+  sélection minimale exige (une dépendance de la nouvelle version qui en demande plus : la
+  version relue le dit). Pas ``go get x@V`` : pour descendre, il retire les modules qui
+  demandent plus (vérifié avec Go 1.27) ;
 - Yarn et pipenv reprennent la plus haute version que permet la contrainte : ``yarn up -R x``
   (Yarn 2+), l'entrée du paquet retirée du ``yarn.lock`` (Yarn 1, dont ``yarn upgrade``
   réordonne le ``package.json``), et ``pipenv lock``, qui re-résout tout.
@@ -90,7 +97,7 @@ from forceupdate.models import (
     Update,
     UpdateOption,
 )
-from forceupdate.parsers import python
+from forceupdate.parsers import go, python
 from forceupdate.parsers.base import ParseError, ReadText
 from forceupdate.parsers.lockfiles import Lockfile, dependents, dirname, join
 from forceupdate.sources.local import LocalSource
@@ -135,6 +142,7 @@ class LockKind(enum.StrEnum):
     UV_PIP_COMPILE = "uv-pip-compile"
     """Un ``.txt`` compilé par ``uv pip compile`` (son en-tête le dit)."""
     CARGO = "cargo"
+    GO = "go"
 
 
 _TOOL_NAMES = {
@@ -149,6 +157,7 @@ _TOOL_NAMES = {
     LockKind.PIP_COMPILE: "pip-compile",
     LockKind.UV_PIP_COMPILE: "uv pip compile",
     LockKind.CARGO: "Cargo",
+    LockKind.GO: "Go",
 }
 
 _PROGRAMS = {
@@ -163,6 +172,7 @@ _PROGRAMS = {
     LockKind.PIP_COMPILE: "pip-compile",
     LockKind.UV_PIP_COMPILE: "uv",
     LockKind.CARGO: "cargo",
+    LockKind.GO: "go",
 }
 """Le programme de chaque outil, cherché par ``shutil.which``."""
 
@@ -373,6 +383,8 @@ def _job(
         warnings += _yarn_runs_code(source.read_text, dirname(path))
     elif kind is LockKind.CARGO:
         warnings += _cargo_runs_code(source.read_text, dirname(path))
+    elif kind is LockKind.GO:
+        warnings += _go_warnings(source.read_text, dirname(path))
     job = Job(
         lockfile=path,
         kind=kind,
@@ -411,6 +423,7 @@ _KINDS = {
     "pdm.lock": LockKind.PDM,
     "Pipfile.lock": LockKind.PIPENV,
     "Cargo.lock": LockKind.CARGO,
+    "go.sum": LockKind.GO,
 }
 
 
@@ -456,6 +469,30 @@ def _cargo_runs_code(read_text: ReadText, directory: str) -> list[str]:
     return warnings
 
 
+def _go_warnings(read_text: ReadText, directory: str) -> list[str]:
+    """Ce que ``go mod tidy`` ne fera pas, ou fera autrement que ne le demande le module : la
+    chaîne d'outils de la directive ``toolchain`` (``GOTOOLCHAIN=local``), le dossier ``vendor/``
+    (refait à la main : ``go build`` refuse un ``vendor/modules.txt`` périmé)."""
+    warnings = []
+    content = _read_quietly(read_text, join(directory, go.MANIFEST))
+    try:
+        parsed = go.parse_go_mod_file(join(directory, go.MANIFEST), content or "")
+    except ParseError:
+        parsed = None
+    if parsed is not None and parsed.toolchain is not None:
+        warnings.append(
+            f"go.mod demande {parsed.toolchain} : forceupdate lance le go installé, sans en "
+            "télécharger un autre (GOTOOLCHAIN=local) ; plus ancien que la directive go, il "
+            "échoue, et rien ne change."
+        )
+    if _read_quietly(read_text, join(directory, "vendor/modules.txt")) is not None:
+        warnings.append(
+            "vendor/ n'est pas refait : lancer go mod vendor après la mise à jour (go build "
+            "refuse un vendor/modules.txt périmé)."
+        )
+    return warnings
+
+
 def _parents(directory: str) -> list[str]:
     """Les dossiers parents de ``directory`` dans la source, du plus proche à la racine."""
     if directory == ".":
@@ -471,8 +508,8 @@ def _projects_of(report: Report, lockfile: str) -> list[Project]:
 def _manifests_of(report: Report, lockfile: str) -> set[str]:
     """Les manifestes que fige ``lockfile`` : ceux de son écosystème dans les projets qui
     l'ont, plus le ``pnpm-workspace.yaml`` de son dossier pour npm (catalogues, versions
-    forcées). Un projet qui a aussi un ``requirements.txt`` ne le mêle pas à son
-    ``package-lock.json``."""
+    forcées), et le ``go.mod`` d'un ``go.sum`` (que le projet n'a pas toujours encore). Un
+    projet qui a aussi un ``requirements.txt`` ne le mêle pas à son ``package-lock.json``."""
     ecosystem = ecosystem_for_manifest(lockfile)
     found = {
         manifest
@@ -482,6 +519,8 @@ def _manifests_of(report: Report, lockfile: str) -> set[str]:
     }
     if ecosystem is Ecosystem.NPM:
         found.add(join(dirname(lockfile), PNPM_WORKSPACE))
+    if posixpath.basename(lockfile) == go.LOCKFILE:
+        found.add(join(dirname(lockfile), go.MANIFEST))
     return found
 
 
@@ -773,7 +812,7 @@ def regenerate(
     for group in _groups(jobs):
         saved = _snapshot(source.root, report, group)
         for job in group:
-            locks_before[job.lockfile] = _read_quietly(source.read_text, job.lockfile)
+            locks_before[job.lockfile] = _read_quietly(source.read_text, _versions_path(job))
         try:
             failure = _run_group(source, group, current, outcome, announce)
         except BaseException:  # Ctrl-C : rien ne doit rester à moitié fait
@@ -900,13 +939,22 @@ def _read_back(
 ) -> Regenerated:
     """``result``, avec ce que donne chaque mise à jour et ce qui a changé d'autre."""
     job = result.job
-    lock_after = _lockfile(job.lockfile, _read_quietly(source.read_text, job.lockfile))
-    lock_before = _lockfile(job.lockfile, locks_before.get(job.lockfile))
+    path = _versions_path(job)
+    lock_after = _lockfile(path, _read_quietly(source.read_text, path))
+    lock_before = _lockfile(path, locks_before.get(job.lockfile))
     installed = tuple(_installed(choice, after, lock_after) for choice in job.choices)
     names = {update.name for _, update, _ in job.choices}
     return dataclasses.replace(
         result, installed=installed, changed=_changed(lock_before, lock_after, names)
     )
+
+
+def _versions_path(job: Job) -> str:
+    """Le fichier où relire les versions après la régénération : le lockfile ; pour Go, le
+    ``go.mod`` (``go.sum`` garde des empreintes, pas les versions choisies)."""
+    if job.kind is LockKind.GO:
+        return join(job.directory, go.MANIFEST)
+    return job.lockfile
 
 
 def _lockfile(path: str, content: str | None) -> Lockfile | None:
@@ -1481,6 +1529,43 @@ def _cargo_environment() -> dict[str, str]:
     }
 
 
+class _Go(_Driver):
+    def manual(self, job: Job) -> list[str]:
+        return ["go", "mod", "tidy"]
+
+    def run(self, context: _Context) -> None:
+        context.env.update(_go_environment())
+        path = context.root / context.job.directory / go.MANIFEST
+        before = _go_lines(path)
+        context.run("mod", "tidy")
+        after = _go_lines(path)
+        for (label, was), (_, now) in zip(before, after, strict=True):
+            if was != now and now is not None:
+                context.warnings.append(
+                    f"go mod tidy a changé la directive {label} : {was or 'absente'} → {now}"
+                    + (" (le go installé)." if was is None and label == "go" else ".")
+                )
+
+
+def _go_lines(path: Path) -> list[tuple[str, str | None]]:
+    """Les directives ``go`` et ``toolchain`` du ``go.mod`` ``path``, telles qu'écrites."""
+    try:
+        parsed = go.parse_go_mod_file(path.name, path.read_bytes().decode("utf-8"))
+    except (OSError, UnicodeDecodeError, ParseError):
+        return [("go", None), ("toolchain", None)]
+    return [("go", parsed.go), ("toolchain", parsed.toolchain)]
+
+
+def _go_environment() -> dict[str, str]:
+    """Le go installé, sans télécharger celui que demande ``go.mod`` (``GOTOOLCHAIN=local`` : il
+    échoue plutôt) ; ``GOFLAGS`` remplacé par une valeur sans effet sur ``go mod tidy`` :
+    ``-modfile=`` lui ferait refaire un autre fichier, et une valeur vide retomberait sur celle de
+    ``go env -w`` ; hors de tout workspace (``GOWORK=off``), comme l'est déjà ``go mod tidy``.
+    Vérifié avec Go 1.27. ``GOPROXY``, ``GOPRIVATE``, ``GONOSUMDB``… restent ceux de la personne :
+    un module privé en a besoin."""
+    return {"GOTOOLCHAIN": "local", "GOFLAGS": "-mod=mod", "GOWORK": "off"}
+
+
 _DRIVERS: dict[LockKind, _Driver] = {
     LockKind.NPM: _Npm(),
     LockKind.PNPM: _Pnpm(),
@@ -1493,4 +1578,5 @@ _DRIVERS: dict[LockKind, _Driver] = {
     LockKind.PIP_COMPILE: _PipCompile(),
     LockKind.UV_PIP_COMPILE: _UvPipCompile(),
     LockKind.CARGO: _Cargo(),
+    LockKind.GO: _Go(),
 }

@@ -23,8 +23,8 @@ def test_for_ecosystem() -> None:
 
 
 def test_an_ecosystem_not_yet_handled() -> None:
-    with pytest.raises(LookupError, match="Go"):
-        for_ecosystem(Ecosystem.GO)
+    with pytest.raises(LookupError, match="Packagist"):
+        for_ecosystem(Ecosystem.PACKAGIST)
 
 
 @pytest.mark.parametrize(

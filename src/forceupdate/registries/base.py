@@ -137,6 +137,9 @@ class Registry(ABC):
     """L'adresse du registre public, sans ``/`` final."""
     headers: ClassVar[Mapping[str, str]] = {}
     """En-têtes des requêtes (le format de réponse voulu)."""
+    not_found_statuses: ClassVar[frozenset[int]] = frozenset({404})
+    """Les statuts qui disent que le registre ne connaît pas le paquet (404 ; 410 aussi pour le
+    proxy Go)."""
 
     def __init__(self, http: HttpClient, cache: Cache, *, base_url: str | None = None) -> None:
         self._http = http
@@ -162,6 +165,12 @@ class Registry(ABC):
     @abstractmethod
     def parse(self, name: str, response: Response, fetched_at: datetime) -> PackageInfo:
         """Lit la réponse (statut 200) ; lève ``ValueError`` si elle est illisible."""
+
+    async def _complete(self, name: str, info: PackageInfo) -> PackageInfo:
+        """``info`` complété par d'autres requêtes, avant d'aller au cache : le proxy Go donne
+        les retraits et la dépréciation dans un autre fichier. Peut lever ``PackageNotFound``,
+        ``RegistryError`` ou ``ValueError`` (réponse illisible). Rien à faire par défaut."""
+        return info
 
     # -- commun --------------------------------------------------------------
 
@@ -194,7 +203,7 @@ class Registry(ABC):
             response = await self._http.get(url, headers=self.headers)
         except NetworkError as error:
             raise RegistryError(f"{self.label} : {error}") from error
-        if response.status_code == 404:
+        if response.status_code in self.not_found_statuses:
             self._cache.set(CacheKind.VERSIONS, url, {"format": _FORMAT, "not_found": True})
             raise PackageNotFound(self._not_found(name))
         if response.status_code != 200:
@@ -203,6 +212,10 @@ class Registry(ABC):
             )
         try:
             info = self.parse(name, response, datetime.now(UTC))
+            info = await self._complete(name, info)
+        except PackageNotFound:
+            self._cache.set(CacheKind.VERSIONS, url, {"format": _FORMAT, "not_found": True})
+            raise
         except (ValueError, KeyError, TypeError) as error:
             # Une réponse d'un format inconnu n'arrête pas l'analyse : elle est non concluante.
             raise RegistryError(

@@ -140,7 +140,8 @@ class Advisory:
 
         Avec deux branches corrigées (Flask : ``< 2.2.5`` et ``>= 2.3.0, < 2.3.2``), depuis
         0.12 c'est 2.2.5, depuis 2.3.0 c'est 2.3.2. ``None`` si l'avis n'en donne pas : faille
-        jamais corrigée, seulement une dernière version concernée, paquet malveillant.
+        jamais corrigée, seulement une dernière version concernée, paquet malveillant. Écrite
+        comme dans le manifeste (``VersionScheme.written`` : ``v0.3.8`` pour Go).
         """
         scheme = versions.for_ecosystem(ecosystem)
         try:
@@ -163,7 +164,7 @@ class Advisory:
         fixes.sort(key=lambda fix: fix[0])
         for parsed, text in fixes:
             if not _concerned(scheme, entries, parsed):
-                return text
+                return scheme.written(text)
         return None
 
     def affects(self, ecosystem: Ecosystem, name: str, version: str) -> bool:

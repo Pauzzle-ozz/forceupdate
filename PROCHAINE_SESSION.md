@@ -1,84 +1,93 @@
-# Session 22 — Étape E22 : Go
+# Session 23 — Étape E23 : PHP (Composer)
 
-Contexte : E01 à E21 sont faites. Rust (crates.io) marche de bout en bout comme Python et npm :
-parseurs (`workspace = true`, plateformes, renommages, membres et `exclude`), versions Cargo
-(26 choix de cargo reproduits), index « sparse », failles OSV, réécriture de `Cargo.toml` (la
-racine d'un workspace comme un catalogue pnpm), `Cargo.lock` régénéré par le vrai cargo (installé
-à E21). 2377 tests Python verts (plus 11 réseau), 139 Vitest, 49 Playwright. E21 n'est pas
-commitée : à proposer d'abord. Go est le deuxième écosystème de la phase F.
+Contexte : E01 à E22 sont faites. Go marche de bout en bout comme Python, npm et Rust : `go.mod`
+et `go.work` lus par un lexer comme celui de `modfile` (`// indirect`, `replace`, `exclude`,
+`retract`), versions Go (pseudo-versions, `+incompatible`, chemins de majeure), proxy Go
+(retraits et dépréciation du `go.mod` de la dernière, majeure suivante sous son chemin), failles
+OSV, réécriture de `go.mod`, `go mod tidy` par le vrai `go` (installé à E22, dans `~/sdk`). 2551
+tests Python verts (plus 13 réseau), 141 Vitest, 49 Playwright. E22 n'est pas commitée : à
+proposer d'abord. PHP est le troisième écosystème de la phase F.
 
-Lis CLAUDE.md, puis dans PLAN.md l'introduction de la phase F (et son paragraphe « Depuis E21 »),
-les notes de E21 (le modèle le plus proche : ce qui a été vérifié en vrai, et comment) et l'étape
-E22 ; `reference/README.md` (Go : `parse_go_mod`, `go.sum` ; limites : `// indirect` pas
-distingué, `replace` ignoré, `go.sum` garde des versions plus utilisées) et leurs tests dans
-`reference/argos_sca_parsers_tests.py` ; `docs/BRIEF.md` (décisions n°2, 3, 4, 11 et 12, « Versions
-et fichiers » : pseudo-versions, `go.sum`, « Go, majeur ≥ 2 » ; « Sources de données » : le proxy
-Go) ; puis le code de E21 qui sert de modèle : `parsers/rust.py`, `versions/cargo.py`,
-`registries/crates.py`, `update/writers/rust.py`, le pilote `_Cargo` de `update/lockfiles.py`,
-`tests/test_rust_projects.py`, et `detect/manifests.py` (`go.mod`, `go.sum` y sont ; `go.work`
-non). Pas d'interface à toucher en principe : si un écran change, charger d'abord le skill
-`ui-ux-pro-max`.
+Lis CLAUDE.md, puis dans PLAN.md l'introduction de la phase F (et ses paragraphes « Depuis E21 »
+et « Depuis E22 » : les points d'extension `written`, `unlisted`, `moved`, `not_found_statuses`,
+`_complete`, `Dependency.excluded`, `_versions_path`), les notes de E22 et de E21 (ce qui a été
+vérifié en vrai, et comment) et l'étape E23 ; `reference/README.md` (PHP : `parse_composer_json`,
+`parse_composer_lock` ; limite : tout est `pinned=True` dans `composer.lock`, branches comprises)
+et leurs tests dans `reference/argos_sca_parsers_tests.py` ; `docs/BRIEF.md` (décisions n°2, 3,
+4, 11 et 12 ; « Versions et fichiers » ; « Sources de données » : Packagist `p2`) ; puis le code
+de E21 et E22 qui sert de modèle : `parsers/rust.py` et `parsers/go.py`, `versions/cargo.py` et
+`versions/go.py`, `registries/crates.py` et `registries/goproxy.py`, `update/writers/rust.py`,
+les pilotes `_Cargo` et `_Go` de `update/lockfiles.py`, `tests/test_rust_projects.py` et
+`tests/test_go_projects.py`. Pas d'interface à toucher en principe : si un écran change, charger
+d'abord le skill `ui-ux-pro-max` (fait à E22 pour deux libellés de l'écran 5).
 
 À faire :
-- Parseurs : reprendre `parse_go_mod` et ses tests ; `require` (en ligne et en bloc) avec
-  l'emplacement exact de chaque version, `// indirect` → `direct=False` ; `replace` vers un chemin
-  local → non vérifiable, vers un autre module → c'est lui qu'on vérifie ; `exclude`, `retract` ;
-  `go.sum` n'est plus une source de versions (depuis Go 1.17, `go.mod` liste les modules qu'il
-  faut, à la version choisie : à vérifier) ; `go.work` et `go.work.sum` à reconnaître dans
-  `detect/manifests.py` (workspaces Go, `use`).
-- Versions Go : une `VersionScheme` (`v` devant, pseudo-versions `v0.0.0-20230101…-abcdef`
-  comparées par date, `+incompatible`) dans `versions._SCHEMES`. Une version de `go.mod` est un
-  minimum (sélection de version minimale), pas une plage : en tirer `satisfies`, `lower_bound`,
-  `exact`, et les styles de `update/constraints.py`.
-- Registre : `proxy.golang.org` (`/@v/list`, `/@latest`, chemins à majuscules encodées
-  `!minuscule`) ; les `retract` et le `// Deprecated:` du `go.mod` de la dernière version
-  (`/@v/<version>.mod`) ; 404 et 410 ; cache ; réponses enregistrées (`record.py`, `PACKAGES`).
-- Failles : OSV `Go`, le nom est le chemin du module ; vérifier si OSV veut les versions avec
-  ou sans `v` (ses avis Go les écrivent sans), et qu'un avis `GO-…` donne la bonne version
-  corrigée ; `stdlib` et `toolchain` relèvent de E27.
-- Changer de majeur (v2 et plus) change le chemin du module : proposé, jamais appliqué
-  (`manual`, avec la raison).
-- Réécriture de `go.mod` (`writers`) ; régénération : `go mod tidy` (`go.sum`, et les `require`
-  que la sélection minimale fait monter), ou `go get <module>@<version>` (qui réécrit lui-même
-  `go.mod` : à trancher). Un `LockKind` et son pilote.
-- Un mini-projet `tests/projects/go` (et un workspace `go.work` s'il le faut) aux fichiers faits
-  par le vrai `go` ; vérifier l'analyse et la mise à jour dans l'interface et en ligne de commande.
+- Parseurs : reprendre `parse_composer_json`, `parse_composer_lock` et leurs tests ; `require` et
+  `require-dev` (scope `dev`) avec l'emplacement exact de chaque contrainte (`json_spans.py`) ;
+  `dev-master`, `dev-…` et autres branches, `*@dev` : non vérifiables ; `php`, `ext-*`, `lib-*`,
+  `composer-plugin-api` mis de côté (E27 pour PHP) ; `replace`, `provide`, `conflict` ;
+  `repositories` (`path`, `vcs`, un autre dépôt Composer : non vérifiables) ; `composer.lock`
+  (`packages`, `packages-dev`, la version installée, `source`/`dist`), lié au `composer.json` ; les
+  dépendances d'un paquet figé (`require`) pour le graphe des transitives.
+- Versions Composer : une `VersionScheme` (`v` toléré, quatre nombres possibles, stabilités
+  `-alpha`, `-beta`, `-RC`, `-patch`/`-p`, `-dev` et leur ordre) dans `versions._SCHEMES` ; les
+  contraintes : `^`, `~` (« prochaine version significative » : `~1.2` veut dire `>=1.2,<2.0`,
+  pas comme npm), `||` et `|`, `-` (intervalle), `*` et `1.2.*`, espaces et virgules (ET),
+  `@dev`/`@beta` (stabilité), `minimum-stability` et `prefer-stable` du `composer.json` ; en tirer
+  `satisfies`, `lower_bound`, `exact`, et les styles de `update/constraints.py` (opérateurs,
+  séparateurs, un tableau de cas).
+- Registre : Packagist `p2` (`https://repo.packagist.org/p2/{vendor}/{paquet}.json`, et
+  `~dev.json` pour les branches) ; le format « minifié » (chaque version ne garde que ce qui
+  change) à reconstruire ; `abandoned` (`true` ou le paquet de remplacement) → constat
+  « déprécié » ; `time` ; 404 ; cache ; réponses enregistrées (`record.py`, `PACKAGES`).
+- Failles : OSV `Packagist`, le nom est `vendor/paquet` (en minuscules ?) ; vérifier qu'un avis
+  donne la bonne version corrigée (et si ses versions ont un `v`).
+- Réécriture de `composer.json` (`writers`) ; régénération : `composer update <nom>
+  --no-install --no-scripts --no-plugins` (ou `--lock` seul : à vérifier), et l'épinglage le temps
+  d'un passage si Composer ignore la version visée (comme npm, Cargo) ; `--with`
+  (`composer update x --with x:1.2.3`) à essayer. Un `LockKind` et son pilote.
+- Un mini-projet `tests/projects/composer` aux fichiers faits par le vrai Composer ; vérifier
+  l'analyse et la mise à jour dans l'interface et en ligne de commande.
 
 Attention :
-- **Demander à l'utilisateur** : d'abord le commit de E21 ; puis **`go` n'est pas installé** :
-  l'installer (`winget install GoLang.Go`, quelques minutes) pour faire `go.sum` et vérifier
-  `go mod tidy` / `go get` en vrai, ou simuler la commande (la phase F le permet, « et c'est
-  noté ») ; sans `go`, les fichiers des mini-projets doivent venir d'un vrai projet public, jamais
-  écrits à la main.
-- **Vérifier en vrai**, comme à E21 pour cargo : ce que garde `go mod tidy` d'une version écrite à
-  la main, s'il touche à la directive `go` ou `toolchain`, ce qu'il télécharge ; **la directive
-  `toolchain` (et `GOTOOLCHAIN`) fait télécharger et lancer une autre version de Go**, comme
-  `rust-toolchain.toml` pour rustup (E21) : la neutraliser (`GOTOOLCHAIN=local` ?) ou le dire
-  dans le plan ; `GOFLAGS`, `GOPROXY`, `GOPRIVATE` hérités de l'environnement ; un module privé
-  (404/410 du proxy) ; `go` lance-t-il du code du projet (`go generate` non, les directives
-  `tool` ?). Le simulé doit répondre comme le vrai.
-- Les tests qui prenaient Go pour « pas encore géré » (`test_checks_vulns.py`, `test_cli.py`,
-  `test_lockfiles.py`, `test_parsers_python.py`, `test_registries.py`) : les passer à Packagist.
-- cargo est dans `~/.cargo/bin`, hors du `PATH` des outils : `export PATH="$HOME/.cargo/bin:$PATH"`
-  pour les tests `network` de Rust (CLAUDE.md) ; `go` sera sans doute dans `C:\Program Files\Go\bin`,
-  à vérifier de même.
+- **Demander à l'utilisateur** : d'abord le commit de E22 ; puis **ni PHP ni Composer ne sont
+  installés** : les installer pour faire `composer.lock` et vérifier `composer update` en vrai,
+  ou simuler la commande (la phase F le permet, « et c'est noté ») ; sans eux, les fichiers du
+  mini-projet doivent venir d'un vrai projet public, jamais écrits à la main. À E22, `winget` a
+  échoué (code 1618 : une autre installation Windows en cours) : l'archive officielle, vérifiée
+  par sa somme SHA-256 et dépliée dans `~/sdk`, a fait l'affaire (PHP : windows.php.net ;
+  Composer : le `composer.phar` de getcomposer.org et sa somme, pas `composer-setup.php`).
+- **Vérifier en vrai**, comme à E21 et E22 : ce que garde `composer update` d'une version écrite
+  à la main, s'il sait viser une version sans toucher au manifeste, ce qu'il réécrit de
+  `composer.json` (il peut le reformater) ; **Composer exécute du code du projet** : les plugins
+  (`--no-plugins`), les scripts (`--no-scripts`), et les plugins déjà autorisés
+  (`config.allow-plugins`) ; `config.platform` (la version de PHP visée) ; `COMPOSER_*` hérités
+  de l'environnement (`COMPOSER_HOME`, `COMPOSER_AUTH`, `COMPOSER_ALLOW_SUPERUSER`) ; un dépôt
+  privé (`repositories`, `auth.json`). Le simulé doit répondre comme le vrai.
+- Les tests qui prenaient Packagist pour « pas encore géré » (`test_checks_vulns.py`,
+  `test_cli.py`, `test_lockfiles.py`, `test_parsers_python.py`, `test_registries.py`,
+  `test_versions.py`) : les passer à RubyGems (`Gemfile`, `Gemfile.lock`).
+- `go` est dans `~/sdk/go1.27.3/bin` et cargo dans `~/.cargo/bin`, hors du `PATH` des outils :
+  `export PATH="$HOME/sdk/go1.27.3/bin:$HOME/.cargo/bin:$PATH"` pour les tests `network` (CLAUDE.md).
 - Les tests : jamais le réseau sans `network`, jamais un vrai outil de lockfile (`FakeTools`),
   jamais le cache de l'utilisateur ; `reference/` n'est jamais importé par `src/` ; on ne modifie
   pas `reference/` (copier, adapter, reprendre les tests). Ré-enregistrer OSV (`record.py osv`)
-  réécrit le texte des avis déjà là : remettre ceux dont le contenu n'a pas changé (E21).
+  réécrit le texte des avis déjà là : remettre ceux dont le contenu lu n'a pas changé (un script
+  qui compare `parse_vuln` avant et après l'a fait à E22 : 33 remis).
 - Les dépôts de test des forges (`Pauzzle-ozz/forceupdate-demo` sur GitHub et gitlab.com,
   `pauzzle/forceupdate-demo` sur Bitbucket) sont gardés pour la recette E31 : ne pas y toucher.
-- Scripts : écrire les scripts dans le scratchpad avec l'outil d'écriture (un heredoc abîme les
-  accents et les `\\`, encore vu à E21) ; jamais `node -e "…"` avec des accents graves ; un argument
-  qui commence par `/` sous Git Bash : `MSYS_NO_PATHCONV=1`. Pour piloter la vraie interface, un
-  script Playwright en `.cjs` dans le scratchpad, qui `require` le Playwright de
-  `frontend/node_modules` (fait à E21).
+- Scripts : écrire les scripts Python dans le scratchpad avec l'outil d'écriture (un heredoc
+  passé à Python abîme les accents et réduit `\\` à `\`, encore vu à E22) ; jamais `node -e "…"`
+  avec des accents graves ; un argument qui commence par `/` sous Git Bash :
+  `MSYS_NO_PATHCONV=1`. Pour piloter la vraie interface, un script Playwright en `.cjs` dans le
+  scratchpad, qui `require` le Playwright de `frontend/node_modules` (fait à E21 et E22 :
+  `ui --no-browser` en arrière-plan, l'adresse lue dans sa sortie).
 
-Fini quand : sur un mini-projet Go, l'analyse et la mise à jour donnent un résultat juste, dans
-l'interface et en ligne de commande (si `go` n'est pas installé, la régénération est testée avec
-une commande simulée, et c'est noté). Vérifier avec : `uv run pytest`, `uv run ruff check`,
-`uv run ruff format --check` ; dans `frontend/` : `npm test`, `npm run typecheck`, `npm run lint`,
-`npm run test:e2e` ; à la main, `uv run forceupdate scan` et `update` sur une copie du mini-projet
-dans le scratchpad, et `uv run forceupdate ui`.
+Fini quand : sur un mini-projet PHP, l'analyse et la mise à jour donnent un résultat juste, dans
+l'interface et en ligne de commande (si Composer n'est pas installé, la régénération est testée
+avec une commande simulée, et c'est noté). Vérifier avec : `uv run pytest`, `uv run ruff check`,
+`uv run ruff format --check` ; dans `frontend/` : `npm test`, `npm run typecheck`, `npm run
+lint`, `npm run test:e2e` ; à la main, `uv run forceupdate scan` et `update` sur une copie du
+mini-projet dans le scratchpad, et `uv run forceupdate ui`.
 
 En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.

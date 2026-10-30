@@ -20,7 +20,9 @@
 - Groupées par lockfile (titre : écosystème, lockfile, outil), dans l'ordre du rapport.
 - En-tête de carte : case du paquet (nom en chasse fixe, 600), « directe » ou
   « indirecte », version utilisée, nombre de failles (badge), « par le lockfile seul »
-  pour une indirecte ; la `note` en dessous si elle existe.
+  pour une indirecte dont aucune option ne réécrit de fichier (Go écrit ses indirectes
+  dans `go.mod`, où elles se réécrivent : pas de mention) ; la `note` en dessous si elle
+  existe.
 - Options : une par ligne, séparées en pointillé, de la plus ancienne à la plus récente
   (l'ordre de l'API) ; toute la ligne est la cible du bouton radio. L'option choisie prend
   `--primary-soft`. Badge « proposée » sur l'option `selected`.

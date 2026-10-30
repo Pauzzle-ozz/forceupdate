@@ -1,0 +1,17 @@
+{
+  "gopkg.in/yaml.v3/@v/list": {
+    "body": "v3.0.1\nv3.0.0\n",
+    "content_type": "text/plain",
+    "status": 200
+  },
+  "gopkg.in/yaml.v3/@v/v3.0.1.mod": {
+    "body": "module \"gopkg.in/yaml.v3\"\n\nrequire (\n\t\"gopkg.in/check.v1\" v0.0.0-20161208181325-20d25e280405\n)\n",
+    "content_type": "text/plain",
+    "status": 200
+  },
+  "gopkg.in/yaml.v4/@v/list": {
+    "body": "not found: gopkg.in/yaml.v4@latest: unrecognized import path \"gopkg.in/yaml.v4\": reading https://gopkg.in/yaml.v4?go-get=1: 404 Not Found\n\tserver response: GitHub repository at https://github.com/go-yaml/yaml has no branch or tag \"v4\", \"v4.N\" or \"v4.N.M\"",
+    "content_type": "text/plain",
+    "status": 404
+  }
+}

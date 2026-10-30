@@ -176,7 +176,10 @@ chaque fois) :
   `"1.10" < "1.9"` en texte.
 - **Les pré-versions** (`2.0.0rc1`, `1.0.0-beta`) ne sont pas « la dernière
   version » pour la plupart des gens.
-- **`go.sum`** contient aussi des versions qui ne sont plus utilisées.
+- **`go.sum`** contient aussi des versions qui ne sont plus utilisées, et des modules qu'aucun
+  paquet n'utilise (`gopkg.in/check.v1`, un test de `yaml.v3`). Constaté à E22 : depuis Go 1.17,
+  c'est `go.mod` qui donne la version utilisée de chaque module, indirectes comprises
+  (`// indirect`) : `go mod tidy` y écrit la version que choisit la sélection minimale.
 - **Les lockfiles noient le signal** si on remonte toutes les transitives.
 - **OSV `querybatch`** ne renvoie que les identifiants des failles (voir
   `reference/README.md`, point 3). Constaté à E08 : il arrondit leur date de
@@ -215,7 +218,12 @@ chaque fois) :
     contrainte du manifeste n'accepte plus la version figée (il prend alors la plus
     haute) ; une directe réécrite est donc épinglée (`=V`) le temps d'un `cargo update
     --workspace`, comme pour npm. Il garde le format d'un `Cargo.lock` existant (v3 reste
-    v3).
+    v3) ;
+  - Go (E22) : `go.mod` est réécrit par forceupdate, puis `go mod tidy` refait `go.sum` et fait
+    monter ce que la sélection minimale exige ; **pas `go get x@V`, qui retire les modules qui
+    demandent plus quand on descend**. tidy relève la directive `go` si une version choisie
+    en demande un plus récent, et l'écrit (à la version installée) s'il n'y en a pas ; il laisse
+    `vendor/` périmé (`go build` refuse alors : à refaire avec `go mod vendor`).
 - **Régénérer un lockfile peut exécuter du code du projet** : scripts npm,
   `Gemfile` (c'est du Ruby), `build.gradle`, `setup.py`. Toujours passer
   `--ignore-scripts` / `--no-scripts` quand l'outil le permet, et le dire quand il
@@ -230,11 +238,17 @@ chaque fois) :
   `RUSTC_WRAPPER` vide) ; et rustup lance la chaîne d'outils que désigne le
   `rust-toolchain.toml` du projet, même un dossier du projet (`path`), après l'avoir
   installée s'il le faut (il a installé Rust 1.80 tout seul pour un essai) : dit dans le
-  plan.
+  plan. Constaté à E22 : `go` télécharge et lance le Go que demandent les directives `go` et
+  `toolchain` (`GOTOOLCHAIN=auto`) : `GOTOOLCHAIN=local` l'en empêche ; `GOFLAGS=-modfile=…` lui
+  ferait refaire un autre fichier, et une variable vide retombe sur `go env -w` (`GOFLAGS=-mod=mod`
+  passé). `go mod tidy` ne compile rien et ne lance pas `go generate`.
 - **Plafond de taille** : `safe_read_text` ignore les fichiers de plus de 2 Mo. Un
   `package-lock.json` les dépasse souvent : relever le plafond pour les lockfiles.
 - **Go, majeur ≥ 2** : changer de majeur change le chemin du module (`/v2`) et
-  tous les imports du code. Signalé, jamais appliqué automatiquement.
+  tous les imports du code. Signalé, jamais appliqué automatiquement. Fait à E22 : la majeure
+  suivante est cherchée sous son chemin, proposée « à la main » avec la commande `go get`. Les
+  avis d'OSV citent souvent chaque majeure du module : une faille peut n'être corrigée que sous
+  une autre (chi v1 : seulement dans `…/chi/v5`).
 - **Windows** : `npm` s'appelle `npm.cmd`. Toujours passer par `shutil.which`.
 
 ### Interface web
@@ -383,7 +397,7 @@ débit changent).
 | npm | **Vérifié (E06)** : `GET https://registry.npmjs.org/{nom}` (scopé : `@scope%2Fnom`), document complet → `dist-tags`, `versions[*].deprecated`, `time` (les dates : l'abrégé ne les a pas) |
 | crates.io | **Vérifié (E21)** : l'index « sparse » de Cargo, `GET https://index.crates.io/{chemin}` (`1/a`, `2/cc`, `3/l/log`, `se/rd/serde`, en minuscules), une ligne JSON par version : `vers`, `yanked`, `pubtime`. Statique, servi par un CDN, sans la limite d'une requête par seconde de l'API (`https://crates.io/api/v1/crates/{nom}`, User-Agent exigé) |
 | RubyGems | `GET https://rubygems.org/api/v1/versions/{nom}.json` |
-| Go | `GET https://proxy.golang.org/{module}/@v/list` et `/@latest` (majuscules du chemin encodées en `!minuscule`) |
+| Go | **Vérifié (E22)** : `GET https://proxy.golang.org/{module}/@v/list` (les versions étiquetées, dans le désordre, sans pseudo-versions ni dates), `/@v/{version}.mod` (le `go.mod` de cette version : `retract` et `// Deprecated:`), `/@latest` (un module sans étiquette : la pseudo-version du dernier commit) ; majuscules du chemin encodées en `!minuscule` (`github.com/!burnt!sushi/toml`) ; 404 ou 410 : module inconnu. Une majeure v2+ est un autre chemin (`…/v2`, `gopkg.in/yaml.v3`) : sa liste à part |
 | Packagist | `GET https://repo.packagist.org/p2/{vendor}/{paquet}.json` (champ `abandoned`) |
 | Maven Central | `GET https://repo1.maven.org/maven2/{groupe/en/chemin}/{artifact}/maven-metadata.xml` |
 | NuGet | `GET https://api.nuget.org/v3-flatcontainer/{id-en-minuscules}/index.json` ; dépréciation via l'API « registration » |

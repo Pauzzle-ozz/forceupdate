@@ -248,3 +248,27 @@ def test_cargo_styles(constraint: str, target: str, expected: str | None) -> Non
 )
 def test_cargo_floor_for_a_vulnerability(constraint: str, target: str, expected: str) -> None:
     check_floor(CARGO, constraint, target, expected)
+
+
+# -- Go : une version de go.mod n'est pas une plage -----------------------------------------
+
+GO = Ecosystem.GO
+
+
+@pytest.mark.parametrize(
+    ("constraint", "target", "expected"),
+    [
+        ("v1.3.0", "v1.6.0", "v1.6.0"),
+        ("v4.4.0", "v4.5.2", "v4.5.2"),
+        ("v3.0.0-20200313102051-9f266ea9e77c", "v3.0.1", "v3.0.1"),
+        ("v1.5.4", "v1.5.5", "v1.5.5"),
+        ("v4.1.2+incompatible", "v4.1.3+incompatible", "v4.1.3+incompatible"),
+        ("v0.3.7", "0.3.8", "v0.3.8"),  # une version écrite comme dans un avis d'OSV
+        # Illisible : à réécrire à la main.
+        ("master", "v1.0.0", None),
+        ("v1.0.0", "latest", None),
+    ],
+)
+def test_go_versions(constraint: str, target: str, expected: str | None) -> None:
+    check(GO, constraint, target, expected)
+    check(GO, constraint, target, expected, floor=True)

@@ -197,8 +197,9 @@ DEPENDENCY_MANIFESTS: dict[str, Ecosystem] = {
     "package.json": Ecosystem.NPM,
     # Ruby
     "Gemfile": Ecosystem.RUBYGEMS,
-    # Go
+    # Go : un module, un workspace
     "go.mod": Ecosystem.GO,
+    "go.work": Ecosystem.GO,
     # Rust
     "Cargo.toml": Ecosystem.CRATES_IO,
     # PHP
@@ -231,6 +232,7 @@ LOCKFILES: dict[str, Ecosystem] = {
     "pnpm-lock.yaml": Ecosystem.NPM,
     "Gemfile.lock": Ecosystem.RUBYGEMS,
     "go.sum": Ecosystem.GO,
+    "go.work.sum": Ecosystem.GO,
     "Cargo.lock": Ecosystem.CRATES_IO,
     "composer.lock": Ecosystem.PACKAGIST,
     "packages.lock.json": Ecosystem.NUGET,
@@ -246,6 +248,7 @@ MANIFEST_LOCKFILES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Pipfile", ("Pipfile.lock",)),
     ("Gemfile", ("Gemfile.lock",)),
     ("go.mod", ("go.sum",)),
+    ("go.work", ("go.work.sum",)),
     ("Cargo.toml", ("Cargo.lock",)),
     ("composer.json", ("composer.lock",)),
     ("*.csproj", ("packages.lock.json",)),
@@ -264,7 +267,7 @@ WORKSPACE_LOCKFILES: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 """Manifestes dont le lockfile peut être à la racine d'un workspace, plus haut :
 workspaces npm, Yarn et pnpm, uv, Cargo. Poetry, Pipenv, Bundler ou Composer n'en ont
-pas."""
+pas ; un module d'un workspace Go garde son ``go.sum`` (``go mod tidy`` ignore ``go.work``)."""
 
 PIP_TOOLS_SOURCES = ("requirements*.in", "requirements/*.in")
 """Motifs des fichiers sources de pip-tools. ``pip-compile requirements.in`` écrit

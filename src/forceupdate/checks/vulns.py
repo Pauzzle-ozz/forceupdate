@@ -14,7 +14,9 @@ interroge OSV (``advisories``) ; ce module en tire les constats.
   « gravité inconnue ».
 - **Version corrigée** (``target_version``) : la plus petite qui corrige la faille au-dessus de
   la version utilisée (``Advisory.fixed_in``) ; si les avis réunis ne sont pas d'accord, la
-  plus haute des leurs.
+  plus haute des leurs. Un avis Go cite souvent chaque majeure du module (``…/v5``) : une faille
+  corrigée seulement sous une autre majeure n'a pas de version corrigée, et le message dit où
+  elle l'est.
 - **Version utilisée** : l'installée, ou celle d'une contrainte exacte. Sans lockfile, la
   borne basse de la contrainte, « approximative » : la faille n'est alors que **possible**
   (affichée « faille possible »), car la version réellement installée peut être plus récente,
@@ -150,10 +152,16 @@ def _finding(dependency: Dependency, current: Current, group: list[Advisory]) ->
         else:
             head = f"{shown} (gravité inconnue)"
         message = sentence(f"{head} : {summary}" if summary else head)
+        elsewhere = _fixed_elsewhere(dependency, known) if target is None else None
         if target is not None:
             message += f" Corrigée en {target}."
         elif malicious:
             message += " Retirer ce paquet : aucune version sûre connue."
+        elif elsewhere is not None:
+            message += (
+                f" Aucune version corrigée sous ce nom ; corrigée sous un autre module : "
+                f"{elsewhere[0]} {elsewhere[1]}."
+            )
         else:
             message += " Aucune version corrigée connue."
     if current.approximate:
@@ -176,6 +184,26 @@ def _finding(dependency: Dependency, current: Current, group: list[Advisory]) ->
         detail=summary or None,
         url=main.url,
     )
+
+
+def _fixed_elsewhere(dependency: Dependency, known: list[Advisory]) -> tuple[str, str] | None:
+    """Une faille corrigée seulement sous un autre nom du paquet : une autre majeure d'un module
+    Go (chi v1 : seulement dans ``github.com/go-chi/chi/v5``). Le module et sa plus petite version
+    corrigée ; ``None`` s'il n'y en a pas."""
+    scheme = versions.for_ecosystem(dependency.ecosystem)
+    found = []
+    for advisory in known:
+        for entry in advisory.affected:
+            if entry.ecosystem != dependency.ecosystem.value or entry.name == dependency.name:
+                continue
+            for affected_range in entry.ranges:
+                for kind, value in affected_range.events:
+                    version = scheme.written(value)
+                    if kind == "fixed" and scheme.moved(dependency.name, version) == entry.name:
+                        found.append((entry.name, version))
+    if not found:
+        return None
+    return min(found, key=lambda pair: scheme.sort_key(pair[1]))
 
 
 def _identifiers(group: list[Advisory]) -> tuple[str, ...]:

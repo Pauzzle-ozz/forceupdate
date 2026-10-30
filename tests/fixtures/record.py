@@ -7,13 +7,16 @@
 À relancer quand un format de réponse change. Chaque réponse est demandée comme le fait
 forceupdate (même URL, mêmes en-têtes) et gardée telle quelle, dans
 ``tests/fixtures/<registre>/<paquet>.json`` (``/`` d'un nom scopé écrit ``__``) ; pour
-crates.io, le fichier de l'index, une ligne JSON par version : ``<paquet>.jsonl``.
+crates.io, le fichier de l'index, une ligne JSON par version : ``<paquet>.jsonl``. Le proxy Go
+demande plusieurs fichiers par module (la liste, le ``go.mod`` de la dernière version,
+``@latest``, le chemin de la majeure suivante) : ``goproxy/<module>.json`` les garde tous, par
+chemin (``github.com/!burnt!sushi/toml/@v/list``), avec leur statut (404 compris).
 
 OSV : ``osv/queries.json`` garde, pour chaque version demandée (``écosystème/nom@version``),
 le résultat de ``querybatch`` (les identifiants des failles) ; ``osv/vulns/<id>.json``, chaque
 avis complet (``GET /v1/vulns/{id}``). Les versions demandées sont celles des mini-projets
-``tests/projects/vulnerable``, ``cargo`` et ``cargo-workspace`` (``OSV_PROJECTS``), plus
-``OSV_EXTRA``.
+``tests/projects/vulnerable``, ``cargo``, ``cargo-workspace``, ``go`` et ``go-workspace``
+(``OSV_PROJECTS``), plus ``OSV_EXTRA``.
 
 Les tests s'appuient surtout sur ce qui ne bouge plus : une version publiée, retirée ou
 dépréciée le reste, une faille corrigée aussi. Ceux qui citent la dernière version, le nombre
@@ -23,6 +26,7 @@ de versions ou de failles, sont à mettre à jour après un nouvel enregistremen
 import asyncio
 import json
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 from forceupdate import engine
@@ -30,15 +34,23 @@ from forceupdate.advisories.osv import BASE_URL
 from forceupdate.checks import vulns
 from forceupdate.models import Ecosystem, ScanOptions
 from forceupdate.net import Cache, HttpClient
-from forceupdate.registries.base import Registry
+from forceupdate.net.http import Response
+from forceupdate.registries.base import PackageNotFound, Registry
 from forceupdate.registries.crates import Crates
+from forceupdate.registries.goproxy import GoProxy
 from forceupdate.registries.npm import Npm
 from forceupdate.registries.pypi import PyPI
 from forceupdate.sources.local import LocalSource
 
 FIXTURES = Path(__file__).parent
 PROJECTS = FIXTURES.parent / "projects"
-OSV_PROJECTS = (PROJECTS / "vulnerable", PROJECTS / "cargo", PROJECTS / "cargo-workspace")
+OSV_PROJECTS = (
+    PROJECTS / "vulnerable",
+    PROJECTS / "cargo",
+    PROJECTS / "cargo-workspace",
+    PROJECTS / "go",
+    PROJECTS / "go-workspace",
+)
 """Les mini-projets dont les versions sont demandées à OSV."""
 
 PACKAGES: dict[str, tuple[type[Registry], dict[str, str]]] = {
@@ -71,6 +83,23 @@ PACKAGES: dict[str, tuple[type[Registry], dict[str, str]]] = {
             "anyhow": "figée sous la plus haute que permet sa contrainte (cargo, workspace)",
             "log": "renommée (my-log) dans le mini-projet cargo, reprise du workspace",
             "smallvec": "=1.6.0 dans [workspace.dependencies] : faille corrigée en 1.6.1",
+        },
+    ),
+    "goproxy": (
+        GoProxy,
+        {
+            "github.com/BurntSushi/toml": "des majuscules dans le chemin (!burnt!sushi)",
+            "github.com/go-chi/chi": "déprécié, des +incompatible, la v5 sous …/chi/v5",
+            "github.com/golang-jwt/jwt/v4": "v4.4.0 retirée (retract, sa raison), la v5 à part",
+            "github.com/google/uuid": "remplacé par lui-même en v1.4.0 (replace) dans go",
+            "github.com/stretchr/testify": "directe du mini-projet go, de ses tests",
+            "golang.org/x/text": "v0.3.7 : trois failles, corrigées en 0.3.8, 0.39.0 et 0.41.0",
+            "github.com/davecgh/go-spew": "indirecte du mini-projet go",
+            "github.com/pmezard/go-difflib": "indirecte du mini-projet go",
+            "gopkg.in/yaml.v3": "indirecte en pseudo-version, faille corrigée en pseudo-version",
+            "golang.org/x/exp": "aucune étiquette : la pseudo-version de @latest",
+            "github.com/mattn/go-sqlite3": "un intervalle de +incompatible retiré",
+            "github.com/golang/protobuf": "déprécié au profit d'un autre module",
         },
     ),
 }
@@ -107,7 +136,47 @@ def osv_queries() -> list[tuple[Ecosystem, str, str]]:
     return list(dict.fromkeys([*found, *OSV_EXTRA]))
 
 
+class _Recording(HttpClient):
+    """Un client qui garde chaque réponse ``GET`` : ce que demande le proxy Go pour un module."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.seen: dict[str, Response] = {}
+
+    async def get(self, url: str, *, headers: Mapping[str, str] | None = None) -> Response:
+        response = await super().get(url, headers=headers)
+        self.seen[url] = response
+        return response
+
+
+async def record_goproxy(only: str | None = None) -> None:
+    _, names = PACKAGES["goproxy"]
+    for name in names if only is None else [only]:
+        async with _Recording() as http:
+            proxy = GoProxy(http, Cache.disabled())
+            try:
+                await proxy.package(name)
+            except PackageNotFound as error:
+                raise SystemExit(str(error)) from error
+            found = {
+                url.removeprefix(f"{GoProxy.base_url}/"): {
+                    "status": response.status_code,
+                    "content_type": response.media_type,
+                    "body": response.content.decode("utf-8"),
+                }
+                for url, response in http.seen.items()
+            }
+        path = fixture_path("goproxy", name)
+        path.parent.mkdir(exist_ok=True)
+        text = json.dumps(found, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+        path.write_text(text, encoding="utf-8", newline="\n")
+        print(f"{path.relative_to(FIXTURES)} : {len(found)} réponses, {len(text) // 1024} Ko")
+
+
 async def record_registries(http: HttpClient, key: str, only: str | None = None) -> None:
+    if key == "goproxy":
+        await record_goproxy(only)
+        return
     registry_class, names = PACKAGES[key]
     registry = registry_class(http, Cache.disabled())
     for name in names if only is None else [only]:

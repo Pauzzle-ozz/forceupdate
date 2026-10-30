@@ -18,6 +18,7 @@ from rich.table import Table
 from rich.text import Text
 
 from forceupdate.checks import GAP_LABELS
+from forceupdate.checks.base import sentence
 from forceupdate.models import (
     Finding,
     FindingKind,
@@ -493,7 +494,7 @@ def _option_detail(option: UpdateOption, project: str) -> Text:
         text.append(f" {warning}", style="yellow")
     changes = option_changes(option, project)
     if changes:
-        text.append(" " + " ; ".join(changes) + ".", style="dim")
+        text.append(" " + sentence(" ; ".join(changes)), style="dim")
     return text
 
 

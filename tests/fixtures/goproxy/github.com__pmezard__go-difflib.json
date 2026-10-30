@@ -1,0 +1,17 @@
+{
+  "github.com/pmezard/go-difflib/@v/list": {
+    "body": "v1.0.0\n",
+    "content_type": "text/plain",
+    "status": 200
+  },
+  "github.com/pmezard/go-difflib/@v/v1.0.0.mod": {
+    "body": "module github.com/pmezard/go-difflib\n",
+    "content_type": "text/plain",
+    "status": 200
+  },
+  "github.com/pmezard/go-difflib/v2/@v/list": {
+    "body": "not found: module github.com/pmezard/go-difflib/v2: no matching versions for query \"latest\"",
+    "content_type": "text/plain",
+    "status": 404
+  }
+}

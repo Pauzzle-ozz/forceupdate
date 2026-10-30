@@ -81,7 +81,8 @@ export function UpdateCard({
               </Badge>
             </>
           )}
-          {!update.direct && ' · par le lockfile seul'}
+          {/* Go écrit les indirectes dans go.mod (// indirect) : elles s'y réécrivent. */}
+          {!update.direct && update.options.every((option) => option.edits.length === 0) && ' · par le lockfile seul'}
         </span>
       </div>
 

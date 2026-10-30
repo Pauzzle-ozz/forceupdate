@@ -1,0 +1,17 @@
+{
+  "github.com/!burnt!sushi/toml/@v/list": {
+    "body": "v1.3.0\nv0.3.0\nv1.6.0\nv1.0.0\nv1.3.1\nv1.5.0\nv0.4.0\nv0.4.1\nv1.3.2\nv1.2.1\nv0.3.1\nv0.1.0\nv1.4.0\nv1.2.0\nv1.1.0\nv0.2.0\n",
+    "content_type": "text/plain",
+    "status": 200
+  },
+  "github.com/!burnt!sushi/toml/@v/v1.6.0.mod": {
+    "body": "module github.com/BurntSushi/toml\n\ngo 1.18\n",
+    "content_type": "text/plain",
+    "status": 200
+  },
+  "github.com/!burnt!sushi/toml/v2/@v/list": {
+    "body": "not found: module github.com/BurntSushi/toml/v2: no matching versions for query \"latest\"",
+    "content_type": "text/plain",
+    "status": 404
+  }
+}

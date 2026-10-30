@@ -7,7 +7,8 @@ Un client par registre, derrière l'interface de ``base.py``. Pour une session :
         info = await registry.package("lodash")  # PackageInfo
         info.latest  # "4.17.21"
 
-PyPI, npm et crates.io pour l'instant ; les autres registres arrivent avec leur étape (E22-E26).
+PyPI, npm, crates.io et le proxy Go pour l'instant ; les autres registres arrivent avec leur
+étape (E23-E26).
 """
 
 from forceupdate.models import Ecosystem
@@ -21,6 +22,7 @@ from forceupdate.registries.base import (
     RegistryError,
 )
 from forceupdate.registries.crates import Crates
+from forceupdate.registries.goproxy import GoProxy
 from forceupdate.registries.npm import Npm
 from forceupdate.registries.pypi import PyPI
 
@@ -37,6 +39,7 @@ _REGISTRIES: dict[Ecosystem, type[Registry]] = {
     Ecosystem.PYPI: PyPI,
     Ecosystem.NPM: Npm,
     Ecosystem.CRATES_IO: Crates,
+    Ecosystem.GO: GoProxy,
 }
 
 

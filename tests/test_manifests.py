@@ -53,6 +53,9 @@ class TestEcosystemMapping:
             ("packages.lock.json", "NuGet"),
             ("requirements.md", None),
             ("libs.versions.toml", None),
+            # Ajoutés à E22 : les workspaces Go
+            ("go.work", "Go"),
+            ("go.work.sum", "Go"),
         ],
     )
     def test_ecosystem(self, tmp_path: Path, filename: str, expected: str | None) -> None:
@@ -94,6 +97,8 @@ def test_lockfile_candidates_are_next_to_the_manifest() -> None:
         "api/pdm.lock",
     ]
     assert lockfile_candidates("App.csproj") == ["packages.lock.json"]
+    assert lockfile_candidates("svc/go.work") == ["svc/go.work.sum"]
+    assert lockfile_candidates("svc/go.mod") == ["svc/go.sum"]
     assert lockfile_candidates("requirements.txt") == []
     assert lockfile_candidates("uv.lock") == []
 

@@ -52,6 +52,21 @@ function specialCases(): Report {
   return report
 }
 
+describe('la mise à jour (écran 5), une indirecte écrite dans le manifeste', () => {
+  it('Go : une indirecte (// indirect) se réécrit dans go.mod, pas par le lockfile seul', async () => {
+    const report = structuredClone(VULNERABLE)
+    const [project] = report.projects
+    const lodash = project.updates.find((update) => update.name === 'lodash')!
+    const jinja2 = project.updates.find((update) => update.name === 'jinja2')!
+    jinja2.options = jinja2.options.map((option) => ({ ...option, edits: lodash.options[0].edits }))
+    mockApi({ 'GET /api/scans/a1': scanDetail({ report }) })
+    renderApp(CHOOSE)
+    const card = await screen.findByRole('article', { name: 'jinja2' })
+    expect(card).toHaveTextContent('indirecte')
+    expect(card).not.toHaveTextContent('par le lockfile seul')
+  })
+})
+
 describe('la mise à jour (écran 5), étape Choisir', () => {
   it('groupe les mises à jour par lockfile, pré-coche la sélection proposée, et la compte', async () => {
     mockApi({ 'GET /api/scans/a1': scanDetail() })
@@ -398,6 +413,16 @@ describe('la mise à jour (écran 5), étapes Appliquer et Résultat', () => {
     expect(screen.getAllByText("Rien d'autre n'a changé dans le lockfile.")).toHaveLength(2)
     expect(screen.getByRole('button', { name: "Relancer l'analyse" })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: "Revoir l'ancien rapport" })).toHaveAttribute('href', '/analyses/a1')
+  })
+
+  it('Go : les autres changements sont relus dans go.mod', async () => {
+    const plan = planDocument({ status: 'done', applicable: false, results: regenerated() })
+    plan.lockfiles[0] = { ...plan.lockfiles[0], kind: 'go', tool: 'Go' }
+    mockApi({ 'GET /api/scans/a1': scanDetail(), 'GET /api/updates/p1': plan })
+    renderApp('/plans/p1')
+    await screen.findByText('Mise à jour appliquée')
+    expect(screen.getByText("Rien d'autre n'a changé dans go.mod.")).toBeInTheDocument()
+    expect(screen.getByText("Rien d'autre n'a changé dans le lockfile.")).toBeInTheDocument()
   })
 
   it('une commande reste à lancer : la copier', async () => {

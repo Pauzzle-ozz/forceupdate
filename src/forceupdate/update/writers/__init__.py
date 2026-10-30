@@ -26,9 +26,9 @@ En deux temps :
      l'emplacement lu dans le texte d'origine. Une contrainte absente a un emplacement vide :
      la nouvelle y est insérée ;
    - **auto-vérification** : le fichier réécrit est relu par son parseur (``python``,
-     ``npm``, ``rust``). Il doit redonner les mêmes déclarations, dans le même ordre, avec la
-     nouvelle contrainte à chaque endroit réécrit, et aucune autre contrainte changée. Sinon il
-     n'est pas réécrit, ni les options qui le touchaient.
+     ``npm``, ``rust``, ``go``). Il doit redonner les mêmes déclarations, dans le même ordre,
+     avec la nouvelle contrainte à chaque endroit réécrit, et aucune autre contrainte changée.
+     Sinon il n'est pas réécrit, ni les options qui le touchaient.
 
    Ce qui n'est pas appliqué est rendu avec la raison (``Skipped``).
 2. ``write`` écrit les fichiers, si aucun n'a changé depuis ``prepare`` : chacun par un fichier
@@ -65,7 +65,7 @@ from forceupdate.models import (
     UpdateOption,
 )
 from forceupdate.parsers.base import ParseError, ReadText
-from forceupdate.update.writers import npm, python, rust
+from forceupdate.update.writers import go, npm, python, rust
 from forceupdate.update.writers.base import Check, Reader, Refused, Target
 
 __all__ = [
@@ -88,7 +88,7 @@ __all__ = [
 Choice = tuple[Project, Update, UpdateOption]
 """Une option choisie, avec sa mise à jour et son projet : ce que rend ``planner.chosen``."""
 
-_READERS: dict[str, Reader] = {**python.READERS, **npm.READERS, **rust.READERS}
+_READERS: dict[str, Reader] = {**python.READERS, **npm.READERS, **rust.READERS, **go.READERS}
 _CHECKS: dict[str, Check] = python.CHECKS
 
 

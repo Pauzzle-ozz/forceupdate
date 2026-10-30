@@ -1,0 +1,22 @@
+{
+  "github.com/golang-jwt/jwt/v4/@v/list": {
+    "body": "v4.4.0\nv4.5.2\nv4.0.0\nv4.5.1\nv4.4.2\nv4.3.0\nv4.5.0\nv4.1.0\nv4.4.3\nv4.2.0\nv4.4.1\n",
+    "content_type": "text/plain",
+    "status": 200
+  },
+  "github.com/golang-jwt/jwt/v4/@v/v4.5.2.mod": {
+    "body": "module github.com/golang-jwt/jwt/v4\n\ngo 1.16\n\nretract (\n    v4.4.0 // Contains a backwards incompatible change to the Claims interface.\n)\n",
+    "content_type": "text/plain",
+    "status": 200
+  },
+  "github.com/golang-jwt/jwt/v5/@v/list": {
+    "body": "v5.0.0-rc.1\nv5.1.0\nv5.2.3\nv5.2.0\nv5.2.2\nv5.3.1\nv5.0.0\nv5.3.0\nv5.0.0-rc.2\nv5.2.1\n",
+    "content_type": "text/plain",
+    "status": 200
+  },
+  "github.com/golang-jwt/jwt/v6/@v/list": {
+    "body": "not found: module github.com/golang-jwt/jwt/v6: no matching versions for query \"latest\"",
+    "content_type": "text/plain",
+    "status": 404
+  }
+}

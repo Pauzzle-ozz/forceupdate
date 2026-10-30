@@ -17,7 +17,9 @@ Pour une dépendance, trois versions, comme ``npm outdated`` :
     (``158.0.8127-2``).
 
 Le constat porte l'écart entre la version utilisée et la dernière. Une version utilisée au-
-dessus de la dernière (la voie ``next`` de npm) ne donne rien.
+dessus de la dernière (la voie ``next`` de npm) ne donne rien. Une dernière publiée sous un autre
+nom (une autre majeure d'un module Go, ``…/v5``) le dit ; une version que le projet exclut
+(``exclude`` de ``go.mod``) n'est jamais la dernière.
 
 ``npm outdated`` écarte aussi les versions que le Node installé ne peut pas faire tourner
 (``engines``) : jsdom 30 demande Node ``^24.15.0``, il ne la propose pas sous Node 24.12.
@@ -30,6 +32,8 @@ sinon la plus haute non dépréciée ; sinon la plus haute. Une plage ``>=4`` do
 ``latest`` 4.17.21, pas une 5.0.0 publiée sous ``next``. Une étiquette (``"react": "next"``)
 donne sa version. PyPI : la plus haute non retirée qui respecte la contrainte, comme pip.
 """
+
+from collections.abc import Sequence
 
 from forceupdate import versions
 from forceupdate.checks.base import GAP_LABELS, Current
@@ -59,7 +63,7 @@ def check(dependency: Dependency, info: PackageInfo, current: Current) -> list[F
                     url=info.url,
                 )
             ]
-    target = _target(scheme, info, current.version)
+    target = _target(scheme, info, current.version, dependency.excluded)
     if target is None:
         return []
     wanted = wanted_version(dependency, info, current)
@@ -77,11 +81,15 @@ def check(dependency: Dependency, info: PackageInfo, current: Current) -> list[F
     gap = scheme.gap(current.version, target)
     if gap is None:
         return []
+    message = _message(scheme, current, target, gap, wanted)
+    moved = scheme.moved(dependency.name, target)
+    if moved is not None:
+        message += f" Elle est publiée sous un autre module : {moved}."
     return [
         Finding(
             kind=FindingKind.OUTDATED,
             severity=Severity.LOW if gap is Gap.MAJOR else Severity.INFO,
-            message=_message(scheme, current, target, gap, wanted),
+            message=message,
             dependency=dependency,
             current_version=current.version,
             current_is_approximate=current.approximate,
@@ -124,21 +132,32 @@ def _npm_wanted(constraint: str, info: PackageInfo, current: str | None) -> str 
     )
 
 
-def _target(scheme: VersionScheme, info: PackageInfo, current: str | None) -> str | None:
-    """La version à proposer (voir la docstring du module)."""
+def _target(
+    scheme: VersionScheme, info: PackageInfo, current: str | None, excluded: Sequence[str] = ()
+) -> str | None:
+    """La version à proposer (voir la docstring du module) ; jamais une que le projet exclut
+    (``exclude`` de ``go.mod``) : la plus haute en dessous, alors."""
     target = info.latest
     published = None if target is None else info.get(target)
-    if target is not None and published is not None and published.deprecated is not None:
+    if (
+        target is not None
+        and published is not None
+        and (published.deprecated is not None or target in excluded)
+    ):
         ceiling = scheme.sort_key(target)
         fresh = [
             v.version
             for v in info.versions
-            if not v.yanked and v.deprecated is None and scheme.sort_key(v.version) <= ceiling
+            if not v.yanked
+            and v.deprecated is None
+            and v.version not in excluded
+            and scheme.sort_key(v.version) <= ceiling
         ]
-        target = scheme.latest(fresh) or target
+        target = scheme.latest(fresh) or (None if target in excluded else target)
     if current is None or not scheme.is_prerelease(current):
         return target
-    line = [v for v in scheme.candidates(info.available(), current) if scheme.is_prerelease(v)]
+    available = [v for v in info.available() if v not in excluded]
+    line = [v for v in scheme.candidates(available, current) if scheme.is_prerelease(v)]
     for option in (scheme.latest(line, current), _prerelease_tag(scheme, info, current)):
         if option is not None and (target is None or scheme.compare(option, target) > 0):
             target = option

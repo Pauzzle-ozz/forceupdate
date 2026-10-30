@@ -6,6 +6,7 @@ lockfile que le vrai aurait écrit. Les vrais npm, uv et pnpm ne sont lancés qu
 ``network``, sur des copies des mini-projets."""
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -30,6 +31,7 @@ from forceupdate.models import (
     UpdateReason,
 )
 from forceupdate.parsers import parse_lockfile
+from forceupdate.parsers.go import parse_go_mod
 from forceupdate.parsers.lockfiles import dependents
 from forceupdate.sources.local import LocalSource
 from forceupdate.update import lockfiles, writers
@@ -82,7 +84,7 @@ def wanted(
         for d in found
         if new is not None
     )
-    lockfile = next(d.lockfile for d in found if d.lockfile)
+    lockfile = next((d.lockfile for d in found if d.lockfile), None)
     update = Update(
         id=f"{project.path}|{name}",
         ecosystem=found[0].ecosystem,
@@ -1020,7 +1022,7 @@ def test_parse_lockfile_reads_a_compiled_requirements_file() -> None:
     lock = parse_lockfile("requirements.txt", "flask==3.1.3\nclick>=8\n")
     assert [(p.name, p.version) for p in lock.packages] == [("flask", "3.1.3"), ("click", "")]
     with pytest.raises(ValueError, match="pas un lockfile connu"):
-        parse_lockfile("go.sum", "")
+        parse_lockfile("composer.lock", "")
 
 
 # ---------------------------------------------------------------------------
@@ -1258,6 +1260,192 @@ def test_a_cargo_failure_puts_every_file_back(tmp_path: Path, fake_tools: Tools)
 
 
 # ---------------------------------------------------------------------------
+# Go
+# ---------------------------------------------------------------------------
+
+
+class FakeGoTidy:
+    """``go mod tidy`` : il garde les versions de ``go.mod`` (``raise_to`` en fait monter
+    d'autres, comme la sélection minimale ; ``go_line`` réécrit la directive ``go``) et refait
+    ``go.sum`` pour elles."""
+
+    def __init__(
+        self, root: Path, *, raise_to: dict[str, str] | None = None, go_line: str | None = None
+    ) -> None:
+        self.root = root
+        self.raise_to = raise_to or {}
+        self.go_line = go_line
+
+    def __call__(self, call: ToolCall) -> tuple[int, str, str] | None:
+        assert call.arguments == ["mod", "tidy"]
+        go_mod = call.cwd / "go.mod"
+        text = go_mod.read_text(encoding="utf-8")
+        for name, version in self.raise_to.items():
+            text = re.sub(rf"(\t{re.escape(name)} )v\S+", rf"\g<1>{version}", text)
+        if self.go_line is not None:
+            text = re.sub(r"^go \S+$", f"go {self.go_line}", text, flags=re.MULTILINE)
+        go_mod.write_text(text, encoding="utf-8")
+        sums = [
+            f"{d.name} {d.installed} h1:faux="
+            for d in parse_go_mod("go.mod", text)
+            if d.installed is not None
+        ]
+        (call.cwd / "go.sum").write_text("\n".join(sorted(sums)) + "\n", encoding="utf-8")
+        return None
+
+
+def go_copy(tmp_path: Path, name: str = "go") -> Path:
+    root = tmp_path / name
+    shutil.copytree(PROJECTS / name, root)
+    return root
+
+
+def test_plan_of_a_go_sum(tmp_path: Path, fake_tools: Tools) -> None:
+    root = go_copy(tmp_path)
+    fake_tools("go")
+    source, report = analyse(root)
+    choice = wanted(project_of(report), "github.com/golang-jwt/jwt/v4", "v4.5.2", new="v4.5.2")
+    (job,) = lockfiles.plan(source, report, writers.prepare(root, [choice]))
+    assert (job.lockfile, job.kind, job.program, job.tool, job.command) == (
+        "go.sum",
+        LockKind.GO,
+        "/outils/go",
+        "Go",
+        "go mod tidy",
+    )
+    assert (job.inputs, job.warnings) == (("go.mod",), ())
+
+
+def test_go_tidy_keeps_the_written_versions(tmp_path: Path, fake_tools: Tools) -> None:
+    """Une directe et une indirecte (``// indirect``), réécrites dans ``go.mod`` ; ``go mod
+    tidy`` refait ``go.sum``, sans chaîne d'outils téléchargée ni ``GOFLAGS`` de la personne."""
+    root = go_copy(tmp_path)
+    tools = fake_tools("go")
+    tools.handlers["go"] = FakeGoTidy(root)
+    source, report = analyse(root)
+    project = project_of(report)
+    yaml = "gopkg.in/yaml.v3"
+    choices = [
+        wanted(project, "github.com/golang-jwt/jwt/v4", "v4.5.2", new="v4.5.2"),
+        wanted(project, yaml, "v3.0.1", new="v3.0.1", direct=False),
+    ]
+
+    _, _, (result,) = apply(root, choices, report, source)
+
+    assert tools.commands() == ["go mod tidy"]
+    (call,) = tools.calls
+    assert (call.env["GOTOOLCHAIN"], call.env["GOFLAGS"], call.env["GOWORK"]) == (
+        "local",
+        "-mod=mod",
+        "off",
+    )
+    assert result.status is LockStatus.REGENERATED, result.error
+    assert [(i.update.name, i.versions, i.reach) for i in result.installed] == [
+        ("github.com/golang-jwt/jwt/v4", ("v4.5.2",), Reach.EXACT),
+        (yaml, ("v3.0.1",), Reach.EXACT),
+    ]
+    assert (result.changed, result.warnings) == ((), ())
+    assert "gopkg.in/yaml.v3 v3.0.1 h1:faux=" in (root / "go.sum").read_text(encoding="utf-8")
+
+
+def test_go_says_what_tidy_raised(tmp_path: Path, fake_tools: Tools) -> None:
+    """La nouvelle version en demande d'autres : la sélection minimale les fait monter, et la
+    directive ``go`` avec (vérifié avec Go 1.27 : x/text v0.30.0 demande go 1.24.0)."""
+    root = go_copy(tmp_path)
+    tools = fake_tools("go")
+    tools.handlers["go"] = FakeGoTidy(
+        root, raise_to={"github.com/davecgh/go-spew": "v1.1.1"}, go_line="1.24.0"
+    )
+    source, report = analyse(root)
+    choice = wanted(project_of(report), "golang.org/x/text", "v0.30.0", new="v0.30.0")
+
+    _, _, (result,) = apply(root, [choice], report, source)
+
+    assert result.status is LockStatus.REGENERATED, result.error
+    assert result.changed == ("github.com/davecgh/go-spew v1.1.0 → v1.1.1",)
+    assert result.warnings == ("go mod tidy a changé la directive go : 1.21 → 1.24.0.",)
+
+
+def test_go_says_when_tidy_writes_the_installed_go(tmp_path: Path, fake_tools: Tools) -> None:
+    """Sans directive ``go``, tidy écrit celle du go installé (vérifié avec Go 1.27)."""
+    root = go_copy(tmp_path)
+    go_mod = root / "go.mod"
+    go_mod.write_text(go_mod.read_text(encoding="utf-8").replace("go 1.21\n", ""), encoding="utf-8")
+    tools = fake_tools("go")
+
+    def tidy(call: ToolCall) -> None:
+        go_mod.write_text(
+            go_mod.read_text(encoding="utf-8").replace("module", "go 1.27.3\n\nmodule", 1),
+            encoding="utf-8",
+        )
+
+    tools.handlers["go"] = tidy
+    source, report = analyse(root)
+    choice = wanted(project_of(report), "golang.org/x/text", "v0.3.8", new="v0.3.8")
+    _, _, (result,) = apply(root, [choice], report, source)
+    assert result.warnings == (
+        "go mod tidy a changé la directive go : absente → 1.27.3 (le go installé).",
+    )
+
+
+def test_go_without_go_sum(tmp_path: Path, fake_tools: Tools) -> None:
+    """Un module qui n'a pas encore de ``go.sum`` : tidy le crée ; s'il échoue, il n'en reste
+    rien, et ``go.mod`` est remis."""
+    root = go_copy(tmp_path)
+    (root / "go.sum").unlink()
+    before = (root / "go.mod").read_bytes()
+    tools = fake_tools("go")
+    tools.handlers["go"] = lambda call: (1, "", "go: github.com/a@v1: reading …: 404 Not Found")
+    source, report = analyse(root)
+    assert project_of(report).lockfiles == []
+    choice = wanted(project_of(report), "golang.org/x/text", "v0.3.8", new="v0.3.8")
+
+    _, (job,), (result,) = apply(root, [choice], report, source)
+
+    assert job.lockfile == "go.sum"
+    assert result.status is LockStatus.FAILED
+    assert result.error is not None and "404 Not Found" in result.error
+    assert result.restored == ("go.mod",)
+    assert (root / "go.mod").read_bytes() == before and not (root / "go.sum").exists()
+
+    tools.handlers["go"] = FakeGoTidy(root)
+    _, _, (result,) = apply(root, [choice], report, source)
+    assert result.status is LockStatus.REGENERATED, result.error
+    assert (root / "go.sum").exists()
+
+
+def test_go_says_what_it_does_not_do(tmp_path: Path, fake_tools: Tools) -> None:
+    """``toolchain`` : le go installé est lancé ; ``vendor/`` : à refaire à la main."""
+    root = go_copy(tmp_path, "go-workspace")
+    (root / "tools" / "vendor").mkdir()
+    (root / "tools" / "vendor" / "modules.txt").write_text("# github.com/google/uuid v1.2.0\n")
+    fake_tools("go")
+    source, report = analyse(root)
+    choice = wanted(project_of(report, "tools"), "github.com/google/uuid", "v1.6.0", new="v1.6.0")
+    (job,) = lockfiles.plan(source, report, writers.prepare(root, [choice]))
+    assert job.lockfile == "tools/go.sum"
+    assert job.warnings == (
+        "go.mod demande go1.21.13 : forceupdate lance le go installé, sans en télécharger un "
+        "autre (GOTOOLCHAIN=local) ; plus ancien que la directive go, il échoue, et rien ne "
+        "change.",
+        "vendor/ n'est pas refait : lancer go mod vendor après la mise à jour (go build refuse "
+        "un vendor/modules.txt périmé).",
+    )
+
+
+def test_a_go_work_replace_needs_no_regeneration(tmp_path: Path, fake_tools: Tools) -> None:
+    root = go_copy(tmp_path, "go-workspace")
+    tools = fake_tools("go")
+    source, report = analyse(root)
+    choice = wanted(project_of(report, "lib"), "golang.org/x/text", "v0.4.0", new="v0.4.0")
+    assert choice[2].lockfile is None
+    changes, jobs, results = apply(root, [choice], report, source)
+    assert [change.path for change in changes.files] == ["go.work"]
+    assert (jobs, results, tools.calls) == ((), (), [])
+    assert "golang.org/x/text v0.4.0\n" in (root / "go.work").read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
 # Les vrais outils (réseau), sur des copies
 # ---------------------------------------------------------------------------
 
@@ -1360,3 +1548,37 @@ def test_the_real_cargo(tmp_path: Path) -> None:
         ["cargo", "update", "--workspace", "--locked"], cwd=root, capture_output=True, timeout=300
     )
     assert check.returncode == 0, check.stderr
+
+
+@pytest.mark.network
+def test_the_real_go(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Une directe et une indirecte réécrites dans ``go.mod`` : ``go mod tidy`` les garde, refait
+    ``go.sum``, et n'a plus rien à changer ensuite (``go mod tidy -diff``). Les modules et les
+    caches de ``go`` vont dans le dossier du test, pas dans ceux de la personne."""
+    _need("go")
+    for name in ("GOPATH", "GOMODCACHE", "GOCACHE"):
+        monkeypatch.setenv(name, str(tmp_path / name.lower()))
+    root = go_copy(tmp_path)
+    source, report = analyse(root)
+    project = project_of(report)
+    choices = [
+        wanted(project, "github.com/golang-jwt/jwt/v4", "v4.5.2", new="v4.5.2"),
+        wanted(project, "gopkg.in/yaml.v3", "v3.0.1", new="v3.0.1", direct=False),
+    ]
+    _, _, (result,) = apply(root, choices, report, source)
+    assert result.status is LockStatus.REGENERATED, result.error
+    assert [(i.update.name, i.versions, i.reach) for i in result.installed] == [
+        ("github.com/golang-jwt/jwt/v4", ("v4.5.2",), Reach.EXACT),
+        ("gopkg.in/yaml.v3", ("v3.0.1",), Reach.EXACT),
+    ]
+    go_sum = (root / "go.sum").read_text(encoding="utf-8")
+    assert "github.com/golang-jwt/jwt/v4 v4.5.2 h1:" in go_sum
+    assert "github.com/golang-jwt/jwt/v4 v4.4.0 h1:" not in go_sum
+    check = subprocess.run(
+        ["go", "mod", "tidy", "-diff"],
+        cwd=root,
+        capture_output=True,
+        timeout=300,
+        env={**os.environ, "GOTOOLCHAIN": "local", "GOFLAGS": "-mod=mod"},
+    )
+    assert check.returncode == 0, check.stdout + check.stderr

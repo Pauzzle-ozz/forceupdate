@@ -248,13 +248,13 @@ def osv_querybatch(results: dict[str, Any]) -> Callable[[httpx.Request], httpx.R
 
 @pytest.fixture
 def recorded() -> Iterator[dict[str, respx.Route]]:
-    """PyPI, npm, crates.io et OSV simulés par ``respx``, avec les réponses enregistrées par
-    ``tests/fixtures/record.py`` : flask, requests, aioredis, jinja2, werkzeug ; left-pad,
-    @hapi/joi, colors, crossenv, lodash ; rand, regex, time, anyhow, log, smallvec. Tout autre
-    paquet est introuvable (404). OSV connaît les failles des versions de
-    ``tests/fixtures/osv/queries.json`` ; pour les autres, il n'en connaît pas.
-    Rend les routes, par nom de paquet (``crates:<nom>`` pour crates.io), plus
-    ``osv:querybatch`` et ``osv:<id>``.
+    """PyPI, npm, crates.io, le proxy Go et OSV simulés par ``respx``, avec les réponses
+    enregistrées par ``tests/fixtures/record.py`` : flask, requests, aioredis, jinja2, werkzeug ;
+    left-pad, @hapi/joi, colors, crossenv, lodash ; rand, regex, time, anyhow, log, smallvec ;
+    les modules Go de ``PACKAGES["goproxy"]``. Tout autre paquet est introuvable (404). OSV
+    connaît les failles des versions de ``tests/fixtures/osv/queries.json`` ; pour les autres, il
+    n'en connaît pas. Rend les routes, par nom de paquet (``crates:<nom>`` pour crates.io,
+    ``goproxy:<module>`` pour la liste d'un module Go), plus ``osv:querybatch`` et ``osv:<id>``.
     """
     with recorded_responses() as routes:
         yield routes
@@ -286,9 +286,20 @@ def recorded_responses(
             routes[f"crates:{path.stem}"] = router.get(url).respond(
                 200, content=path.read_bytes(), headers={"content-type": "text/plain"}
             )
+        for path in sorted((FIXTURES / "goproxy").glob("*.json")):
+            name = path.stem.replace("__", "/")
+            for suffix, answer in json.loads(path.read_text(encoding="utf-8")).items():
+                route = router.get(f"https://proxy.golang.org/{suffix}").respond(
+                    answer["status"],
+                    content=answer["body"].encode(),
+                    headers={"content-type": answer["content_type"]},
+                )
+                if suffix.endswith("/@v/list") and f"goproxy:{name}" not in routes:
+                    routes[f"goproxy:{name}"] = route
         router.get(url__regex=r"^https://pypi\.org/simple/").respond(404)
         router.get(url__regex=r"^https://registry\.npmjs\.org/").respond(404, json={})
         router.get(url__regex=r"^https://index\.crates\.io/").respond(404)
+        router.get(url__regex=r"^https://proxy\.golang\.org/").respond(404, text="not found")
         queries = json.loads((FIXTURES / "osv" / "queries.json").read_text(encoding="utf-8"))
         routes["osv:querybatch"] = router.post("https://api.osv.dev/v1/querybatch").mock(
             side_effect=osv_querybatch(queries)

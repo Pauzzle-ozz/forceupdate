@@ -1,0 +1,17 @@
+{
+  "github.com/davecgh/go-spew/@v/list": {
+    "body": "v1.0.0\nv1.1.1\nv1.1.0\n",
+    "content_type": "text/plain",
+    "status": 200
+  },
+  "github.com/davecgh/go-spew/@v/v1.1.1.mod": {
+    "body": "module github.com/davecgh/go-spew\n",
+    "content_type": "text/plain",
+    "status": 200
+  },
+  "github.com/davecgh/go-spew/v2/@v/list": {
+    "body": "not found: module github.com/davecgh/go-spew/v2: no matching versions for query \"latest\"",
+    "content_type": "text/plain",
+    "status": 404
+  }
+}

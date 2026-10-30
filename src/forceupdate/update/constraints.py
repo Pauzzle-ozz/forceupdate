@@ -39,6 +39,9 @@ sinon la nouvelle contrainte accepterait encore des versions concernées. Quand 
 permet pas (``~=1.9`` pour 1.9.2, ``2.3.*``), une borne ``>=`` est ajoutée :
 ``~=1.9,>=1.9.2``, ``2.x >=2.3.1``, ``=1.3, >=1.3.1`` (Cargo).
 
+**Go** : une version de ``go.mod`` n'est pas une plage (``versions.go``) : elle devient la version
+visée, écrite avec son ``v`` (``v1.3.0`` vers 1.6.0 : ``v1.6.0``).
+
 Le résultat est relu : il doit accepter la version visée (et respecter le plancher). Sinon, ou
 pour un style qu'on ne sait pas réécrire (intervalle npm ``1.2.3 - 2.3.4`` dépassé, contrainte
 sans version comme ``*`` ou une étiquette), ``rewrite`` rend ``None`` : à réécrire à la main.
@@ -50,6 +53,7 @@ from dataclasses import dataclass
 from forceupdate import versions
 from forceupdate.models import Ecosystem
 from forceupdate.versions import InvalidConstraint, InvalidVersion, VersionScheme
+from forceupdate.versions.go import canonical
 
 _OPERATORS = {
     Ecosystem.NPM: r"~>|<=|>=|[<>=~^]",
@@ -118,6 +122,13 @@ def rewrite(
     réécrire la contrainte (le lockfile seul suffit).
     """
     scheme = versions.for_ecosystem(ecosystem)
+    if ecosystem is Ecosystem.GO:
+        try:
+            scheme.parse_constraint(constraint)
+            scheme.parse(target)
+        except (InvalidConstraint, InvalidVersion):
+            return None
+        return canonical(target)
     parsed_target = _split_target(target)
     if parsed_target is None:
         return None
