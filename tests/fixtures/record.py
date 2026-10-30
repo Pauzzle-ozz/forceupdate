@@ -1,7 +1,8 @@
 """Ré-enregistre les réponses réelles des registres et d'OSV, pour les tests hors ligne.
 
     uv run python tests/fixtures/record.py          # toutes
-    uv run python tests/fixtures/record.py npm      # celles d'un registre (pypi, npm, crates, osv)
+    uv run python tests/fixtures/record.py npm      # celles d'un registre (pypi, npm, crates,
+                                                    # goproxy, packagist, osv)
     uv run python tests/fixtures/record.py pypi:jinja2   # un seul paquet
 
 À relancer quand un format de réponse change. Chaque réponse est demandée comme le fait
@@ -15,8 +16,8 @@ chemin (``github.com/!burnt!sushi/toml/@v/list``), avec leur statut (404 compris
 OSV : ``osv/queries.json`` garde, pour chaque version demandée (``écosystème/nom@version``),
 le résultat de ``querybatch`` (les identifiants des failles) ; ``osv/vulns/<id>.json``, chaque
 avis complet (``GET /v1/vulns/{id}``). Les versions demandées sont celles des mini-projets
-``tests/projects/vulnerable``, ``cargo``, ``cargo-workspace``, ``go`` et ``go-workspace``
-(``OSV_PROJECTS``), plus ``OSV_EXTRA``.
+``tests/projects/vulnerable``, ``cargo``, ``cargo-workspace``, ``go``, ``go-workspace`` et
+``composer`` (``OSV_PROJECTS``), plus ``OSV_EXTRA``.
 
 Les tests s'appuient surtout sur ce qui ne bouge plus : une version publiée, retirée ou
 dépréciée le reste, une faille corrigée aussi. Ceux qui citent la dernière version, le nombre
@@ -39,6 +40,7 @@ from forceupdate.registries.base import PackageNotFound, Registry
 from forceupdate.registries.crates import Crates
 from forceupdate.registries.goproxy import GoProxy
 from forceupdate.registries.npm import Npm
+from forceupdate.registries.packagist import Packagist
 from forceupdate.registries.pypi import PyPI
 from forceupdate.sources.local import LocalSource
 
@@ -50,6 +52,7 @@ OSV_PROJECTS = (
     PROJECTS / "cargo-workspace",
     PROJECTS / "go",
     PROJECTS / "go-workspace",
+    PROJECTS / "composer",
 )
 """Les mini-projets dont les versions sont demandées à OSV."""
 
@@ -100,6 +103,19 @@ PACKAGES: dict[str, tuple[type[Registry], dict[str, str]]] = {
             "golang.org/x/exp": "aucune étiquette : la pseudo-version de @latest",
             "github.com/mattn/go-sqlite3": "un intervalle de +incompatible retiré",
             "github.com/golang/protobuf": "déprécié au profit d'un autre module",
+        },
+    ),
+    "packagist": (
+        Packagist,
+        {
+            "monolog/monolog": "directe du mini-projet composer : 2.11.* écartées (conflict)",
+            "guzzlehttp/guzzle": "7.4.0 exacte, treize failles, une majeure 8",
+            "guzzlehttp/psr7": "indirecte du mini-projet composer, six failles",
+            "twig/twig": "3.4.* (joker), quinze failles, une 4.0.0-alpha1 au-dessus des stables",
+            "symfony/console": "des versions à v (v5.4.10), ~5.4",
+            "psr/log": "une union (^1.1 || ^2.0)",
+            "php-http/message-factory": "abandonné, remplacé par psr/http-factory",
+            "doctrine/cache": "abandonné sans remplaçant (true), en require-dev",
         },
     ),
 }

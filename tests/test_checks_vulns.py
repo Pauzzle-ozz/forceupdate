@@ -243,4 +243,4 @@ def test_version_to_check() -> None:
     assert version(dependency("a", "^1.2.0")) == "1.2.0"
     assert version(dependency("a", "*")) is None  # rien à demander à OSV
     assert version(dependency("a", "latest")) is None
-    assert version(dependency("a", "1.0", "1.0", ecosystem=Ecosystem.PACKAGIST)) is None
+    assert version(dependency("a", "1.0", "1.0", ecosystem=Ecosystem.RUBYGEMS)) is None

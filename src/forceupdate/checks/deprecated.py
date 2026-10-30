@@ -20,7 +20,7 @@ Une borne basse (``>=2.32.0``) ne dit pas qu'on utilise ``2.32.0``.
 """
 
 from forceupdate import versions
-from forceupdate.checks.base import Current, nearest, sentence
+from forceupdate.checks.base import Current, is_excluded, nearest, sentence
 from forceupdate.models import Dependency, Ecosystem, Finding, FindingKind, Gap, Severity
 from forceupdate.registries import PackageInfo
 from forceupdate.versions import InvalidVersion
@@ -74,7 +74,8 @@ def check(dependency: Dependency, info: PackageInfo, current: Current) -> list[F
     same_path = [
         v
         for v in info.versions
-        if scheme.moved(dependency.name, v.version) is None and v.version not in dependency.excluded
+        if scheme.moved(dependency.name, v.version) is None
+        and not is_excluded(scheme, dependency.excluded, v.version)
     ]
     if published.yanked:
         target = _nearest(scheme, current.version, [v.version for v in same_path if not v.yanked])

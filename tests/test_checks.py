@@ -7,7 +7,7 @@ import pytest
 
 from forceupdate import checks
 from forceupdate.checks import FailOn, current_version, deprecated, outdated
-from forceupdate.checks.base import nearest
+from forceupdate.checks.base import is_excluded, nearest
 from forceupdate.models import (
     Dependency,
     Ecosystem,
@@ -19,6 +19,8 @@ from forceupdate.models import (
     Severity,
 )
 from forceupdate.registries import PackageInfo, PackageVersion
+from forceupdate.versions.composer import COMPOSER
+from forceupdate.versions.go import GO
 from forceupdate.versions.npm import NPM
 from forceupdate.versions.pypi import PYPI
 
@@ -540,3 +542,15 @@ def test_deprecated_check_alone_ignores_unknown_current() -> None:
     package = info(["1.0"], "1.0", deprecated="abandonné")
     findings = deprecated.check(dep("*"), package, current_version(dep("*")))
     assert [f.kind for f in findings] == [FindingKind.DEPRECATED]
+
+
+def test_is_excluded() -> None:
+    """Une version de ``exclude`` (``go.mod``), ou une contrainte de ``conflict``
+    (``composer.json``) ; une contrainte illisible n'écarte rien."""
+    assert is_excluded(GO, ("v1.6.0",), "v1.6.0")
+    assert not is_excluded(GO, ("v1.6.0",), "v1.5.0")
+    assert is_excluded(COMPOSER, ("2.11.*",), "2.11.1")
+    assert is_excluded(COMPOSER, (">=3", "2.11.*"), "v3.0.0")
+    assert not is_excluded(COMPOSER, ("2.11.*",), "2.10.0")
+    assert not is_excluded(COMPOSER, ("~>1.0",), "1.0.0")
+    assert not is_excluded(COMPOSER, (), "1.0.0")

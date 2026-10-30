@@ -36,7 +36,7 @@ donne sa version. PyPI : la plus haute non retirée qui respecte la contrainte, 
 from collections.abc import Sequence
 
 from forceupdate import versions
-from forceupdate.checks.base import GAP_LABELS, Current
+from forceupdate.checks.base import GAP_LABELS, Current, is_excluded
 from forceupdate.models import Dependency, Ecosystem, Finding, FindingKind, Gap, Severity
 from forceupdate.registries import PackageInfo
 from forceupdate.versions import InvalidVersion, VersionScheme
@@ -113,7 +113,9 @@ def wanted_version(dependency: Dependency, info: PackageInfo, current: Current) 
         return info.tags.get(constraint.tag)
     if dependency.ecosystem is Ecosystem.NPM:
         return _npm_wanted(current.constraint, info, current.version)
-    return scheme.max_satisfying(current.constraint, info.available(), current.version)
+    # Une version que le projet écarte (conflict de composer.json) n'est jamais choisie.
+    available = [v for v in info.available() if not is_excluded(scheme, dependency.excluded, v)]
+    return scheme.max_satisfying(current.constraint, available, current.version)
 
 
 def _npm_wanted(constraint: str, info: PackageInfo, current: str | None) -> str | None:
@@ -136,27 +138,26 @@ def _target(
     scheme: VersionScheme, info: PackageInfo, current: str | None, excluded: Sequence[str] = ()
 ) -> str | None:
     """La version à proposer (voir la docstring du module) ; jamais une que le projet exclut
-    (``exclude`` de ``go.mod``) : la plus haute en dessous, alors."""
+    (``exclude`` de ``go.mod``, ``conflict`` de ``composer.json``) : la plus haute en dessous,
+    alors."""
     target = info.latest
     published = None if target is None else info.get(target)
-    if (
-        target is not None
-        and published is not None
-        and (published.deprecated is not None or target in excluded)
-    ):
+    refused = target is not None and is_excluded(scheme, excluded, target)
+    deprecated = published is not None and published.deprecated is not None
+    if target is not None and published is not None and (deprecated or refused):
         ceiling = scheme.sort_key(target)
         fresh = [
             v.version
             for v in info.versions
             if not v.yanked
             and v.deprecated is None
-            and v.version not in excluded
+            and not is_excluded(scheme, excluded, v.version)
             and scheme.sort_key(v.version) <= ceiling
         ]
-        target = scheme.latest(fresh) or (None if target in excluded else target)
+        target = scheme.latest(fresh) or (None if refused else target)
     if current is None or not scheme.is_prerelease(current):
         return target
-    available = [v for v in info.available() if v not in excluded]
+    available = [v for v in info.available() if not is_excluded(scheme, excluded, v)]
     line = [v for v in scheme.candidates(available, current) if scheme.is_prerelease(v)]
     for option in (scheme.latest(line, current), _prerelease_tag(scheme, info, current)):
         if option is not None and (target is None or scheme.compare(option, target) > 0):

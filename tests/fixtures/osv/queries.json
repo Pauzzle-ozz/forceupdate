@@ -78,6 +78,175 @@
       }
     ]
   },
+  "Packagist/doctrine/cache@1.12.1": {},
+  "Packagist/guzzlehttp/guzzle@7.4.0": {
+    "vulns": [
+      {
+        "id": "GHSA-25mq-v84q-4j7r",
+        "modified": "2024-02-16T08:21:48.242166Z"
+      },
+      {
+        "id": "GHSA-94pj-82f3-465w",
+        "modified": "2026-09-10T03:51:11.108946Z"
+      },
+      {
+        "id": "GHSA-cwmx-hcrq-mhc3",
+        "modified": "2025-12-10T23:41:02.272273Z"
+      },
+      {
+        "id": "GHSA-cwxw-98qj-8qjx",
+        "modified": "2026-09-10T03:50:49.287156Z"
+      },
+      {
+        "id": "GHSA-f283-ghqc-fg79",
+        "modified": "2026-09-10T03:50:51.710471Z"
+      },
+      {
+        "id": "GHSA-f2wf-25xc-69c9",
+        "modified": "2025-12-10T23:40:57.755467Z"
+      },
+      {
+        "id": "GHSA-f7vp-7xgx-4w4r",
+        "modified": "2026-09-10T03:51:13.889147Z"
+      },
+      {
+        "id": "GHSA-g446-98w2-8p5w",
+        "modified": "2026-09-10T03:50:51.915343Z"
+      },
+      {
+        "id": "GHSA-h95v-h523-3mw8",
+        "modified": "2026-09-10T03:50:52.523072Z"
+      },
+      {
+        "id": "GHSA-q559-8m2m-g699",
+        "modified": "2023-11-08T04:09:25.594961Z"
+      },
+      {
+        "id": "GHSA-v5mv-p594-2x33",
+        "modified": "2026-09-10T03:51:14.592158Z"
+      },
+      {
+        "id": "GHSA-w248-ffj2-4v5q",
+        "modified": "2025-12-10T23:40:57.755467Z"
+      },
+      {
+        "id": "GHSA-wm3w-8rrp-j577",
+        "modified": "2026-09-10T03:51:12.418606Z"
+      },
+      {
+        "id": "GHSA-wpwq-4j6v-78m3",
+        "modified": "2026-09-10T03:50:50.904385Z"
+      }
+    ]
+  },
+  "Packagist/guzzlehttp/promises@1.5.1": {},
+  "Packagist/guzzlehttp/psr7@2.1.0": {
+    "vulns": [
+      {
+        "id": "GHSA-34xg-wgjx-8xph",
+        "modified": "2026-09-10T03:51:07.670836Z"
+      },
+      {
+        "id": "GHSA-c2w2-prh8-qm98",
+        "modified": "2026-07-21T18:46:10.537345Z"
+      },
+      {
+        "id": "GHSA-hq7v-mx3g-29hw",
+        "modified": "2026-09-10T03:50:49.920925Z"
+      },
+      {
+        "id": "GHSA-q7rv-6hp3-vh96",
+        "modified": "2026-02-04T03:15:15.096166Z"
+      },
+      {
+        "id": "GHSA-vm85-hxw5-5432",
+        "modified": "2026-09-10T03:51:09.646537Z"
+      },
+      {
+        "id": "GHSA-wxmh-65f7-jcvw",
+        "modified": "2026-02-04T04:19:33.828903Z"
+      }
+    ]
+  },
+  "Packagist/monolog/monolog@2.3.5": {},
+  "Packagist/php-http/message-factory@v1.0.2": {},
+  "Packagist/psr/http-client@1.0.3": {},
+  "Packagist/psr/http-factory@1.1.0": {},
+  "Packagist/psr/http-message@1.1": {},
+  "Packagist/psr/log@1.1.4": {},
+  "Packagist/ralouphie/getallheaders@3.0.3": {},
+  "Packagist/symfony/console@v5.4.10": {},
+  "Packagist/symfony/deprecation-contracts@v2.5.4": {},
+  "Packagist/symfony/polyfill-ctype@v1.37.0": {},
+  "Packagist/symfony/polyfill-intl-grapheme@v1.43.3": {},
+  "Packagist/symfony/polyfill-intl-normalizer@v1.43.0": {},
+  "Packagist/symfony/polyfill-mbstring@v1.43.3": {},
+  "Packagist/symfony/service-contracts@v3.7.3": {},
+  "Packagist/symfony/string@v6.4.49": {},
+  "Packagist/twig/twig@v3.4.1": {
+    "vulns": [
+      {
+        "id": "GHSA-2g2g-8p8h-fgwm",
+        "modified": "2026-09-10T03:51:07.469938Z"
+      },
+      {
+        "id": "GHSA-4j38-f5cw-54h7",
+        "modified": "2026-09-10T03:50:45.504087Z"
+      },
+      {
+        "id": "GHSA-529h-vh3j-85hq",
+        "modified": "2026-09-10T03:51:10.402023Z"
+      },
+      {
+        "id": "GHSA-52m2-vc4m-jj33",
+        "modified": "2025-12-10T23:41:22.048357Z"
+      },
+      {
+        "id": "GHSA-5v5v-ww74-355v",
+        "modified": "2026-09-10T03:50:48.434648Z"
+      },
+      {
+        "id": "GHSA-6377-hfv9-hqf6",
+        "modified": "2025-05-29T21:34:35.218736Z"
+      },
+      {
+        "id": "GHSA-6j75-5wfj-gh66",
+        "modified": "2024-10-10T15:29:44.509458Z"
+      },
+      {
+        "id": "GHSA-7fxw-r6jv-74c8",
+        "modified": "2026-09-10T03:50:46.108878Z"
+      },
+      {
+        "id": "GHSA-7p85-w9px-jpjp",
+        "modified": "2026-09-10T03:50:46.236628Z"
+      },
+      {
+        "id": "GHSA-8x9c-rmqh-456c",
+        "modified": "2026-09-10T03:51:08.226754Z"
+      },
+      {
+        "id": "GHSA-h8vq-8gpg-mhcg",
+        "modified": "2026-09-10T03:50:49.791061Z"
+      },
+      {
+        "id": "GHSA-jjxq-ff2g-95vh",
+        "modified": "2024-11-12T19:45:48.742422Z"
+      },
+      {
+        "id": "GHSA-p42q-9prx-q5wq",
+        "modified": "2026-09-10T03:51:09.244982Z"
+      },
+      {
+        "id": "GHSA-pr2w-4gpj-cpq4",
+        "modified": "2026-09-10T03:51:09.316002Z"
+      },
+      {
+        "id": "GHSA-vcc8-phrv-43wj",
+        "modified": "2026-09-10T03:50:47.571128Z"
+      }
+    ]
+  },
   "PyPI/click@7.0": {},
   "PyPI/flask@0.12": {
     "vulns": [

@@ -64,7 +64,7 @@ from fnmatch import fnmatchcase
 from forceupdate import versions
 from forceupdate.advisories import Advisory, OsvError, Query, Vulnerabilities
 from forceupdate.checks import vulns
-from forceupdate.checks.base import Current, current_version
+from forceupdate.checks.base import Current, current_version, is_excluded
 from forceupdate.models import (
     Dependency,
     Ecosystem,
@@ -341,7 +341,7 @@ class _Group:
         self.info = info
         self.overrides = overrides
         self.currents = [current_version(d) for d in dependencies]
-        self.excluded = frozenset(version for d in dependencies for version in d.excluded)
+        self.excluded = tuple(dict.fromkeys(c for d in dependencies for c in d.excluded))
         self.vulns = [f for f in findings if f.kind is FindingKind.VULNERABLE]
         self.fixable = [f for f in self.vulns if f.target_version is not None]
         self.advisories = _advisories(dependencies, self.currents, vulnerabilities)
@@ -397,13 +397,13 @@ class _Group:
         found: dict[str, list[UpdateReason]] = {}
 
         def add(version: str | None, reason: UpdateReason) -> None:
-            if version is not None and version not in self.excluded:
+            if version is not None and not self._excluded(version):
                 found.setdefault(version, []).append(reason)
 
         fresh = [
             v.version
             for v in self.info.versions
-            if not v.yanked and v.deprecated is None and v.version not in self.excluded
+            if not v.yanked and v.deprecated is None and not self._excluded(v.version)
         ]
         pool = sorted(self.scheme.candidates(fresh, current), key=self.scheme.sort_key)
         above = [v for v in pool if self.scheme.compare(v, current) > 0]
@@ -444,7 +444,7 @@ class _Group:
         floor = max((f.target_version or "" for f in self.fixable), key=self.scheme.sort_key)
         available = sorted(
             self.scheme.candidates(
-                [v for v in self.info.available() if v not in self.excluded], current
+                [v for v in self.info.available() if not self._excluded(v)], current
             ),
             key=self.scheme.sort_key,
         )
@@ -460,6 +460,11 @@ class _Group:
 
     def _moved(self, version: str) -> str | None:
         return self.scheme.moved(self.lead.name, version)
+
+    def _excluded(self, version: str) -> bool:
+        """Vrai si le projet écarte ``version`` (``exclude`` de ``go.mod``, ``conflict`` de
+        ``composer.json``) : elle n'est jamais proposée."""
+        return is_excluded(self.scheme, self.excluded, version)
 
     def _affected(self, finding: Finding, version: str) -> bool:
         """Vrai si la faille ``finding`` concerne encore ``version``, d'après ses avis ; faute

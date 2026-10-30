@@ -1,5 +1,5 @@
 """Réécrire une contrainte pour une nouvelle version, en gardant son style : un tableau de cas
-par style, pour npm, pour PyPI (PEP 440 et Poetry), puis pour Cargo."""
+par style, pour npm, pour PyPI (PEP 440 et Poetry), pour Cargo, Go et Composer."""
 
 import pytest
 
@@ -272,3 +272,72 @@ GO = Ecosystem.GO
 def test_go_versions(constraint: str, target: str, expected: str | None) -> None:
     check(GO, constraint, target, expected)
     check(GO, constraint, target, expected, floor=True)
+
+
+# -- Composer : une version nue est exacte, ~ va jusqu'à la majeure suivante ------------------
+
+COMPOSER = Ecosystem.PACKAGIST
+
+
+@pytest.mark.parametrize(
+    ("constraint", "target", "expected"),
+    [
+        # Une version nue est exacte, sa précision gardée quand rien ne se perd.
+        ("7.4.0", "7.16.1", "7.16.1"),
+        ("1.2", "1.3.0", "1.3"),
+        ("1.2", "1.5.3", "1.5.3"),
+        ("==1.2.3", "1.2.9", "==1.2.9"),
+        ("1.2.3.4", "1.2.3.5", "1.2.3.5"),
+        # Le v de Packagist (Symfony) n'est écrit que si la contrainte en avait un.
+        ("5.4.0", "v5.4.47", "5.4.47"),
+        ("v5.4.0", "v5.4.47", "v5.4.47"),
+        ("^5.4", "v5.4.47", "^5.4.47"),
+        # ^ comme npm.
+        ("^2.3", "2.9.3", "^2.9.3"),
+        ("^2.3", "3.12.1", "^3.12.1"),
+        ("^1.0", "2.0.0", "^2.0"),
+        ("^0.3", "0.4.1", "^0.4.1"),
+        # ~1.2 va jusqu'à 2.0 : sa précision reste ; ~1.2.3 (jusqu'à 1.3) prend la version visée.
+        ("~5.4", "5.4.47", "~5.4"),
+        ("~5.4", "6.4.49", "~6.4"),
+        ("~1", "2.3.4", "~2"),
+        ("~5.4.10", "5.4.47", "~5.4.47"),
+        ("~5.4.10", "6.0.3", "~6.0.3"),
+        # Jokers.
+        ("3.4.*", "3.4.3", "3.4.*"),
+        ("3.4.*", "3.30.0", "3.30.*"),
+        ("1.*", "2.3.0", "2.*"),
+        # Unions (|| et |) : le membre qui accepte la version visée, ou le dernier.
+        ("^1.1 || ^2.0", "3.0.2", "^3.0.2"),
+        ("^6.0|^7.0", "7.2.0", "^7.2"),
+        # Bornes, séparées par une espace ou une virgule.
+        (">=1.2 <2.0", "2.3.0", ">=2.3 <3.0"),
+        (">=1.2,<2.0", "1.5.0", ">=1.5,<2.0"),
+        ("!=1.5.0 ^1.0", "1.6.0", "!=1.5.0 ^1.6"),
+        # Un intervalle.
+        ("1.0 - 2.0", "2.3.0", "2.3.0 - 2.3"),
+        ("1.0 - 3.0", "2.3.0", "2.3.0 - 3.0"),
+        # Un drapeau de stabilité est gardé.
+        ("^1.0@beta", "1.4.0", "^1.4@beta"),
+        # Rien à réécrire : une branche, *.
+        ("dev-master", "1.0.0", None),
+        ("*", "1.0.0", None),
+    ],
+)
+def test_composer_styles(constraint: str, target: str, expected: str | None) -> None:
+    check(COMPOSER, constraint, target, expected)
+
+
+@pytest.mark.parametrize(
+    ("constraint", "target", "expected"),
+    [
+        ("~5.4", "5.4.47", "~5.4, >=5.4.47"),
+        ("~1.2", "1.2.9", "~1.2, >=1.2.9"),
+        ("3.4.*", "3.4.3", "3.4.*, >=3.4.3"),
+        # Sinon, rien de plus.
+        ("^2.3", "2.9.3", "^2.9.3"),
+        ("7.4.0", "7.4.5", "7.4.5"),
+    ],
+)
+def test_composer_floor_for_a_vulnerability(constraint: str, target: str, expected: str) -> None:
+    check_floor(COMPOSER, constraint, target, expected)

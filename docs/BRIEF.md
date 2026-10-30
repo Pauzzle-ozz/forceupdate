@@ -224,6 +224,17 @@ chaque fois) :
     demandent plus quand on descend**. tidy relève la directive `go` si une version choisie
     en demande un plus récent, et l'écrit (à la version installée) s'il n'y en a pas ; il laisse
     `vendor/` périmé (`go build` refuse alors : à refaire avec `go mod vendor`).
+  - Composer (E23) : `composer update x:V… -W` vise chaque version (une directe comme une indirecte),
+    `COMPOSER_MINIMAL_CHANGES` ne bouge rien d'autre ; **pas `composer update --lock`, qui garde une
+    version que la contrainte réécrite n'accepte plus et refait quand même le `content-hash`** ;
+    **Composer 2.9+ refuse pendant un `update` toute version qui a encore une faille connue**
+    (`config.policy.advisories.block`, vrai par défaut : twig 3.4.3 et guzzle 7.4.5 refusées sur le
+    mini-projet) ; forceupdate le lève le temps du passage (`COMPOSER_POLICY_ADVISORIES_BLOCK=0`,
+    Composer 2.10+, décision de l'utilisateur), sauf si le projet ou la personne le règle ; les
+    logiciels malveillants restent bloqués. Un environnement hérité trompe Composer : `COMPOSER`
+    (un autre fichier), `COMPOSER_PREFER_LOWEST` (il fait descendre) ; une extension PHP absente de la
+    machine fait échouer la résolution (`--ignore-platform-req=ext-*`). Composer ne touche jamais au
+    `composer.json` pendant `update`.
 - **Régénérer un lockfile peut exécuter du code du projet** : scripts npm,
   `Gemfile` (c'est du Ruby), `build.gradle`, `setup.py`. Toujours passer
   `--ignore-scripts` / `--no-scripts` quand l'outil le permet, et le dire quand il
@@ -241,7 +252,10 @@ chaque fois) :
   plan. Constaté à E22 : `go` télécharge et lance le Go que demandent les directives `go` et
   `toolchain` (`GOTOOLCHAIN=auto`) : `GOTOOLCHAIN=local` l'en empêche ; `GOFLAGS=-modfile=…` lui
   ferait refaire un autre fichier, et une variable vide retombe sur `go env -w` (`GOFLAGS=-mod=mod`
-  passé). `go mod tidy` ne compile rien et ne lance pas `go generate`.
+  passé). `go mod tidy` ne compile rien et ne lance pas `go generate`. Constaté à E23 : même avec
+  `--no-install`, `composer update` lance les scripts `pre-update-cmd` et `post-update-cmd` du
+  projet sans `--no-scripts`, et active un plugin déjà dans `vendor/` sans `--no-plugins` (deux
+  témoins qui écrivaient un fichier) : les deux sont passés.
 - **Plafond de taille** : `safe_read_text` ignore les fichiers de plus de 2 Mo. Un
   `package-lock.json` les dépasse souvent : relever le plafond pour les lockfiles.
 - **Go, majeur ≥ 2** : changer de majeur change le chemin du module (`/v2`) et
@@ -398,7 +412,7 @@ débit changent).
 | crates.io | **Vérifié (E21)** : l'index « sparse » de Cargo, `GET https://index.crates.io/{chemin}` (`1/a`, `2/cc`, `3/l/log`, `se/rd/serde`, en minuscules), une ligne JSON par version : `vers`, `yanked`, `pubtime`. Statique, servi par un CDN, sans la limite d'une requête par seconde de l'API (`https://crates.io/api/v1/crates/{nom}`, User-Agent exigé) |
 | RubyGems | `GET https://rubygems.org/api/v1/versions/{nom}.json` |
 | Go | **Vérifié (E22)** : `GET https://proxy.golang.org/{module}/@v/list` (les versions étiquetées, dans le désordre, sans pseudo-versions ni dates), `/@v/{version}.mod` (le `go.mod` de cette version : `retract` et `// Deprecated:`), `/@latest` (un module sans étiquette : la pseudo-version du dernier commit) ; majuscules du chemin encodées en `!minuscule` (`github.com/!burnt!sushi/toml`) ; 404 ou 410 : module inconnu. Une majeure v2+ est un autre chemin (`…/v2`, `gopkg.in/yaml.v3`) : sa liste à part |
-| Packagist | `GET https://repo.packagist.org/p2/{vendor}/{paquet}.json` (champ `abandoned`) |
+| Packagist | **Vérifié (E23)** : `GET https://repo.packagist.org/p2/{vendor}/{paquet}.json`, les métadonnées de Composer 2 : `packages.{nom}`, les versions étiquetées de la plus récente à la plus ancienne (pré-versions comprises ; les branches dans `~dev.json`), « minifiées » (`"minified": "composer/2.0"` : chaque version ne garde que ce qui change, `"__unset"` retire une clé), `time`, `abandoned` (`true` ou le remplaçant) ; noms en minuscules ; 404 pour un paquet inconnu ; `Cache-Control: max-age=900`. Le fichier donne aussi `security-advisories` (identifiants PKSA), pas lus : OSV |
 | Maven Central | `GET https://repo1.maven.org/maven2/{groupe/en/chemin}/{artifact}/maven-metadata.xml` |
 | NuGet | `GET https://api.nuget.org/v3-flatcontainer/{id-en-minuscules}/index.json` ; dépréciation via l'API « registration » |
 

@@ -42,6 +42,14 @@ permet pas (``~=1.9`` pour 1.9.2, ``2.3.*``), une borne ``>=`` est ajoutée :
 **Go** : une version de ``go.mod`` n'est pas une plage (``versions.go``) : elle devient la version
 visée, écrite avec son ``v`` (``v1.3.0`` vers 1.6.0 : ``v1.6.0``).
 
+**Composer** (``versions.composer``) : une version nue est exacte (``1.2`` vers 1.5.3 : ``1.5.3``) ;
+``~`` est la « prochaine version significative » : ``~1.2`` (jusqu'à 2.0) et ``~1`` gardent leur
+précision (``~1.2`` vers 1.5.3 : ``~1.5``, et ``~1.5, >=1.5.3`` pour un plancher), ``~1.2.3``
+(jusqu'à 1.3) prend la version visée ; ``^``, les jokers, ``||`` et ``|``, l'intervalle
+``1.0 - 2.0`` et les bornes comme npm ; un drapeau de stabilité (``^1.0@beta``) est gardé. La
+version visée est écrite sans le ``v`` que lui donne Packagist (``v5.4.20`` pour Symfony), sauf si
+la contrainte en avait un.
+
 Le résultat est relu : il doit accepter la version visée (et respecter le plancher). Sinon, ou
 pour un style qu'on ne sait pas réécrire (intervalle npm ``1.2.3 - 2.3.4`` dépassé, contrainte
 sans version comme ``*`` ou une étiquette), ``rewrite`` rend ``None`` : à réécrire à la main.
@@ -58,10 +66,11 @@ from forceupdate.versions.go import canonical
 _OPERATORS = {
     Ecosystem.NPM: r"~>|<=|>=|[<>=~^]",
     Ecosystem.CRATES_IO: r"<=|>=|[<>=~^]",
+    Ecosystem.PACKAGIST: r"<>|!=|==|<=|>=|[<>=~^]",
 }
 _PYPI_OPERATORS = r"===|==|!=|<>|<=|>=|~=|[<>=~^]"
 """Les opérateurs de chaque écosystème ; ceux de PyPI (Poetry et Pipenv compris) sinon."""
-_FLOOR_SEPARATORS = {Ecosystem.NPM: " ", Ecosystem.CRATES_IO: ", "}
+_FLOOR_SEPARATORS = {Ecosystem.NPM: " ", Ecosystem.CRATES_IO: ", ", Ecosystem.PACKAGIST: ", "}
 """Ce qui précède la borne ``>=`` ajoutée pour un plancher ; ``,`` sinon (PyPI)."""
 _VERSION_TEXT = r"[vV]?(?:\d|[xX*])[0-9A-Za-z.!+*_-]*"
 """Une version telle qu'écrite dans une contrainte : complète, partielle, avec joker,
@@ -129,6 +138,8 @@ def rewrite(
         except (InvalidConstraint, InvalidVersion):
             return None
         return canonical(target)
+    if ecosystem is Ecosystem.PACKAGIST:
+        target = _without_v(target)
     parsed_target = _split_target(target)
     if parsed_target is None:
         return None
@@ -145,6 +156,13 @@ def rewrite(
     except (InvalidConstraint, InvalidVersion):
         return None
     return new
+
+
+def _without_v(version: str) -> str:
+    """``v5.4.20`` (une étiquette Symfony sur Packagist) → ``5.4.20`` : la version visée s'écrit
+    sans ``v`` ; une contrainte qui en avait un le garde (``_NUMBERS``, ``prefix``)."""
+    version = version.strip()
+    return version[1:] if version[:1] in "vV" and version[1:2].isdigit() else version
 
 
 def _split_target(target: str) -> _Target | None:
@@ -183,7 +201,7 @@ def _rewrite_union(
 
 def _rewrite_member(scheme: VersionScheme, text: str, target: _Target, floor: bool) -> str | None:
     ecosystem = scheme.ecosystem
-    hyphen = _HYPHEN.fullmatch(text) if ecosystem is Ecosystem.NPM else None
+    hyphen = _HYPHEN.fullmatch(text) if ecosystem in (Ecosystem.NPM, Ecosystem.PACKAGIST) else None
     if hyphen is not None:
         return _rewrite_hyphen(scheme, hyphen, target)
     comparators = [(c, _kind(c, ecosystem)) for c in _comparators(text, ecosystem)]
@@ -202,7 +220,7 @@ def _rewrite_member(scheme: VersionScheme, text: str, target: _Target, floor: bo
             continue
         if kind == "exclude":
             continue
-        written = _written(comparator, kind, target)
+        written = _written(comparator, kind, target, ecosystem)
         if written is None:
             return None
         replacements.append((comparator.version_span, written))
@@ -270,7 +288,9 @@ def _count(numbers: str) -> tuple[int, bool]:
     return count, False
 
 
-def _written(comparator: _Comparator, kind: str, target: _Target) -> str | None:
+def _written(
+    comparator: _Comparator, kind: str, target: _Target, ecosystem: Ecosystem
+) -> str | None:
     """Le nouveau texte de la version d'un comparateur qui porte la borne basse."""
     numbers = _NUMBERS.fullmatch(comparator.version)
     if numbers is None:
@@ -283,8 +303,8 @@ def _written(comparator: _Comparator, kind: str, target: _Target) -> str | None:
         return prefix + target.written(max(count, 2))
     if target.fits(count):
         return prefix + target.written(count)
-    if kind == "tilde" and count < 2:
-        return prefix + target.written(count)
+    if kind == "tilde" and count < (3 if ecosystem is Ecosystem.PACKAGIST else 2):
+        return prefix + target.written(count)  # ~1 (et ~1.2 de Composer) : jusqu'à 2.0
     if kind == "caret" and not any(n != 0 for n in target.numbers[:count]):
         return prefix + target.written(count)
     return prefix + target.text

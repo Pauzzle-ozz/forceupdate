@@ -116,7 +116,7 @@ Statuts : `à faire`, `en cours`, `fait`.
 | E20 | E | Bitbucket Cloud | fait |
 | E21 | F. Autres écosystèmes | Rust (crates.io) | fait |
 | E22 | F | Go | fait |
-| E23 | F | PHP (Composer) | à faire |
+| E23 | F | PHP (Composer) | fait |
 | E24 | F | Ruby (Bundler) | à faire |
 | E25 | F | Java (Maven, Gradle) | à faire |
 | E26 | F | .NET (NuGet) | à faire |
@@ -1355,6 +1355,11 @@ le cache) ; `Dependency.excluded` (versions jamais proposées) ; une indirecte �
 manifeste (`file` différent de `lockfile`) s'y réécrit ; `lockfiles._versions_path` dit où relire
 les versions après la régénération quand ce n'est pas le lockfile.
 
+Depuis E23 (voir ses notes) : `Dependency.excluded` tient des contraintes (une version de `exclude`
+pour Go, une contrainte de `conflict` pour Composer) : `checks.base.is_excluded` les lit, pour le
+constat « plus récente », la version permise et le planificateur. Les tests qui disaient un
+écosystème « pas encore géré » prennent RubyGems : à E24, les passer à Maven.
+
 **Fini quand**, pour chaque étape : sur un mini-projet de l'écosystème, l'analyse
 et la mise à jour donnent un résultat juste, dans l'interface et en ligne de
 commande. Si l'outil natif n'est pas installé sur la machine, la régénération du
@@ -1464,12 +1469,147 @@ lockfile est testée avec une commande simulée, et c'est noté.
 
 ### E23 — PHP (Composer)
 
-- [ ] Reprendre `parse_composer_json`, `parse_composer_lock` et leurs tests. Corriger :
+- [x] Reprendre `parse_composer_json`, `parse_composer_lock` et leurs tests. Corriger :
   - `dev-master` et autres branches : non vérifiables ;
   - `php` et `ext-*` sont mis de côté pour E27 (version de PHP).
-- [ ] Contraintes Composer : `^`, `~`, `||`, `|`, `-`, `*`, suffixes de stabilité (`@dev`).
-- [ ] Registre : Packagist `p2`. `abandoned` donne un constat « déprécié », avec le paquet de remplacement s'il est indiqué.
-- [ ] Réécriture de `composer.json` ; lockfile : `composer update <nom> --no-install --no-scripts --no-plugins`.
+- [x] Contraintes Composer : `^`, `~`, `||`, `|`, `-`, `*`, suffixes de stabilité (`@dev`).
+- [x] Registre : Packagist `p2`. `abandoned` donne un constat « déprécié », avec le paquet de remplacement s'il est indiqué.
+- [x] Réécriture de `composer.json` ; lockfile : ~~`composer update <nom> --no-install --no-scripts --no-plugins`~~ `composer update x:V… -W --no-install --no-scripts --no-plugins` (voir les notes).
+- [x] Ajoutés en route : `lib-*`, `composer-plugin-api` et les autres paquets « plateforme » écartés comme `php` ; noms en minuscules (Composer et OSV) ; `replace` et `provide` (fournies par le projet : non vérifiables) ; `conflict` respecté (versions jamais proposées, ni « permises ») ; dépôts `path` et autres (`vcs`, `package`, `artifact`) non vérifiables d'après le lockfile ; `minimum-stability` sans `prefer-stable` signalé ; OSV `Packagist` (noms comparés sans la casse) ; le blocage des versions à faille de Composer 2.9+ levé le temps de la régénération (décision de l'utilisateur) ; mini-projet `composer` fait par le vrai Composer, réponses enregistrées de Packagist (`tests/fixtures/packagist/`) ; la version permise d'une dépendance tient compte des versions écartées (aussi `exclude` de Go).
+
+**Notes** (session 23) :
+
+- **Commit d'abord** : E22 commitée seule (`E22 : Go`), avec l'accord de l'utilisateur. **PHP et
+  Composer installés** avec son accord, dans `~/sdk`, hors du `PATH` (voir CLAUDE.md) : PHP 8.5.12
+  (l'archive NTS x64 de windows.php.net, SHA-256 vérifié contre `releases.json`, un `php.ini`
+  minimal), Composer 2.11.0 (le `composer.phar` de getcomposer.org, SHA-256 vérifié contre les deux
+  sommes publiées, et un `composer.bat`). Les essais ont mis `COMPOSER_HOME` et le cache dans le
+  scratchpad.
+- **Vérifié contre le vrai Composer** (2.11), avant d'écrire :
+  - **les règles de version** : `versions/composer.py` réécrit `VersionParser` de composer/semver
+    (lu dans le phar) et l'ordre de `version_compare` de PHP ; comparé à composer/semver lancé par
+    PHP sur 1 282 versions de Packagist (`normalize`), 19 600 paires (ordre) et 99 contraintes
+    × 1 267 versions : **aucun écart** (une mutation de l'ordre en donne, la comparaison mord) ;
+    puis **22 choix de `composer update`** reproduits sur monolog et twig (`COMPOSER_CHOICES`) ; les
+    deux écarts relevés ne sont pas des contraintes : une version qui demande PHP 7 (E27), et
+    `4.*@dev`, où Composer prend la branche `4.x-dev` (forceupdate ne propose jamais de branche) ;
+  - **`composer update x --with x:V`** (ou la forme courte `x:V`) vise la version, pour une directe
+    comme pour une indirecte ; sans elle, la plus haute permise ; il **ne touche jamais au
+    `composer.json`** ; une mise à jour partielle garde tout le reste, même des paquets vulnérables ;
+  - **`-W` est nécessaire** quand la nouvelle version exige de bouger une autre directe (monolog 3
+    demande psr/log 2) ; `-w` ne suffit pas. **`-m` (`COMPOSER_MINIMAL_CHANGES`)** ne bouge que le
+    nécessaire (avec 7.4.5, guzzle garde promises et deprecation-contracts ; sans, ils montent), et
+    ce qui doit bouger va à la plus haute permise (psr7 2.13.2), comme cargo ;
+  - **`composer update --lock` garde monolog 2.3.5 sous une contrainte réécrite en `^2.9`**, et
+    refait quand même le `content-hash` : le lockfile devient faux sans un mot. Jamais utilisé ;
+  - **Composer 2.9+ refuse pendant un `update` toute version qui a encore un avis de sécurité**
+    (`config.policy.advisories.block`, vrai par défaut ; la base de Packagist) : sur le mini-projet,
+    twig 3.4.* et guzzle 7.4.5 refusés, alors que 3.4.3 corrige une faille. `--no-blocking`,
+    `--no-security-blocking`, `COMPOSER_NO_BLOCKING` lèvent tout, logiciels malveillants compris ;
+    **`COMPOSER_POLICY_ADVISORIES_BLOCK=0` (Composer 2.10+) ne lève que les failles**, et l'emporte
+    sur la config du projet. Une config temporaire ne va pas : Composer 2.11 compte
+    `config.policy` dans le `content-hash`. Composer 2.9 n'a ni variable ni option : seulement
+    `config.audit.block-insecure`. **Tranché avec l'utilisateur** : lever les failles seules, sauf
+    si le projet (`config.policy`, `config.audit.block-insecure`) ou la personne (la variable déjà
+    là) le règle ; le plan le dit ;
+  - **ce que Composer exécute** : deux témoins qui écrivaient un fichier. Sans `--no-scripts`,
+    `pre-update-cmd` et `post-update-cmd` tournent même avec `--no-install` ; sans `--no-plugins`, un
+    plugin déjà dans `vendor/` est activé ; avec les deux, rien. `--no-install` ne télécharge aucune
+    archive (seulement les métadonnées) ;
+  - **l'environnement hérité** : `COMPOSER=autre.json` fait lire un autre fichier ;
+    `COMPOSER_PREFER_LOWEST=1` fait **descendre** monolog (2.3.5 → 2.3.0) : retirés, avec
+    `COMPOSER_NO_DEV`, `COMPOSER_PREFER_STABLE`, `COMPOSER_WITH_(ALL_)DEPENDENCIES`,
+    `COMPOSER_IGNORE_PLATFORM_REQ(S)`. `COMPOSER_HOME`, `COMPOSER_AUTH` (dépôts privés) restent ;
+  - **une extension absente de la machine** (`ext-intl`) fait échouer la résolution :
+    `--ignore-platform-req=ext-*` (et `lib-*`) ; la version de PHP reste celle de
+    `config.platform.php`, sinon celle de la machine (le plan le dit) ;
+  - **le lockfile** : `packages`, `packages-dev`, la version telle qu'écrite (`v5.4.10`),
+    `require` de chaque paquet, `notification-url` (`https://packagist.org/downloads/`) pour un
+    paquet de Packagist, `"dist": {"type": "path"}` pour un dépôt `path` ; `stability-flags`,
+    `platform`, `content-hash` ;
+  - **Packagist `p2`** : versions de la plus récente à la plus ancienne, pré-versions comprises
+    (twig `v4.0.0-alpha1` en tête), minifiées (`__unset`), `abandoned` dans la plus récente (`true`
+    ou le remplaçant), `time`, 404 ; un nom en majuscules donne aussi 200 ; `max-age=900` ;
+  - **OSV** : l'écosystème `Packagist`, le nom en minuscules (`GuzzleHttp/Guzzle` : aucune faille),
+    `v7.4.0` accepté comme `7.4.0` ; les avis écrivent `fixed: 5.4.20` (sans le `v` de Symfony) ;
+    les failles de guzzle (14 avis) et psr7 (6) sont celles de `composer audit`, celles de twig 15
+    sur 17 : les deux autres viennent de FriendsOfPHP seulement, OSV ne les a pas (limite) ;
+  - `composer outdated` donne les mêmes dernières versions, sauf symfony/console : 6.4.49, la plus
+    haute pour le PHP du projet (8.1.30) ; forceupdate dit v8.1.10, qui demande PHP 8.4 (case
+    ajoutée à E27).
+- **Organisation** :
+  - `versions/composer.py` (`COMPOSER`, `ComposerVersion`, `ComposerConstraint`, `normalize`,
+    `parse_stability`, `is_branch`, `STABILITIES`) ; `parsers/php.py` (`parse_composer_json`,
+    `parse_composer_lock`, `parse_project`, `is_platform`, `REASON_BRANCH`, `REASON_PROVIDED`,
+    `REASON_OTHER_REPOSITORY`) ; `registries/packagist.py` (`Packagist`, `expand`,
+    `abandoned_message`) ; `update/writers/php.py` (`read_composer_json`) ; `update/lockfiles.py` :
+    `LockKind.COMPOSER`, `_Composer`, `_composer_specs`, `_composer_environment`,
+    `_composer_warnings`, `_composer_unblocks`, et les variables retirées dans `_DROPPED_ENV` ;
+  - `checks/base.py` : `is_excluded` (versions de Go, contraintes de Composer), repris par
+    `checks/deprecated.py`, `checks/outdated.py` (la dernière et la permise) et `planner.py` ;
+    `advisories/osv.py` : noms Packagist sans la casse ; `update/constraints.py` : opérateurs
+    Composer, `~1.2` qui garde sa précision, l'intervalle comme npm, le `v` de Packagist retiré de la
+    version visée ; `openapi.json` et `schema.d.ts` (`LockKind` : `composer`).
+- **Tranché** :
+  - **une version nue est exacte** (`1.2` = `==1.2.0.0`), **`~1.2` va jusqu'à 2.0** ; une contrainte
+    accepte les pré-versions qu'encadrent ses bornes, c'est la stabilité qui les écarte :
+    seulement les stables, sauf un drapeau (`@beta`) ou une pré-version écrite (`^2.0-beta1`), comme
+    `extractStabilityFlags` ; `minimum-stability` n'est pas connue d'une contrainte : une remarque
+    quand elle est basse sans `prefer-stable` ;
+  - **une branche** (`dev-main`, `1.x-dev`, avec alias, référence ou drapeau) n'est pas vérifiable,
+    ni une version figée qui en est une (`*@dev` résolu en `dev-master`) ;
+  - **un dépôt de `repositories`** : `path` se voit dans le lockfile ; `vcs`, `package`, `artifact`
+    rendent non vérifiables les paquets sans le `notification-url` de Packagist (une fourche par
+    `vcs` en est un) ; un dépôt `composer` (miroir, Satis, Private Packagist) n'est pas distingué :
+    ses paquets sont cherchés sur Packagist (un privé y est introuvable) ;
+  - **`conflict`** : des contraintes dans `Dependency.excluded` (aussi pour les transitives) ;
+    `replace` et `provide` : ce que le projet fournit, absent du lockfile, non vérifiable s'il est
+    aussi requis ;
+  - **la régénération** : un seul `composer update x:V… -W --no-install --no-scripts --no-plugins
+    --no-interaction --no-progress --no-ansi --ignore-platform-req=ext-* --ignore-platform-req=lib-*`,
+    `COMPOSER_MINIMAL_CHANGES=1`, `COMPOSER_NO_AUDIT=1`, et `COMPOSER_POLICY_ADVISORIES_BLOCK=0`
+    (voir plus haut) ; pas d'épinglage le temps d'un passage : `x:V` vise déjà la version. Sous
+    Windows, `composer` est le `composer.bat` de l'installateur : `^` y serait refusé
+    (`_BATCH_UNSAFE`), les versions passées sont exactes ;
+  - **les réponses enregistrées** : huit paquets (`PACKAGES["packagist"]`, 840 Ko) ; pour OSV,
+    seules les 20 versions du mini-projet ont été ajoutées à `queries.json`, avec leurs 35 avis
+    (un script qui fait la requête de `record.py osv` pour ce projet seul) : rien d'autre n'a bougé.
+- **Trouvé** :
+  - la version permise de monolog était 2.11.1, que le `conflict` exclut (Composer prend 2.10.0) :
+    la permise écarte maintenant les versions exclues (Go compris) ;
+  - le plan annonçait le blocage levé même quand la personne avait réglé
+    `COMPOSER_POLICY_ADVISORIES_BLOCK` (que forceupdate respecte) : la même décision sert aux deux ;
+  - le heredoc a encore cassé un script (CLAUDE.md le dit) : les scripts passent par l'outil
+    d'écriture.
+- **Tests** : `test_versions_composer.py` (159 : la normalisation, l'ordre et les contraintes
+  relevés sur composer/semver, bornes, versions exactes, drapeaux, et les 22 choix de
+  `composer update`) ; `test_parsers_php.py` (49, dont `TestParseComposerJson` repris de
+  `reference/`) ; `test_registries_packagist.py` (15, plus 1 réseau) ; `test_php_projects.py`
+  (9 : inventaire, constats, plan, `scan` et `update` en ligne de commande, Composer simulé qui
+  refuse une version à faille quand le blocage n'est pas levé) ; `test_lockfiles.py` (8 : commande,
+  versions visées et environnement, réglages du projet ou de la personne gardés, avertissements,
+  échec remis ; plus le vrai Composer en `network`, son cache dans le dossier du test) ;
+  `test_update_constraints.py` (35 cas Composer), `test_writers.py` (6), `test_checks.py`
+  (`is_excluded`) ; le mini-projet passe aussi par les tests des sources GitHub, GitLab et
+  Bitbucket et de la réécriture ; les tests qui prenaient Packagist pour « pas encore géré »
+  prennent RubyGems. 2838 tests Python verts (plus 15 réseau, avec les vrais Composer, go,
+  cargo, npm, uv, pnpm), ruff propre ; 141 Vitest ; 49 Playwright.
+- **Vérifié à la main**, sur des copies dans le scratchpad, avec le vrai Packagist, OSV et
+  Composer : `forceupdate scan` (34 failles, deux abandonnés et le remplaçant, la branche et le
+  dépôt `path` non vérifiables, monolog permise 2.10.0) ; `forceupdate update --yes` (7 mises à
+  jour, versions exactes, promises 1.5.1 → 2.6.0 exigée par guzzle 7.16.1 et dite ; pas de
+  `script-ran.txt` ; `composer validate` et `composer install --dry-run` sans rien à redire), puis
+  l'analyse relancée (plus aucune faille ; les majeures et les abandonnés restent) ;
+  `forceupdate ui` piloté par Playwright : rapport, écran 5 (psr/log, une majeure, pas cochée),
+  plan (diff de `composer.json`, « composer trouvé », la commande, l'avertissement), application :
+  7 « version exacte », « Aussi changé dans le lockfile », sans erreur de console.
+- **Limites** : une version qui demande un PHP plus récent que celui du projet est proposée
+  (Composer la refuse ; E27) ; les avis de FriendsOfPHP absents d'OSV ne sont pas vus (twig : 2
+  sur 17) ; avec Composer 2.9, le blocage des failles ne se lève pas (la mise à jour d'une version
+  qui en garde échoue, tout est remis) ; un dépôt `composer` privé est cherché sur Packagist ;
+  `minimum-stability` sans `prefer-stable` : seules les stables sont proposées ; `prefer-stable`
+  n'est pas lu pour un drapeau `@beta` (Composer le préfère alors stable) ; une branche n'est
+  jamais proposée ; `vendor/` n'est pas mis à jour (le plan le dit).
 
 ### E24 — Ruby (Bundler)
 
@@ -1533,6 +1673,7 @@ lockfile est testée avec une commande simulée, et c'est noté.
 - [ ] Client endoflife.date (cache 24 h). Constat `EOL` dans deux cas : fin de vie passée, ou dans moins de 6 mois. Il donne la date et le cycle conseillé.
 - [ ] Pas de mise à jour automatique d'un runtime (signalé seulement). Un framework monte comme toute autre dépendance.
 - [ ] Versions qui demandent un Node plus récent : `npm outdated` écarte celles dont `engines.node` exclut le Node installé (E07 : jsdom 30 demande `^24.15.0`, il ne la propose pas sous Node 24.12). forceupdate les propose. Une fois connue la version de Node du projet, dire quand la version proposée en demande une plus récente (garder `engines` de chaque version dans `registries/npm.py` et son cache).
+- [ ] Depuis E23 : de même pour PHP. Composer refuse une version dont le `require.php` exclut le PHP du projet (`config.platform.php`, sinon la machine) : `composer outdated` propose symfony/console 6.4.49 sous PHP 8.1.30, forceupdate v8.1.10, qui demande PHP 8.4 (et la mise à jour échoue). Garder le `require.php` de chaque version (les métadonnées `p2` le donnent) et dire, ou écarter, celles qui ne conviennent pas au PHP du projet.
 - [ ] Interface : les fins de vie apparaissent dans le rapport (écran 4), avec la date et le cycle conseillé.
 
 **Fini quand** : un projet Python 3.8 + Django 3.2 + Node 16 sort trois constats
@@ -1597,6 +1738,11 @@ seulement des imports) donnent un rapport juste.
   - `vendor/` n'est pas refait après `go mod tidy` (le plan le dit) : proposer `go mod vendor`, avec de quoi remettre `vendor/` en cas d'échec ;
   - dans un workspace `go.work`, la version construite est la plus haute que demandent ses membres : la calculer (sélection minimale sur leurs `go.mod`) au lieu de garder celle du `go.mod` du membre ;
   - la majeure suivante d'un module qui a des `+incompatible` de la même majeure sous un chemin `/vN` (v2.0.0+incompatible et `…/v2`) : chercher aussi ces chemins, au prix d'une requête par majeure.
+- [ ] Depuis E23 (PHP) :
+  - les avis de la base FriendsOfPHP qui manquent à OSV ne sont pas vus (twig 3.4.1 : 15 failles sur les 17 de `composer audit`) : lire aussi ceux de Packagist (`security-advisories` des métadonnées `p2`, détail par `https://packagist.org/api/security-advisories/`), réunis à ceux d'OSV par leurs CVE ;
+  - un dépôt `composer` de `repositories` (Satis, Private Packagist) : ses paquets sont cherchés sur Packagist ; les demander à ce dépôt (son `packages.json`, `metadata-url`), avec `auth.json` ;
+  - avec Composer 2.9, le blocage des versions à faille ne se lève que par `config.audit.block-insecure` : le dire dans le plan quand le Composer installé est un 2.9 (`composer --version`) ;
+  - `prefer-stable` et `minimum-stability` du projet : les passer à la version permise (aujourd'hui, seulement les stables ou un drapeau de la contrainte).
 - [ ] Depuis E20 (Bitbucket) :
   - un refresh token de Bitbucket inutilisé pendant 3 mois expire : le compte passe en `problem` (« se reconnecter ») ; le dire dans la carte avant, ou le renouveler de temps en temps ;
   - un dépôt où le compte écrit par un groupe, sans droit explicite ni administration du workspace : vu en lecture seule (`…/permissions/repositories` ne liste que les droits explicites) ; le vérifier sur un vrai workspace d'équipe, et sinon essayer `role=contributor` ;
@@ -1698,3 +1844,4 @@ En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.
 | 20 | 2026-10-29 | E20 | Fait. Commit de E19 d'abord (accord de l'utilisateur). L'utilisateur, sans compte Bitbucket, guidé pour le créer (workspace `pauzzle`), puis pour enregistrer l'« OAuth client » (le formulaire a changé : « OAuth clients », onglets Details, Authorization, Scopes ; public, sans « Client credentials »). Recherche sur l'API de 2026, puis vérifiée en vrai (deux écarts trouvés : 404 et non 410 pour l'ancienne liste, `sort` refusé sur `/user/workspaces`). `forges/bitbucket.py` (workspaces puis leurs dépôts, droits, arborescence en largeur avec tailles, fichiers bruts, clone et push par `x-token-auth`, PR trouvée, ouverte ou mise à jour avec ses relecteurs, OAuth par `Basic` et formulaire, refresh token renouvelé à chaque usage, pas de révocation ; token d'API Atlassian collé). Trouvé : **un token de Bitbucket fait 2 775 caractères, Windows refuse un secret de plus de 1 280** : secrets découpés dans le trousseau ; l'API ne donne pas l'arbre d'un commit : lu par git (`Forge.branch_tree`) ; pas d'adresse `noreply` : l'adresse principale du compte. Écran 6 (carte Bitbucket, token d'API, déconnexion sans révocation et son lien), écrans 7 et 8 sans changement de fond. Bitbucket simulé `tests/fake_bitbucket.py`. Vérifié en vrai sur `pauzzle/forceupdate-demo` (créé par l'utilisateur) : PR #1 ouverte, relancée sans rien pousser, puis refaite sur un `main` avancé. 2114 tests Python, 138 Vitest, 49 Playwright. Cases ajoutées à E29, E30, E31 |
 | 21 | 2026-10-30 | E21 | Fait. Commit de E20 d'abord (accord de l'utilisateur) ; cargo installé avec son accord (rustup, cargo 1.99.1). `parsers/rust.py` (repris de `reference/` : `Cargo.toml` en toutes ses formes, plateformes, renommages, git, chemins, autres registres, `workspace = true` lu dans `[workspace.dependencies]` de la racine via `resolved_constraint`, membres et `exclude` ; `Cargo.lock` 1 à 4 en graphe, dépendances de build figées), `versions/cargo.py` (le crate `semver` de Cargo réécrit : **26 choix de cargo reproduits**), `registries/crates.py` (index « sparse », `yanked`, `pubtime`), OSV `crates.io` (RUSTSEC et GHSA, versions corrigées justes), styles de contrainte Cargo, `writers/rust.py` (la racine réécrite comme un catalogue pnpm), pilote cargo. Trouvé en vrai : **`--precise` ignoré quand la contrainte réécrite n'accepte plus la version figée** (directe épinglée `=V` le temps d'un `cargo update --workspace`, `--precise` pour une indirecte) ; `build.rs` ne tourne pas, mais `rustc -vV` oui avec le résolveur 3 (`RUSTC`, `RUSTC_WRAPPER` vide) ; rustup installe et lance la chaîne d'outils d'un `rust-toolchain.toml` (dit dans le plan). Corrigé en route : le récapitulatif de l'écran 5 citait le manifeste d'un catalogue au lieu du fichier réécrit (pnpm aussi). Mini-projets `cargo` et `cargo-workspace` (lockfiles de cargo). Vérifié à la main avec le vrai cargo : `scan`, `update` et `ui` sur des copies, versions exactes. 2377 tests Python (plus 11 réseau), 139 Vitest, 49 Playwright. Cases ajoutées à E29 et à la phase F |
 | 22 | 2026-10-30 | E22 | Fait. E21 déjà commitée. Go installé avec l'accord de l'utilisateur (winget bloqué par une autre installation : l'archive officielle de Go 1.27.3, vérifiée, dans `~/sdk`). `versions/go.py` (semver à `v`, pseudo-versions, `+incompatible`, chemins de majeure ; l'ordre de `golang.org/x/mod` reproduit), `parsers/go.py` (un lexer comme celui de `modfile` : `require` en ligne et en bloc avec emplacements, `// indirect`, `replace` local ou vers un module, `exclude`, `retract`, dépréciation ; `go.work` et ses membres), `registries/goproxy.py` (liste, `go.mod` de la dernière pour les retraits et la dépréciation, `@latest`, chemins encodés, 404/410, majeure suivante sous son chemin), OSV `Go`, `writers/go.py`, pilote `go mod tidy`. Tranché : la version de `go.mod` est la version utilisée (une contrainte n'accepte qu'elle) ; une indirecte se réécrit dans `go.mod` ; une majeure est un autre module, proposée « à la main » avec `go get …/vN` ; `go mod tidy` plutôt que `go get` (vérifié : `go get` pour descendre retire d'autres modules). Trouvé en vrai : tidy relève la directive `go` (et l'écrit, à la version installée, s'il n'y en a pas) ; `GOTOOLCHAIN=auto` télécharge un autre Go (`local` passé) ; `GOFLAGS=-modfile=` détourne tidy (neutralisé) ; un `vendor/` devient périmé (dit) ; une version exclue fait sauter tidy à la dernière (jamais proposée). Corrigé en route : la « dernière » ignore les versions exclues ; deux libellés de l'écran 5 (avec le skill `ui-ux-pro-max`) ; un double point de `forceupdate update` depuis E10. Mini-projets `go` et `go-workspace` (faits par `go`). Vérifié à la main avec le vrai `go` : `scan`, `update` (versions exactes, `go build`, `go mod tidy -diff` sans rien à changer) et `ui` sur des copies. 2551 tests Python (plus 13 réseau), 141 Vitest, 49 Playwright. Cases ajoutées à E29 |
+| 23 | 2026-10-30 | E23 | Fait. Commit de E22 d'abord (accord de l'utilisateur) ; PHP 8.5.12 et Composer 2.11.0 installés avec son accord (archives officielles vérifiées, dans `~/sdk`). `versions/composer.py` (`VersionParser` de composer/semver et l'ordre de `version_compare` réécrits : **aucun écart** sur 1 282 versions, 19 600 paires et 99 contraintes ; **22 choix de `composer update` reproduits**), `parsers/php.py` (repris de `reference/` : contraintes telles qu'écrites et emplacements, noms en minuscules, paquets « plateforme », branches, `replace`/`provide`, `conflict`, dépôts `path` et autres d'après le lockfile ; `composer.lock` en graphe), `registries/packagist.py` (`p2` minifié, `abandoned` et son remplaçant), OSV `Packagist`, styles de contrainte (`~1.2` jusqu'à 2.0), `writers/php.py`, pilote `composer update x:V… -W --no-install --no-scripts --no-plugins`. Trouvé en vrai : `update --lock` garde une version que la contrainte n'accepte plus (jamais utilisé) ; `-W` nécessaire, `COMPOSER_MINIMAL_CHANGES` pour rien d'autre ; scripts et plugins lancés sans `--no-scripts`/`--no-plugins` (témoins) ; `COMPOSER_PREFER_LOWEST` fait descendre (retiré) ; **Composer 2.9+ refuse toute version qui garde une faille** : tranché avec l'utilisateur, levé pour les failles seules (`COMPOSER_POLICY_ADVISORIES_BLOCK=0`) sauf réglage du projet ou de la personne. `Dependency.excluded` devient des contraintes (`is_excluded`) ; corrigé en route : la version permise ignorait les versions exclues. Mini-projet `composer` (lockfile de Composer). Vérifié à la main avec le vrai Composer : `scan`, `update` (versions exactes, `composer validate` propre) et `ui` sur des copies. 2838 tests Python (plus 15 réseau), 141 Vitest, 49 Playwright. Cases ajoutées à E27, E29 |

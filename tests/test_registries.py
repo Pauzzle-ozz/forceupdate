@@ -20,6 +20,7 @@ from forceupdate.registries import PackageInfo, PackageNotFound, PackageVersion,
 from forceupdate.registries.crates import Crates
 from forceupdate.registries.goproxy import GoProxy
 from forceupdate.registries.npm import Npm
+from forceupdate.registries.packagist import Packagist
 from forceupdate.registries.pypi import ACCEPT, PyPI
 
 URL = "https://pypi.org/simple/demo/"
@@ -59,8 +60,11 @@ def test_for_ecosystem() -> None:
                 registries.for_ecosystem(Ecosystem.CRATES_IO, http, Cache(None)), Crates
             )
             assert isinstance(registries.for_ecosystem(Ecosystem.GO, http, Cache(None)), GoProxy)
-            with pytest.raises(LookupError, match="Packagist"):
-                registries.for_ecosystem(Ecosystem.PACKAGIST, http, Cache(None))
+            assert isinstance(
+                registries.for_ecosystem(Ecosystem.PACKAGIST, http, Cache(None)), Packagist
+            )
+            with pytest.raises(LookupError, match="RubyGems"):
+                registries.for_ecosystem(Ecosystem.RUBYGEMS, http, Cache(None))
 
     asyncio.run(main())
 

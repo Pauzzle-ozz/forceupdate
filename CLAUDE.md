@@ -86,10 +86,12 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   │                         trousseau, keyring, en morceaux s'ils sont longs, un compte par forge et par
 │   │                         hôte, renouvellement)
 │   ├── parsers/            ← un module par écosystème : python.py, npm.py, rust.py (Cargo.toml, Cargo.lock,
-│   │                         workspaces), go.py (go.mod et go.work : un lexer comme celui de modfile) ;
-│   │                         lockfiles.py (lien manifeste ↔ lockfile), *_spans.py (positions) ;
-│   │                         versions/ et registries/ de même (cargo.py, crates.py : l'index « sparse » ;
-│   │                         go.py, goproxy.py : proxy.golang.org, plusieurs requêtes par module)
+│   │                         workspaces), go.py (go.mod et go.work : un lexer comme celui de modfile),
+│   │                         php.py (composer.json, composer.lock) ; lockfiles.py (lien manifeste ↔
+│   │                         lockfile), *_spans.py (positions) ; versions/ et registries/ de même
+│   │                         (cargo.py, crates.py : l'index « sparse » ; go.py, goproxy.py :
+│   │                         proxy.golang.org, plusieurs requêtes par module ; composer.py, réécrit
+│   │                         d'après composer/semver, packagist.py : les métadonnées p2 minifiées)
 │   ├── sources/            ← d'où vient le code : local.py (dossier, fichier), forge.py (un dépôt lu par
 │   │                         l'API : seuls les fichiers que lisent les parseurs sont téléchargés ; un
 │   │                         clone superficiel si l'arborescence est tronquée)
@@ -164,8 +166,8 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   `fake_gitlab.FakeGitLab` (`gitlab.GIT_URL` vers `remotes_url(…)` pour git), Bitbucket avec
   `fake_bitbucket.FakeBitbucket` (`bitbucket.GIT_URL` de même). Le trousseau des tests refuse,
   comme Windows, un secret de plus de 1 280 caractères. La fixture `recorded` simule PyPI, npm,
-  crates.io, le proxy Go et OSV avec les réponses de `tests/fixtures/` (pour Go, toutes celles
-  d'un module dans un fichier : `goproxy/<module>.json`) ; `fake_tools("npm", "uv")` simule les
+  crates.io, le proxy Go, Packagist et OSV avec les réponses de `tests/fixtures/` (pour Go, toutes
+  celles d'un module dans un fichier : `goproxy/<module>.json`) ; `fake_tools("npm", "uv")` simule les
   outils (`FakeTools`) ; `keychain` est le trousseau en mémoire du test ; `api` est le
   serveur de `ui` (client de test de FastAPI, jeton compris), `finished` attend la fin
   d'une tâche. GitHub se simule avec respx (`tests/test_web_accounts.py`, `FakeGitHub` pour les
@@ -217,6 +219,16 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   (`GOMODCACHE`, `GOCACHE`, `GOFLAGS=-modcacherw` pour pouvoir les effacer) plutôt que dans
   `~/go` ; forceupdate passe lui-même `GOTOOLCHAIN=local` et `GOFLAGS=-mod=mod`. `go build ./...`
   laisse un programme dans un module à `package main` : ne pas le copier dans `tests/projects/`.
+- PHP 8.5.12 est dans `~/sdk/php-8.5.12` (E23 : l'archive NTS x64 de windows.php.net, son
+  `php.ini` charge openssl, curl, mbstring, zip et fileinfo) et Composer 2.11.0 dans
+  `~/sdk/composer-2.11.0` (le `composer.phar` de getcomposer.org, et un `composer.bat` comme celui
+  de son installateur), hors du `PATH` : `export PATH="$HOME/sdk/php-8.5.12:$HOME/sdk/composer-2.11.0:$PATH"`
+  avant `forceupdate update`, `ui` ou `pytest --run-network`. Sous Git Bash, lancer `composer.bat`
+  (`which composer` ne le trouve pas ; `shutil.which` si). Pour un essai à la main, mettre
+  `COMPOSER_HOME` et `COMPOSER_CACHE_DIR` dans le scratchpad ; pour fabriquer un lockfile
+  volontairement vulnérable, `--no-blocking` (Composer refuse sinon les versions à faille).
+- Pour tous les tests `network` d'un coup :
+  `export PATH="$HOME/sdk/php-8.5.12:$HOME/sdk/composer-2.11.0:$HOME/sdk/go1.27.3/bin:$HOME/.cargo/bin:$PATH"`.
 
 ## Interface
 

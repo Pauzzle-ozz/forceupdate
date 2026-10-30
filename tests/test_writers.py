@@ -222,6 +222,27 @@ replace github.com/google/uuid => github.com/google/uuid v1.4.0
 """
 
 
+COMPOSER_JSON = """\
+{
+    "name": "acme/app",
+    "require": {
+        "php": ">=8.1",
+        "Monolog/Monolog": "^2.3",
+        "symfony/console": " ~5.4 ",
+        "twig/twig": "3.4.*",
+        "psr/log": "^1.1 || ^2.0",
+        "acme/beta": "^1.0@beta"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.5"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
+"""
+
+
 def _replace(text: str, old: str, new: str) -> str:
     assert text.count(old) == 1, old
     return text.replace(old, new)
@@ -282,6 +303,14 @@ def _replace(text: str, old: str, new: str) -> str:
         ("go.mod", GO_MOD, "github.com/gin-gonic/gin", "v1.10.0", ("v1.9.1 //", "v1.10.0 //")),
         ("go.mod", GO_MOD, "c.io/d", "v0.2.0", ('"v0.1.0"', '"v0.2.0"')),
         ("go.mod", GO_MOD, "github.com/google/uuid", "v1.6.0", ("uuid v1.4.0", "uuid v1.6.0")),
+        # composer.json : un nom en majuscules, des espaces autour, un drapeau de stabilité,
+        # une union, require-dev.
+        ("composer.json", COMPOSER_JSON, "monolog/monolog", "^2.10", ('"^2.3"', '"^2.10"')),
+        ("composer.json", COMPOSER_JSON, "symfony/console", "~6.4", (" ~5.4 ", " ~6.4 ")),
+        ("composer.json", COMPOSER_JSON, "twig/twig", "3.30.*", ('"3.4.*"', '"3.30.*"')),
+        ("composer.json", COMPOSER_JSON, "psr/log", "^3.0.2", ('"^1.1 || ^2.0"', '"^3.0.2"')),
+        ("composer.json", COMPOSER_JSON, "acme/beta", "^1.4@beta", ("^1.0@beta", "^1.4@beta")),
+        ("composer.json", COMPOSER_JSON, "phpunit/phpunit", "^9.6", ('"^9.5"', '"^9.6"')),
         # setup.cfg : une par ligne, une absente, plusieurs sur une ligne.
         ("setup.cfg", SETUP_CFG, "requests", ">=2.34.2", (">=2.25", ">=2.34.2")),
         ("setup.cfg", SETUP_CFG, "click", ">=8", ("click ;", "click>=8 ;")),

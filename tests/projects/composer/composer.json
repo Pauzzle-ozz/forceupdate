@@ -1,0 +1,50 @@
+{
+    "name": "forceupdate/composer-demo",
+    "description": "Mini-projet Composer de forceupdate : contraintes de chaque style, failles, paquets abandonnés.",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.1",
+        "ext-json": "*",
+        "acme/tools": "^1.0",
+        "guzzlehttp/guzzle": "7.4.0",
+        "monolog/monolog": "^2.3",
+        "php-http/message-factory": "^1.0",
+        "psr/container": "dev-master",
+        "psr/log": "^1.1 || ^2.0",
+        "symfony/console": "~5.4",
+        "twig/twig": "3.4.*"
+    },
+    "require-dev": {
+        "doctrine/cache": "^1.12"
+    },
+    "conflict": {
+        "monolog/monolog": "2.11.*"
+    },
+    "replace": {
+        "symfony/polyfill-php72": "*",
+        "symfony/polyfill-php73": "*",
+        "symfony/polyfill-php80": "*"
+    },
+    "repositories": [
+        {
+            "type": "path",
+            "url": "third_party/acme-tools"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "Demo\\": "src/"
+        }
+    },
+    "scripts": {
+        "post-update-cmd": "@php -r \"file_put_contents('script-ran.txt', 'forceupdate ne lance jamais les scripts du projet');\""
+    },
+    "config": {
+        "platform": {
+            "php": "8.1.30"
+        },
+        "sort-packages": true
+    },
+    "prefer-stable": true
+}

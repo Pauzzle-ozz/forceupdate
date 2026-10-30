@@ -22,11 +22,13 @@ Lockfile                      Commande de base
 ``Cargo.lock``                ``cargo update --workspace`` (ne résout que ce qui ne colle
                               plus au manifeste ; ``build.rs`` ne tourne pas)
 ``go.sum``                    ``go mod tidy`` (``go.mod`` déjà réécrit ; rien n'est compilé)
+``composer.lock``             ``composer update x:V… -W --no-install --no-scripts
+                              --no-plugins`` (rien n'est installé ni exécuté du projet)
 ============================  ===========================================================
 
 Vérifié avec npm 11.6, pnpm 12.15, Yarn 1.22 et 4.18, uv 0.10, Poetry 1.8 et 2.5, PDM 2.29,
-pipenv 2026.10, pip-tools 7.6 (voir les notes de E11 dans ``PLAN.md``), cargo 1.99 (E21) et
-Go 1.27 (E22).
+pipenv 2026.10, pip-tools 7.6 (voir les notes de E11 dans ``PLAN.md``), cargo 1.99 (E21), Go 1.27
+(E22) et Composer 2.11 (E23).
 
 **Viser la version choisie.** Régénérer garde les versions déjà figées qui satisfont les
 contraintes : une mise à jour par le lockfile seul (la contrainte accepte déjà la version) ne
@@ -48,6 +50,11 @@ bougerait pas. Chaque outil a sa façon de viser un paquet :
   sélection minimale exige (une dépendance de la nouvelle version qui en demande plus : la
   version relue le dit). Pas ``go get x@V`` : pour descendre, il retire les modules qui
   demandent plus (vérifié avec Go 1.27) ;
+- Composer : ``composer update x:V``, une contrainte de plus le temps du passage, pour une directe
+  comme pour une indirecte ; ``-W`` laisse bouger ce que la nouvelle version exige (une autre
+  directe comprise), ``COMPOSER_MINIMAL_CHANGES`` rien d'autre. Pas ``update --lock`` : il garde
+  une version que la contrainte réécrite n'accepte plus, et refait quand même le ``content-hash``
+  (vérifié avec Composer 2.11) ;
 - Yarn et pipenv reprennent la plus haute version que permet la contrainte : ``yarn up -R x``
   (Yarn 2+), l'entrée du paquet retirée du ``yarn.lock`` (Yarn 1, dont ``yarn upgrade``
   réordonne le ``package.json``), et ``pipenv lock``, qui re-résout tout.
@@ -70,6 +77,7 @@ lockfiles qui dépendent des mêmes fichiers, et l'erreur de l'outil est rapport
 import dataclasses
 import enum
 import itertools
+import json
 import logging
 import os
 import posixpath
@@ -97,8 +105,9 @@ from forceupdate.models import (
     Update,
     UpdateOption,
 )
-from forceupdate.parsers import go, python
+from forceupdate.parsers import go, php, python
 from forceupdate.parsers.base import ParseError, ReadText
+from forceupdate.parsers.json_spans import BOM
 from forceupdate.parsers.lockfiles import Lockfile, dependents, dirname, join
 from forceupdate.sources.local import LocalSource
 from forceupdate.update import writers
@@ -143,6 +152,7 @@ class LockKind(enum.StrEnum):
     """Un ``.txt`` compilé par ``uv pip compile`` (son en-tête le dit)."""
     CARGO = "cargo"
     GO = "go"
+    COMPOSER = "composer"
 
 
 _TOOL_NAMES = {
@@ -158,6 +168,7 @@ _TOOL_NAMES = {
     LockKind.UV_PIP_COMPILE: "uv pip compile",
     LockKind.CARGO: "Cargo",
     LockKind.GO: "Go",
+    LockKind.COMPOSER: "Composer",
 }
 
 _PROGRAMS = {
@@ -173,8 +184,10 @@ _PROGRAMS = {
     LockKind.UV_PIP_COMPILE: "uv",
     LockKind.CARGO: "cargo",
     LockKind.GO: "go",
+    LockKind.COMPOSER: "composer",
 }
-"""Le programme de chaque outil, cherché par ``shutil.which``."""
+"""Le programme de chaque outil, cherché par ``shutil.which`` (sous Windows, ``composer`` est le
+``composer.bat`` de son installateur, qui lance ``php composer.phar``)."""
 
 _UV_BUILDS = (
     "uv construit les paquets publiés sans wheel dont il lit les dépendances, et le projet si "
@@ -385,6 +398,8 @@ def _job(
         warnings += _cargo_runs_code(source.read_text, dirname(path))
     elif kind is LockKind.GO:
         warnings += _go_warnings(source.read_text, dirname(path))
+    elif kind is LockKind.COMPOSER:
+        warnings += _composer_warnings(source.read_text, dirname(path))
     job = Job(
         lockfile=path,
         kind=kind,
@@ -424,6 +439,7 @@ _KINDS = {
     "Pipfile.lock": LockKind.PIPENV,
     "Cargo.lock": LockKind.CARGO,
     "go.sum": LockKind.GO,
+    "composer.lock": LockKind.COMPOSER,
 }
 
 
@@ -491,6 +507,61 @@ def _go_warnings(read_text: ReadText, directory: str) -> list[str]:
             "refuse un vendor/modules.txt périmé)."
         )
     return warnings
+
+
+def _composer_warnings(read_text: ReadText, directory: str) -> list[str]:
+    """Ce que fera ``composer update`` autrement que ne le demande le projet, ou ce qu'il ne fera
+    pas : le blocage des versions à faille levé, le PHP de la machine pris faute de
+    ``config.platform.php``, ``vendor/`` laissé tel quel (``--no-install``)."""
+    warnings = []
+    config = _composer_config(read_text, directory)
+    if _composer_unblocks(config):
+        warnings.append(
+            "Composer ne refuse pas, le temps de la régénération, une version qui a encore une "
+            "faille connue (COMPOSER_POLICY_ADVISORIES_BLOCK=0, Composer 2.10 et plus) : "
+            "forceupdate montre celles qui restent. Les logiciels malveillants restent bloqués."
+        )
+    platform = config.get("platform")
+    if not (isinstance(platform, dict) and isinstance(platform.get("php"), str)):
+        warnings.append(
+            "Sans config.platform.php dans composer.json, Composer choisit les versions pour le "
+            "PHP de cette machine."
+        )
+    if _read_quietly(read_text, join(directory, "vendor/composer/installed.json")) is not None:
+        warnings.append(
+            "vendor/ n'est pas mis à jour : lancer composer install après la mise à jour."
+        )
+    return warnings
+
+
+def _composer_config(read_text: ReadText, directory: str) -> dict[str, Any]:
+    """La table ``config`` du ``composer.json`` de ``directory`` ; vide s'il n'y en a pas."""
+    content = _read_quietly(read_text, join(directory, php.MANIFEST))
+    try:
+        data = json.loads((content or "").removeprefix(BOM))
+    except ValueError:
+        return {}
+    config = data.get("config") if isinstance(data, dict) else None
+    return config if isinstance(config, dict) else {}
+
+
+def _composer_unblocks(config: Mapping[str, Any]) -> bool:
+    """Vrai si forceupdate lève le blocage des versions à faille : ni le projet (``config``) ni la
+    personne (``COMPOSER_POLICY_ADVISORIES_BLOCK`` déjà là) ne le règlent."""
+    return "COMPOSER_POLICY_ADVISORIES_BLOCK" not in os.environ and not _composer_sets_blocking(
+        config
+    )
+
+
+def _composer_sets_blocking(config: Mapping[str, Any]) -> bool:
+    """Vrai si le projet règle lui-même le blocage des versions à faille : ``config.policy`` (tout,
+    ou ``advisories``), ou l'ancien ``config.audit.block-insecure`` (Composer 2.9). forceupdate le
+    respecte alors."""
+    policy = config.get("policy")
+    if isinstance(policy, bool) or (isinstance(policy, dict) and "advisories" in policy):
+        return True
+    audit = config.get("audit")
+    return isinstance(audit, dict) and "block-insecure" in audit
 
 
 def _parents(directory: str) -> list[str]:
@@ -1046,11 +1117,21 @@ _DROPPED_ENV = frozenset(
         "POETRY_ACTIVE",
         "UV_FROZEN",
         "UV_LOCKED",
+        "COMPOSER",
+        "COMPOSER_NO_DEV",
+        "COMPOSER_PREFER_LOWEST",
+        "COMPOSER_PREFER_STABLE",
+        "COMPOSER_WITH_DEPENDENCIES",
+        "COMPOSER_WITH_ALL_DEPENDENCIES",
+        "COMPOSER_IGNORE_PLATFORM_REQ",
+        "COMPOSER_IGNORE_PLATFORM_REQS",
     }
 )
 """Ce qui, hérité de l'environnement de forceupdate, ferait viser un autre projet à l'outil (le
-virtualenv activé, que pipenv et Poetry prendraient pour celui du projet), ou lui interdirait
-d'écrire le lockfile."""
+virtualenv activé, que pipenv et Poetry prendraient pour celui du projet ; ``COMPOSER``, l'autre
+fichier que lirait Composer), lui interdirait d'écrire le lockfile, ou lui ferait choisir
+d'autres versions que celles du plan (``COMPOSER_PREFER_LOWEST`` fait descendre : vérifié avec
+Composer 2.11)."""
 
 _ADDED_ENV = {
     "NO_COLOR": "1",
@@ -1566,6 +1647,49 @@ def _go_environment() -> dict[str, str]:
     return {"GOTOOLCHAIN": "local", "GOFLAGS": "-mod=mod", "GOWORK": "off"}
 
 
+class _Composer(_Driver):
+    _ARGS = ("--with-all-dependencies", "--no-install", "--no-scripts", "--no-plugins")
+
+    def manual(self, job: Job) -> list[str]:
+        return ["composer", "update", *_composer_specs(job), "-W", "-m", *self._ARGS[1:]]
+
+    def run(self, context: _Context) -> None:
+        context.env.update(_composer_environment(context))
+        context.run(
+            "update",
+            *_composer_specs(context.job),
+            *self._ARGS,
+            "--no-interaction",
+            "--no-progress",
+            "--no-ansi",
+            "--ignore-platform-req=ext-*",
+            "--ignore-platform-req=lib-*",
+        )
+
+
+def _composer_specs(job: Job) -> list[str]:
+    """``nom:version`` pour chaque mise à jour : une mise à jour partielle de ces paquets, chacun
+    à sa version, qu'il soit direct ou indirect."""
+    specs = (f"{update.name}:{option.version}" for _, update, option in job.choices)
+    return list(dict.fromkeys(specs))
+
+
+def _composer_environment(context: _Context) -> dict[str, str]:
+    """Rien que le nécessaire changé dans le lockfile (``COMPOSER_MINIMAL_CHANGES``, Composer 2.7
+    et plus ; ``-m`` ferait échouer un Composer plus ancien), sans l'audit de fin, et sans le
+    blocage des versions à faille (Composer 2.10 et plus) : c'est la sélection vérifiée par
+    forceupdate qui s'applique. Un réglage du projet (``config.policy``) ou de la personne
+    (``COMPOSER_POLICY_ADVISORIES_BLOCK`` déjà là) l'emporte. Vérifié avec Composer 2.11."""
+    env = {
+        "COMPOSER_MINIMAL_CHANGES": "1",
+        "COMPOSER_NO_AUDIT": "1",
+        "COMPOSER_NO_INTERACTION": "1",
+    }
+    if _composer_unblocks(_composer_config(context.source.read_text, context.job.directory)):
+        env["COMPOSER_POLICY_ADVISORIES_BLOCK"] = "0"
+    return env
+
+
 _DRIVERS: dict[LockKind, _Driver] = {
     LockKind.NPM: _Npm(),
     LockKind.PNPM: _Pnpm(),
@@ -1579,4 +1703,5 @@ _DRIVERS: dict[LockKind, _Driver] = {
     LockKind.UV_PIP_COMPILE: _UvPipCompile(),
     LockKind.CARGO: _Cargo(),
     LockKind.GO: _Go(),
+    LockKind.COMPOSER: _Composer(),
 }

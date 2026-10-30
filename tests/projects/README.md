@@ -21,6 +21,7 @@ figés : ne pas les régénérer sans mettre à jour les tests qui en dépendent
 | `cargo-workspace/` | workspace Cargo : racine virtuelle, `members = ["crates/*"]`, un membre exclu (`exclude`), `[workspace.dependencies]` repris par `workspace = true`, une dépendance `path` entre membres, `smallvec` `=1.6.0` en faille | idem (serde 1.0.160, anyhow 1.0.75, log 0.4.17) |
 | `go/` | un module Go (`go 1.21`) : `golang-jwt/jwt/v4` v4.4.0 retirée et en faille, `x/text` v0.3.7 en faille, `go-chi/chi` v1.5.4 dépréciée (la v5 est un autre module), `BurntSushi/toml` (majuscules ; v1.6.0 exclue), `uuid` remplacé par lui-même en v1.4.0 (`replace`), un module local (`replace … => ./third_party/localmod`), `testify` v1.7.0 et ses indirectes, dont `yaml.v3` en pseudo-version et en faille | `go mod tidy` (Go 1.27.3) |
 | `go-workspace/` | workspace `go.work` : `app` et `lib` (`use`), `app` qui requiert `lib` (`replace … => ../lib`), un `replace` de `x/text` dans `go.work`, `tools` hors du workspace avec une ligne `toolchain` | `go mod tidy` dans chaque module, `go build` du workspace pour `go.work.sum` (Go 1.27.3) |
+| `composer/` | un projet Composer (`config.platform.php` 8.1.30) : version exacte (`guzzlehttp/guzzle` 7.4.0, treize failles), `^`, `~5.4` (jusqu'à 6.0), joker `3.4.*` (`twig/twig`, quinze failles), union `^1.1 \|\| ^2.0`, branche `dev-master`, dépôt `path` (vers `third_party/acme-tools`), deux paquets abandonnés (`php-http/message-factory`, `doctrine/cache` en `require-dev`), `conflict` (`monolog/monolog` 2.11.*), `replace` de polyfills, un script `post-update-cmd` témoin (il écrirait `script-ran.txt`) ; `guzzlehttp/psr7` 2.1.0 indirecte en faille | `composer update --no-install --no-scripts --no-plugins --no-blocking --with x:V…` (Composer 2.11.0, PHP 8.5.12) |
 | `vulnerable/` | des failles connues (E08) : `lodash` 4.17.15, `flask` 0.12 et ses dépendances de fin 2018 (jinja2 2.10, werkzeug 0.14.1) | `npm install --package-lock-only --ignore-scripts` (npm 11.6) ; `uv pip compile requirements.in -o requirements.txt --python-version 3.7 --exclude-newer 2019-01-01` (uv 0.10) |
 
 Les lockfiles npm ont été produits avec `--ignore-scripts`, dans un dossier à part,
@@ -29,7 +30,9 @@ et `yarn1/`) est rangé dans `vendor/` exprès : ce dossier est écarté, il ne 
 un projet de plus ; `vendor/local-crate/` de `cargo/` de même, et `third_party/localmod/` de
 `go/` (pas `vendor/` : pour `go`, un `vendor/` est celui de `go mod vendor`). Les `Cargo.lock` ont été
 faits dans un dossier à part (cargo ne crée pas de `target/` pour résoudre) ; les `go.sum` aussi,
-copiés sans le programme que `go build` laisse. Sous Windows, Yarn écrit `yarn.lock` en CRLF.
+copiés sans le programme que `go build` laisse. Le `composer.lock` aussi (`--no-install` : ni
+`vendor/` ni script lancé) ; `third_party/acme-tools/` est la cible de son dépôt `path`, écartée comme
+`third_party/localmod/`. Sous Windows, Yarn écrit `yarn.lock` en CRLF.
 
 Ce dossier est rangé sous `tests/` : `forceupdate scan` sur forceupdate lui-même
 l'écarte (voir E02 dans `PLAN.md`). Pour l'analyser, choisir un mini-projet

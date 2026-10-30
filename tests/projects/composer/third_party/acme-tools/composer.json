@@ -1,0 +1,15 @@
+{
+    "name": "acme/tools",
+    "description": "Outils internes, rangés dans le dépôt (dépôt « path »).",
+    "version": "1.0.0",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Acme\\Tools\\": "src/"
+        }
+    }
+}

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from forceupdate import versions
 from forceupdate.models import Dependency, Gap
 from forceupdate.parsers.rust import WORKSPACE_CONSTRAINT
-from forceupdate.versions import InvalidConstraint, VersionScheme
+from forceupdate.versions import InvalidConstraint, InvalidVersion, VersionScheme
 from forceupdate.versions.npm import NpmRange
 
 GAP_LABELS = {Gap.MAJOR: "majeure", Gap.MINOR: "mineure", Gap.PATCH: "correctif"}
@@ -71,6 +71,21 @@ def current_version(dependency: Dependency) -> Current:
     return Current(
         version=None, constraint=constraint, unknown=f"{why}, et pas de version installée"
     )
+
+
+def is_excluded(scheme: VersionScheme, excluded: Iterable[str], version: str) -> bool:
+    """Vrai si le projet écarte ``version`` (``Dependency.excluded``) : une version de ``exclude``
+    (``go.mod``), ou une version qu'accepte une contrainte de ``conflict`` (``composer.json``).
+    Une contrainte illisible n'écarte rien."""
+    for constraint in excluded:
+        if constraint == version:
+            return True
+        try:
+            if scheme.satisfies(constraint, version):
+                return True
+        except (InvalidConstraint, InvalidVersion):
+            continue
+    return False
 
 
 def sentence(text: str) -> str:

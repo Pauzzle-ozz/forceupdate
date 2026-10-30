@@ -1022,7 +1022,7 @@ def test_parse_lockfile_reads_a_compiled_requirements_file() -> None:
     lock = parse_lockfile("requirements.txt", "flask==3.1.3\nclick>=8\n")
     assert [(p.name, p.version) for p in lock.packages] == [("flask", "3.1.3"), ("click", "")]
     with pytest.raises(ValueError, match="pas un lockfile connu"):
-        parse_lockfile("composer.lock", "")
+        parse_lockfile("Gemfile.lock", "")
 
 
 # ---------------------------------------------------------------------------
@@ -1446,6 +1446,190 @@ def test_a_go_work_replace_needs_no_regeneration(tmp_path: Path, fake_tools: Too
 
 
 # ---------------------------------------------------------------------------
+# Composer
+# ---------------------------------------------------------------------------
+
+UNBLOCKED = (
+    "Composer ne refuse pas, le temps de la régénération, une version qui a encore une faille "
+    "connue (COMPOSER_POLICY_ADVISORIES_BLOCK=0, Composer 2.10 et plus) : forceupdate montre "
+    "celles qui restent. Les logiciels malveillants restent bloqués."
+)
+
+
+class FakeComposerUpdate:
+    """``composer update x:V…`` : chaque paquet nommé passe à sa version dans ``composer.lock``
+    (``also`` en fait bouger d'autres, comme ``-W``)."""
+
+    def __init__(self, also: dict[str, str] | None = None) -> None:
+        self.also = also or {}
+
+    def __call__(self, call: ToolCall) -> tuple[int, str, str] | None:
+        assert call.arguments[0] == "update"
+        lock = call.cwd / "composer.lock"
+        data = json.loads(lock.read_text(encoding="utf-8"))
+        wanted = dict(a.split(":", 1) for a in call.arguments[1:] if not a.startswith("-"))
+        for entry in data["packages"] + data["packages-dev"]:
+            entry["version"] = wanted.get(
+                entry["name"], self.also.get(entry["name"], entry["version"])
+            )
+        data["content-hash"] = "nouveau"
+        lock.write_text(json.dumps(data, indent=4) + "\n", encoding="utf-8")
+        return None
+
+
+def composer_copy(tmp_path: Path) -> Path:
+    root = tmp_path / "composer"
+    shutil.copytree(PROJECTS / "composer", root)
+    return root
+
+
+def test_plan_of_a_composer_lock(tmp_path: Path, fake_tools: Tools) -> None:
+    root = composer_copy(tmp_path)
+    fake_tools("composer")
+    source, report = analyse(root)
+    project = project_of(report)
+    choices = [
+        wanted(project, "guzzlehttp/guzzle", "7.16.1", new="7.16.1"),
+        wanted(project, "guzzlehttp/psr7", "2.13.2", direct=False),
+    ]
+    (job,) = lockfiles.plan(source, report, writers.prepare(root, choices))
+    assert (job.lockfile, job.kind, job.program, job.tool) == (
+        "composer.lock",
+        LockKind.COMPOSER,
+        "/outils/composer",
+        "Composer",
+    )
+    assert job.command == (
+        "composer update guzzlehttp/guzzle:7.16.1 guzzlehttp/psr7:2.13.2 -W -m --no-install "
+        "--no-scripts --no-plugins"
+    )
+    # config.platform.php est dans le composer.json du mini-projet, vendor/ n'y est pas.
+    assert (job.inputs, job.warnings) == (("composer.json",), (UNBLOCKED,))
+
+
+def test_composer_targets_each_version(
+    tmp_path: Path, fake_tools: Tools, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Une directe réécrite, une directe par le lockfile seul, une indirecte : un seul ``composer
+    update``, chaque paquet à sa version, ce que la nouvelle version exige monté avec (``-W``).
+    Les variables héritées qui changeraient le fichier lu ou les versions choisies sont
+    retirées (vérifié avec Composer 2.11 : ``COMPOSER_PREFER_LOWEST`` fait descendre)."""
+    for name, value in (("COMPOSER", "autre.json"), ("COMPOSER_PREFER_LOWEST", "1")):
+        monkeypatch.setenv(name, value)
+    root = composer_copy(tmp_path)
+    tools = fake_tools("composer")
+    tools.handlers["composer"] = FakeComposerUpdate(also={"guzzlehttp/promises": "2.6.0"})
+    source, report = analyse(root)
+    project = project_of(report)
+    choices = [
+        wanted(project, "guzzlehttp/guzzle", "7.16.1", new="7.16.1"),
+        wanted(project, "twig/twig", "v3.4.3"),
+        wanted(project, "guzzlehttp/psr7", "2.13.2", direct=False),
+    ]
+
+    _, _, (result,) = apply(root, choices, report, source)
+
+    assert tools.commands() == [
+        "composer update guzzlehttp/guzzle:7.16.1 twig/twig:v3.4.3 guzzlehttp/psr7:2.13.2 "
+        "--with-all-dependencies --no-install --no-scripts --no-plugins --no-interaction "
+        "--no-progress --no-ansi --ignore-platform-req=ext-* --ignore-platform-req=lib-*"
+    ]
+    (call,) = tools.calls
+    assert call.cwd == root
+    assert {key: call.env.get(key) for key in ("COMPOSER", "COMPOSER_PREFER_LOWEST")} == {
+        "COMPOSER": None,
+        "COMPOSER_PREFER_LOWEST": None,
+    }
+    assert [call.env[key] for key in ("COMPOSER_MINIMAL_CHANGES", "COMPOSER_NO_AUDIT")] == [
+        "1",
+        "1",
+    ]
+    assert call.env["COMPOSER_POLICY_ADVISORIES_BLOCK"] == "0"
+    assert result.status is LockStatus.REGENERATED, result.error
+    assert [(i.update.name, i.versions, i.reach) for i in result.installed] == [
+        ("guzzlehttp/guzzle", ("7.16.1",), Reach.EXACT),
+        ("twig/twig", ("v3.4.3",), Reach.EXACT),
+        ("guzzlehttp/psr7", ("2.13.2",), Reach.EXACT),
+    ]
+    assert result.changed == ("guzzlehttp/promises 1.5.1 → 2.6.0",)
+
+
+@pytest.mark.parametrize(
+    ("config", "environment"),
+    [
+        ({"policy": {"advisories": {"block": True}}}, None),
+        ({"policy": False}, None),
+        ({"audit": {"block-insecure": True}}, None),
+        ({}, "1"),
+    ],
+)
+def test_the_advisory_blocking_of_the_project_or_the_person_is_kept(
+    tmp_path: Path,
+    fake_tools: Tools,
+    monkeypatch: pytest.MonkeyPatch,
+    config: dict[str, object],
+    environment: str | None,
+) -> None:
+    root = composer_copy(tmp_path)
+    manifest = root / "composer.json"
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["config"].update(config)
+    manifest.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    if environment is not None:
+        monkeypatch.setenv("COMPOSER_POLICY_ADVISORIES_BLOCK", environment)
+    tools = fake_tools("composer")
+    tools.handlers["composer"] = FakeComposerUpdate()
+    source, report = analyse(root)
+    choice = wanted(project_of(report), "twig/twig", "v3.4.3")
+    _, (job,), (result,) = apply(root, [choice], report, source)
+    assert result.status is LockStatus.REGENERATED, result.error
+    (call,) = tools.calls
+    assert call.env.get("COMPOSER_POLICY_ADVISORIES_BLOCK") == environment
+    assert UNBLOCKED not in job.warnings
+
+
+def test_composer_says_what_it_does_not_do(tmp_path: Path, fake_tools: Tools) -> None:
+    """Sans ``config.platform.php``, le PHP de la machine ; ``vendor/`` laissé tel quel."""
+    root = composer_copy(tmp_path)
+    manifest = root / "composer.json"
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    del data["config"]["platform"]
+    manifest.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    (root / "vendor" / "composer").mkdir(parents=True)
+    (root / "vendor" / "composer" / "installed.json").write_text('{"packages": []}')
+    fake_tools("composer")
+    source, report = analyse(root)
+    choice = wanted(project_of(report), "twig/twig", "v3.4.3")
+    (job,) = lockfiles.plan(source, report, writers.prepare(root, [choice]))
+    assert job.warnings == (
+        UNBLOCKED,
+        "Sans config.platform.php dans composer.json, Composer choisit les versions pour le PHP "
+        "de cette machine.",
+        "vendor/ n'est pas mis à jour : lancer composer install après la mise à jour.",
+    )
+
+
+def test_a_composer_failure_puts_every_file_back(tmp_path: Path, fake_tools: Tools) -> None:
+    root = composer_copy(tmp_path)
+    before = {name: (root / name).read_bytes() for name in ("composer.json", "composer.lock")}
+    tools = fake_tools("composer")
+    tools.handlers["composer"] = lambda call: (
+        2,
+        "",
+        "Your requirements could not be resolved to an installable set of packages.",
+    )
+    source, report = analyse(root)
+    choice = wanted(project_of(report), "monolog/monolog", "3.12.1", new="^3.12.1")
+
+    _, _, (result,) = apply(root, [choice], report, source)
+
+    assert result.status is LockStatus.FAILED
+    assert result.error is not None and "could not be resolved" in result.error
+    assert result.restored == ("composer.json",)
+    assert {name: (root / name).read_bytes() for name in before} == before
+
+
+# ---------------------------------------------------------------------------
 # Les vrais outils (réseau), sur des copies
 # ---------------------------------------------------------------------------
 
@@ -1582,3 +1766,42 @@ def test_the_real_go(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         env={**os.environ, "GOTOOLCHAIN": "local", "GOFLAGS": "-mod=mod"},
     )
     assert check.returncode == 0, check.stdout + check.stderr
+
+
+@pytest.mark.network
+def test_the_real_composer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Une directe réécrite, deux directes par le lockfile seul (monolog sous son ``conflict``),
+    une indirecte : chacune à la version choisie, même guzzle 7.4.5, twig 3.4.3 et psr7 2.4.5, qui
+    ont encore des failles (Composer les refuserait sans COMPOSER_POLICY_ADVISORIES_BLOCK=0) ; le
+    script du projet ne tourne pas, et Composer tient ensuite le lockfile pour à jour. Son cache
+    et sa configuration vont dans le dossier du test."""
+    _need("composer")
+    for name in ("COMPOSER_HOME", "COMPOSER_CACHE_DIR"):
+        monkeypatch.setenv(name, str(tmp_path / name.lower()))
+    root = composer_copy(tmp_path)
+    source, report = analyse(root)
+    project = project_of(report)
+    choices = [
+        wanted(project, "guzzlehttp/guzzle", "7.4.5", new="7.4.5"),
+        wanted(project, "twig/twig", "v3.4.3"),
+        wanted(project, "monolog/monolog", "2.10.0"),
+        wanted(project, "guzzlehttp/psr7", "2.4.5", direct=False),
+    ]
+    _, _, (result,) = apply(root, choices, report, source)
+    assert result.status is LockStatus.REGENERATED, result.error
+    assert [(i.update.name, i.versions, i.reach) for i in result.installed] == [
+        ("guzzlehttp/guzzle", ("7.4.5",), Reach.EXACT),
+        ("twig/twig", ("v3.4.3",), Reach.EXACT),
+        ("monolog/monolog", ("2.10.0",), Reach.EXACT),
+        ("guzzlehttp/psr7", ("2.4.5",), Reach.EXACT),
+    ]
+    assert result.changed == ()  # COMPOSER_MINIMAL_CHANGES : rien d'autre ne bouge
+    assert not (root / "script-ran.txt").exists() and not (root / "vendor").exists()
+    check = subprocess.run(
+        [shutil.which("composer") or "composer", "validate", "--no-check-publish", "--no-ansi"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert "not up to date" not in check.stdout + check.stderr

@@ -181,7 +181,9 @@ class Dependency:
     unverifiable_reason: str | None = None
     """Pourquoi on ne peut pas la vérifier (dépendance git, ``file:``, ``workspace:``…)."""
     excluded: tuple[str, ...] = ()
-    """Les versions que le projet écarte (``exclude`` de ``go.mod``) : jamais proposées."""
+    """Les versions que le projet écarte, jamais proposées : des versions (``exclude`` de
+    ``go.mod``) ou des contraintes (``conflict`` de ``composer.json``) ; voir
+    ``checks.base.is_excluded``."""
 
     @property
     def verifiable(self) -> bool:

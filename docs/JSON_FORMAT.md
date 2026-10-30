@@ -89,7 +89,7 @@ deux extras) donne deux dépendances, chacune avec son emplacement.
 | `file` | chemin | le fichier qui la déclare (le lockfile pour une indirecte ; `go.mod` pour une indirecte Go, ou le `go.work` dont un `replace` la fixe) |
 | `location` | [emplacement](#emplacement) ou `null` | où est écrite `constraint` dans `file` ; `null` si on ne sait pas la réécrire |
 | `unverifiable_reason` | chaîne ou `null` | pourquoi on ne peut pas la vérifier : `dépendance git`, `chemin local`, `téléchargée depuis une URL`, `membre du workspace`… |
-| `excluded` | liste de chaînes | les versions que le projet écarte (`exclude` de `go.mod`) : jamais proposées ; vide ailleurs |
+| `excluded` | liste de chaînes | les versions que le projet écarte, jamais proposées : des versions (`exclude` de `go.mod`) ou des contraintes (`conflict` de `composer.json`) ; vide ailleurs |
 
 ### Emplacement
 
@@ -628,7 +628,7 @@ comme avant.
 | Champ | Type | Sens |
 |---|---|---|
 | `lockfile` | chemin | |
-| `kind` | chaîne | `npm`, `pnpm`, `yarn1`, `yarn`, `uv`, `poetry`, `pdm`, `pipenv`, `pip-compile`, `uv-pip-compile`, `cargo`, `go` |
+| `kind` | chaîne | `npm`, `pnpm`, `yarn1`, `yarn`, `uv`, `poetry`, `pdm`, `pipenv`, `pip-compile`, `uv-pip-compile`, `cargo`, `go`, `composer` |
 | `tool` | chaîne | le nom de l'outil, pour le dire (`uv pip compile`) |
 | `program` | chaîne | le programme à installer (`uv`) |
 | `available` | booléen | l'outil est installé ; sinon le lockfile n'est pas régénéré, et `command` est à lancer à la main |
