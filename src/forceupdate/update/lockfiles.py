@@ -19,10 +19,12 @@ Lockfile                      Commande de base
 ``Pipfile.lock``              ``pipenv lock``
 ``.txt`` compilé (pip-tools)  la commande de son en-tête : ``pip-compile …`` ou
                               ``uv pip compile …``, avec les options connues
+``Cargo.lock``                ``cargo update --workspace`` (ne résout que ce qui ne colle
+                              plus au manifeste ; ``build.rs`` ne tourne pas)
 ============================  ===========================================================
 
 Vérifié avec npm 11.6, pnpm 12.15, Yarn 1.22 et 4.18, uv 0.10, Poetry 1.8 et 2.5, PDM 2.29,
-pipenv 2026.10 et pip-tools 7.6 (voir les notes de E11 dans ``PLAN.md``).
+pipenv 2026.10, pip-tools 7.6 (voir les notes de E11 dans ``PLAN.md``) et cargo 1.99 (E21).
 
 **Viser la version choisie.** Régénérer garde les versions déjà figées qui satisfont les
 contraintes : une mise à jour par le lockfile seul (la contrainte accepte déjà la version) ne
@@ -36,6 +38,9 @@ bougerait pas. Chaque outil a sa façon de viser un paquet :
   --no-save``, ``poetry update --lock x``, ``pdm update --no-sync x``, qui la montent aussi
   haut que le permet ce qui la tire. Si l'épinglage échoue (un pair qui exige autre chose…),
   on régénère sans, comme pour une indirecte ;
+- Cargo de même : ``=V`` le temps d'un ``cargo update --workspace``. Une indirecte : ``cargo
+  update -p x@actuelle --precise V``. Pas ``--precise`` pour une directe : Cargo l'ignore dès que
+  la contrainte réécrite n'accepte plus la version figée (il prend alors la plus haute) ;
 - Yarn et pipenv reprennent la plus haute version que permet la contrainte : ``yarn up -R x``
   (Yarn 2+), l'entrée du paquet retirée du ``yarn.lock`` (Yarn 1, dont ``yarn upgrade``
   réordonne le ``package.json``), et ``pipenv lock``, qui re-résout tout.
@@ -91,7 +96,7 @@ from forceupdate.parsers.lockfiles import Lockfile, dependents, dirname, join
 from forceupdate.sources.local import LocalSource
 from forceupdate.update import writers
 from forceupdate.update.writers import Changes, Choice, FileChange, Refused, Target
-from forceupdate.update.writers.npm import PNPM_WORKSPACE, catalog_target
+from forceupdate.update.writers.npm import PNPM_WORKSPACE
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +134,7 @@ class LockKind(enum.StrEnum):
     PIP_COMPILE = "pip-compile"
     UV_PIP_COMPILE = "uv-pip-compile"
     """Un ``.txt`` compilé par ``uv pip compile`` (son en-tête le dit)."""
+    CARGO = "cargo"
 
 
 _TOOL_NAMES = {
@@ -142,6 +148,7 @@ _TOOL_NAMES = {
     LockKind.PIPENV: "pipenv",
     LockKind.PIP_COMPILE: "pip-compile",
     LockKind.UV_PIP_COMPILE: "uv pip compile",
+    LockKind.CARGO: "Cargo",
 }
 
 _PROGRAMS = {
@@ -155,6 +162,7 @@ _PROGRAMS = {
     LockKind.PIPENV: "pipenv",
     LockKind.PIP_COMPILE: "pip-compile",
     LockKind.UV_PIP_COMPILE: "uv",
+    LockKind.CARGO: "cargo",
 }
 """Le programme de chaque outil, cherché par ``shutil.which``."""
 
@@ -363,6 +371,8 @@ def _job(
         warnings.append(_RUNS_CODE[kind])
     elif kind in (LockKind.YARN, LockKind.YARN_1):
         warnings += _yarn_runs_code(source.read_text, dirname(path))
+    elif kind is LockKind.CARGO:
+        warnings += _cargo_runs_code(source.read_text, dirname(path))
     job = Job(
         lockfile=path,
         kind=kind,
@@ -400,6 +410,7 @@ _KINDS = {
     "poetry.lock": LockKind.POETRY,
     "pdm.lock": LockKind.PDM,
     "Pipfile.lock": LockKind.PIPENV,
+    "Cargo.lock": LockKind.CARGO,
 }
 
 
@@ -413,6 +424,44 @@ def _yarn_runs_code(read_text: ReadText, directory: str) -> list[str]:
     if not declared:
         return []
     return [f"Yarn lance du code du projet : {', '.join(declared)} (fichiers .yarnrc)."]
+
+
+_CARGO_TOOLCHAIN = ("rust-toolchain.toml", "rust-toolchain")
+_CARGO_CONFIG = (".cargo/config.toml", ".cargo/config")
+
+
+def _cargo_runs_code(read_text: ReadText, directory: str) -> list[str]:
+    """Ce que cargo, et rustup derrière lui, prennent du projet : la chaîne d'outils de
+    ``rust-toolchain.toml``, la configuration de ``.cargo/config.toml``. Cherchés dans le
+    dossier du lockfile et ses parents, comme les lisent rustup et cargo. Le ``rustc`` et les
+    « wrappers » qu'y désignerait la configuration, eux, sont écartés (``_cargo_environment``)."""
+    found: dict[str, str] = {}
+    for folder in [directory, *_parents(directory)]:
+        for name in (*_CARGO_TOOLCHAIN, *_CARGO_CONFIG):
+            if name not in found and _read_quietly(read_text, join(folder, name)) is not None:
+                found[name] = join(folder, name)
+    warnings = []
+    toolchain = next((found[name] for name in _CARGO_TOOLCHAIN if name in found), None)
+    if toolchain is not None:
+        warnings.append(
+            f"rustup lit {toolchain} : il installe s'il le faut, puis lance, la chaîne d'outils "
+            "qu'il désigne, même un dossier du projet."
+        )
+    config = next((found[name] for name in _CARGO_CONFIG if name in found), None)
+    if config is not None:
+        warnings.append(
+            f"cargo lit {config} : les registres et les sources qu'il désigne, et les programmes "
+            "d'identification (credential-provider) qu'il lance pour un registre privé."
+        )
+    return warnings
+
+
+def _parents(directory: str) -> list[str]:
+    """Les dossiers parents de ``directory`` dans la source, du plus proche à la racine."""
+    if directory == ".":
+        return []
+    parts = directory.split("/")
+    return ["/".join(parts[:i]) for i in range(len(parts) - 1, 0, -1)] + ["."]
 
 
 def _projects_of(report: Report, lockfile: str) -> list[Project]:
@@ -1010,6 +1059,8 @@ class _Context:
         self.current = current
         """Les projets relus après la réécriture des manifestes : les emplacements des pins."""
         self.warnings: list[str] = []
+        self.env: dict[str, str] = {}
+        """Ce que l'outil reçoit en plus de ``_environment()`` (Cargo : ``_cargo_environment``)."""
 
     def run(self, *arguments: str) -> None:
         """Lance le programme de l'outil avec ``arguments``, dans le dossier du lockfile. Lève
@@ -1026,7 +1077,7 @@ class _Context:
             result = _spawn(
                 [program, *arguments],
                 cwd=self.root / self.job.directory,
-                env=_environment(),
+                env={**_environment(), **self.env},
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 timeout=LOCK_TIMEOUT,
@@ -1097,7 +1148,7 @@ class _Context:
         return targets
 
     def _pin(self, dependency: Dependency, new: str) -> list[Target]:
-        if dependency.resolved_constraint is not None:  # un catalogue pnpm
+        if dependency.resolved_constraint is not None:  # catalogue pnpm, workspace Cargo
             edit = Edit(
                 kind=EditKind.CATALOG,
                 file=dependency.file,
@@ -1106,7 +1157,7 @@ class _Context:
                 new=new,
             )
             try:
-                target = catalog_target(edit, [dependency], self.source.read_text)
+                target = writers.catalog_target(edit, [dependency], self.source.read_text)
             except Refused:
                 return []
             return [target] if target.old != new else []
@@ -1366,6 +1417,70 @@ class _UvPipCompile(_Driver):
         return [*job.sources, "-o", posixpath.basename(job.lockfile), *job.options]
 
 
+class _Cargo(_Driver):
+    def manual(self, job: Job) -> list[str]:
+        """Une mise à jour dont la contrainte n'a pas changé : ``--precise V``. Sinon, les
+        paquets visés montent à la plus haute version que permet leur contrainte réécrite (Cargo
+        ignore ``--precise`` quand elle n'accepte plus la version figée)."""
+        if len(job.choices) == 1:
+            _, update, option = job.choices[0]
+            if not (update.direct and option.edits):
+                return ["cargo", "update", "-p", _cargo_spec(update), "--precise", option.version]
+        specs = dict.fromkeys(_cargo_spec(update) for _, update, _ in job.choices)
+        packages = [word for spec in specs for word in ("-p", spec)]
+        return ["cargo", "update", *(packages or ["--workspace"])]
+
+    def run(self, context: _Context) -> None:
+        context.env.update(_cargo_environment())
+        pinned = context.run_pinned(lambda version: f"={version}", "update", "--workspace")
+        for _, update, option in context.job.choices:
+            if update.direct and pinned:
+                continue
+            # Une même indirecte de deux membres, ou un paquet qu'un épinglage a déjà déplacé :
+            # « -p x@actuelle » ne désignerait plus rien, et cargo échouerait.
+            if not _cargo_locks(context, update):
+                continue
+            context.run("update", "-p", _cargo_spec(update), "--precise", option.version)
+        context.run("update", "--workspace")
+
+
+def _cargo_locks(context: _Context, update: Update) -> bool:
+    """Vrai si le ``Cargo.lock`` fige encore ``update`` à sa version actuelle (ou si on ne la
+    connaît pas)."""
+    if update.current_version is None or update.current_is_approximate:
+        return True
+    path = context.job.lockfile
+    lock = _lockfile(path, _read_quietly(context.source.read_text, path))
+    if lock is None:
+        return True
+    return any(
+        p.name == update.name and p.version == update.current_version and not p.local
+        for p in lock.packages
+    )
+
+
+def _cargo_spec(update: Update) -> str:
+    """Le paquet visé par ``cargo update -p`` : ``nom@version`` (le lockfile peut en figer
+    plusieurs versions), ``nom`` seul si sa version n'est pas connue."""
+    if update.current_version is None or update.current_is_approximate:
+        return update.name
+    return f"{update.name}@{update.current_version}"
+
+
+def _cargo_environment() -> dict[str, str]:
+    """Le ``rustc`` installé, et aucun « wrapper », quoi que dise le ``.cargo/config.toml`` du
+    projet : ``cargo update`` lance ``rustc -vV`` quand le résolveur 3 doit connaître sa version
+    (édition 2024 sans ``rust-version``). Vide, ``RUSTC_WRAPPER`` défait celui d'une
+    configuration (vérifié avec cargo 1.99)."""
+    return {
+        "RUSTC": _which("rustc") or "rustc",
+        "RUSTC_WRAPPER": "",
+        "RUSTC_WORKSPACE_WRAPPER": "",
+        "CARGO_TERM_COLOR": "never",
+        "CARGO_TERM_PROGRESS_WHEN": "never",
+    }
+
+
 _DRIVERS: dict[LockKind, _Driver] = {
     LockKind.NPM: _Npm(),
     LockKind.PNPM: _Pnpm(),
@@ -1377,4 +1492,5 @@ _DRIVERS: dict[LockKind, _Driver] = {
     LockKind.PIPENV: _Pipenv(),
     LockKind.PIP_COMPILE: _PipCompile(),
     LockKind.UV_PIP_COMPILE: _UvPipCompile(),
+    LockKind.CARGO: _Cargo(),
 }

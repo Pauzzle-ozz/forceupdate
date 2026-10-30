@@ -7,9 +7,12 @@ seuls les numéros de version changent. Les opérateurs, les espaces, l'ordre, l
 La règle : la nouvelle contrainte accepte la version visée, et sa borne basse monte jusqu'à
 elle (``>=2.25,<3`` vers 3.1 : ``>=3.1,<4``). Par style :
 
-- **version exacte** (``==1.2.3``, ``1.2.3`` npm, version nue Poetry) et **borne basse**
-  (``>=``, ``>``) : la version visée ; ``>`` devient ``>=``, sinon elle s'exclurait ;
-- ``^`` et ``~`` (npm, Poetry) : la version visée derrière le même opérateur ;
+- **version exacte** (``==1.2.3``, ``1.2.3`` npm, version nue Poetry, ``=1.2.3`` Cargo) et
+  **borne basse** (``>=``, ``>``) : la version visée ; ``>`` devient ``>=``, sinon elle
+  s'exclurait ;
+- ``^`` et ``~`` (npm, Poetry, Cargo) : la version visée derrière le même opérateur. Pour Cargo,
+  une version sans opérateur est un ``^`` (``1.2`` veut dire ``^1.2``) : elle reste sans
+  opérateur ;
 - **borne haute** (``<``, ``<=``) : déplacée seulement si elle exclut la version visée, au même
   niveau que celui qu'elle fixait (``<3`` vers 3.1 : ``<4`` ; ``<1.5`` vers 1.7.2 : ``<1.8``) ;
 - ``!=`` est gardé tel quel ;
@@ -25,7 +28,8 @@ visée est écrite en entier, sauf là où le nombre de nombres change le sens d
 
 - ``~=1.4`` veut dire ``>=1.4, ==1.*``, mais ``~=1.4.2`` veut dire ``==1.4.*`` : ``~=`` garde
   toujours sa précision (``~=1.4`` vers 1.9.2 : ``~=1.9``) ;
-- les jokers (``1.2.*``, ``1.x``, la version partielle ``1.2`` de npm) aussi : ``2.3.*`` ;
+- les jokers (``1.2.*``, ``1.x``, la version partielle ``1.2`` de npm, ``=1.2`` de Cargo, qui
+  veut dire ``1.2.*``) aussi : ``2.3.*`` ;
 - ``~1`` va jusqu'à 2, ``~1.3.4`` seulement jusqu'à 1.4 ; ``^0`` jusqu'à 1, ``^0.3.1`` seulement
   jusqu'à 0.4 : ``~`` à un seul nombre, et ``^`` dont le premier nombre non nul de la version
   visée tomberait hors de la précision écrite, gardent leur précision.
@@ -33,7 +37,7 @@ visée est écrite en entier, sauf là où le nombre de nombres change le sens d
 **Plancher** (``floor``) : pour une faille, la borne basse doit atteindre la version visée,
 sinon la nouvelle contrainte accepterait encore des versions concernées. Quand le style ne le
 permet pas (``~=1.9`` pour 1.9.2, ``2.3.*``), une borne ``>=`` est ajoutée :
-``~=1.9,>=1.9.2``, ``2.x >=2.3.1``.
+``~=1.9,>=1.9.2``, ``2.x >=2.3.1``, ``=1.3, >=1.3.1`` (Cargo).
 
 Le résultat est relu : il doit accepter la version visée (et respecter le plancher). Sinon, ou
 pour un style qu'on ne sait pas réécrire (intervalle npm ``1.2.3 - 2.3.4`` dépassé, contrainte
@@ -47,8 +51,14 @@ from forceupdate import versions
 from forceupdate.models import Ecosystem
 from forceupdate.versions import InvalidConstraint, InvalidVersion, VersionScheme
 
-_NPM_OPERATORS = r"~>|<=|>=|[<>=~^]"
+_OPERATORS = {
+    Ecosystem.NPM: r"~>|<=|>=|[<>=~^]",
+    Ecosystem.CRATES_IO: r"<=|>=|[<>=~^]",
+}
 _PYPI_OPERATORS = r"===|==|!=|<>|<=|>=|~=|[<>=~^]"
+"""Les opérateurs de chaque écosystème ; ceux de PyPI (Poetry et Pipenv compris) sinon."""
+_FLOOR_SEPARATORS = {Ecosystem.NPM: " ", Ecosystem.CRATES_IO: ", "}
+"""Ce qui précède la borne ``>=`` ajoutée pour un plancher ; ``,`` sinon (PyPI)."""
 _VERSION_TEXT = r"[vV]?(?:\d|[xX*])[0-9A-Za-z.!+*_-]*"
 """Une version telle qu'écrite dans une contrainte : complète, partielle, avec joker,
 pré-version ou version locale. Le découpage fin est fait par ``_NUMBERS``."""
@@ -161,11 +171,11 @@ def _rewrite_union(
 
 
 def _rewrite_member(scheme: VersionScheme, text: str, target: _Target, floor: bool) -> str | None:
-    npm = scheme.ecosystem is Ecosystem.NPM
-    hyphen = _HYPHEN.fullmatch(text) if npm else None
+    ecosystem = scheme.ecosystem
+    hyphen = _HYPHEN.fullmatch(text) if ecosystem is Ecosystem.NPM else None
     if hyphen is not None:
         return _rewrite_hyphen(scheme, hyphen, target)
-    comparators = [(c, _kind(c, npm=npm)) for c in _comparators(text, npm=npm)]
+    comparators = [(c, _kind(c, ecosystem)) for c in _comparators(text, ecosystem)]
     if all(kind == "any" for _, kind in comparators):
         return None  # « * », « x », une étiquette : pas de version à réécrire
     replacements: list[tuple[tuple[int, int], str]] = []
@@ -189,12 +199,12 @@ def _rewrite_member(scheme: VersionScheme, text: str, target: _Target, floor: bo
             replacements.append((comparator.operator_span, ">="))
     new = _apply(text, replacements)
     if floor and not _reaches(scheme, new, target.text):
-        new += f" >={target.text}" if npm else f",>={target.text}"
+        new += f"{_FLOOR_SEPARATORS.get(ecosystem, ',')}>={target.text}"
     return new
 
 
-def _comparators(text: str, *, npm: bool) -> list[_Comparator]:
-    operators = _NPM_OPERATORS if npm else _PYPI_OPERATORS
+def _comparators(text: str, ecosystem: Ecosystem) -> list[_Comparator]:
+    operators = _OPERATORS.get(ecosystem, _PYPI_OPERATORS)
     pattern = re.compile(rf"(?P<op>{operators})?\s*(?P<version>{_VERSION_TEXT})", re.ASCII)
     found = []
     for match in pattern.finditer(text):
@@ -210,7 +220,7 @@ def _comparators(text: str, *, npm: bool) -> list[_Comparator]:
     return found
 
 
-def _kind(comparator: _Comparator, *, npm: bool) -> str:
+def _kind(comparator: _Comparator, ecosystem: Ecosystem) -> str:
     """Le rôle d'un comparateur : ``exact``, ``lower``, ``upper``, ``caret``, ``tilde``,
     ``compatible`` (``~=``), ``wildcard``, ``exclude`` (``!=``) ou ``any`` (``*``)."""
     operator = comparator.operator
@@ -232,8 +242,10 @@ def _kind(comparator: _Comparator, *, npm: bool) -> str:
         return "exclude"
     if wildcard:
         return "wildcard"
-    if npm and count < 3:
-        return "wildcard"  # « 1.2 » veut dire « 1.2.x » pour npm
+    if ecosystem is Ecosystem.CRATES_IO and not operator:
+        return "caret"  # « 1.2 » veut dire « ^1.2 » pour Cargo
+    if ecosystem in (Ecosystem.NPM, Ecosystem.CRATES_IO) and count < 3:
+        return "wildcard"  # « 1.2 » (npm) et « =1.2 » (Cargo) veulent dire « 1.2.x »
     return "exact"
 
 

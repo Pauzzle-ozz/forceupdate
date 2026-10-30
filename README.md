@@ -10,7 +10,7 @@ ouvre une pull request par dépôt.
 En construction. L'outil sera publié gratuitement sur PyPI
 (`uv tool install forceupdate`), sous licence MIT.
 
-Déjà là, en ligne de commande, pour Python et npm : `forceupdate scan <dossier>`
+Déjà là, en ligne de commande, pour Python, npm et Rust (Cargo) : `forceupdate scan <dossier>`
 dit quelles dépendances ont une faille connue (d'après [OSV](https://osv.dev),
 indirectes comprises, avec la version qui la corrige), une version plus récente,
 une version retirée, ou sont dépréciées.
@@ -32,7 +32,7 @@ Correctifs, mineures et corrections de failles sont choisis ; les majeures sont
 proposées à part, comme une version qui aurait elle-même une faille connue. Il refuse
 d'écrire dans un fichier que git n'a pas en commit (sauf `--force`). Ensuite, les
 lockfiles sont régénérés par leur outil (npm, pnpm, Yarn, uv, Poetry, PDM, pipenv,
-pip-compile), sans les scripts du projet, à la version choisie quand l'outil le
+pip-compile, cargo), sans les scripts du projet, à la version choisie quand l'outil le
 permet ; si l'outil n'est pas installé, `update` dit la commande à lancer, et si la
 résolution échoue, les fichiers sont remis comme avant.
 

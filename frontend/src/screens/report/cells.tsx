@@ -13,6 +13,7 @@ import {
   where,
   type Row,
 } from '@/lib/report'
+import { isCargoManifest } from '@/lib/update'
 
 /** Une sous-ligne : 12 px, atténuée, sous la valeur. */
 export function Sub({ children }: { children: React.ReactNode }) {
@@ -102,7 +103,8 @@ export function ConstraintCell({ row }: { row: Row }) {
       )}
       {dependency.resolved_constraint && (
         <Sub>
-          <span className="font-mono">{dependency.resolved_constraint}</span> (catalogue)
+          <span className="font-mono">{dependency.resolved_constraint}</span>{' '}
+          {isCargoManifest(dependency.file) ? '(workspace)' : '(catalogue)'}
         </Sub>
       )}
       <Sub>{where(dependency.file, dependency.location?.line)}</Sub>

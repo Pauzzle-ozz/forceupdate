@@ -44,6 +44,7 @@ from forceupdate.forges import github
 from forceupdate.net import Cache, HttpClient
 from forceupdate.net import cache as cache_module
 from forceupdate.registries import Registry
+from forceupdate.registries.crates import index_path
 from forceupdate.registries.pypi import ACCEPT
 from forceupdate.update import lockfiles
 from forceupdate.web import Settings, create_app
@@ -247,12 +248,13 @@ def osv_querybatch(results: dict[str, Any]) -> Callable[[httpx.Request], httpx.R
 
 @pytest.fixture
 def recorded() -> Iterator[dict[str, respx.Route]]:
-    """PyPI, npm et OSV simulés par ``respx``, avec les réponses enregistrées par
+    """PyPI, npm, crates.io et OSV simulés par ``respx``, avec les réponses enregistrées par
     ``tests/fixtures/record.py`` : flask, requests, aioredis, jinja2, werkzeug ; left-pad,
-    @hapi/joi, colors, crossenv, lodash. Tout autre paquet est introuvable (404). OSV connaît
-    les failles des versions de ``tests/fixtures/osv/queries.json`` ; pour les autres, il n'en
-    connaît pas.
-    Rend les routes, par nom de paquet, plus ``osv:querybatch`` et ``osv:<id>``.
+    @hapi/joi, colors, crossenv, lodash ; rand, regex, time, anyhow, log, smallvec. Tout autre
+    paquet est introuvable (404). OSV connaît les failles des versions de
+    ``tests/fixtures/osv/queries.json`` ; pour les autres, il n'en connaît pas.
+    Rend les routes, par nom de paquet (``crates:<nom>`` pour crates.io), plus
+    ``osv:querybatch`` et ``osv:<id>``.
     """
     with recorded_responses() as routes:
         yield routes
@@ -279,8 +281,14 @@ def recorded_responses(
             routes[name] = router.get(url).respond(
                 200, content=path.read_bytes(), headers={"content-type": "application/json"}
             )
+        for path in sorted((FIXTURES / "crates").glob("*.jsonl")):
+            url = f"https://index.crates.io/{index_path(path.stem)}"
+            routes[f"crates:{path.stem}"] = router.get(url).respond(
+                200, content=path.read_bytes(), headers={"content-type": "text/plain"}
+            )
         router.get(url__regex=r"^https://pypi\.org/simple/").respond(404)
         router.get(url__regex=r"^https://registry\.npmjs\.org/").respond(404, json={})
+        router.get(url__regex=r"^https://index\.crates\.io/").respond(404)
         queries = json.loads((FIXTURES / "osv" / "queries.json").read_text(encoding="utf-8"))
         routes["osv:querybatch"] = router.post("https://api.osv.dev/v1/querybatch").mock(
             side_effect=osv_querybatch(queries)

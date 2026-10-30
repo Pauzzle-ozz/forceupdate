@@ -1,7 +1,7 @@
 """Les parseurs : lire les manifestes et lockfiles d'un projet, et en tirer ses dépendances.
 
-Un module par écosystème : Python (E03) et npm (E04) pour l'instant, les autres en
-phase F. Chacun relie les manifestes (dépendances directes, contraintes et leur
+Un module par écosystème : Python (E03), npm (E04) et Rust (E21) pour l'instant, les
+autres en phase F. Chacun relie les manifestes (dépendances directes, contraintes et leur
 emplacement) aux lockfiles (versions installées, transitives), avec ce qui est
 commun dans ``lockfiles.py``.
 """
@@ -11,7 +11,7 @@ from collections.abc import Callable, Sequence
 
 from forceupdate.detect.manifests import ecosystem_for_manifest
 from forceupdate.models import Ecosystem, Notice, Project
-from forceupdate.parsers import npm, python
+from forceupdate.parsers import npm, python, rust
 from forceupdate.parsers.base import ParseError, ReadText
 from forceupdate.parsers.lockfiles import Lockfile
 
@@ -20,6 +20,7 @@ __all__ = ["ParseError", "ReadText", "parse_lockfile", "parse_project"]
 _PARSERS: dict[Ecosystem, Callable[[Project, ReadText, Sequence[str]], None]] = {
     Ecosystem.PYPI: lambda project, read_text, _: python.parse_project(project, read_text),
     Ecosystem.NPM: npm.parse_project,
+    Ecosystem.CRATES_IO: lambda project, read_text, _: rust.parse_project(project, read_text),
 }
 
 _LOCKFILE_PARSERS: dict[str, Callable[[str, str], Lockfile]] = {
@@ -31,6 +32,7 @@ _LOCKFILE_PARSERS: dict[str, Callable[[str, str], Lockfile]] = {
     "poetry.lock": python.parse_poetry_lock,
     "pdm.lock": python.parse_pdm_lock,
     "Pipfile.lock": python.parse_pipfile_lock,
+    "Cargo.lock": lambda path, text: rust.parse_cargo_lock(path, text).lockfile,
 }
 
 

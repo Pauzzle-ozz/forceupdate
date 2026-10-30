@@ -1,0 +1,25 @@
+[package]
+name = "demo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0.100", features = ["derive"] }
+rand = "0.8"
+regex = "=1.5.4"   # épinglée : RUSTSEC-2022-0013
+time = { version = "0.1", optional = true }
+my-log = { package = "log", version = "0.4.14" }
+itoa = { git = "https://github.com/dtolnay/itoa", tag = "1.0.11" }
+local-crate = { path = "vendor/local-crate" }
+
+[dependencies.anyhow]
+version = "1.0"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["winuser"] }
+
+[dev-dependencies]
+pretty_assertions = "1"
+
+[build-dependencies]
+cc = "1.0"

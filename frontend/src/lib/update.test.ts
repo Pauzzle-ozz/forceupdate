@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import type { Update } from '@/api/types'
+import type { Edit, Update } from '@/api/types'
 import { VULNERABLE, planDocument } from '@/test/api'
 import {
   choose,
   commandDirectory,
   defaultSelection,
+  editFile,
+  editTarget,
   fixesSentence,
+  isCargoManifest,
   groups,
   lastLines,
   listText,
@@ -102,5 +105,25 @@ describe('l’écran 5, prêt à afficher', () => {
     expect(commandDirectory('C:/Projets/demo', 'C:/Projets/autre')).toBe('C:/Projets/autre')
     const output = Array.from({ length: 20 }, (_, index) => `ligne ${index + 1}`).join('\n')
     expect(lastLines(`${output}\n\n`).split('\n')).toEqual(Array.from({ length: 12 }, (_, index) => `ligne ${index + 9}`))
+  })
+
+  it('dit où se réécrit une plage reprise d’ailleurs : catalogue pnpm ou workspace Cargo', () => {
+    const edit = (file: string, kind: Edit['kind'] = 'catalog'): Edit => ({
+      kind,
+      file,
+      location: null,
+      old: '1.0',
+      new: '1.2',
+      override: null,
+    })
+    expect(editFile(edit('packages/web/package.json'))).toBe('packages/web/package.json (catalogue pnpm)')
+    expect(editFile(edit('crates/app/Cargo.toml'))).toBe('crates/app/Cargo.toml (workspace Cargo)')
+    expect(editFile(edit('Cargo.toml', 'dependency'))).toBe('Cargo.toml')
+    expect(isCargoManifest('Cargo.toml')).toBe(true)
+    expect(isCargoManifest('MyCargo.toml')).toBe(false)
+    // Le fichier réécrit, pour le récapitulatif : pas le manifeste qui y renvoie.
+    expect(editTarget(edit('packages/web/package.json'))).toBe('pnpm-workspace.yaml')
+    expect(editTarget(edit('crates/app/Cargo.toml'))).toBe('Cargo.toml (racine du workspace)')
+    expect(editTarget(edit('crates/app/Cargo.toml', 'dependency'))).toBe('crates/app/Cargo.toml')
   })
 })

@@ -97,7 +97,7 @@ def test_scan_shows_direct_dependencies() -> None:
 
 
 def test_scan_shows_notices(make_tree: MakeTree) -> None:
-    root = make_tree({"Cargo.toml": "", "setup.py": ""})
+    root = make_tree({"go.mod": "", "setup.py": ""})
 
     result = scan(str(root))
 
@@ -106,7 +106,7 @@ def test_scan_shows_notices(make_tree: MakeTree) -> None:
     assert "Remarques" in lines
     notices = [" ".join(line.split()) for line in lines]
     assert "setup.py pas lu : il faudrait l'exécuter pour connaître ses dépendances." in notices
-    assert "Cargo.toml dépendances crates.io pas encore lues par forceupdate." in notices
+    assert "go.mod dépendances Go pas encore lues par forceupdate." in notices
 
 
 def test_scan_empty_folder(tmp_path: Path) -> None:

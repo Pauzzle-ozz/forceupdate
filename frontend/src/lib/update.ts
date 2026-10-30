@@ -47,8 +47,24 @@ export function fixesSentence(option: UpdateOption): { text: string; full: boole
   return { text: `Corrige ${count(fixed, 'faille')} sur ${fixed + left}, en laisse ${left}`, full: false }
 }
 
+/** Vrai pour un `Cargo.toml` : une contrainte « catalog » y renvoie à `[workspace.dependencies]`. */
+export function isCargoManifest(path: string): boolean {
+  return path === 'Cargo.toml' || path.endsWith('/Cargo.toml')
+}
+
+/**
+ * Le fichier qu'une réécriture change vraiment. Une plage reprise d'ailleurs (« catalog ») ne
+ * s'écrit pas dans le manifeste qui y renvoie : dans le pnpm-workspace.yaml, ou le Cargo.toml de
+ * la racine du workspace, dont l'API ne donne pas le chemin avant le plan.
+ */
+export function editTarget(edit: Edit): string {
+  if (edit.kind === 'catalog') return isCargoManifest(edit.file) ? 'Cargo.toml (racine du workspace)' : 'pnpm-workspace.yaml'
+  return edit.file
+}
+
 /** Une réécriture : « package.json : 4.17.15 → 4.18.1 » (la flèche est posée par l'appelant). */
 export function editFile(edit: Edit): string {
+  if (edit.kind === 'catalog' && isCargoManifest(edit.file)) return `${edit.file} (workspace Cargo)`
   if (edit.kind === 'catalog') return `${edit.file} (catalogue pnpm)`
   if (edit.kind === 'override') return `${edit.override?.file ?? edit.file} (version forcée)`
   return edit.file
@@ -183,7 +199,7 @@ export function recap(report: Report, selection: Selection): Recap {
       result.fixed += option.fixes.length
       result.introduced += option.introduced.length
       if (option.gap === 'major') result.majors += 1
-      for (const edit of option.edits) files.add(edit.file)
+      for (const edit of option.edits) files.add(editTarget(edit))
       if (option.lockfile) lockfiles.add(option.lockfile)
     }
   }
@@ -197,7 +213,7 @@ export function recap(report: Report, selection: Selection): Recap {
 /** Les fichiers que touche une option du plan : ses manifestes, puis le lockfile qui la porte. */
 export function plannedFiles(plan: UpdatePlan, update: Update, version: string): { files: string[]; lockfileOnly: boolean } {
   const option = chosenOption(update, version)
-  const files = [...new Set(option?.edits.map((edit) => edit.file) ?? [])]
+  const files = [...new Set(option?.edits.map(editTarget) ?? [])]
   const jobs = plan.lockfiles.filter((job) => job.updates.some((chosen) => chosen.update === update.id))
   return { files: [...files, ...jobs.map((job) => job.lockfile)], lockfileOnly: files.length === 0 && jobs.length > 0 }
 }

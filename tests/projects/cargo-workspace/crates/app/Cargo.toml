@@ -1,0 +1,13 @@
+[package]
+name = "app"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+core-lib = { path = "../core" }
+serde = { workspace = true }
+anyhow.workspace = true
+smallvec = { workspace = true }
+
+[dev-dependencies]
+log = { workspace = true, features = ["std"] }

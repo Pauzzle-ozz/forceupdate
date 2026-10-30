@@ -77,7 +77,8 @@ class Lockfile:
 
 SCOPE_ORDER = (Scope.RUNTIME, Scope.PEER, Scope.OPTIONAL, Scope.DEV)
 """Le scope d'une transitive est le premier, dans cet ordre, des directes qui la tirent.
-Les dépendances de build ne sont pas dans les lockfiles."""
+Les dépendances de build ne sont pas dans les lockfiles Python et npm ; Cargo les fige
+(``parsers.rust.SCOPES``)."""
 
 
 def with_installed(
@@ -111,15 +112,20 @@ def graph_starts(declared: Iterable[Declared]) -> list[Start]:
 
 
 def transitives(
-    lock: Lockfile, starts: Sequence[Start], is_direct: Callable[[LockedPackage], bool]
+    lock: Lockfile,
+    starts: Sequence[Start],
+    is_direct: Callable[[LockedPackage], bool],
+    *,
+    order: Sequence[Scope] = SCOPE_ORDER,
 ) -> list[Dependency]:
     """Les paquets du lockfile qui ne sont pas des directes (selon ``is_direct``).
 
     Avec un graphe, le scope de chacun est celui des directes (``starts``) qui le
-    tirent ; pour un lockfile partagé (workspace), seuls comptent les paquets
-    qu'elles tirent. Un même paquet à la même version n'est rendu qu'une fois.
+    tirent, le premier dans ``order`` ; pour un lockfile partagé (workspace), seuls
+    comptent les paquets qu'elles tirent. Un même paquet à la même version n'est rendu
+    qu'une fois.
     """
-    scopes = reachable_scopes(starts, lock) if lock.graph else {}
+    scopes = reachable_scopes(starts, lock, order=order) if lock.graph else {}
     result = []
     seen: set[tuple[str, str]] = set()
     for package in lock.packages:
@@ -147,13 +153,16 @@ def transitives(
     return result
 
 
-def reachable_scopes(starts: Sequence[Start], lock: Lockfile) -> dict[str, Scope]:
-    """Pour chaque nœud que tirent les directes, son scope (voir ``SCOPE_ORDER``)."""
+def reachable_scopes(
+    starts: Sequence[Start], lock: Lockfile, *, order: Sequence[Scope] = SCOPE_ORDER
+) -> dict[str, Scope]:
+    """Pour chaque nœud que tirent les directes, son scope : le premier dans ``order`` (voir
+    ``SCOPE_ORDER``)."""
     by_node: dict[str, list[LockedPackage]] = defaultdict(list)
     for package in lock.packages:
         by_node[package.node].append(package)
     scopes: dict[str, Scope] = {}
-    for scope in SCOPE_ORDER:
+    for scope in order:
         for node in reach([edge for s, edge in starts if s is scope], by_node):
             scopes.setdefault(node, scope)
     return scopes

@@ -182,6 +182,28 @@ PACKAGE_JSON = """\
 """
 
 
+CARGO_TOML = """\
+[package]
+name = "demo"
+version = "0.1.0"
+
+[dependencies]
+serde = { version = "1.0.100", features = ["derive"] }  # sérialisation
+rand = "0.8"
+regex = '=1.5.4'
+my-log = { package = "log", version = "0.4.14" }
+
+[dependencies.anyhow]
+version = "1.0"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["winuser"] }
+
+[build-dependencies]
+cc = "1.0"
+"""
+
+
 def _replace(text: str, old: str, new: str) -> str:
     assert text.count(old) == 1, old
     return text.replace(old, new)
@@ -224,6 +246,20 @@ def _replace(text: str, old: str, new: str) -> str:
         ("Pipfile", PIPFILE, "flask", "==3.1", ('"==2.0"', '"==3.1"')),
         ("Pipfile", PIPFILE, "requests", ">=2.34", ('">=2.0"', '">=2.34"')),
         ("Pipfile", PIPFILE, "pytest", ">=9", ('"*"', '">=9"')),
+        # Cargo.toml : chaîne, table en ligne, table, renommage, plateforme, build.
+        ("Cargo.toml", CARGO_TOML, "serde", "1.0.229", ('"1.0.100"', '"1.0.229"')),
+        ("Cargo.toml", CARGO_TOML, "rand", "0.10.3", ('"0.8"', '"0.10.3"')),
+        ("Cargo.toml", CARGO_TOML, "regex", "=1.13.1", ("'=1.5.4'", "'=1.13.1'")),
+        ("Cargo.toml", CARGO_TOML, "log", "0.4.34", ('"0.4.14"', '"0.4.34"')),
+        (
+            "Cargo.toml",
+            CARGO_TOML,
+            "anyhow",
+            "1.0.104",
+            ('version = "1.0"\n', 'version = "1.0.104"\n'),
+        ),
+        ("Cargo.toml", CARGO_TOML, "winapi", "0.4", ('"0.3"', '"0.4"')),
+        ("Cargo.toml", CARGO_TOML, "cc", "1.2", ('cc = "1.0"', 'cc = "1.2"')),
         # setup.cfg : une par ligne, une absente, plusieurs sur une ligne.
         ("setup.cfg", SETUP_CFG, "requests", ">=2.34.2", (">=2.25", ">=2.34.2")),
         ("setup.cfg", SETUP_CFG, "click", ">=8", ("click ;", "click>=8 ;")),
@@ -393,6 +429,98 @@ def test_pnpm_workspace_overrides(make_tree: MakeTree) -> None:
     ]
     changes = writers.prepare(root, [forced(project, "dompurify", "^3.4.17")])
     assert written(root, changes) == {"pnpm-workspace.yaml": WORKSPACE.replace("3.4.13", "3.4.17")}
+
+
+# ---------------------------------------------------------------------------
+# [workspace.dependencies] d'un workspace Cargo
+# ---------------------------------------------------------------------------
+
+CARGO_ROOT = """\
+[workspace]
+members = ["crates/*"]
+
+[workspace.dependencies]
+serde = { version = "1.0.150", features = ["derive"] }  # partagée
+anyhow = "1.0.50"
+my-log = { package = "log", version = "0.4" }
+"""
+
+CARGO_WORKSPACE_FILES = {
+    "Cargo.toml": CARGO_ROOT,
+    "crates/app/Cargo.toml": (
+        "[package]\nname = 'app'\n\n[dependencies]\nserde = { workspace = true }\n"
+        "anyhow.workspace = true\nmy-log.workspace = true\nrand = '0.8'\n"
+    ),
+    "crates/core/Cargo.toml": (
+        "[package]\nname = 'core'\n\n[dependencies]\nserde.workspace = true\n"
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    ("name", "new", "expected"),
+    [
+        ("serde", "1.0.229", 'serde = { version = "1.0.229", features = ["derive"] }  # partagée'),
+        ("anyhow", "1.0.104", 'anyhow = "1.0.104"'),
+        ("log", "0.4.34", 'my-log = { package = "log", version = "0.4.34" }'),
+    ],
+)
+def test_workspace_dependencies_are_rewritten_at_the_root(
+    make_tree: MakeTree, name: str, new: str, expected: str
+) -> None:
+    root = make_tree(CARGO_WORKSPACE_FILES)
+    changes = writers.prepare(root, [choice(inventory(root)["crates/app"], name, new)])
+    assert changes.skipped == ()
+    assert [c.path for c in changes.files] == ["Cargo.toml"]
+    (after,) = written(root, changes).values()
+    changed = [line for line in after.split("\n") if line not in CARGO_ROOT.split("\n")]
+    assert changed == [expected]
+    found = [d for d in inventory(root)["crates/app"].dependencies if d.name == name]
+    assert [d.resolved_constraint for d in found] == [new]
+
+
+def test_a_workspace_member_and_its_own_dependency(make_tree: MakeTree) -> None:
+    root = make_tree(CARGO_WORKSPACE_FILES)
+    projects = inventory(root)
+    changes = writers.prepare(
+        root,
+        [
+            choice(projects["crates/app"], "serde", "1.0.229"),
+            choice(projects["crates/core"], "serde", "1.0.229"),
+            choice(projects["crates/app"], "rand", "0.9.2"),
+        ],
+    )
+    assert changes.skipped == ()
+    assert [c.path for c in changes.files] == ["Cargo.toml", "crates/app/Cargo.toml"]
+    assert changes.files[0].after.count("1.0.229") == 1
+    assert "rand = '0.9.2'" in changes.files[1].after
+
+
+@pytest.mark.parametrize(
+    ("root_content", "reason"),
+    [
+        (
+            CARGO_ROOT.replace('"1.0.50"', '"1.0.60"'),
+            "Cargo.toml : « 1.0.50 » (anyhow) n'est plus dans [workspace.dependencies].",
+        ),
+        (
+            CARGO_ROOT.replace('"1.0.50"', '"1.0\\u002E50"'),
+            "Cargo.toml : la contrainte « 1.0.50 » (anyhow) est écrite sur plusieurs lignes ou "
+            "avec un échappement, à réécrire à la main en « 1.0.104 ».",
+        ),
+        ("[package]\nname = 'plus-un-workspace'\n", "aucun workspace au-dessus de crates/app"),
+    ],
+)
+def test_a_workspace_dependency_that_cannot_be_rewritten(
+    make_tree: MakeTree, root_content: str, reason: str
+) -> None:
+    root = make_tree(CARGO_WORKSPACE_FILES)
+    project = inventory(root)["crates/app"]
+    make_tree({"Cargo.toml": root_content})
+    changes = writers.prepare(root, [choice(project, "anyhow", "1.0.104")])
+    assert changes.files == ()
+    (skipped,) = changes.skipped
+    assert skipped.reason.startswith(reason)
 
 
 @pytest.mark.parametrize(

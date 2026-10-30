@@ -17,12 +17,15 @@ figés : ne pas les régénérer sans mettre à jour les tests qui en dépendent
 | `pnpm9/` | workspace pnpm 9 : deux membres reliés par `workspace:*`, un exclu par `!packages/excluded` | `pnpm install --lockfile-only` (9.15.9) |
 | `npm-workspace/` | workspace npm : deux membres, un conflit de versions entre eux, un dossier hors workspace | `npm install` (npm 11.6) |
 | `pnpm-catalog/` | workspace pnpm à catalogues : `catalog:`, `catalog:default`, `catalog:legacy` (sous `catalogs:`), un alias `npm:` dans le catalogue | `pnpm install --lockfile-only --ignore-scripts` (12.15.0) |
+| `cargo/` | un crate : chaîne, table en ligne, `[dependencies.x]`, renommage (`package =`), facultative, git, `path` (vers `vendor/local-crate`), plateforme (`[target.'cfg(windows)']`), dev, build ; `regex` `=1.5.4`, `time` 0.1 et `anyhow` 1.0.75 en faille | `cargo generate-lockfile`, puis `cargo update -p x --precise V` (serde 1.0.150, anyhow 1.0.75, log 0.4.14) (cargo 1.99) |
+| `cargo-workspace/` | workspace Cargo : racine virtuelle, `members = ["crates/*"]`, un membre exclu (`exclude`), `[workspace.dependencies]` repris par `workspace = true`, une dépendance `path` entre membres, `smallvec` `=1.6.0` en faille | idem (serde 1.0.160, anyhow 1.0.75, log 0.4.17) |
 | `vulnerable/` | des failles connues (E08) : `lodash` 4.17.15, `flask` 0.12 et ses dépendances de fin 2018 (jinja2 2.10, werkzeug 0.14.1) | `npm install --package-lock-only --ignore-scripts` (npm 11.6) ; `uv pip compile requirements.in -o requirements.txt --python-version 3.7 --exclude-newer 2019-01-01` (uv 0.10) |
 
 Les lockfiles npm ont été produits avec `--ignore-scripts`, dans un dossier à part,
 puis copiés ici sans `node_modules/`. `vendor/local-lib/` (cible du `file:` de `npm/`
 et `yarn1/`) est rangé dans `vendor/` exprès : ce dossier est écarté, il ne fait pas
-un projet de plus. Sous Windows, Yarn écrit `yarn.lock` en CRLF.
+un projet de plus ; `vendor/local-crate/` de `cargo/` de même. Les `Cargo.lock` ont été
+faits dans un dossier à part (cargo ne crée pas de `target/` pour résoudre). Sous Windows, Yarn écrit `yarn.lock` en CRLF.
 
 Ce dossier est rangé sous `tests/` : `forceupdate scan` sur forceupdate lui-même
 l'écarte (voir E02 dans `PLAN.md`). Pour l'analyser, choisir un mini-projet

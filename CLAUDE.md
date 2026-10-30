@@ -85,6 +85,9 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   │                         distante, dossier de travail), comptes connectés (accounts.py : tokens dans le
 │   │                         trousseau, keyring, en morceaux s'ils sont longs, un compte par forge et par
 │   │                         hôte, renouvellement)
+│   ├── parsers/            ← un module par écosystème : python.py, npm.py, rust.py (Cargo.toml, Cargo.lock,
+│   │                         workspaces) ; lockfiles.py (lien manifeste ↔ lockfile), *_spans.py (positions) ;
+│   │                         versions/ et registries/ de même (cargo.py, crates.py : l'index « sparse »)
 │   ├── sources/            ← d'où vient le code : local.py (dossier, fichier), forge.py (un dépôt lu par
 │   │                         l'API : seuls les fichiers que lisent les parseurs sont téléchargés ; un
 │   │                         clone superficiel si l'arborescence est tronquée)
@@ -158,8 +161,8 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   `monkeypatch.undo()` : il défait aussi ces garde-fous (`monkeypatch.context()`). GitLab se simule avec
   `fake_gitlab.FakeGitLab` (`gitlab.GIT_URL` vers `remotes_url(…)` pour git), Bitbucket avec
   `fake_bitbucket.FakeBitbucket` (`bitbucket.GIT_URL` de même). Le trousseau des tests refuse,
-  comme Windows, un secret de plus de 1 280 caractères. La fixture `recorded` simule PyPI, npm
-  et OSV avec les réponses de `tests/fixtures/` ; `fake_tools("npm", "uv")` simule les
+  comme Windows, un secret de plus de 1 280 caractères. La fixture `recorded` simule PyPI, npm,
+  crates.io et OSV avec les réponses de `tests/fixtures/` ; `fake_tools("npm", "uv")` simule les
   outils (`FakeTools`) ; `keychain` est le trousseau en mémoire du test ; `api` est le
   serveur de `ui` (client de test de FastAPI, jeton compris), `finished` attend la fin
   d'une tâche. GitHub se simule avec respx (`tests/test_web_accounts.py`, `FakeGitHub` pour les
@@ -200,6 +203,11 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   `uvx --from pip-tools pip-compile`. pipenv crée un virtualenv dans `~/.virtualenvs`
   (le retirer avec `uvx pipenv --rm`), et prend le `.venv` activé si `VIRTUAL_ENV` est
   défini.
+- cargo est installé par rustup (E21, toolchain stable MSVC) dans `~/.cargo/bin`, qui n'est pas
+  dans le `PATH` des outils Bash et PowerShell : `export PATH="$HOME/.cargo/bin:$PATH"` avant
+  `forceupdate update`, `ui` ou `pytest --run-network`. rustup installe tout seul la chaîne
+  d'outils que demande un `rust-toolchain.toml` : la retirer ensuite
+  (`rustup toolchain uninstall …`).
 
 ## Interface
 

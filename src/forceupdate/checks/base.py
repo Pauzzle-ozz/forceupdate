@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from forceupdate import versions
 from forceupdate.models import Dependency, Gap
+from forceupdate.parsers.rust import WORKSPACE_CONSTRAINT
 from forceupdate.versions import InvalidConstraint, VersionScheme
 from forceupdate.versions.npm import NpmRange
 
@@ -47,7 +48,10 @@ def current_version(dependency: Dependency) -> Current:
     if dependency.installed is not None:
         return Current(version=dependency.installed, constraint=constraint)
     if parsed is None:
-        if dependency.constraint.startswith("catalog:") and dependency.resolved_constraint is None:
+        elsewhere = dependency.constraint.startswith("catalog:") or (
+            dependency.constraint == WORKSPACE_CONSTRAINT
+        )
+        if elsewhere and dependency.resolved_constraint is None:
             why = f"la plage de « {dependency.constraint} » est introuvable"
         else:
             why = f"la contrainte « {text} » est illisible"

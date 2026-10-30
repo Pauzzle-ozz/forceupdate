@@ -9,6 +9,7 @@ tableau d'un projet (un paquet par ligne, même déclaré deux fois), et la desc
 mises à jour proposées (``forceupdate update``).
 """
 
+import posixpath
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -112,7 +113,9 @@ def option_changes(option: UpdateOption, project: str = ".") -> list[str]:
     du projet ``project`` quand ils y sont."""
     lines = []
     for edit in option.edits:
-        if edit.kind is EditKind.CATALOG:
+        if edit.kind is EditKind.CATALOG and posixpath.basename(edit.file) == "Cargo.toml":
+            where = "[workspace.dependencies] (racine du workspace)"
+        elif edit.kind is EditKind.CATALOG:
             where = "pnpm-workspace.yaml (catalogue)"
         elif edit.kind is EditKind.OVERRIDE and edit.override is not None:
             override = edit.override
@@ -258,7 +261,8 @@ class Row:
     """Ce qui la distingue : scope (sauf ``runtime``), fichier quand le projet en a plusieurs."""
     constraint: str
     """La contrainte telle qu'écrite (``-`` s'il n'y en a pas), avec la plage d'un catalogue
-    pnpm entre parenthèses ; plusieurs, séparées par des virgules."""
+    pnpm ou de ``[workspace.dependencies]`` (Cargo) entre parenthèses ; plusieurs, séparées par
+    des virgules."""
     current: str
     """La version utilisée ; ``≈ 1.2`` pour une borne basse ; ``-`` si on ne la connaît pas."""
     wanted: str

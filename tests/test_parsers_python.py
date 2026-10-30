@@ -944,12 +944,10 @@ version = "1.0"
         ]
 
     def test_ecosystems_not_read_yet_give_a_notice(self) -> None:
-        project = parse({"Cargo.toml": "", "requirements.txt": "flask\n"})
+        project = parse({"go.mod": "", "requirements.txt": "flask\n"})
         assert [d.name for d in project.dependencies] == ["flask"]
         assert project.notices == [
-            Notice(
-                file="Cargo.toml", message="dépendances crates.io pas encore lues par forceupdate."
-            )
+            Notice(file="go.mod", message="dépendances Go pas encore lues par forceupdate.")
         ]
 
 

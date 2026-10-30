@@ -159,8 +159,9 @@ class Dependency:
     """Contrainte telle qu'écrite (``^4.18.0``, ``>=2.0,<3``) ; vide s'il n'y en a pas."""
     resolved_constraint: str | None = None
     """La plage que désigne ``constraint`` quand elle renvoie ailleurs : pour ``catalog:``
-    (pnpm), celle du catalogue dans ``pnpm-workspace.yaml``. ``None`` si ``constraint`` est
-    elle-même la plage, ou si la plage est introuvable."""
+    (pnpm), celle du catalogue dans ``pnpm-workspace.yaml`` ; pour ``workspace = true``
+    (Cargo), celle de ``[workspace.dependencies]`` à la racine du workspace. ``None`` si
+    ``constraint`` est elle-même la plage, ou si la plage est introuvable."""
     installed: str | None = None
     """Version installée, lue dans le lockfile ; ``None`` sans lockfile."""
     lockfile: str | None = None
@@ -277,7 +278,8 @@ class EditKind(enum.StrEnum):
     DEPENDENCY = "dependency"
     """La contrainte d'une dépendance, dans son manifeste."""
     CATALOG = "catalog"
-    """La plage d'un catalogue pnpm, dans ``pnpm-workspace.yaml`` : la réécriture l'y trouve
+    """La plage d'un catalogue pnpm, dans ``pnpm-workspace.yaml``, ou celle d'une dépendance
+    reprise du workspace Cargo, dans ``[workspace.dependencies]`` : la réécriture l'y trouve
     (``update.writers``)."""
     OVERRIDE = "override"
     """Une version forcée (``overrides``, ``resolutions``, ``pnpm.overrides``)."""
@@ -295,10 +297,11 @@ class Edit:
 
     kind: EditKind
     file: str
-    """Le manifeste ; pour un catalogue pnpm, le ``package.json`` qui y renvoie."""
+    """Le manifeste ; pour un catalogue pnpm, le ``package.json`` qui y renvoie (le
+    ``Cargo.toml`` du membre pour ``workspace = true``)."""
     location: Location | None
-    """``None`` pour un catalogue pnpm (la réécriture cherche sa plage dans
-    ``pnpm-workspace.yaml``)."""
+    """``None`` pour un catalogue (la réécriture cherche sa plage dans ``pnpm-workspace.yaml``,
+    ou dans le ``Cargo.toml`` de la racine du workspace)."""
     old: str
     new: str
     override: Override | None = None

@@ -258,6 +258,86 @@
       }
     ]
   },
+  "crates.io/aho-corasick@0.7.20": {},
+  "crates.io/anyhow@1.0.75": {
+    "vulns": [
+      {
+        "id": "RUSTSEC-2026-0190",
+        "modified": "2026-06-29T14:15:03.650725Z"
+      }
+    ]
+  },
+  "crates.io/cc@1.10.0": {},
+  "crates.io/cfg-if@1.0.5": {},
+  "crates.io/diff@0.1.13": {},
+  "crates.io/find-msvc-tools@0.1.15": {},
+  "crates.io/getrandom@0.2.17": {},
+  "crates.io/itoa@1.0.18": {},
+  "crates.io/libc@0.2.191": {},
+  "crates.io/log@0.4.14": {},
+  "crates.io/log@0.4.17": {},
+  "crates.io/log@0.4.20": {},
+  "crates.io/memchr@2.8.3": {},
+  "crates.io/ppv-lite86@0.2.21": {},
+  "crates.io/pretty_assertions@1.4.1": {},
+  "crates.io/proc-macro2@1.0.107": {},
+  "crates.io/quote@1.0.47": {},
+  "crates.io/rand@0.8.8": {},
+  "crates.io/rand_chacha@0.3.1": {},
+  "crates.io/rand_core@0.6.4": {},
+  "crates.io/regex-syntax@0.6.29": {},
+  "crates.io/regex@1.5.4": {
+    "vulns": [
+      {
+        "id": "GHSA-m5pq-gvj9-9vr8",
+        "modified": "2023-11-08T04:08:33.272453Z"
+      },
+      {
+        "id": "RUSTSEC-2022-0013",
+        "modified": "2023-11-08T04:08:33.272453Z"
+      }
+    ]
+  },
+  "crates.io/serde@1.0.150": {},
+  "crates.io/serde@1.0.160": {},
+  "crates.io/serde_derive@1.0.150": {},
+  "crates.io/serde_derive@1.0.160": {},
+  "crates.io/shlex@2.0.1": {},
+  "crates.io/smallvec@1.6.0": {
+    "vulns": [
+      {
+        "id": "GHSA-43w2-9j62-hq99",
+        "modified": "2023-11-08T04:05:16.493284Z"
+      },
+      {
+        "id": "RUSTSEC-2021-0003",
+        "modified": "2026-07-17T16:00:03.208176Z"
+      }
+    ]
+  },
+  "crates.io/syn@1.0.109": {},
+  "crates.io/syn@2.0.119": {},
+  "crates.io/time@0.1.45": {
+    "vulns": [
+      {
+        "id": "GHSA-wcg3-cvx6-7396",
+        "modified": "2026-09-10T03:49:08.359875Z"
+      },
+      {
+        "id": "RUSTSEC-2020-0071",
+        "modified": "2026-02-04T02:31:56.682937Z"
+      }
+    ]
+  },
+  "crates.io/unicode-ident@1.0.27": {},
+  "crates.io/wasi@0.10.0+wasi-snapshot-preview1": {},
+  "crates.io/wasi@0.11.1+wasi-snapshot-preview1": {},
+  "crates.io/winapi-i686-pc-windows-gnu@0.4.0": {},
+  "crates.io/winapi-x86_64-pc-windows-gnu@0.4.0": {},
+  "crates.io/winapi@0.3.9": {},
+  "crates.io/yansi@1.0.1": {},
+  "crates.io/zerocopy-derive@0.8.63": {},
+  "crates.io/zerocopy@0.8.63": {},
   "npm/crossenv@1.0.0": {
     "vulns": [
       {

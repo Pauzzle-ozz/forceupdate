@@ -6,8 +6,10 @@ lockfile que le vrai aurait écrit. Les vrais npm, uv et pnpm ne sont lancés qu
 ``network``, sur des copies des mini-projets."""
 
 import json
+import re
 import shutil
 import subprocess
+import tomllib
 from collections.abc import Callable
 from pathlib import Path
 
@@ -1018,7 +1020,241 @@ def test_parse_lockfile_reads_a_compiled_requirements_file() -> None:
     lock = parse_lockfile("requirements.txt", "flask==3.1.3\nclick>=8\n")
     assert [(p.name, p.version) for p in lock.packages] == [("flask", "3.1.3"), ("click", "")]
     with pytest.raises(ValueError, match="pas un lockfile connu"):
-        parse_lockfile("Cargo.lock", "")
+        parse_lockfile("go.sum", "")
+
+
+# ---------------------------------------------------------------------------
+# Cargo
+# ---------------------------------------------------------------------------
+
+
+class FakeCargo:
+    """``cargo update --workspace`` fige chaque crate épinglé (``=V``) dans un ``Cargo.toml`` à
+    ``V`` ; ``cargo update -p x@actuelle --precise V`` passe x de l'actuelle à V. Avec
+    ``refuse_pins``, un épinglage échoue, comme quand un autre crate exige autre chose."""
+
+    def __init__(self, root: Path, *, refuse_pins: bool = False) -> None:
+        self.root = root
+        self.refuse_pins = refuse_pins
+        self.written = self._pins()
+        """Les ``=V`` écrits dans le projet (``regex = "=1.5.4"``) : pas des épinglages."""
+
+    def __call__(self, call: ToolCall) -> tuple[int, str, str] | None:
+        lock_path = self.root / "Cargo.lock"
+        text = lock_path.read_text(encoding="utf-8")
+        args = call.arguments
+        if "--precise" in args:
+            name, _, current = args[args.index("-p") + 1].partition("@")
+            target = args[args.index("--precise") + 1]
+            if f'name = "{name}"\nversion = "{current}"' not in text:
+                return 101, "", f"error: package ID specification `{name}@{current}` did not match"
+            text = text.replace(
+                f'name = "{name}"\nversion = "{current}"', f'name = "{name}"\nversion = "{target}"'
+            ).replace(f'"{name} {current}"', f'"{name} {target}"')
+        else:
+            pins = self._pins()
+            if pins != self.written and self.refuse_pins:
+                return 101, "", "error: failed to select a version for the requirement"
+            for name, version in pins.items():
+                text = re.sub(
+                    rf'(name = "{re.escape(name)}"\nversion = ")[^"]+"', rf'\g<1>{version}"', text
+                )
+        lock_path.write_text(text, encoding="utf-8")
+        return None
+
+    def _pins(self) -> dict[str, str]:
+        found = {}
+        for manifest in self.root.rglob("Cargo.toml"):
+            data = tomllib.loads(manifest.read_text(encoding="utf-8"))
+            tables = [
+                data.get("dependencies", {}),
+                data.get("workspace", {}).get("dependencies", {}),
+            ]
+            for table in tables:
+                for key, spec in table.items():
+                    name = spec.get("package", key) if isinstance(spec, dict) else key
+                    version = spec.get("version") if isinstance(spec, dict) else spec
+                    if isinstance(version, str) and version.startswith("="):
+                        found[name] = version[1:]
+        return found
+
+
+def cargo_copy(tmp_path: Path, name: str = "cargo") -> Path:
+    root = tmp_path / name
+    shutil.copytree(PROJECTS / name, root)
+    return root
+
+
+def locked(root: Path, name: str) -> list[str]:
+    lock = parse_lockfile("Cargo.lock", (root / "Cargo.lock").read_text(encoding="utf-8"))
+    return [p.version for p in lock.packages if p.name == name]
+
+
+def test_plan_of_a_cargo_lockfile(tmp_path: Path, fake_tools: Tools) -> None:
+    root = cargo_copy(tmp_path)
+    fake_tools("cargo")
+    source, report = analyse(root)
+    project = project_of(report)
+    lockfile_only = wanted(project, "anyhow", "1.0.104")
+    edited = wanted(project, "regex", "1.13.1", new="=1.13.1")
+
+    (job,) = lockfiles.plan(source, report, writers.prepare(root, [lockfile_only]))
+    assert (job.lockfile, job.kind, job.program, job.tool) == (
+        "Cargo.lock",
+        LockKind.CARGO,
+        "/outils/cargo",
+        "Cargo",
+    )
+    assert job.command == "cargo update -p anyhow@1.0.75 --precise 1.0.104"
+    assert job.warnings == ()
+    (job,) = lockfiles.plan(source, report, writers.prepare(root, [edited]))
+    # La contrainte réécrite n'accepte plus 1.5.4 : cargo ignorerait --precise.
+    assert job.command == "cargo update -p regex@1.5.4"
+    assert job.inputs == ("Cargo.toml",)
+    (job,) = lockfiles.plan(source, report, writers.prepare(root, [lockfile_only, edited]))
+    assert job.command == "cargo update -p anyhow@1.0.75 -p regex@1.5.4"
+
+
+def test_cargo_pins_the_chosen_versions_then_puts_the_constraints_back(
+    tmp_path: Path, fake_tools: Tools
+) -> None:
+    root = cargo_copy(tmp_path)
+    tools = fake_tools("cargo")
+    tools.handlers["cargo"] = FakeCargo(root)
+    tools.watch(root / "Cargo.toml")
+    source, report = analyse(root)
+    project = project_of(report)
+    choices = [
+        wanted(project, "regex", "1.13.1", new="=1.13.1"),
+        wanted(project, "anyhow", "1.0.104"),
+        wanted(project, "rand_core", "0.6.3", direct=False),
+    ]
+
+    _, _, (result,) = apply(root, choices, report, source)
+
+    assert tools.commands() == [
+        "cargo update --workspace",
+        "cargo update -p rand_core@0.6.4 --precise 0.6.3",
+        "cargo update --workspace",
+    ]
+    pinned = tools.calls[0].files["Cargo.toml"]
+    assert 'regex = "=1.13.1"' in pinned
+    assert '[dependencies.anyhow]\nversion = "=1.0.104"' in pinned
+    manifest = (root / "Cargo.toml").read_text(encoding="utf-8")
+    assert 'regex = "=1.13.1"' in manifest and 'version = "1.0"' in manifest
+    assert result.status is LockStatus.REGENERATED, result.error
+    assert [(i.update.name, i.versions, i.reach) for i in result.installed] == [
+        ("regex", ("1.13.1",), Reach.EXACT),
+        ("anyhow", ("1.0.104",), Reach.EXACT),
+        ("rand_core", ("0.6.3",), Reach.EXACT),
+    ]
+    assert locked(root, "anyhow") == ["1.0.104"]
+
+
+def test_cargo_runs_without_the_rustc_of_the_project(tmp_path: Path, fake_tools: Tools) -> None:
+    """``cargo update`` lance ``rustc -vV`` pour le résolveur 3 : le ``rustc`` installé, et
+    aucun « wrapper », quoi que dise ``.cargo/config.toml``."""
+    root = cargo_copy(tmp_path)
+    tools = fake_tools("cargo", "rustc")
+    tools.handlers["cargo"] = FakeCargo(root)
+    source, report = analyse(root)
+    apply(root, [wanted(project_of(report), "anyhow", "1.0.104")], report, source)
+    for call in tools.calls:
+        assert call.env["RUSTC"] == "/outils/rustc"
+        assert call.env["RUSTC_WRAPPER"] == "" and call.env["RUSTC_WORKSPACE_WRAPPER"] == ""
+        assert call.env["CARGO_TERM_COLOR"] == "never"
+        assert call.cwd == root
+
+
+def test_without_rustc_cargo_gets_its_bare_name(tmp_path: Path, fake_tools: Tools) -> None:
+    root = cargo_copy(tmp_path)
+    tools = fake_tools("cargo")
+    tools.handlers["cargo"] = FakeCargo(root)
+    source, report = analyse(root)
+    apply(root, [wanted(project_of(report), "anyhow", "1.0.104")], report, source)
+    assert {call.env["RUSTC"] for call in tools.calls} == {"rustc"}
+
+
+def test_a_refused_cargo_pin_falls_back_to_precise(tmp_path: Path, fake_tools: Tools) -> None:
+    root = cargo_copy(tmp_path)
+    tools = fake_tools("cargo")
+    tools.handlers["cargo"] = FakeCargo(root, refuse_pins=True)
+    source, report = analyse(root)
+    choice = wanted(project_of(report), "anyhow", "1.0.104")
+
+    _, _, (result,) = apply(root, [choice], report, source)
+
+    assert tools.commands() == [
+        "cargo update --workspace",
+        "cargo update -p anyhow@1.0.75 --precise 1.0.104",
+        "cargo update --workspace",
+    ]
+    assert result.status is LockStatus.REGENERATED, result.error
+    assert result.warnings == (
+        "Versions exactes refusées : « cargo update --workspace » a échoué (code 101) :",
+    )
+    assert result.installed[0].reach is Reach.EXACT
+
+
+def test_a_cargo_workspace_pins_its_root_and_skips_what_moved(
+    tmp_path: Path, fake_tools: Tools
+) -> None:
+    """smallvec est reprise de [workspace.dependencies] : épinglée à la racine. itoa est une
+    indirecte de app (par core-lib) et une directe de core : épinglée pour core, puis plus rien
+    à viser pour app."""
+    root = cargo_copy(tmp_path, "cargo-workspace")
+    tools = fake_tools("cargo")
+    tools.handlers["cargo"] = FakeCargo(root)
+    tools.watch(root / "Cargo.toml")
+    source, report = analyse(root)
+    app, core = project_of(report, "crates/app"), project_of(report, "crates/core")
+    choices = [
+        wanted(app, "smallvec", "1.16.4", new="=1.16.4"),
+        wanted(core, "itoa", "1.0.15", new="1.0.15"),
+        wanted(app, "itoa", "1.0.15", direct=False),
+    ]
+
+    _, (job,), (result,) = apply(root, choices, report, source)
+
+    assert job.inputs == ("Cargo.toml", "crates/core/Cargo.toml")
+    assert tools.commands() == ["cargo update --workspace", "cargo update --workspace"]
+    assert 'smallvec = "=1.16.4"' in tools.calls[0].files["Cargo.toml"]
+    assert result.status is LockStatus.REGENERATED, result.error
+    assert locked(root, "smallvec") == ["1.16.4"] and locked(root, "itoa") == ["1.0.15"]
+    assert [i.reach for i in result.installed] == [Reach.EXACT] * 3
+
+
+def test_cargo_says_what_it_takes_from_the_project(tmp_path: Path, fake_tools: Tools) -> None:
+    root = cargo_copy(tmp_path, "cargo-workspace")
+    (root / ".cargo").mkdir()
+    (root / ".cargo" / "config.toml").write_text("[net]\nretry = 3\n", encoding="utf-8")
+    (root / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.80"\n', encoding="utf-8")
+    fake_tools("cargo")
+    source, report = analyse(root)
+    choice = wanted(project_of(report, "crates/app"), "anyhow", "1.0.104")
+    (job,) = lockfiles.plan(source, report, writers.prepare(root, [choice]))
+    assert job.warnings == (
+        "rustup lit rust-toolchain.toml : il installe s'il le faut, puis lance, la chaîne "
+        "d'outils qu'il désigne, même un dossier du projet.",
+        "cargo lit .cargo/config.toml : les registres et les sources qu'il désigne, et les "
+        "programmes d'identification (credential-provider) qu'il lance pour un registre privé.",
+    )
+
+
+def test_a_cargo_failure_puts_every_file_back(tmp_path: Path, fake_tools: Tools) -> None:
+    root = cargo_copy(tmp_path)
+    tools = fake_tools("cargo")
+    tools.handlers["cargo"] = lambda call: (101, "", "error: failed to get `itoa` as a dependency")
+    before = {name: (root / name).read_bytes() for name in ("Cargo.toml", "Cargo.lock")}
+    source, report = analyse(root)
+    choice = wanted(project_of(report), "regex", "1.13.1", new="=1.13.1")
+
+    _, _, (result,) = apply(root, [choice], report, source)
+
+    assert result.status is LockStatus.FAILED
+    assert result.error is not None and "failed to get `itoa`" in result.error
+    assert result.restored == ("Cargo.toml",)
+    assert {name: (root / name).read_bytes() for name in before} == before
 
 
 # ---------------------------------------------------------------------------
@@ -1097,3 +1333,30 @@ def test_the_real_pnpm_keeps_a_pinned_catalog_version(tmp_path: Path) -> None:
     assert result.status is LockStatus.REGENERATED, result.error
     # ^3.0.0 accepte 3.0.1, mais c'est 3.0.0 qui était choisie.
     assert (result.installed[0].versions, result.installed[0].reach) == (("3.0.0",), Reach.EXACT)
+
+
+@pytest.mark.network
+def test_the_real_cargo(tmp_path: Path) -> None:
+    """Une directe réécrite, une directe par le lockfile seul (sous la plus haute que permet sa
+    contrainte), une indirecte : chacune à la version choisie ; le lockfile n'a plus rien à
+    résoudre."""
+    _need("cargo")
+    root = cargo_copy(tmp_path)
+    source, report = analyse(root)
+    project = project_of(report)
+    choices = [
+        wanted(project, "regex", "1.6.0", new="=1.6.0"),
+        wanted(project, "anyhow", "1.0.90"),
+        wanted(project, "rand_core", "0.6.3", direct=False),
+    ]
+    _, _, (result,) = apply(root, choices, report, source)
+    assert result.status is LockStatus.REGENERATED, result.error
+    assert [(i.update.name, i.versions, i.reach) for i in result.installed] == [
+        ("regex", ("1.6.0",), Reach.EXACT),
+        ("anyhow", ("1.0.90",), Reach.EXACT),
+        ("rand_core", ("0.6.3",), Reach.EXACT),
+    ]
+    check = subprocess.run(
+        ["cargo", "update", "--workspace", "--locked"], cwd=root, capture_output=True, timeout=300
+    )
+    assert check.returncode == 0, check.stderr

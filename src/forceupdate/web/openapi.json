@@ -3762,7 +3762,8 @@
           "pdm",
           "pipenv",
           "pip-compile",
-          "uv-pip-compile"
+          "uv-pip-compile",
+          "cargo"
         ],
         "title": "LockKind",
         "description": "Le format d'un lockfile, donc l'outil qui le régénère."

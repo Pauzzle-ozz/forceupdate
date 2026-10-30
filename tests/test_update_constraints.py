@@ -1,5 +1,5 @@
 """Réécrire une contrainte pour une nouvelle version, en gardant son style : un tableau de cas
-par style, pour npm puis pour PyPI (PEP 440 et Poetry)."""
+par style, pour npm, pour PyPI (PEP 440 et Poetry), puis pour Cargo."""
 
 import pytest
 
@@ -9,6 +9,7 @@ from forceupdate.update.constraints import rewrite
 
 NPM = Ecosystem.NPM
 PYPI = Ecosystem.PYPI
+CARGO = Ecosystem.CRATES_IO
 
 
 def check(ecosystem: Ecosystem, constraint: str, target: str, expected: str | None, **kw: bool):
@@ -152,6 +153,10 @@ def test_pypi_styles(constraint: str, target: str, expected: str | None) -> None
 def test_floor_for_a_vulnerability(
     ecosystem: Ecosystem, constraint: str, target: str, expected: str
 ) -> None:
+    check_floor(ecosystem, constraint, target, expected)
+
+
+def check_floor(ecosystem: Ecosystem, constraint: str, target: str, expected: str) -> None:
     check(ecosystem, constraint, target, expected, floor=True)
     scheme = versions.for_ecosystem(ecosystem)
     lower = scheme.lower_bound(expected)
@@ -182,3 +187,64 @@ def test_an_exclusion_of_the_target_cannot_be_kept() -> None:
 def test_an_unreadable_constraint_or_target() -> None:
     assert rewrite(NPM, "^1.2.3", "pas-une-version") is None
     assert rewrite(PYPI, ">=1.0,<", "2.0") is None
+    assert rewrite(CARGO, "~>1.2", "1.3.0") is None
+
+
+# -- Cargo --------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("constraint", "target", "expected"),
+    [
+        # Sans opérateur, c'est un ^ : il reste sans opérateur, la précision gardée quand rien
+        # ne se perd.
+        ("1.2.3", "1.4.0", "1.4.0"),
+        ("1.0.100", "1.0.229", "1.0.229"),
+        ("1.2", "1.4.0", "1.4"),
+        ("1.2", "1.4.2", "1.4.2"),
+        ("1", "2.0.0", "2"),
+        ("1", "2.1.3", "2.1.3"),
+        ("0.3", "0.4.2", "0.4.2"),
+        ("0.8", "0.10.3", "0.10.3"),
+        ("0", "1.2.0", "1.2.0"),
+        # ^ et ~ : la version visée derrière le même opérateur.
+        ("^1.2", "2.0.0", "^2.0"),
+        ("^1.2.3", "1.5.0", "^1.5.0"),
+        ("~1.2.3", "1.3.1", "~1.3.1"),
+        ("~1", "2.3.0", "~2"),  # ~1 va jusqu'à 2 : la précision reste
+        # = : une version exacte ; =1.2 veut dire 1.2.*, sa précision reste.
+        ("=1.5.4", "1.13.1", "=1.13.1"),
+        ("=1.6.0", "1.16.4", "=1.16.4"),
+        ("=1.2", "1.3.1", "=1.3"),
+        # Jokers.
+        ("1.2.*", "1.3.1", "1.3.*"),
+        ("1.*", "2.0.4", "2.*"),
+        ("0.1.x", "0.2.0", "0.2.x"),
+        # Plusieurs bornes, séparées par des virgules : les espaces gardés.
+        (">=1.2, <1.5", "1.7.2", ">=1.7.2, <1.8"),
+        (">= 1.2 , < 2", "2.1.0", ">= 2.1 , < 3"),
+        (">=1.2, <2", "1.7.0", ">=1.7, <2"),
+        (">1.2", "1.4.0", ">=1.4"),
+        ("<=1.2", "1.5.0", "<=1.6"),  # la borne haute passe au cran au-dessus, comme pour PyPI
+        ("*", "1.0.0", None),
+    ],
+)
+def test_cargo_styles(constraint: str, target: str, expected: str | None) -> None:
+    check(CARGO, constraint, target, expected)
+
+
+@pytest.mark.parametrize(
+    ("constraint", "target", "expected"),
+    [
+        ("=1.2", "1.3.1", "=1.3, >=1.3.1"),
+        ("0.1.*", "0.2.3", "0.2.*, >=0.2.3"),
+        ("~1", "2.3.4", "~2, >=2.3.4"),
+        ("0", "0.3.1", "0, >=0.3.1"),
+        # Sinon, rien de plus.
+        ("=1.5.4", "1.5.5", "=1.5.5"),
+        ("0.1", "0.2.23", "0.2.23"),
+        ("1.0.50", "1.0.103", "1.0.103"),
+    ],
+)
+def test_cargo_floor_for_a_vulnerability(constraint: str, target: str, expected: str) -> None:
+    check_floor(CARGO, constraint, target, expected)

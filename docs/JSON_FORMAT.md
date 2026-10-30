@@ -81,7 +81,7 @@ deux extras) donne deux dépendances, chacune avec son emplacement.
 | `ecosystem` | [écosystème](#écosystèmes) | |
 | `name` | chaîne | nom tel que le registre le connaît (normalisé selon PEP 503 pour PyPI) |
 | `constraint` | chaîne | la contrainte telle qu'écrite (`^4.18.0`, `>=2.0,<3`) ; `""` s'il n'y en a pas |
-| `resolved_constraint` | chaîne ou `null` | la plage que désigne `constraint` quand elle renvoie ailleurs : pour `catalog:` (pnpm), celle de `pnpm-workspace.yaml` |
+| `resolved_constraint` | chaîne ou `null` | la plage que désigne `constraint` quand elle renvoie ailleurs : pour `catalog:` (pnpm), celle de `pnpm-workspace.yaml` ; pour `workspace = true` (Cargo), celle de `[workspace.dependencies]` du `Cargo.toml` de la racine du workspace |
 | `installed` | chaîne ou `null` | version installée, lue dans le lockfile |
 | `lockfile` | chemin ou `null` | le fichier où `installed` a été lu : le lockfile à régénérer pour la mettre à jour (ou un fichier `-c` de pip) ; `null` sans version installée. Pour une indirecte, c'est `file` |
 | `direct` | booléen | `false` pour une dépendance qui ne vient que du lockfile |
@@ -228,8 +228,8 @@ contrainte n'accepte plus de version concernée (`~=1.4` → `~=1.9,>=1.9.2`).
 
 | Champ | Type | Sens |
 |---|---|---|
-| `kind` | chaîne | `dependency` (une contrainte du manifeste), `catalog` (la plage d'un catalogue pnpm, dans `pnpm-workspace.yaml`), `override` (une version forcée) |
-| `file` | chemin | le fichier à modifier ; pour un catalogue, le `package.json` qui y renvoie |
+| `kind` | chaîne | `dependency` (une contrainte du manifeste), `catalog` (la plage d'un catalogue pnpm, dans `pnpm-workspace.yaml`, ou d'une dépendance reprise du workspace Cargo, dans `[workspace.dependencies]`), `override` (une version forcée) |
+| `file` | chemin | le fichier à modifier ; pour un catalogue, le `package.json` (ou le `Cargo.toml`) qui y renvoie |
 | `location` | [emplacement](#emplacement) ou `null` | où est écrite `old` ; `null` pour un catalogue |
 | `old` | chaîne | le texte actuel de la contrainte |
 | `new` | chaîne | le nouveau texte |
@@ -626,7 +626,7 @@ comme avant.
 | Champ | Type | Sens |
 |---|---|---|
 | `lockfile` | chemin | |
-| `kind` | chaîne | `npm`, `pnpm`, `yarn1`, `yarn`, `uv`, `poetry`, `pdm`, `pipenv`, `pip-compile`, `uv-pip-compile` |
+| `kind` | chaîne | `npm`, `pnpm`, `yarn1`, `yarn`, `uv`, `poetry`, `pdm`, `pipenv`, `pip-compile`, `uv-pip-compile`, `cargo` |
 | `tool` | chaîne | le nom de l'outil, pour le dire (`uv pip compile`) |
 | `program` | chaîne | le programme à installer (`uv`) |
 | `available` | booléen | l'outil est installé ; sinon le lockfile n'est pas régénéré, et `command` est à lancer à la main |

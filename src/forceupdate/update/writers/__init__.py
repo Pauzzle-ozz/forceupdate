@@ -12,8 +12,10 @@ En deux temps :
 
    - une option à faire à la main (``UpdateOption.manual``) n'est pas appliquée ;
    - chaque réécriture (``Edit``) est située (``Target``) : le manifeste et l'emplacement de la
-     contrainte, ou la plage d'un catalogue pnpm dans ``pnpm-workspace.yaml`` (``npm``). Le
-     fichier doit avoir ``old`` à cet endroit : sinon il a changé depuis l'analyse ;
+     contrainte, ou la plage d'un catalogue pnpm dans ``pnpm-workspace.yaml`` (``npm``), ou
+     celle de ``[workspace.dependencies]`` dans le ``Cargo.toml`` de la racine d'un workspace
+     Cargo (``rust``). Le fichier doit avoir ``old`` à cet endroit : sinon il a changé depuis
+     l'analyse ;
    - une version figée par un fichier de contraintes de pip (``-c constraints.txt``) : ce n'est
      pas un lockfile, aucun outil ne le régénère. Sa ligne ``==X`` est réécrite comme une
      contrainte de plus (``python.constraints_target``) ;
@@ -24,9 +26,9 @@ En deux temps :
      l'emplacement lu dans le texte d'origine. Une contrainte absente a un emplacement vide :
      la nouvelle y est insérée ;
    - **auto-vérification** : le fichier réécrit est relu par son parseur (``python``,
-     ``npm``). Il doit redonner les mêmes déclarations, dans le même ordre, avec la nouvelle
-     contrainte à chaque endroit réécrit, et aucune autre contrainte changée. Sinon il n'est pas
-     réécrit, ni les options qui le touchaient.
+     ``npm``, ``rust``). Il doit redonner les mêmes déclarations, dans le même ordre, avec la
+     nouvelle contrainte à chaque endroit réécrit, et aucune autre contrainte changée. Sinon il
+     n'est pas réécrit, ni les options qui le touchaient.
 
    Ce qui n'est pas appliqué est rendu avec la raison (``Skipped``).
 2. ``write`` écrit les fichiers, si aucun n'a changé depuis ``prepare`` : chacun par un fichier
@@ -52,9 +54,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from forceupdate.detect.manifests import match_dependency_file
-from forceupdate.models import Ecosystem, EditKind, Location, Project, Update, UpdateOption
-from forceupdate.parsers.base import ParseError
-from forceupdate.update.writers import npm, python
+from forceupdate.models import (
+    Dependency,
+    Ecosystem,
+    Edit,
+    EditKind,
+    Location,
+    Project,
+    Update,
+    UpdateOption,
+)
+from forceupdate.parsers.base import ParseError, ReadText
+from forceupdate.update.writers import npm, python, rust
 from forceupdate.update.writers.base import Check, Reader, Refused, Target
 
 __all__ = [
@@ -65,6 +76,7 @@ __all__ = [
     "Skipped",
     "Target",
     "WriteError",
+    "catalog_target",
     "constraints_file",
     "prepare",
     "replace_file",
@@ -76,7 +88,7 @@ __all__ = [
 Choice = tuple[Project, Update, UpdateOption]
 """Une option choisie, avec sa mise à jour et son projet : ce que rend ``planner.chosen``."""
 
-_READERS: dict[str, Reader] = {**python.READERS, **npm.READERS}
+_READERS: dict[str, Reader] = {**python.READERS, **npm.READERS, **rust.READERS}
 _CHECKS: dict[str, Check] = python.CHECKS
 
 
@@ -196,6 +208,15 @@ def rewrite(root: Path, targets: Iterable[Target]) -> tuple[FileChange, ...]:
     return tuple(changed)
 
 
+def catalog_target(edit: Edit, dependencies: Iterable[Dependency], read_text: ReadText) -> Target:
+    """La plage à réécrire d'une dépendance qui renvoie ailleurs (``EditKind.CATALOG``) : son
+    catalogue pnpm (``catalog:``), ou ``[workspace.dependencies]`` à la racine du workspace
+    Cargo (``workspace = true``). Lève ``Refused``."""
+    if posixpath.basename(edit.file) == "Cargo.toml":
+        return rust.workspace_target(edit, dependencies, read_text)
+    return npm.catalog_target(edit, dependencies, read_text)
+
+
 def constraints_file(project: Project, update: Update, option: UpdateOption) -> str | None:
     """Le fichier de contraintes de pip (``-c constraints.txt``) qui fige la version de
     ``update``, si c'est de lui que vient ``option.lockfile`` ; ``None`` pour un vrai lockfile.
@@ -271,7 +292,7 @@ def _locate(
     targets = []
     for edit in option.edits:
         if edit.kind is EditKind.CATALOG:
-            targets.append(npm.catalog_target(edit, update.dependencies, files.parsed_text))
+            targets.append(catalog_target(edit, update.dependencies, files.parsed_text))
         elif edit.location is None:
             raise Refused(
                 f"{edit.file} : emplacement de « {edit.old} » inconnu, à réécrire à la main en "

@@ -1,17 +1,19 @@
 """Ré-enregistre les réponses réelles des registres et d'OSV, pour les tests hors ligne.
 
     uv run python tests/fixtures/record.py          # toutes
-    uv run python tests/fixtures/record.py npm      # celles d'un registre (pypi, npm, osv)
+    uv run python tests/fixtures/record.py npm      # celles d'un registre (pypi, npm, crates, osv)
     uv run python tests/fixtures/record.py pypi:jinja2   # un seul paquet
 
 À relancer quand un format de réponse change. Chaque réponse est demandée comme le fait
 forceupdate (même URL, mêmes en-têtes) et gardée telle quelle, dans
-``tests/fixtures/<registre>/<paquet>.json`` (``/`` d'un nom scopé écrit ``__``).
+``tests/fixtures/<registre>/<paquet>.json`` (``/`` d'un nom scopé écrit ``__``) ; pour
+crates.io, le fichier de l'index, une ligne JSON par version : ``<paquet>.jsonl``.
 
 OSV : ``osv/queries.json`` garde, pour chaque version demandée (``écosystème/nom@version``),
 le résultat de ``querybatch`` (les identifiants des failles) ; ``osv/vulns/<id>.json``, chaque
-avis complet (``GET /v1/vulns/{id}``). Les versions demandées sont celles du mini-projet
-``tests/projects/vulnerable``, plus ``OSV_EXTRA``.
+avis complet (``GET /v1/vulns/{id}``). Les versions demandées sont celles des mini-projets
+``tests/projects/vulnerable``, ``cargo`` et ``cargo-workspace`` (``OSV_PROJECTS``), plus
+``OSV_EXTRA``.
 
 Les tests s'appuient surtout sur ce qui ne bouge plus : une version publiée, retirée ou
 dépréciée le reste, une faille corrigée aussi. Ceux qui citent la dernière version, le nombre
@@ -29,12 +31,15 @@ from forceupdate.checks import vulns
 from forceupdate.models import Ecosystem, ScanOptions
 from forceupdate.net import Cache, HttpClient
 from forceupdate.registries.base import Registry
+from forceupdate.registries.crates import Crates
 from forceupdate.registries.npm import Npm
 from forceupdate.registries.pypi import PyPI
 from forceupdate.sources.local import LocalSource
 
 FIXTURES = Path(__file__).parent
-VULNERABLE_PROJECT = FIXTURES.parent / "projects" / "vulnerable"
+PROJECTS = FIXTURES.parent / "projects"
+OSV_PROJECTS = (PROJECTS / "vulnerable", PROJECTS / "cargo", PROJECTS / "cargo-workspace")
+"""Les mini-projets dont les versions sont demandées à OSV."""
 
 PACKAGES: dict[str, tuple[type[Registry], dict[str, str]]] = {
     "pypi": (
@@ -57,6 +62,17 @@ PACKAGES: dict[str, tuple[type[Registry], dict[str, str]]] = {
             "lodash": "une version dépréciée (4.18.0), des failles corrigées en 4.17.x et 4.18",
         },
     ),
+    "crates": (
+        Crates,
+        {
+            "rand": "deux versions retirées (0.4.4, 0.7.1), des pré-versions (0.9.0-alpha…)",
+            "regex": "directe du mini-projet cargo, =1.5.4 : faille corrigée en 1.5.5",
+            "time": "facultative du mini-projet cargo, 0.1.45 : faille corrigée en 0.2.x",
+            "anyhow": "figée sous la plus haute que permet sa contrainte (cargo, workspace)",
+            "log": "renommée (my-log) dans le mini-projet cargo, reprise du workspace",
+            "smallvec": "=1.6.0 dans [workspace.dependencies] : faille corrigée en 1.6.1",
+        },
+    ),
 }
 """Les paquets enregistrés, par registre, avec le cas que chacun couvre."""
 
@@ -67,23 +83,27 @@ OSV_EXTRA: dict[tuple[Ecosystem, str, str], str] = {
     (Ecosystem.PYPI, "flask", "2.3.0"): "deux branches corrigées : 2.2.5 et 2.3.2",
     (Ecosystem.PYPI, "requests", "2.0"): "une borne basse (>=2.0), sans lockfile",
 }
-"""Les versions demandées à OSV en plus de celles du mini-projet, avec le cas couvert."""
+"""Les versions demandées à OSV en plus de celles des mini-projets, avec le cas couvert."""
+
+SUFFIXES = {"crates": ".jsonl"}
+"""L'extension des réponses d'un registre ; ``.json`` sinon."""
 
 
 def fixture_path(registry: str, name: str) -> Path:
-    return FIXTURES / registry / f"{name.replace('/', '__')}.json"
+    suffix = SUFFIXES.get(registry, ".json")
+    return FIXTURES / registry / f"{name.replace('/', '__')}{suffix}"
 
 
 def osv_queries() -> list[tuple[Ecosystem, str, str]]:
-    """Les versions à demander à OSV : celles du mini-projet ``vulnerable``, puis
+    """Les versions à demander à OSV : celles des mini-projets de ``OSV_PROJECTS``, puis
     ``OSV_EXTRA``."""
-    report = engine.inventory(LocalSource(VULNERABLE_PROJECT))
     found = []
-    for project in report.projects:
-        for dependency in project.dependencies:
-            current = vulns.version_to_check(dependency)
-            if vulns.audited(dependency, ScanOptions()) and current and current.version:
-                found.append((dependency.ecosystem, dependency.name, current.version))
+    for folder in OSV_PROJECTS:
+        for project in engine.inventory(LocalSource(folder)).projects:
+            for dependency in project.dependencies:
+                current = vulns.version_to_check(dependency)
+                if vulns.audited(dependency, ScanOptions()) and current and current.version:
+                    found.append((dependency.ecosystem, dependency.name, current.version))
     return list(dict.fromkeys([*found, *OSV_EXTRA]))
 
 

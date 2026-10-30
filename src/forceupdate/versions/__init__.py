@@ -7,14 +7,15 @@ interpréter, prendre les règles de l'écosystème avec ``for_ecosystem`` :
     scheme.max_satisfying("^4.17.0", ["4.17.21", "5.0.0"])  # "4.17.21"
     scheme.gap("4.17.15", "5.0.0")  # Gap.MAJOR
 
-PyPI et npm pour l'instant ; les autres écosystèmes arrivent avec leur étape (E21-E26),
-chacun avec sa ``VersionScheme``.
+PyPI, npm et crates.io (Cargo) pour l'instant ; les autres écosystèmes arrivent avec leur
+étape (E22-E26), chacun avec sa ``VersionScheme``.
 """
 
 from typing import Any
 
 from forceupdate.models import Ecosystem
 from forceupdate.versions.base import Constraint, InvalidConstraint, InvalidVersion, VersionScheme
+from forceupdate.versions.cargo import CARGO
 from forceupdate.versions.npm import NPM
 from forceupdate.versions.pypi import PYPI
 
@@ -29,6 +30,7 @@ __all__ = [
 _SCHEMES: dict[Ecosystem, VersionScheme[Any]] = {
     Ecosystem.PYPI: PYPI,
     Ecosystem.NPM: NPM,
+    Ecosystem.CRATES_IO: CARGO,
 }
 
 

@@ -210,7 +210,12 @@ chaque fois) :
     `.venv` de forceupdate pour celui du projet), `CI=true` (pnpm et Yarn 4 refusent
     alors de changer le lockfile) ;
   - pipenv crée le virtualenv du projet, PDM un `.venv` dans le projet, s'ils n'en
-    ont pas.
+    ont pas ;
+  - Cargo (E21) : `cargo update -p x --precise V` **ignore `--precise`** dès que la
+    contrainte du manifeste n'accepte plus la version figée (il prend alors la plus
+    haute) ; une directe réécrite est donc épinglée (`=V`) le temps d'un `cargo update
+    --workspace`, comme pour npm. Il garde le format d'un `Cargo.lock` existant (v3 reste
+    v3).
 - **Régénérer un lockfile peut exécuter du code du projet** : scripts npm,
   `Gemfile` (c'est du Ruby), `build.gradle`, `setup.py`. Toujours passer
   `--ignore-scripts` / `--no-scripts` quand l'outil le permet, et le dire quand il
@@ -218,7 +223,14 @@ chaque fois) :
   il change la résolution (un paquet sans wheel pour une seule plateforme la rend
   impossible : `sslyze` dans Argos) ; il n'est pas passé, et le plan dit qu'uv,
   Poetry, PDM, pipenv et pip-compile peuvent construire des paquets. Yarn 2+ lance
-  la version de Yarn du projet (`yarnPath`) et ses extensions.
+  la version de Yarn du projet (`yarnPath`) et ses extensions. Constaté à E21 : `cargo
+  update` ne lance pas `build.rs`, mais il lance `rustc -vV` quand le résolveur 3
+  (édition 2024 sans `rust-version`) doit connaître sa version, donc le `build.rustc` ou
+  le `rustc-wrapper` du `.cargo/config.toml` du projet (écartés : `RUSTC`, et
+  `RUSTC_WRAPPER` vide) ; et rustup lance la chaîne d'outils que désigne le
+  `rust-toolchain.toml` du projet, même un dossier du projet (`path`), après l'avoir
+  installée s'il le faut (il a installé Rust 1.80 tout seul pour un essai) : dit dans le
+  plan.
 - **Plafond de taille** : `safe_read_text` ignore les fichiers de plus de 2 Mo. Un
   `package-lock.json` les dépasse souvent : relever le plafond pour les lockfiles.
 - **Go, majeur ≥ 2** : changer de majeur change le chemin du module (`/v2`) et
@@ -356,6 +368,9 @@ chaque fois) :
   - npm : `dist-tags.latest` n'est pas toujours la plus haute version ; certains
     documents sont énormes (`next` : 31 Mo) ; un paquet malveillant retiré est
     remplacé par une version `0.0.1-security`.
+  - crates.io (E21) : l'index « sparse » n'a pas la limite de l'API ; son chemin s'écrit
+    en minuscules (`Serde` donne 404) ; il ne dit ni la raison d'un retrait, ni une
+    dépréciation (crates.io n'en a pas).
 
 ## Sources de données
 
@@ -366,7 +381,7 @@ débit changent).
 |---|---|
 | PyPI | **Vérifié (E06)** : `GET https://pypi.org/simple/{nom}/` avec `Accept: application/vnd.pypi.simple.v1+json` (API Simple, PEP 691) → `versions` (PEP 700), `files[*].yanked` et `upload-time`, `project-status` (PEP 792 : archivé, déprécié, en quarantaine). La clé `releases` de `/pypi/{nom}/json` est dépréciée |
 | npm | **Vérifié (E06)** : `GET https://registry.npmjs.org/{nom}` (scopé : `@scope%2Fnom`), document complet → `dist-tags`, `versions[*].deprecated`, `time` (les dates : l'abrégé ne les a pas) |
-| crates.io | `GET https://crates.io/api/v1/crates/{nom}` (User-Agent exigé), ou l'index « sparse » `https://index.crates.io/…` |
+| crates.io | **Vérifié (E21)** : l'index « sparse » de Cargo, `GET https://index.crates.io/{chemin}` (`1/a`, `2/cc`, `3/l/log`, `se/rd/serde`, en minuscules), une ligne JSON par version : `vers`, `yanked`, `pubtime`. Statique, servi par un CDN, sans la limite d'une requête par seconde de l'API (`https://crates.io/api/v1/crates/{nom}`, User-Agent exigé) |
 | RubyGems | `GET https://rubygems.org/api/v1/versions/{nom}.json` |
 | Go | `GET https://proxy.golang.org/{module}/@v/list` et `/@latest` (majuscules du chemin encodées en `!minuscule`) |
 | Packagist | `GET https://repo.packagist.org/p2/{vendor}/{paquet}.json` (champ `abandoned`) |
