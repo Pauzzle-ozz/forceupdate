@@ -6,6 +6,8 @@
   token collé, ``gh``) ;
 - ``gitlab.py`` : le client REST de GitLab (gitlab.com, ou une instance auto-hébergée), et la
   connexion d'un compte (OAuth avec PKCE sur gitlab.com, token collé) (E19) ;
+- ``bitbucket.py`` : le client REST de Bitbucket Cloud, et la connexion d'un compte (OAuth, token
+  d'API Atlassian collé) (E20). Bitbucket Data Center (auto-hébergé, une autre API) : hors V1 ;
 - ``git.py`` : git, pour cloner un dépôt et y pousser une branche, le token passé par un
   credential helper éphémère (E18) ;
 - ``accounts.py`` : les comptes connectés, leurs tokens dans le trousseau du système.
@@ -21,6 +23,7 @@ from dataclasses import dataclass
 from typing import NamedTuple
 
 from forceupdate.forges.base import Forge, ForgeKind, Renew
+from forceupdate.forges.bitbucket import Bitbucket
 from forceupdate.forges.github import GitHub
 from forceupdate.forges.gitlab import GitLab
 from forceupdate.net import HttpClient
@@ -51,7 +54,7 @@ FORGES = (
         self_hosted=True,
         request="MR",
     ),
-    ForgeInfo(kind=ForgeKind.BITBUCKET, name="Bitbucket", host="bitbucket.org", available=False),
+    ForgeInfo(kind=ForgeKind.BITBUCKET, name="Bitbucket", host="bitbucket.org", available=True),
 )
 
 
@@ -79,6 +82,8 @@ class RepositoryName(NamedTuple):
 
 _NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})")
 _REPO = re.compile(r"[A-Za-z0-9._-]{1,100}")
+_WORKSPACE = re.compile(r"[A-Za-z0-9_-]{1,62}")
+"""L'identifiant d'un workspace de Bitbucket (lettres, chiffres, ``-`` et ``_``)."""
 _GITLAB_SEGMENT = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,254}")
 MAX_GITLAB_DEPTH = 21
 """Segments au plus d'un chemin de projet GitLab (20 niveaux de groupes, puis le projet)."""
@@ -89,9 +94,10 @@ def parse_repository(
 ) -> RepositoryName:
     """La forge, l'hôte et le nom d'un dépôt donné par la personne : ``owner/nom`` (GitHub),
     ou son adresse (``https://github.com/owner/nom``, ``…/nom.git``, ``git@github.com:owner/
-    nom.git``, une page du dépôt). Sur GitLab, le nom est le chemin complet du projet, groupes
-    et sous-groupes compris (``groupe/sous-groupe/projet``) ; ``instances`` : les hôtes des
-    instances auto-hébergées connectées. Lève ``ValueError`` avec un message à montrer."""
+    nom.git``, une page du dépôt ; sur Bitbucket, ``workspace/dépôt``). Sur GitLab, le nom est
+    le chemin complet du projet, groupes et sous-groupes compris (``groupe/sous-groupe/
+    projet``) ; ``instances`` : les hôtes des instances auto-hébergées connectées. Lève
+    ``ValueError`` avec un message à montrer."""
     value = text.strip()
     if value.startswith("git@"):
         host, _, path = value[4:].partition(":")
@@ -117,7 +123,8 @@ def parse_repository(
     if len(parts) < 2:
         raise ValueError(f"« {text} » : donner owner/nom, ou l'adresse du dépôt.")
     owner, name = parts[0], parts[1].removesuffix(".git")
-    if not _NAME.fullmatch(owner) or not _REPO.fullmatch(name) or name in (".", ".."):
+    owner_pattern = _WORKSPACE if forge.kind is ForgeKind.BITBUCKET else _NAME
+    if not owner_pattern.fullmatch(owner) or not _REPO.fullmatch(name) or name in (".", ".."):
         raise ValueError(f"« {owner}/{name} » n'est pas un nom de dépôt.")
     return RepositoryName(forge, host, f"{owner}/{name}")
 
@@ -152,4 +159,4 @@ def client(
         return GitHub(http, token)
     if kind is ForgeKind.GITLAB:
         return GitLab(http, token, host=host or HOSTS[kind], renew=renew)
-    raise NotImplementedError(f"{info(kind).name} : la connexion n'est pas encore disponible")
+    return Bitbucket(http, token, renew=renew)

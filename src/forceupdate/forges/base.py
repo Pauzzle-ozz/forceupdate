@@ -10,8 +10,8 @@ Ce que fait chaque méthode, et à quelle étape elle arrive :
 - ``list_repos``, ``repository``, ``restrictions``, ``tree``, ``read_file`` : les dépôts (et
   les organisations dont ils ne sont pas tous lisibles), et de quoi les analyser sans les
   cloner (E17) ;
-- ``clone``, ``branch``, ``push_branch`` : cloner pour mettre à jour, voir où en est la branche
-  de forceupdate sur la forge, la pousser (E18) ;
+- ``clone``, ``branch``, ``branch_tree``, ``push_branch`` : cloner pour mettre à jour, voir où
+  en est la branche de forceupdate sur la forge (et son contenu), la pousser (E18) ;
 - ``find_open_request``, ``open_or_update_request`` : la PR (MR sur GitLab), idempotente (E18).
 
 Une réponse d'erreur de la forge lève une ``ForgeError`` (message en français, fait pour être
@@ -319,6 +319,12 @@ class Forge(abc.ABC):
         """La branche ``name`` sur la forge, avec ses commits qui ne sont pas sur la branche
         par défaut ; ``None`` si elle n'existe pas."""
 
+    async def branch_tree(self, repo: Repository, checkout: Path, branch: Branch) -> str | None:
+        """L'arbre du dernier commit de ``branch`` (``Forge.branch``), pour ne rien pousser quand
+        elle a déjà le contenu du clone ``checkout`` : celui que la forge a donné. Bitbucket,
+        dont l'API ne le donne pas, le lit par git."""
+        return branch.tree
+
     @abc.abstractmethod
     async def push_branch(
         self, repo: Repository, checkout: Path, branch: str, *, expected: str | None
@@ -345,11 +351,14 @@ class OAuthFlow(abc.ABC):
     """La connexion d'un compte par la page d'autorisation d'une forge (OAuth 2, avec PKCE) :
     forceupdate y est enregistré une fois, par son auteur (``client_id``), et chaque personne
     y autorise son propre compte. La forge renvoie le navigateur vers le serveur local
-    (``redirect_uri``, sur 127.0.0.1 : les deux forges acceptent n'importe quel port)."""
+    (``redirect_uri``, sur 127.0.0.1 : les trois forges acceptent n'importe quel port)."""
 
     kind: ClassVar[ForgeKind]
     callback_path: ClassVar[str]
     """Le chemin de l'adresse de retour, celui enregistré auprès de la forge."""
+    revocable: ClassVar[bool] = True
+    """La forge révoque un token par son API (``revoke``) ; Bitbucket ne le permet pas : la
+    personne retire l'accès dans ses réglages."""
     client_id: str
 
     @property

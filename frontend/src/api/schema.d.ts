@@ -952,8 +952,14 @@ export interface components {
             methods: components["schemas"]["ConnectMethod"][];
             /** Scopes */
             scopes: string[];
+            /** Token Scopes */
+            token_scopes: string[];
             /** Token Url */
             token_url: string | null;
+            /** Revocable */
+            revocable: boolean;
+            /** Applications Url */
+            applications_url: string | null;
             /** Self Hosted */
             self_hosted: boolean;
             /** Request */

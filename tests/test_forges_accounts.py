@@ -74,6 +74,37 @@ def test_the_token_goes_to_the_keyring_and_never_to_the_file(
     assert TOKEN not in repr(account)
 
 
+def test_a_long_token_is_kept_in_parts(store: Accounts, keychain: MemoryKeyring) -> None:
+    """Un token d'OAuth de Bitbucket (plus de 2 000 caractères) et son refresh token ne tiennent
+    pas dans une entrée du trousseau de Windows (1 280 caractères) : en morceaux."""
+    expires = datetime(2026, 10, 29, 12, 0, tzinfo=UTC)
+    grant = Grant(access_token="a" * 2400, refresh_token="r" * 600, expires_at=expires)
+    store.save(identity(), grant, ConnectMethod.OAUTH)
+    main = keychain.passwords[KEY]
+    assert main == "forceupdate-parts:4"
+    parts = [keychain.passwords[(KEY[0], f"{KEY[1]}#{n}")] for n in range(1, 5)]
+    assert all(len(part) <= accounts_module.MAX_PART for part in parts)
+    assert store.grant(ForgeKind.GITHUB, "github.com") == grant
+    assert store.connected()[0].login == "octo"
+
+    # Renouvelé, plus court : d'un seul tenant, les morceaux d'avant effacés.
+    store.renewed(ForgeKind.GITHUB, "github.com", Grant(access_token="court"))
+    assert keychain.passwords == {KEY: "court"}
+    # Plus long de nouveau, puis déconnecté : plus rien dans le trousseau.
+    store.renewed(ForgeKind.GITHUB, "github.com", Grant(access_token="b" * 1500))
+    assert len(keychain.passwords) == 3
+    account, token = store.remove(ForgeKind.GITHUB, "github.com")
+    assert account is not None and token == "b" * 1500
+    assert keychain.passwords == {}
+
+
+def test_a_missing_part_means_no_token(store: Accounts, keychain: MemoryKeyring) -> None:
+    store.save(identity(), "c" * 2500, ConnectMethod.TOKEN)
+    del keychain.passwords[(KEY[0], f"{KEY[1]}#2")]
+    assert store.token(ForgeKind.GITHUB, "github.com") is None
+    assert store.connected() == []
+
+
 def test_the_file_keeps_everything_but_the_token(store: Accounts) -> None:
     store.save(identity(), TOKEN, ConnectMethod.DEVICE)
     document = json.loads(store.path.read_text(encoding="utf-8"))

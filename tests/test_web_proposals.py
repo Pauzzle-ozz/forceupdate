@@ -248,7 +248,9 @@ def test_what_cannot_be_proposed_or_sent(
     refused({"repositories": []}, 400, "Aucun dépôt")
     refused({"repositories": [key("x/y")]}, 400, "pas dans la liste")
     refused({"repositories": [key("x/y", "gitlab", "gitlab.com")]}, 404, "Aucun compte GitLab")
-    refused({"repositories": [key("x/y", "bitbucket", "bitbucket.org")]}, 409, "pas encore")
+    refused(
+        {"repositories": [key("x/y", "bitbucket", "bitbucket.org")]}, 404, "Aucun compte Bitbucket"
+    )
     assert api.get("/api/proposals/inconnu").status_code == 404
     assert api.post("/api/proposals/inconnu/send", json={"repositories": []}).status_code == 404
 

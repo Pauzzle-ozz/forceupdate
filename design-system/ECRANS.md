@@ -279,6 +279,23 @@ ce que l'outil peut faire.
   donné à toutes) ; l'intro dit « y ouvrir des PR (des MR sur GitLab) » ; l'accueil montre
   aussi les comptes des instances (« GitLab (hôte) »).
 
+**Fait à E20** (Bitbucket) :
+
+- la carte Bitbucket est une carte de forge comme les autres (plus aucune carte « Bientôt ») :
+  « Se connecter avec Bitbucket » (OAuth, action principale), puis le token collé : « Un token
+  d'API Atlassian avec les portées » et ses six portées en chasse fixe, la précision « Create API
+  token with scopes, application Bitbucket ; les app passwords ne marchent plus », le lien
+  « Créer un token sur id.atlassian.com » ; pas de code, ni de `gh`, ni d'instance ; droits
+  « Lecture et PR » ; un token d'API : « Droits non vérifiés », portées « non données par la
+  forge (token d'API Atlassian) » ;
+- **la déconnexion ne révoque pas** (Bitbucket ne le permet pas par son API) : la confirmation
+  le dit (« Bitbucket ne permet pas de le révoquer d'ici : retirer ensuite l'accès de forceupdate
+  dans ses réglages »), l'issue est un avertissement avec le lien « Retirer l'accès sur
+  bitbucket.org » (bouton principal, nouvel onglet) ;
+- le serveur dit, par forge, si un token se révoque (`revocable`), où retirer l'accès
+  (`applications_url`) et les portées d'un token collé (`token_scopes`) : rien n'est écrit en dur
+  dans le front pour une forge, sauf le début de la phrase d'aide de son token.
+
 ## 7. Mes dépôts (E17, E19, E20)
 
 **But** : tous les dépôts des comptes connectés, les analyser en groupe, choisir ceux à
@@ -340,7 +357,7 @@ mettre à jour. Page à part : [pages/depots.md](pages/depots.md). Maquette :
 - états : chargement (squelettes), erreur (« Dépôts indisponibles », « Réessayer »), sans
   compte (« Connecter un compte », et le champ du dépôt public), compte sans dépôt, hors
   ligne (bandeau, analyses désactivées avec la raison), filtres sans résultat.
-- **Pas encore** : GitLab et Bitbucket (E19, E20).
+- GitLab et Bitbucket : faits à E19 et E20 (ci-dessous).
 
 **Fait à E18** : la colonne « PR » (`#41`, lien vers la forge, nouvel onglet ; « pas de droit de
 push » pour un dépôt en lecture seule ; « — » sinon), sous 768 px une ligne « PR » de la carte ;
@@ -361,6 +378,12 @@ un même `owner/nom` sur deux forges : le nom accessible de sa case et de son li
 (« Sélectionner octo/app (GitLab) ») ; les projets en sous-groupes gardent leur chemin
 complet (`groupe/sous-groupe/` atténué). Le rapport d'un projet GitLab dit « Préparer la
 MR », « Voir sur GitLab ».
+
+**Fait à E20** : les dépôts Bitbucket dans la même liste, sans changement de fond (« Bitbucket »
+dans la colonne Forge et le filtre, `#3` dans la colonne PR, nommé « PR #3 de espace/app sur
+Bitbucket ») ; Bitbucket ne dit pas les requêtes restantes : pas de ligne pour lui ; le rapport
+d'un dépôt Bitbucket dit « dépôt Bitbucket, lu par l'API sans le cloner », « Voir sur
+Bitbucket », et une arborescence tronquée « trop de fichiers, ou de dossiers imbriqués ».
 
 ## 8. PR / MR (E18, E19, E20)
 
@@ -412,7 +435,9 @@ récapitulatif, et retrouver les liens.
   sautés aussi, toujours ; un compte dont le token est refusé à l'envoi : ses dépôts en échec,
   et une alerte « Un compte refuse son token » qui mène à « Comptes ». L'écran 5 d'un projet
   GitLab dit « Préparer la MR de … ».
-- **Pas encore** : Bitbucket (E20).
+- **Fait à E20** : Bitbucket sans changement de fond : « PR » et `#1`, « met à jour la PR #1 »,
+  « Voir la PR #1 sur Bitbucket » ; sa forge dite sur la carte quand le récapitulatif mêle les
+  comptes.
 
 ## 9. Réglages (E29)
 

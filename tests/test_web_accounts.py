@@ -19,7 +19,7 @@ import respx
 from conftest import API_PORT, MemoryKeyring
 from fastapi.testclient import TestClient
 
-from forceupdate.forges import github, gitlab
+from forceupdate.forges import bitbucket, github, gitlab
 from forceupdate.forges.base import ForgeKind
 from forceupdate.net import http as http_module
 from forceupdate.web.connections import Connections
@@ -155,7 +155,10 @@ def test_the_forges_without_any_account(api: TestClient, fake_github: FakeGitHub
                 "available": True,
                 "methods": ["oauth", "device", "token"],
                 "scopes": ["repo", "read:org"],
+                "token_scopes": ["repo", "read:org"],
                 "token_url": github.TOKEN_SETTINGS_URL,
+                "revocable": True,
+                "applications_url": github.APPLICATIONS_URL,
                 "self_hosted": False,
                 "request": "PR",
                 "account": None,
@@ -169,7 +172,10 @@ def test_the_forges_without_any_account(api: TestClient, fake_github: FakeGitHub
                 "available": True,
                 "methods": ["oauth", "token"],
                 "scopes": ["api"],
+                "token_scopes": ["api"],
                 "token_url": gitlab.token_settings_url(),
+                "revocable": True,
+                "applications_url": "https://gitlab.com/-/user_settings/applications",
                 "self_hosted": True,
                 "request": "MR",
                 "account": None,
@@ -180,10 +186,13 @@ def test_the_forges_without_any_account(api: TestClient, fake_github: FakeGitHub
                 "forge": "bitbucket",
                 "name": "Bitbucket",
                 "host": "bitbucket.org",
-                "available": False,
-                "methods": [],
-                "scopes": [],
-                "token_url": None,
+                "available": True,
+                "methods": ["oauth", "token"],
+                "scopes": ["account", "email", "repository:write", "pullrequest:write"],
+                "token_scopes": list(bitbucket.API_TOKEN_SCOPES),
+                "token_url": bitbucket.TOKEN_SETTINGS_URL,
+                "revocable": False,
+                "applications_url": bitbucket.APPLICATIONS_URL,
                 "self_hosted": False,
                 "request": "PR",
                 "account": None,
@@ -346,17 +355,16 @@ def test_gh_not_installed(api: TestClient, fake_github: FakeGitHub) -> None:
     assert response.json()["detail"] == "GitHub CLI (gh) n'est pas installé."
 
 
-def test_bitbucket_is_not_available_yet(api: TestClient, fake_github: FakeGitHub) -> None:
-    for method, path in (
-        ("POST", "/api/accounts/bitbucket/oauth"),
-        ("POST", "/api/accounts/bitbucket/device"),
-        ("POST", "/api/accounts/bitbucket/gh"),
-    ):
-        response = api.request(method, path)
-        assert response.status_code == 409
-        assert "la connexion n'est pas encore disponible" in response.json()["detail"]
-    response = api.post("/api/accounts/bitbucket/token", json={"token": GOOD})
-    assert response.status_code == 409
+def test_bitbucket_has_neither_device_flow_nor_gh(api: TestClient) -> None:
+    response = api.post("/api/accounts/bitbucket/device")
+    assert response.status_code == 400
+    assert "pas de connexion par code" in response.json()["detail"]
+    assert api.post("/api/accounts/bitbucket/gh").status_code == 400
+    response = api.post(
+        "/api/accounts/bitbucket/token", json={"token": GOOD, "url": "https://bb.example.com"}
+    )
+    assert response.status_code == 400
+    assert "pas d'instance auto-hébergée" in response.json()["detail"]
 
 
 def test_github_has_no_self_hosted_instance(api: TestClient, fake_github: FakeGitHub) -> None:

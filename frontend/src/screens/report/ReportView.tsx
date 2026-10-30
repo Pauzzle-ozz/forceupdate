@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import type { FindingKind, Report, ScanDetail } from '@/api/types'
+import type { FindingKind, ForgeKind, Report, ScanDetail } from '@/api/types'
 import { EmptyState } from '@/components/EmptyState'
 import { OptionBadges } from '@/components/OptionBadges'
 import { Alert, AlertActions, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -55,6 +55,13 @@ import { Synthesis } from './Synthesis'
 /** Le paquet ouvert dans l'adresse : `?paquet=PyPI:flask` (et `&projet=` s'il y a plusieurs projets). */
 function packageParam(row: Row): string {
   return `${row.dependency.ecosystem}:${row.dependency.name}`
+}
+
+/** Pourquoi une forge n'a pas rendu toute l'arborescence d'un dépôt. */
+const TRUNCATED: Record<ForgeKind, string> = {
+  github: 'plus de 100 000 fichiers',
+  gitlab: 'trop de fichiers',
+  bitbucket: 'trop de fichiers, ou de dossiers imbriqués',
 }
 
 /**
@@ -201,7 +208,7 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
               <AlertDescription>
                 <p>
                   {fr(
-                    `${forgeLabel(repository.forge, repository.host)} n'a pas rendu toute l'arborescence du dépôt (${repository.forge === 'gitlab' ? 'trop de fichiers' : 'plus de 100 000 fichiers'}) : des fichiers de dépendances peuvent manquer. Ce n'est pas « à jour ».`,
+                    `${forgeLabel(repository.forge, repository.host)} n'a pas rendu toute l'arborescence du dépôt (${TRUNCATED[repository.forge]}) : des fichiers de dépendances peuvent manquer. Ce n'est pas « à jour ».`,
                   )}
                 </p>
               </AlertDescription>

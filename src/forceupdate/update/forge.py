@@ -203,7 +203,7 @@ async def deliver(
         if foreign:
             return failed(_foreign_message(foreign, remote))
         tree = await run(lambda: git.tree(checkout))
-        pushed = remote is None or remote.tree != tree
+        pushed = remote is None or await forge.branch_tree(repo, checkout, remote) != tree
         if pushed:
             expected = remote.head if remote is not None else None
             await forge.push_branch(repo, checkout, BRANCH, expected=expected)

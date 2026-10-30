@@ -312,7 +312,8 @@ def test_a_batch_refuses_what_it_cannot_do(api: TestClient, github: FakeGitHubRe
     assert response.status_code == 404
     assert response.json() == {"detail": "Aucun compte GitLab connecté."}
     response = start({"repositories": keys("a/b", forge="bitbucket", host="bitbucket.org")})
-    assert response.status_code == 409
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Aucun compte Bitbucket connecté."}
 
 
 def test_a_token_refused_during_a_batch(
@@ -416,7 +417,7 @@ def test_scan_a_repository_with_the_connected_account(
         ("pas un/dépôt", 400, "n'est pas un nom de dépôt"),
         ("octo", 400, "donner owner/nom"),
         ("https://exemple.org/a/b", 400, "seuls GitHub, GitLab et Bitbucket"),
-        ("https://bitbucket.org/a/b", 409, "Bitbucket : l'analyse de ses dépôts n'est pas"),
+        ("https://bitbucket.org/espace", 400, "donner owner/nom"),
         ("https://gitlab.example.com/a/b", 400, "et les instances GitLab connectées"),
         ("octo/vulnerable", 404, "privé et sans compte connecté, on n'y a pas accès"),
         ("octo/inconnu", 404, "Dépôt introuvable sur GitHub : octo/inconnu n'existe pas"),

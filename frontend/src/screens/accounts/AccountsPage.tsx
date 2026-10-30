@@ -1,7 +1,7 @@
 import { CircleX, Clock, ShieldCheck } from 'lucide-react'
 import { useCallback } from 'react'
 import { useSearchParams } from 'react-router'
-import type { ForgeKind, ForgeStatus } from '@/api/types'
+import type { ForgeStatus } from '@/api/types'
 import { ForgeLogo } from '@/components/ForgeLogo'
 import { Alert, AlertActions, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -108,13 +108,7 @@ export function AccountsPage() {
   )
 }
 
-const SOON: Record<ForgeKind, string> = {
-  github: '',
-  gitlab: 'gitlab.com par OAuth, et les instances auto-hébergées par token.',
-  bitbucket: "Bitbucket Cloud par OAuth, ou par un token d'API Atlassian.",
-}
-
-/** Une forge dont la connexion arrive à une étape à venir. */
+/** Une forge dont la connexion n'est pas prête (aucune depuis E20 : le serveur peut encore le dire). */
 function SoonCard({ status }: { status: ForgeStatus }) {
   const id = `${status.forge}-titre`
   return (
@@ -130,7 +124,7 @@ function SoonCard({ status }: { status: ForgeStatus }) {
         </Badge>
       </div>
       <p className="text-sm text-fg-muted">
-        {fr(`La connexion arrive bientôt : ${SOON[status.forge]}`)}
+        {fr(`La connexion à ${status.name} arrive bientôt.`)}
       </p>
     </section>
   )

@@ -133,7 +133,7 @@ Prises pour pouvoir planifier. Si l'une change : modifier ce tableau, puis les
 | 10 | Interface ? | **Interface web en V1**, qui tourne sur l'ordinateur de la personne, pas un site en ligne : `forceupdate ui` ouvre le navigateur. Conçue avec le skill `ui-ux-pro-max`. La ligne de commande reste (`scan`, `update`) pour les scripts et la CI | **Confirmé.** Accès direct aux dossiers et aux fichiers à réécrire ; rien à héberger ; les tokens restent sur la machine. Un site en ligne serait un autre projet, bien plus gros (serveur, comptes, isolation) : l'API de E12 pourrait lui servir de base plus tard |
 | 11 | Comment mettre à jour en local ? | Sélection → diff → validation. Réécriture ciblée du texte des manifestes (la mise en forme et les commentaires restent). Lockfile régénéré par l'outil natif (npm, uv…), sans jamais lancer les scripts du projet | Un diff minimal, relisible, sans surprise |
 | 12 | Quelles mises à jour sont proposées par défaut ? | Correctifs, mineures et failles pré-cochés. Majeures proposées mais **jamais cochées d'office** : c'est la personne qui les coche (voir « Les trois niveaux »). En ligne de commande : `--level minor` par défaut | **Confirmé.** Une majeure peut demander d'adapter le code |
-| 13 | Connexion aux forges ? | Chaque personne connecte son propre compte depuis l'interface (OAuth). L'outil est enregistré une fois auprès de chaque forge par son auteur, l'utilisateur de ce projet. Repli : token collé, ou `gh`. Tokens dans le trousseau du système. **GitHub (E16)** : une OAuth App (pas une GitHub App), portées `repo` et `read:org`, tokens sans expiration ; device flow en repli ; se déconnecter révoque le token donné à forceupdate. **GitLab (E19)** : une application « non confidentielle » sur gitlab.com (PKCE, sans secret), portée `api` ; ses tokens expirent après 2 h et se renouvellent par leur refresh token ; une instance auto-hébergée par son adresse et un token d'accès personnel ; un compte par hôte | **Confirmé.** « Je lie mon compte, l'outil a accès ». OAuth App plutôt que GitHub App : un clic et tous les dépôts, sans installer l'app sur chaque compte et organisation (comme `gh`) |
+| 13 | Connexion aux forges ? | Chaque personne connecte son propre compte depuis l'interface (OAuth). L'outil est enregistré une fois auprès de chaque forge par son auteur, l'utilisateur de ce projet. Repli : token collé, ou `gh`. Tokens dans le trousseau du système. **GitHub (E16)** : une OAuth App (pas une GitHub App), portées `repo` et `read:org`, tokens sans expiration ; device flow en repli ; se déconnecter révoque le token donné à forceupdate. **GitLab (E19)** : une application « non confidentielle » sur gitlab.com (PKCE, sans secret), portée `api` ; ses tokens expirent après 2 h et se renouvellent par leur refresh token ; une instance auto-hébergée par son adresse et un token d'accès personnel ; un compte par hôte. **Bitbucket Cloud (E20)** : un « OAuth client » public dans un workspace de l'auteur (Bitbucket n'a ni PKCE ni client sans secret : le secret est embarqué, comme celui de GitHub), portées `account` (et son adresse), dépôts et pull requests en écriture ; tokens de 2 h renouvelés ; pas de révocation par l'API (la personne retire l'accès dans ses réglages) ; en repli, un token d'API Atlassian collé | **Confirmé.** « Je lie mon compte, l'outil a accès ». OAuth App plutôt que GitHub App : un clic et tous les dépôts, sans installer l'app sur chaque compte et organisation (comme `gh`) |
 | 14 | Mettre à jour sur une forge ? | Une PR (ou MR) par dépôt, idempotente. Jamais de push sur la branche par défaut | **Confirmé.** La CI du dépôt teste la PR, un humain la fusionne |
 | 15 | Analyser sur une forge ? | Par l'API, sans cloner (arborescence + manifestes). Clone superficiel seulement pour mettre à jour, ou si l'API ne donne pas l'arborescence | Rapide sur des dizaines de dépôts |
 | 16 | Quelles forges en V1 ? | GitHub, GitLab (gitlab.com et auto-hébergé), Bitbucket Cloud | **Confirmé.** Demandé par l'utilisateur |
@@ -158,7 +158,8 @@ chaque fois) :
   client id `Ov23lihqeEYz35ddy5Pm`, dans `forges/github.py`) ;
 - ~~enregistrer l'outil auprès de GitLab~~ : fait à E19 (application « forceupdate » de
   gitlab.com, non confidentielle, portée `api`, Application ID dans `forges/gitlab.py`) ;
-- enregistrer l'outil auprès de Bitbucket (E20).
+- ~~enregistrer l'outil auprès de Bitbucket~~ : fait à E20 (« OAuth client » « forceupdate » du
+  workspace `pauzzle`, client id et secret dans `forges/bitbucket.py`).
 
 ## Pièges connus
 
@@ -317,11 +318,35 @@ chaque fois) :
     l'adresse `noreply` d'un compte est `{id}-{login}@users.noreply.gitlab.com` ;
   - les limites d'API de gitlab.com sont par minute, et l'en-tête `RateLimit-Limit` peut être
     celui d'un point d'API (100) plutôt que la limite générale.
-- **Bitbucket** :
-  - pas d'arborescence complète en un seul appel ;
-  - un seul « langage » par dépôt ;
-  - les « app passwords » sont en fin de vie, remplacés par des tokens d'API (à
-    revérifier).
+- **Bitbucket** : pas d'arborescence complète en un seul appel ; un seul « langage » par
+  dépôt. **Constaté à E20** :
+  - le formulaire a changé : Workspace settings → Apps and features → **OAuth clients** →
+    « Create OAuth client », trois onglets (Details ; Authorization : « Authorization code » et
+    « Refresh token » cochés, « Client credentials » pas coché ; Scopes) ; l'adresse de retour
+    `http://127.0.0.1/…` accepte n'importe quel port (vérifié en vrai) ; pas de PKCE (accepté,
+    pas vérifié) ni de client sans secret ; `redirect_uri` redonné à l'identique à l'échange ;
+    l'échange se fait en formulaire, l'application par `Basic` ;
+  - **un token d'OAuth fait plus de 2 000 caractères** (2 775 en vrai) : le Gestionnaire
+    d'identification de Windows refuse un secret de plus de 1 280 caractères (2 560 octets en
+    UTF-16, erreur 1783) ; le trousseau le range en morceaux ;
+  - les tokens durent 2 h ; le refresh token change à chaque usage (l'ancien est refusé en 403
+    `unauthorized_client`) ; pas de révocation par l'API ;
+  - `X-OAuth-Scopes` n'écrit que les portées « du dessus » (`account, pullrequest:write`) :
+    `account` comprend `email`, `pullrequest:write` comprend `repository:write` ;
+  - les « app passwords » ne marchent plus depuis le 28/07/2026 ; un token d'API Atlassian
+    (`id.atlassian.com`, portées `read:user:bitbucket`… `write:pullrequest:bitbucket`, qui ne
+    s'impliquent pas) passe en `Bearer` depuis le 18/08/2026, et sous le nom
+    `x-bitbucket-api-token-auth` pour git ; un token d'OAuth sous `x-token-auth` ;
+  - **la liste des dépôts de tous les workspaces a été retirée** (avril 2026,
+    `GET /2.0/repositories` répond 404 « There is no API hosted at this URL ») :
+    `/user/workspaces` (sans `sort` : `workspace.slug` donne 400), puis `/repositories/{ws}` ; le
+    droit d'écriture par `/user/workspaces/{ws}/permission` (`owner`) et
+    `…/permissions/repositories` ;
+  - pas de dépôt « archivé », pas d'adresse `noreply` (un commit se rattache au compte par une
+    adresse confirmée), pas d'arbre de commit dans l'API (lu par git, `fetch` superficiel), pas
+    de requêtes restantes dans les en-têtes (1 000 par heure sur les dépôts) ;
+  - `src/{commit}/?max_depth=` lit l'arborescence en largeur, avec les tailles ; trop
+    profonde, Bitbucket peut répondre 555.
 - **PR idempotente** : relancer l'outil ne doit pas ouvrir une deuxième PR.
 - **Registres** : limites de débit (crates.io : 1 requête par seconde et
   User-Agent obligatoire). Un même paquet revient dans plusieurs dépôts : cache
@@ -357,13 +382,13 @@ débit changent).
 |---|---|---|---|
 | Connexion OAuth | `github.com/login/oauth/authorize` + `/access_token` ; device flow : `/login/device/code` | `/oauth/authorize` + `/oauth/token` (PKCE) | `bitbucket.org/site/oauth2/authorize` + `/access_token` |
 | Qui est connecté | `GET /user` | `GET /user` | `GET /user` |
-| Dépôts accessibles | `GET /user/repos?affiliation=owner,collaborator,organization_member` (pagination `Link`) | `GET /projects?membership=true` | `GET /repositories?role=member` (pagination `next`) |
+| Dépôts accessibles | `GET /user/repos?affiliation=owner,collaborator,organization_member` (pagination `Link`) | `GET /projects?membership=true` | **Vérifié (E20)** : `GET /user/workspaces`, puis `GET /repositories/{ws}?role=member` (pagination `next`) ; `GET /repositories?role=member` est retiré (404) |
 | Langages | `GET /repos/{o}/{r}/languages` | `GET /projects/{id}/languages` | champ `language` du dépôt (un seul) |
-| Arborescence | `GET /repos/{o}/{r}/git/trees/{branche}?recursive=1` | `GET /projects/{id}/repository/tree?recursive=true` (paginée) | `GET /repositories/{ws}/{r}/src/{commit}/?max_depth=…` |
+| Arborescence | `GET /repos/{o}/{r}/git/trees/{branche}?recursive=1` | `GET /projects/{id}/repository/tree?recursive=true` (paginée) | `GET /repositories/{ws}/{r}/src/{commit}/?max_depth=…` (en largeur, paginée, avec les tailles) |
 | Contenu d'un fichier | `GET /repos/{o}/{r}/contents/{chemin}?ref=` | `GET /projects/{id}/repository/files/{chemin}/raw?ref=` | `GET /repositories/{ws}/{r}/src/{commit}/{chemin}` |
 | PR / MR déjà ouverte | `GET /repos/{o}/{r}/pulls?head={owner}:{branche}&state=open` | `GET /projects/{id}/merge_requests?source_branch=…&state=opened` | `GET /repositories/{ws}/{r}/pullrequests?q=…` |
 | Ouvrir / modifier | `POST /repos/{o}/{r}/pulls`, `PATCH …/pulls/{n}` | `POST /projects/{id}/merge_requests`, `PUT …/{iid}` | `POST /repositories/{ws}/{r}/pullrequests`, `PUT …/{id}` |
-| Clone avec token | `https://x-access-token:<token>@github.com/…` | `https://oauth2:<token>@gitlab.com/…` | `https://x-token-auth:<token>@bitbucket.org/…` |
+| Clone avec token | `https://x-access-token:<token>@github.com/…` | `https://oauth2:<token>@gitlab.com/…` | `https://x-token-auth:<token>@bitbucket.org/…` (token d'API : `x-bitbucket-api-token-auth`) |
 
 ## Ce qu'on a déjà
 

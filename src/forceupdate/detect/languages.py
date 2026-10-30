@@ -224,6 +224,16 @@ def language_for(path: str) -> str | None:
     return None
 
 
+def known_name(name: str) -> str:
+    """Le nom d'un langage tel que l'écrit le détecteur (``python`` → ``Python``, comme le donne
+    Bitbucket), ou tel quel, la première lettre en capitale, s'il ne le connaît pas."""
+    wanted = name.strip().casefold()
+    for known in (*_EXTENSIONS.values(), *_FILENAMES.values()):
+        if known is not None and known.casefold() == wanted:
+            return known
+    return name.strip()[:1].upper() + name.strip()[1:]
+
+
 def is_excluded(path: str) -> bool:
     """Vrai si le fichier ne compte pas dans les langages : vendorisé, généré ou documentation."""
     return bool(_VENDORED.search(path) or _GENERATED.search(path) or _DOCUMENTATION.search(path))

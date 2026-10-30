@@ -1,7 +1,7 @@
 """Un dépôt lu par l'API de sa forge, sans le cloner (``sources.forge``) : seuls les fichiers de
 dépendances sont téléchargés (et ceux que les parseurs demandent en plus), puis le moteur le lit
 comme un dossier. GitHub est simulé par ``fake_forge.FakeGitHubRepos``, GitLab par
-``fake_gitlab.FakeGitLab``."""
+``fake_gitlab.FakeGitLab``, Bitbucket par ``fake_bitbucket.FakeBitbucket``."""
 
 import asyncio
 import copy
@@ -11,10 +11,12 @@ from typing import Any
 
 import pytest
 import respx
+from fake_bitbucket import FakeBitbucket
 from fake_forge import FakeGitHubRepos, FakeRepo, from_directory
 from fake_gitlab import FakeGitLab, FakeToken
 
 from forceupdate import engine
+from forceupdate.forges.bitbucket import Bitbucket
 from forceupdate.forges.github import GitHub
 from forceupdate.forges.gitlab import GitLab
 from forceupdate.models import Event, EventKind, to_dict
@@ -270,3 +272,33 @@ def test_a_gitlab_file_too_big_is_read_like_a_local_one(tmp_path: Path) -> None:
     assert sorted(lab.files()) == ["groupe/gros:api/requirements.txt", "groupe/gros:package.json"]
     notices = {n.file: n.message for p in report.projects for n in p.notices}
     assert notices["package.json"] == "introuvable, illisible ou trop gros : pas lu."
+
+
+# -- Bitbucket (E20) : une arborescence lue en largeur, avec les tailles ----------------------
+
+
+def fetch_bitbucket(repo: FakeRepo, destination: Path) -> tuple[ForgeSource, FakeBitbucket]:
+    cloud = FakeBitbucket(repos=[repo], page_size=5)
+
+    async def main() -> ForgeSource:
+        async with HttpClient() as http:
+            forge = Bitbucket(http, TOKEN)
+            found = await forge.repository(repo.full_name)
+            return await forge_source.fetch(forge, found, destination)
+
+    with respx.mock(assert_all_called=False) as router:
+        cloud.routes(router)
+        return asyncio.run(main()), cloud
+
+
+@pytest.mark.parametrize("project", sorted(p.name for p in PROJECTS.iterdir() if p.is_dir()))
+def test_a_bitbucket_repository_reads_like_the_same_folder(
+    tmp_path: Path, no_git: None, project: str
+) -> None:
+    """Mêmes langages, projets, dépendances et remarques qu'en local (Bitbucket donne les
+    tailles), et seuls les fichiers de dépendances téléchargés."""
+    folder = PROJECTS / project
+    source, cloud = fetch_bitbucket(from_directory(f"espace/{project}", folder), tmp_path / "d")
+    assert source.origin == f"espace/{project}"
+    assert inventory(source) == inventory(LocalSource(folder))
+    assert all(not name.endswith((".py", ".md")) for name in cloud.files())

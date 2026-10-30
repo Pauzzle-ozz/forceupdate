@@ -257,7 +257,10 @@ export function githubStatus(overrides: Partial<ForgeStatus> = {}): ForgeStatus 
     available: true,
     methods: ['oauth', 'device', 'token'],
     scopes: ['repo', 'read:org'],
+    token_scopes: ['repo', 'read:org'],
     token_url: 'https://github.com/settings/tokens/new?scopes=repo,read:org&description=forceupdate',
+    revocable: true,
+    applications_url: 'https://github.com/settings/applications',
     self_hosted: false,
     request: 'PR',
     account: null,
@@ -289,7 +292,10 @@ export function gitlabStatus(overrides: Partial<ForgeStatus> = {}): ForgeStatus 
     available: true,
     methods: ['oauth', 'token'],
     scopes: ['api'],
+    token_scopes: ['api'],
     token_url: 'https://gitlab.com/-/user_settings/personal_access_tokens?name=forceupdate&scopes=api',
+    revocable: true,
+    applications_url: 'https://gitlab.com/-/user_settings/applications',
     self_hosted: true,
     request: 'MR',
     account: null,
@@ -299,28 +305,60 @@ export function gitlabStatus(overrides: Partial<ForgeStatus> = {}): ForgeStatus 
   }
 }
 
-/** `GET /api/accounts` : GitHub (`githubStatus(github)`), GitLab (`gitlabStatus(gitlab)`), puis
- * Bitbucket « bientôt ». */
-export function accountList(
-  github: Partial<ForgeStatus> = {},
-  keyring: string | null = null,
-  gitlab: Partial<ForgeStatus> = {},
-): AccountList {
-  const bitbucket: ForgeStatus = {
+/** Le compte Bitbucket `@ecureuil`, connecté par OAuth. */
+export function bitbucketAccount(overrides: Partial<Account> = {}): Account {
+  return account({
+    forge: 'bitbucket',
+    host: 'bitbucket.org',
+    login: 'ecureuil',
+    name: 'Écureuil Roux',
+    url: 'https://bitbucket.org/%7B0f1e2d3c%7D/',
+    scopes: ['account', 'email', 'pullrequest:write', 'repository:write'],
+    ...overrides,
+  })
+}
+
+/** Les portées d'un token d'API Atlassian pour Bitbucket. */
+export const BITBUCKET_TOKEN_SCOPES = [
+  'read:user:bitbucket',
+  'read:workspace:bitbucket',
+  'read:repository:bitbucket',
+  'write:repository:bitbucket',
+  'read:pullrequest:bitbucket',
+  'write:pullrequest:bitbucket',
+]
+
+/** Bitbucket dans la liste des forges : sans compte par défaut ; OAuth (sans révocation), token d'API. */
+export function bitbucketStatus(overrides: Partial<ForgeStatus> = {}): ForgeStatus {
+  return {
     forge: 'bitbucket',
     name: 'Bitbucket',
     host: 'bitbucket.org',
-    available: false,
-    methods: [],
-    scopes: [],
-    token_url: null,
+    available: true,
+    methods: ['oauth', 'token'],
+    scopes: ['account', 'email', 'repository:write', 'pullrequest:write'],
+    token_scopes: BITBUCKET_TOKEN_SCOPES,
+    token_url: 'https://id.atlassian.com/manage-profile/security/api-tokens',
+    revocable: false,
+    applications_url: 'https://bitbucket.org/account/settings/app-authorizations/',
     self_hosted: false,
     request: 'PR',
     account: null,
     instances: [],
     connection: null,
+    ...overrides,
   }
-  return { keyring, forges: [githubStatus(github), gitlabStatus(gitlab), bitbucket] }
+}
+
+/** `GET /api/accounts` : GitHub (`githubStatus(github)`), GitLab (`gitlabStatus(gitlab)`), puis
+ * Bitbucket (`bitbucketStatus(bitbucket)`). */
+export function accountList(
+  github: Partial<ForgeStatus> = {},
+  keyring: string | null = null,
+  gitlab: Partial<ForgeStatus> = {},
+  bitbucket: Partial<ForgeStatus> = {},
+): AccountList {
+  return { keyring, forges: [githubStatus(github), gitlabStatus(gitlab), bitbucketStatus(bitbucket)] }
 }
 
 /** Une connexion par device flow, en attente du code `WDJB-MJHT`. */

@@ -55,12 +55,15 @@ de chaque fichier, les lockfiles à régénérer et le garde-fou git, on appliqu
 voit les versions obtenues. Un fichier déposé ne s'écrit pas : sa version mise à
 jour se télécharge. Ctrl+C l'arrête.
 
-L'écran « Comptes » connecte son compte GitHub : par la page d'autorisation de
-GitHub, par un code à taper sur github.com, par un token collé, ou en reprenant
-celui de GitHub CLI (`gh`). Le token est rangé dans le trousseau du système, jamais
-envoyé au navigateur ; se déconnecter l'efface (et le révoque, s'il a été donné à
-forceupdate). La liste des dépôts et leur analyse arrivent ensuite, puis GitLab et
-Bitbucket.
+L'écran « Comptes » connecte ses comptes GitHub, GitLab (gitlab.com, ou une instance
+par son adresse et un token) et Bitbucket Cloud : par la page d'autorisation de la
+forge, ou par un token collé (GitHub : aussi par un code à taper sur github.com, ou en
+reprenant celui de GitHub CLI, `gh` ; Bitbucket : un token d'API Atlassian). Le token
+est rangé dans le trousseau du système, jamais envoyé au navigateur ; se déconnecter
+l'efface (et le révoque, s'il a été donné à forceupdate, sauf sur Bitbucket qui ne le
+permet pas). « Mes dépôts » analyse tous les dépôts de ces comptes sans les cloner, puis
+ouvre une PR (une MR sur GitLab) par dépôt à mettre à jour. Bitbucket Data Center n'est
+pas pris.
 
 ```bash
 forceupdate ui                           # un port libre, et le navigateur

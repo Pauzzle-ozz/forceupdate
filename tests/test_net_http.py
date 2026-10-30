@@ -216,6 +216,14 @@ def test_a_post_is_retried_only_when_asked(respx_mock: respx.MockRouter) -> None
     assert route.calls.last.request.content == b'{"q":1}'
 
 
+def test_a_form_body(respx_mock: respx.MockRouter) -> None:
+    route = respx_mock.post(URL).respond(200)
+    run(lambda http: http.request("POST", URL, form={"grant_type": "code", "code": "a b&c"}))
+    request = route.calls.last.request
+    assert request.headers["content-type"] == "application/x-www-form-urlencoded"
+    assert request.content == b"grant_type=code&code=a+b%26c"
+
+
 def test_offline_sends_nothing(respx_mock: respx.MockRouter) -> None:
     message = failure(lambda http: http.get(URL), offline=True)
     assert message == "mode hors ligne : registry.example n'est pas interrogé."

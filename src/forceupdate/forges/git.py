@@ -201,6 +201,30 @@ def tree(checkout: Path) -> str:
     return _git(["rev-parse", "HEAD^{tree}"], cwd=checkout, action="lire l'arbre").strip()
 
 
+def remote_tree(
+    checkout: Path, url: str, branch: str, *, credentials: Credentials | None
+) -> str | None:
+    """L'arbre du dernier commit de la branche ``branch`` de ``url``, lu par un ``fetch``
+    superficiel dans le clone (``HEAD`` et les fichiers n'en changent pas) ; ``None`` si elle
+    n'existe pas. Pour une forge dont l'API ne donne pas l'arbre d'un commit (Bitbucket)."""
+    _check_url(url)
+    arguments = ["fetch", "--no-tags", "--no-recurse-submodules", "--depth", "1"]
+    arguments += ["--", url, f"refs/heads/{branch}"]
+    try:
+        _git(
+            arguments,
+            cwd=checkout,
+            credentials=credentials,
+            timeout=CLONE_TIMEOUT,
+            action="lire la branche",
+        )
+    except GitError as err:
+        if err.failure is GitFailure.NOT_FOUND:
+            return None
+        raise
+    return _git(["rev-parse", "FETCH_HEAD^{tree}"], cwd=checkout, action="lire l'arbre").strip()
+
+
 def commit(checkout: Path, paths: Iterable[str], message: str, *, author: Author) -> str | None:
     """Ajoute ``paths`` (relatifs, au format POSIX) et en fait un commit sur ``HEAD``, au nom de
     ``author`` ; rend le commit, ou ``None`` si aucun n'a changé (rien n'est commité)."""

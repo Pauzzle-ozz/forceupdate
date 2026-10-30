@@ -545,8 +545,7 @@ curl -H "Authorization: Bearer $JETON" "http://127.0.0.1:$PORT/api/scans"
 | `GET /api/proposals/{id}` | | `200` [récapitulatif](#récapitulatif-de-pr) ; pendant et après l'envoi, où en est chaque dépôt |
 | `POST /api/proposals/{id}/send` | `{"repositories": [{"forge", "host", "full_name"}, …]}` | `202` [récapitulatif](#récapitulatif-de-pr), envoyé en tâche de fond |
 
-`{forge}` : `github`, `gitlab` ou `bitbucket` (sinon `422`) ; Bitbucket répond `409` tant
-que sa connexion n'est pas prête (E20). `?host=` désigne le compte d'une instance
+`{forge}` : `github`, `gitlab` ou `bitbucket` (sinon `422`). `?host=` désigne le compte d'une instance
 auto-hébergée (GitLab) ; sans lui, le compte du service en ligne de la forge. Un plan
 (`POST /api/updates/plan`) sur l'analyse d'un dépôt est refusé (`409`) : un dépôt se met à jour
 par une PR ([PR des dépôts](#pr-des-dépôts)).
@@ -718,9 +717,9 @@ réécrite se télécharge par `GET /api/updates/{id}/files/{nom}`.
 
 ## Comptes des forges
 
-Chaque personne connecte son propre compte (E16 : GitHub ; E19 : GitLab ; Bitbucket à
-E20). Un compte se désigne par sa forge **et son hôte** : un compte par service en ligne
-(github.com, gitlab.com), plus un par instance GitLab auto-hébergée (`?host=` sur
+Chaque personne connecte son propre compte (E16 : GitHub ; E19 : GitLab ; E20 : Bitbucket
+Cloud). Un compte se désigne par sa forge **et son hôte** : un compte par service en ligne
+(github.com, gitlab.com, bitbucket.org), plus un par instance GitLab auto-hébergée (`?host=` sur
 `verify` et `DELETE`). **Le token reste sur le serveur** : rangé dans le trousseau du système (`keyring`),
 jamais renvoyé au navigateur, jamais dans un journal ni dans `accounts.json` (qui garde le
 reste, dans le dossier d'état de l'utilisateur). Le navigateur n'envoie un token que quand
@@ -735,16 +734,21 @@ Quatre façons de se connecter (`method`) :
   `verification_uri` ; le serveur attend l'autorisation tout seul, le navigateur suit la
   connexion par `GET /api/accounts/connections/{id}` ;
 - `token` : un token collé (`POST …/token`) : GitHub classic ou fine-grained, GitLab token
-  d'accès personnel ; avec `url` (`https://hôte[:port]`, sans chemin), celui d'une instance
+  d'accès personnel, Bitbucket token d'API Atlassian (les « app passwords » ne marchent plus
+  depuis le 28/07/2026) ; avec `url` (`https://hôte[:port]`, sans chemin), celui d'une instance
   GitLab auto-hébergée (`400` pour une autre adresse, ou pour une autre forge) ;
 - `gh` : le token de GitHub CLI (`POST …/gh`), lu par `gh auth token`.
 
 `device` et `gh` sont propres à GitHub (`400` ailleurs). Portées demandées : GitHub `repo`
 et `read:org` ; GitLab `api` (l'application de gitlab.com est « non confidentielle » : PKCE,
-sans secret). **Les tokens d'OAuth de GitLab expirent après 2 h** : le serveur les
-renouvelle par leur refresh token (à usage unique), avant qu'ils expirent ou quand GitLab en
-refuse un, un seul renouvellement à la fois pour un compte ; un refresh token refusé est dit
-dans `problem`.
+sans secret) ; Bitbucket : celles cochées dans l'« OAuth client » de forceupdate (`account`,
+`email`, `repository:write`, `pullrequest:write` ; Bitbucket n'a ni PKCE ni client sans secret,
+son secret est embarqué comme celui de GitHub). **Les tokens d'OAuth de GitLab et de Bitbucket
+expirent après 2 h** : le serveur les renouvelle par leur refresh token (à usage unique ;
+Bitbucket en donne un nouveau à chaque fois), avant qu'ils expirent ou quand la forge en refuse
+un, un seul renouvellement à la fois pour un compte ; un refresh token refusé est dit dans
+`problem`. Un token de Bitbucket a plus de 2 000 caractères : le trousseau le range en
+morceaux (Windows refuse un secret de plus de 1 280 caractères).
 
 ### Liste des comptes
 
@@ -761,8 +765,11 @@ Chaque forge :
 | `name`, `host` | chaînes | `GitHub`, `github.com` |
 | `available` | booléen | la connexion est prête ; sinon elle arrive à une étape à venir |
 | `methods` | liste de chaînes | les façons de se connecter possibles maintenant : `gh` seulement s'il est installé, `oauth` seulement si l'application a son secret |
-| `scopes` | liste de chaînes | les portées demandées par `oauth` et `device` |
-| `token_url` | chaîne ou `null` | où créer un token à coller, portées pré-cochées (sur le service en ligne) |
+| `scopes` | liste de chaînes | les portées demandées par `oauth` et `device` (Bitbucket : celles de l'application) |
+| `token_scopes` | liste de chaînes | les portées à donner à un token collé (Bitbucket : celles d'un token d'API Atlassian, `read:user:bitbucket`… `write:pullrequest:bitbucket`, qui ne s'impliquent pas entre elles) |
+| `token_url` | chaîne ou `null` | où créer un token à coller, portées pré-cochées (sur le service en ligne ; Bitbucket : `id.atlassian.com`) |
+| `revocable` | booléen | se déconnecter révoque auprès de la forge le token donné à forceupdate ; `false` pour Bitbucket, qui n'a pas de révocation par l'API |
+| `applications_url` | chaîne ou `null` | où la personne retire à la main l'accès donné à forceupdate |
 | `self_hosted` | booléen | on peut aussi y connecter une instance auto-hébergée (GitLab) |
 | `request` | chaîne | le nom d'une proposition de changements : `PR`, `MR` (GitLab) |
 | `account` | [compte](#compte) ou `null` | le compte connecté au service en ligne (`host`) |
@@ -780,8 +787,8 @@ Rien n'est demandé aux forges pour lister : `POST …/verify` relit les droits.
 | `name` | chaîne ou `null` | le nom affiché |
 | `url` | chaîne | son profil sur la forge |
 | `access` | chaîne | ce que permet le token : `write` (lire, pousser, ouvrir des PR, dépôts publics et privés), `public` (la même chose, dépôts publics seulement), `read` (lire les dépôts publics), `unknown` (droits non vérifiés : la forge ne les dit pas, token « fine-grained » de GitHub) |
-| `scopes` | liste ou `null` | les portées du token (`X-OAuth-Scopes` de GitHub ; GitLab : `/personal_access_tokens/self`, ou `/oauth/token/info`) ; `null` si la forge ne les dit pas |
-| `warnings` | liste de chaînes | ce qui manquera avec ces droits (`read:org` absente, `read_api` seulement…), et quand un token personnel de GitLab expire |
+| `scopes` | liste ou `null` | les portées du token (`X-OAuth-Scopes` de GitHub et de Bitbucket, qui n'y écrit que celles « du dessus » : `account, pullrequest:write` ; GitLab : `/personal_access_tokens/self`, ou `/oauth/token/info`) ; `null` si la forge ne les dit pas (token fine-grained de GitHub, token d'API Atlassian) |
+| `warnings` | liste de chaînes | ce qui manquera avec ces droits (`read:org` absente, `read_api` seulement, l'adresse d'un compte Bitbucket illisible…), et quand un token personnel de GitLab expire |
 | `method` | chaîne | `oauth`, `device`, `token`, `gh` |
 | `connected_at` | date | |
 | `checked_at` | date | la dernière fois que la forge a accepté le token |
@@ -806,18 +813,21 @@ Les connexions vivent en mémoire, le temps de la session (les 20 dernières).
 ### Déconnexion
 
 `DELETE /api/accounts/{forge}` efface le token du trousseau et le compte. Un token obtenu
-par `oauth` ou `device` est aussi révoqué auprès de la forge ; un token collé, ou celui
-de `gh`, n'appartient pas à forceupdate et reste valable.
+par `oauth` ou `device` est aussi révoqué auprès de la forge (sauf Bitbucket, qui ne le permet
+pas : `revoked` vaut `false`, le message dit de retirer l'accès dans ses réglages,
+`applications_url`) ; un token collé, ou celui de `gh`, n'appartient pas à forceupdate et reste
+valable.
 
 | Champ | Type | Sens |
 |---|---|---|
 | `forge`, `host`, `login` | chaînes | |
-| `revoked` | booléen ou `null` | `true` : révoqué ; `false` : la forge n'a pas pu le révoquer (injoignable) ; `null` : token collé ou de `gh`, pas à révoquer |
+| `revoked` | booléen ou `null` | `true` : révoqué ; `false` : la forge n'a pas pu le révoquer (injoignable, ou Bitbucket) ; `null` : token collé ou de `gh`, pas à révoquer |
 | `message` | chaîne | ce qui a été fait, à montrer |
 
 ### Adresse de retour d'OAuth
 
-`GET /oauth/github/callback?code=…&state=…` (et `/oauth/gitlab/callback`) : la forge y
+`GET /oauth/github/callback?code=…&state=…` (et `/oauth/gitlab/callback`,
+`/oauth/bitbucket/callback`) : la forge y
 renvoie le navigateur après l'autorisation. Elle n'est pas dans `/api` ni dans le schéma OpenAPI : le front ne
 l'appelle jamais.
 
@@ -828,7 +838,8 @@ la laisse donc passer sans jeton de session, mais seulement en `GET`, en navigat
 étrangère (sinon `403`), et toujours avec le bon `Host`. Ce qui la protège est le
 `state`, tiré par le serveur pour une connexion lancée avec le jeton de session, gardé en
 mémoire, valable 10 minutes et **une seule fois** ; PKCE (`S256`) s'ajoute au secret de
-l'application (GitLab : PKCE seul, sans secret). Sans `state` connu, la page ne fait rien
+l'application (GitLab : PKCE seul, sans secret ; Bitbucket : le secret seul, il accepte PKCE
+sans le vérifier). Sans `state` connu, la page ne fait rien
 (`400`).
 
 Elle rend une petite page HTML qui renvoie aussitôt vers `/comptes?connexion=<id>`
@@ -836,8 +847,9 @@ Elle rend une petite page HTML qui renvoie aussitôt vers `/comptes?connexion=<i
 suivante « d'un autre site » (la chaîne de redirections part de github.com), sans cookie.
 Lancée par cette page, la navigation vient du serveur lui-même.
 
-GitHub et GitLab ne reviennent que vers `127.0.0.1` (l'adresse enregistrée, sur n'importe
-quel port) : `POST …/oauth` est refusé (`409`) si l'interface est ouverte par `localhost`.
+GitHub, GitLab et Bitbucket ne reviennent que vers `127.0.0.1` (l'adresse enregistrée, sur
+n'importe quel port ; Bitbucket veut ensuite la même adresse à l'échange du code) :
+`POST …/oauth` est refusé (`409`) si l'interface est ouverte par `localhost`.
 
 ## Dépôts des forges
 
@@ -854,6 +866,15 @@ Developer au moins. Son arborescence est paginée (tronquée au-delà de 100 pag
 alors cloné) et ne donne pas la taille des fichiers : ses langages sont pesés en fichiers, pas
 en octets, et un fichier trop gros n'est écarté qu'une fois téléchargé. Ses limites d'API sont
 par minute (et parfois par point d'API) : `rate_limit` dit celles de la dernière réponse.
+
+**Bitbucket Cloud** (E20) : `workspace/dépôt` ; les dépôts se listent workspace par workspace
+(Bitbucket a retiré en 2026 la liste de tous les dépôts d'un compte) ; `can_push` veut dire
+administrateur du workspace, ou le droit `write` ou `admin` sur le dépôt ; `archived` est
+toujours `false` (Bitbucket Cloud n'a pas de dépôt archivé) ; son arborescence se lit en largeur
+(12 niveaux de dossiers, 100 pages au plus : au-delà, ou si Bitbucket met trop de temps, le
+dépôt est cloné), avec les tailles ; il ne dit pas les requêtes restantes (`rate_limit` vaut
+`null` ; 1 000 par heure sur les dépôts). Bitbucket Data Center (auto-hébergé, une autre API)
+n'est pas pris.
 
 La liste est demandée aux forges au premier `GET /api/repositories`, puis gardée le temps de la
 session (`reload=true` la redemande ; un compte reconnecté la recharge). Les dépôts archivés,
@@ -993,10 +1014,14 @@ pousser, puis l'**envoi**, une fois validé.
 
 Les commits de forceupdate finissent par la ligne `Generated-by: forceupdate <version>`.
 L'auteur est le compte du token, avec son adresse `noreply` (GitHub
-`{id}+{login}@users.noreply.github.com`, GitLab `{id}-{login}@users.noreply.{hôte}`). Sur
-GitLab, git présente le token sous le nom `oauth2` ; l'arbre du dernier commit de la branche,
-que l'API ne donne pas, est recalculé depuis la liste de sa racine (pour ne rien pousser quand
-le contenu est le même). Les 10 derniers
+`{id}+{login}@users.noreply.github.com`, GitLab `{id}-{login}@users.noreply.{hôte}`) ;
+Bitbucket n'en a pas : son adresse principale et confirmée (c'est par elle que Bitbucket
+rattache un commit au compte). Sur GitLab, git présente le token sous le nom `oauth2` ; l'arbre
+du dernier commit de la branche, que l'API ne donne pas, est recalculé depuis la liste de sa
+racine (pour ne rien pousser quand le contenu est le même). Sur Bitbucket, git présente le token
+sous le nom `x-token-auth` (`x-bitbucket-api-token-auth` pour un token d'API Atlassian) ; l'API
+ne donne pas non plus l'arbre d'un commit, ni les identifiants des fichiers : git le lit, par un
+`fetch` superficiel de la branche dans le clone. Les 10 derniers
 récapitulatifs restent en mémoire, le temps de la session ; l'envoi se suit en relisant
 `GET /api/proposals/{id}` (le front le fait chaque seconde).
 

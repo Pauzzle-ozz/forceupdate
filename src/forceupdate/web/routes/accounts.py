@@ -3,7 +3,8 @@ vérifier les droits, déconnecter.
 
 Un compte se désigne par sa forge et son hôte (``?host=``, par défaut le service en ligne de
 la forge) : un compte gitlab.com et un compte par instance GitLab auto-hébergée. Une instance
-se connecte par son adresse et un token collé.
+se connecte par son adresse et un token collé. Bitbucket Cloud : par OAuth, ou un token d'API
+Atlassian collé.
 
 Les tokens ne vont jamais au navigateur : il reçoit le compte (identifiant, droits), jamais son
 token. Un refus de la forge n'est jamais un ``401`` de l'API (celui-là veut dire « session
@@ -18,7 +19,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from forceupdate.forges import FORGES, ForgeInfo, github, gitlab, info, label
+from forceupdate.forges import FORGES, ForgeInfo, bitbucket, github, gitlab, info, label
 from forceupdate.forges import accounts as accounts_module
 from forceupdate.forges.accounts import Account, AccountsError, ConnectMethod
 from forceupdate.forges.base import ForgeError, ForgeKind, RateLimited
@@ -38,16 +39,24 @@ router = APIRouter(prefix="/api/accounts", tags=["comptes"])
 MAX_TOKEN = 1024
 """Longueur maximale d'un token collé."""
 
-SCOPES = {ForgeKind.GITHUB: github.SCOPES, ForgeKind.GITLAB: gitlab.SCOPES}
-"""Les portées demandées à la connexion, par forge."""
+SCOPES = {
+    ForgeKind.GITHUB: github.SCOPES,
+    ForgeKind.GITLAB: gitlab.SCOPES,
+    ForgeKind.BITBUCKET: bitbucket.SCOPES,
+}
+"""Les portées demandées à la connexion, par forge (Bitbucket : celles de l'application)."""
+TOKEN_SCOPES = {**SCOPES, ForgeKind.BITBUCKET: bitbucket.API_TOKEN_SCOPES}
+"""Les portées d'un token collé, par forge."""
 TOKEN_URLS = {
     ForgeKind.GITHUB: github.TOKEN_SETTINGS_URL,
     ForgeKind.GITLAB: gitlab.token_settings_url(),
+    ForgeKind.BITBUCKET: bitbucket.TOKEN_SETTINGS_URL,
 }
 """Où créer un token à coller, portées pré-cochées."""
 APPLICATIONS_URLS = {
     ForgeKind.GITHUB: github.APPLICATIONS_URL,
     ForgeKind.GITLAB: f"{gitlab.WEB_URL}/-/user_settings/applications",
+    ForgeKind.BITBUCKET: bitbucket.APPLICATIONS_URL,
 }
 """Où révoquer à la main l'accès donné à forceupdate."""
 
@@ -85,7 +94,10 @@ async def list_accounts(connections: CurrentConnections) -> JSONResponse:
                 available=forge.available,
                 methods=_methods(forge, connections, gh=gh),
                 scopes=SCOPES.get(forge.kind, ()),
+                token_scopes=TOKEN_SCOPES.get(forge.kind, ()),
                 token_url=TOKEN_URLS.get(forge.kind),
+                revocable=app.revocable if (app := connections.apps.get(forge.kind)) else False,
+                applications_url=APPLICATIONS_URLS.get(forge.kind),
                 self_hosted=forge.self_hosted,
                 request=forge.request,
                 account=next((a for a in mine if a.host == forge.host), None),
@@ -267,13 +279,19 @@ async def disconnect(
     revoked: bool | None = None
     app = connections.apps.get(forge)
     if account.method.from_app and app is not None:
-        revoked = await app.revoke(connections.http, token)
+        revoked = await app.revoke(connections.http, token) if app.revocable else False
     if revoked:
         message = f"Déconnecté de {name} : token effacé de cet ordinateur et révoqué."
     elif revoked is None:
         message = (
             f"Déconnecté de {name} : token effacé de cet ordinateur. Il reste valable sur "
             f"{name} (il n'appartient pas à forceupdate)."
+        )
+    elif app is not None and not app.revocable:
+        message = (
+            f"Déconnecté de {name} : token effacé de cet ordinateur. {name} ne permet pas de le "
+            "révoquer d'ici : retirer l'accès de forceupdate dans ses réglages (applications "
+            "autorisées)."
         )
     else:
         message = (

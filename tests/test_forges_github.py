@@ -24,6 +24,7 @@ from forceupdate.forges.base import (
     RateLimited,
     TokenRefused,
 )
+from forceupdate.forges.bitbucket import Bitbucket
 from forceupdate.forges.github import DeviceCode, DeviceExpired, GitHub, OAuthApp
 from forceupdate.forges.gitlab import GitLab
 from forceupdate.net import HttpClient, NetworkError
@@ -270,7 +271,7 @@ def test_the_forges_and_their_client() -> None:
     assert [(f.kind, f.name, f.available, f.self_hosted, f.request) for f in FORGES] == [
         (ForgeKind.GITHUB, "GitHub", True, False, "PR"),
         (ForgeKind.GITLAB, "GitLab", True, True, "MR"),
-        (ForgeKind.BITBUCKET, "Bitbucket", False, False, "PR"),
+        (ForgeKind.BITBUCKET, "Bitbucket", True, False, "PR"),
     ]
 
     async def work(http: HttpClient) -> Any:
@@ -287,8 +288,14 @@ def test_the_forges_and_their_client() -> None:
     assert isinstance(found, GitLab)
     assert found.host == "gitlab.example.com"
     assert TOKEN not in repr(found)
-    with pytest.raises(NotImplementedError, match="Bitbucket"):
-        client(ForgeKind.BITBUCKET, None, TOKEN)  # type: ignore[arg-type]
+
+    async def cloud(http: HttpClient) -> Any:
+        return client(ForgeKind.BITBUCKET, http, TOKEN)
+
+    bitbucket = run(cloud)
+    assert isinstance(bitbucket, Bitbucket)
+    assert bitbucket.host == "bitbucket.org"
+    assert TOKEN not in repr(bitbucket)
 
 
 # -- OAuth --------------------------------------------------------------------------

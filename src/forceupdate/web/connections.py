@@ -14,7 +14,7 @@ Tout se passe dans la boucle du serveur ; rien n'est gardé sur le disque.
 
 ``Connections`` porte aussi ce dont ont besoin les routes des comptes : le magasin des comptes,
 le ``HttpClient`` qui parle aux forges, l'application OAuth de chaque forge (``apps``), et ce qui
-renouvelle le token d'un compte qui expire (``renew``, GitLab).
+renouvelle le token d'un compte qui expire (``renew``, GitLab et Bitbucket).
 """
 
 import asyncio
@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from forceupdate.forges import accounts as accounts_module
-from forceupdate.forges import github, gitlab, info
+from forceupdate.forges import bitbucket, github, gitlab, info
 from forceupdate.forges.accounts import Account, Accounts, AccountsError, ConnectMethod
 from forceupdate.forges.base import ForgeError, ForgeKind, OAuthFlow, Renew, new_verifier
 from forceupdate.forges.github import DeviceCode, DeviceExpired
@@ -105,6 +105,7 @@ class Connections:
         self.apps: dict[ForgeKind, OAuthFlow] = {
             ForgeKind.GITHUB: github.OAuthApp.default(),
             ForgeKind.GITLAB: gitlab.OAuthApp.default(),
+            ForgeKind.BITBUCKET: bitbucket.OAuthApp.default(),
             **(apps or {}),
         }
         """L'application de forceupdate auprès de chaque forge (par OAuth)."""

@@ -4,10 +4,12 @@
   d'identification de Windows, le trousseau de macOS, Secret Service sous Linux), au service
   ``forceupdate``, sous le nom ``<forge>:<hôte>`` (``github:github.com``). Il n'en sort que pour
   parler à la forge : jamais affiché, jamais dans un journal ni un message, jamais envoyé au
-  navigateur. Un token qui expire (GitLab, par OAuth : 2 h) y est rangé avec son refresh token
-  et son heure d'expiration, en JSON ; ``renewer`` le renouvelle quand il le faut, un seul
-  renouvellement à la fois pour un compte, d'où qu'il vienne (boucle du serveur, boucle des
-  analyses) : le refresh token ne sert qu'une fois.
+  navigateur. Un token qui expire (GitLab et Bitbucket, par OAuth : 2 h) y est rangé avec son
+  refresh token et son heure d'expiration, en JSON ; ``renewer`` le renouvelle quand il le faut,
+  un seul renouvellement à la fois pour un compte, d'où qu'il vienne (boucle du serveur, boucle
+  des analyses) : le refresh token ne sert qu'une fois. Un secret trop long pour une entrée du
+  trousseau (Windows : 1 280 caractères ; un token de Bitbucket en a plus de 2 000) est découpé
+  en morceaux (``MAX_PART``).
 - **Le reste** (identifiant, nom, droits, façon de se connecter, dates) est dans
   ``accounts.json``, dans le dossier d'état de l'utilisateur, sans aucun secret.
 
@@ -53,6 +55,14 @@ RENEW_MARGIN = timedelta(minutes=5)
 """Un token qui expire dans moins de ce temps est renouvelé avant de servir."""
 WAIT_STEP = 0.05
 """Secondes entre deux essais de prendre le verrou du renouvellement d'un compte."""
+MAX_PART = 1000
+"""Caractères au plus d'une entrée du trousseau. Le Gestionnaire d'identification de Windows
+refuse un secret de plus de 2 560 octets, soit 1 280 caractères en UTF-16 (vérifié à E20 :
+erreur 1783), et un token d'OAuth de Bitbucket en a plus de 2 000 : au-delà, le secret est
+rangé en morceaux (``<forge>:<hôte>#1``, ``#2``…), l'entrée du compte disant combien."""
+_PARTS = "forceupdate-parts:"
+"""Ce par quoi commence l'entrée d'un compte dont le secret est en morceaux (un token ne
+commence jamais ainsi)."""
 
 
 class ConnectMethod(enum.StrEnum):
@@ -184,11 +194,53 @@ class Accounts:
 
     def _keep(self, forge: ForgeKind, host: str, token: str | Grant) -> None:
         try:
-            keyring.set_password(SERVICE, _key(forge, host), _stored(token))
+            self._write_secret(_key(forge, host), _stored(token))
         except keyring.errors.KeyringError as err:
             raise AccountsError(
                 f"Le trousseau du système refuse de garder le token ({type(err).__name__})."
             ) from None
+
+    def _read_secret(self, key: str) -> str | None:
+        """Le secret rangé sous ``key``, remis bout à bout s'il est en morceaux ; ``None`` s'il
+        n'y en a pas (ou qu'un morceau manque)."""
+        with self._lock:
+            stored = keyring.get_password(SERVICE, key)
+            count = _part_count(stored)
+            if count is None:
+                return stored
+            parts = [keyring.get_password(SERVICE, f"{key}#{n}") for n in range(1, count + 1)]
+        if any(part is None for part in parts):
+            logger.warning("trousseau : un morceau du token de %s manque", key)
+            return None
+        return "".join(part or "" for part in parts)
+
+    def _write_secret(self, key: str, secret: str) -> None:
+        """Range ``secret`` sous ``key``, en morceaux s'il est trop long : les morceaux d'abord,
+        puis l'entrée qui dit leur nombre ; ceux d'avant qui ne servent plus sont effacés. Sous
+        le verrou : jamais un mélange de deux secrets."""
+        parts = [secret[i : i + MAX_PART] for i in range(0, len(secret), MAX_PART)]
+        with self._lock:
+            before = _part_count(keyring.get_password(SERVICE, key)) or 0
+            if len(parts) <= 1:
+                keyring.set_password(SERVICE, key, secret)
+                kept = 0
+            else:
+                for n, part in enumerate(parts, start=1):
+                    keyring.set_password(SERVICE, f"{key}#{n}", part)
+                keyring.set_password(SERVICE, key, f"{_PARTS}{len(parts)}")
+                kept = len(parts)
+            for n in range(kept + 1, before + 1):
+                with contextlib.suppress(keyring.errors.PasswordDeleteError):
+                    keyring.delete_password(SERVICE, f"{key}#{n}")
+
+    def _delete_secret(self, key: str) -> None:
+        """Efface le secret de ``key`` et ses morceaux."""
+        with self._lock:
+            count = _part_count(keyring.get_password(SERVICE, key)) or 0
+            for n in range(1, count + 1):
+                with contextlib.suppress(keyring.errors.PasswordDeleteError):
+                    keyring.delete_password(SERVICE, f"{key}#{n}")
+            keyring.delete_password(SERVICE, key)
 
     def checked(self, account: Account, identity: Identity) -> Account:
         """Le compte, après un contrôle accepté par la forge : droits relus."""
@@ -219,10 +271,10 @@ class Accounts:
         account = next((a for a in self._load() if (a.forge, a.host) == (forge, host)), None)
         token = None
         with contextlib.suppress(keyring.errors.KeyringError):
-            token = keyring.get_password(SERVICE, _key(forge, host))
+            token = self._read_secret(_key(forge, host))
         if token is not None:
             try:
-                keyring.delete_password(SERVICE, _key(forge, host))
+                self._delete_secret(_key(forge, host))
             except keyring.errors.PasswordDeleteError:
                 pass
             except keyring.errors.KeyringError as err:
@@ -237,7 +289,7 @@ class Accounts:
 
     def _token(self, account: Account) -> str | None:
         try:
-            return keyring.get_password(SERVICE, _key(account.forge, account.host))
+            return self._read_secret(_key(account.forge, account.host))
         except keyring.errors.KeyringError as err:
             raise AccountsError(
                 f"Le trousseau du système ne répond pas ({type(err).__name__})."
@@ -356,6 +408,15 @@ def _stale(grant: Grant, refused: str | None) -> bool:
 
 def _key(forge: ForgeKind, host: str) -> str:
     return f"{forge.value}:{host}"
+
+
+def _part_count(stored: str | None) -> int | None:
+    """Le nombre de morceaux d'un secret rangé en morceaux ; ``None`` s'il est d'un seul
+    tenant (ou absent)."""
+    if stored is None or not stored.startswith(_PARTS):
+        return None
+    count = stored.removeprefix(_PARTS)
+    return int(count) if count.isdigit() and int(count) > 0 else None
 
 
 def _order(account: Account) -> tuple[int, bool, str]:

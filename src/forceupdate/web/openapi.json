@@ -3409,6 +3409,13 @@
             "type": "array",
             "title": "Scopes"
           },
+          "token_scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Token Scopes"
+          },
           "token_url": {
             "anyOf": [
               {
@@ -3419,6 +3426,21 @@
               }
             ],
             "title": "Token Url"
+          },
+          "revocable": {
+            "type": "boolean",
+            "title": "Revocable"
+          },
+          "applications_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applications Url"
           },
           "self_hosted": {
             "type": "boolean",
@@ -3464,7 +3486,10 @@
           "available",
           "methods",
           "scopes",
+          "token_scopes",
           "token_url",
+          "revocable",
+          "applications_url",
           "self_hosted",
           "request",
           "account",

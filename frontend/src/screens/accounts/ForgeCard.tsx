@@ -53,7 +53,7 @@ type AccessLook = { label: string; detail: string; variant: 'success' | 'warning
 
 /**
  * Ce que permet un token : un mot (avec icône) et une précision (MASTER : jamais la couleur seule).
- * `word` : « PR », « MR » sur GitLab, où un token en lecture (`read_api`) lit aussi les projets privés.
+ * `word` : « PR », « MR » sur GitLab. Un token en lecture lit aussi les dépôts privés, sauf sur GitHub.
  */
 function accessLook(access: Access, word: string, forge: Account['forge']): AccessLook {
   switch (access) {
@@ -64,7 +64,11 @@ function accessLook(access: Access, word: string, forge: Account['forge']): Acce
     case 'read':
       return {
         label: 'Lecture seule',
-        detail: forge === 'gitlab' ? `projets lisibles, aucune ${word}` : `dépôts publics, aucune ${word}`,
+        detail: {
+          github: `dépôts publics, aucune ${word}`,
+          gitlab: `projets lisibles, aucune ${word}`,
+          bitbucket: `dépôts lisibles, aucune ${word}`,
+        }[forge],
         variant: 'warning',
         icon: TriangleAlert,
       }
@@ -86,6 +90,8 @@ type Notice = {
   text: string
   /** La façon de se connecter à relancer (« Réessayer »). */
   retry?: ConnectMethod
+  /** Un lien vers la forge (où retirer l'accès donné à forceupdate). */
+  link?: { href: string; label: string }
 }
 
 /** L'issue d'une connexion finie ; rien pour une connexion annulée. */
@@ -201,10 +207,13 @@ export function ForgeCard({
   const disconnect = useMutation({
     mutationFn: () => api.disconnect(forge),
     onSuccess: (result) => {
+      // Bitbucket ne révoque pas un token par son API : la personne retire l'accès elle-même.
+      const manual = result.revoked === false && !status.revocable ? status.applications_url : null
       show({
         variant: result.revoked === false ? 'warning' : 'success',
         title: `Déconnecté de ${name}`,
         text: result.message,
+        link: manual ? { href: manual, label: `Retirer l'accès sur ${hostOf(manual)}` } : undefined,
       })
       refresh()
     },
@@ -326,7 +335,7 @@ export function ForgeCard({
           }}
         >
           <p>{fr(`Le token du compte @${account.login} est effacé du trousseau de cet ordinateur.`)}</p>
-          <p>{fr(REVOKE[account.method](name))}</p>
+          <p>{fr(revokeText(account.method, status))}</p>
           <p>Les analyses déjà faites restent.</p>
         </ConfirmDialog>
       )}
@@ -475,6 +484,23 @@ const REVOKE: Record<ConnectMethod, (name: string) => string> = {
   gh: () => 'gh reste connecté : son token n\'est pas révoqué.',
 }
 
+/** Ce que devient le token à la déconnexion ; Bitbucket ne révoque pas un token par son API. */
+function revokeText(method: ConnectMethod, status: ForgeStatus): string {
+  if ((method === 'oauth' || method === 'device') && !status.revocable) {
+    return `${status.name} ne permet pas de le révoquer d'ici : retirer ensuite l'accès de forceupdate dans ses réglages (le lien suit la déconnexion).`
+  }
+  return REVOKE[method](status.name)
+}
+
+/** L'hôte d'une adresse (`id.atlassian.com`), pour le texte d'un lien. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host
+  } catch {
+    return url
+  }
+}
+
 function NoticeAlert({
   notice,
   blocked,
@@ -495,6 +521,18 @@ function NoticeAlert({
         <p>{notice.text}</p>
       </AlertDescription>
       <AlertActions>
+        {notice.link && (
+          <a
+            href={notice.link.href}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={`${notice.link.label} (nouvel onglet)`}
+            className={buttonVariants({ variant: 'primary', size: 'sm' })}
+          >
+            {notice.link.label}
+            <ExternalIcon aria-hidden="true" />
+          </a>
+        )}
         {onRetry && (
           <Button size="sm" onClick={onRetry} disabled={blocked !== null}>
             Réessayer
@@ -559,7 +597,11 @@ function ConnectedAccount({
         <dd className="mb-2 flex flex-wrap items-center gap-1.5 sm:mb-0">
           {account.scopes === null ? (
             <span className="text-fg-muted">
-              {account.forge === 'github' ? 'non données par la forge (token fine-grained)' : 'non données par la forge'}
+              {account.forge === 'github'
+                ? 'non données par la forge (token fine-grained)'
+                : account.forge === 'bitbucket'
+                  ? "non données par la forge (token d'API Atlassian)"
+                  : 'non données par la forge'}
             </span>
           ) : account.scopes.length === 0 ? (
             <span className="text-fg-muted">aucune</span>
@@ -807,6 +849,13 @@ function FieldError({ error, id }: { error: Error | null; id?: string }) {
   )
 }
 
+/** Le début de l'aide du token collé, d'après sa forge et le nombre de ses portées. */
+const TOKEN_KIND: Record<ForgeStatus['forge'], (scopes: number) => string> = {
+  github: () => 'Un token classic avec les portées ',
+  gitlab: (scopes) => `Un token d'accès personnel avec ${scopes > 1 ? 'les portées' : 'la portée'} `,
+  bitbucket: () => "Un token d'API Atlassian avec les portées ",
+}
+
 /** L'adresse d'une instance tapée par la personne, si elle en a la forme (`https://hôte`). */
 function instanceHost(url: string): string | null {
   const text = url.trim()
@@ -886,10 +935,10 @@ function TokenForm({
       </label>
       {/* Un lien dans une phrase se distingue autrement que par sa couleur : souligné. */}
       <p id={`${id}-aide`} className="text-sm text-fg-muted [&_a]:underline">
-        {status.forge === 'github' ? fr('Un token classic avec les portées ') : fr("Un token d'accès personnel avec la portée ")}
-        {status.scopes.map((scope, index) => (
+        {fr(TOKEN_KIND[status.forge](status.token_scopes.length))}
+        {status.token_scopes.map((scope, index) => (
           <span key={scope}>
-            {index > 0 && ' et '}
+            {index > 0 && (index === status.token_scopes.length - 1 ? ' et ' : ', ')}
             <code>{scope}</code>
           </span>
         ))}
@@ -897,8 +946,10 @@ function TokenForm({
           ? fr(', ou un token fine-grained (ses droits ne se vérifient pas). ')
           : instance
             ? fr(', créé sur l\'instance (https seulement : le token ne part jamais en clair). ')
-            : '. '}
-        {tokenUrl && <ExternalLink href={tokenUrl}>{`Créer un token sur ${host}`}</ExternalLink>}
+            : status.forge === 'bitbucket'
+              ? fr(' (« Create API token with scopes », application Bitbucket ; les app passwords ne marchent plus). ')
+              : '. '}
+        {tokenUrl && <ExternalLink href={tokenUrl}>{`Créer un token sur ${hostOf(tokenUrl)}`}</ExternalLink>}
       </p>
       <div className="flex flex-wrap gap-2">
         <div className="flex min-w-0 flex-1 basis-64 gap-2">

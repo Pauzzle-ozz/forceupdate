@@ -121,9 +121,12 @@ def _no_browser(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class MemoryKeyring(keyring.backend.KeyringBackend):
-    """Un trousseau en mémoire : ``passwords[(service, nom)]``."""
+    """Un trousseau en mémoire : ``passwords[(service, nom)]``. Comme le Gestionnaire
+    d'identification de Windows, il refuse un secret de plus de ``MAX_SECRET`` caractères."""
 
     priority = 1  # type: ignore[assignment]
+    MAX_SECRET = 1280
+    """2 560 octets, en UTF-16 : la limite de Windows (vérifiée à E20, erreur 1783 au-delà)."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -133,6 +136,8 @@ class MemoryKeyring(keyring.backend.KeyringBackend):
         return self.passwords.get((service, username))
 
     def set_password(self, service: str, username: str, password: str) -> None:
+        if len(password) > self.MAX_SECRET:
+            raise keyring.errors.PasswordSetError(f"secret trop long ({len(password)})")
         self.passwords[(service, username)] = password
 
     def delete_password(self, service: str, username: str) -> None:

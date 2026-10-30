@@ -1,11 +1,11 @@
 """L'adresse de retour d'OAuth : la forge y renvoie le navigateur après l'autorisation.
 
 Elle n'est pas sous ``/api``, et le garde la traite à part (``security.Guard``, ``returns``) :
-c'est une navigation venue d'un autre site (github.com, gitlab.com), le cookie de session
-(``SameSite=Strict``) n'y est pas envoyé et ``Sec-Fetch-Site`` y vaut ``cross-site``. Ce qui la
-protège, c'est le ``state`` : tiré au hasard par le serveur pour une connexion lancée depuis
-l'interface (jeton de session compris), gardé en mémoire, valable 10 minutes et une seule fois.
-Sans lui, la page ne fait rien.
+c'est une navigation venue d'un autre site (github.com, gitlab.com, bitbucket.org), le cookie
+de session (``SameSite=Strict``) n'y est pas envoyé et ``Sec-Fetch-Site`` y vaut ``cross-site``.
+Ce qui la protège, c'est le ``state`` : tiré au hasard par le serveur pour une connexion lancée
+depuis l'interface (jeton de session compris), gardé en mémoire, valable 10 minutes et une seule
+fois. Sans lui, la page ne fait rien.
 
 Elle rend une petite page qui renvoie aussitôt vers ``/comptes?connexion=<id>`` (``<meta
 http-equiv="refresh">`` : pas de script en ligne sous la CSP). Une redirection HTTP ne suffirait
@@ -19,13 +19,13 @@ import html
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
-from forceupdate.forges import github, gitlab
+from forceupdate.forges import bitbucket, github, gitlab
 from forceupdate.forges.base import ForgeKind
 from forceupdate.web.connections import Connections
 
 router = APIRouter(include_in_schema=False)
 
-RETURN_PATHS = frozenset({github.CALLBACK_PATH, gitlab.CALLBACK_PATH})
+RETURN_PATHS = frozenset({github.CALLBACK_PATH, gitlab.CALLBACK_PATH, bitbucket.CALLBACK_PATH})
 """Les adresses de retour des forges, que le garde laisse passer sans jeton de session."""
 
 
@@ -49,6 +49,17 @@ async def gitlab_callback(
     error_description: str = "",
 ) -> HTMLResponse:
     return await _callback(request, ForgeKind.GITLAB, code, state, error, error_description)
+
+
+@router.get(bitbucket.CALLBACK_PATH)
+async def bitbucket_callback(
+    request: Request,
+    code: str = "",
+    state: str = "",
+    error: str = "",
+    error_description: str = "",
+) -> HTMLResponse:
+    return await _callback(request, ForgeKind.BITBUCKET, code, state, error, error_description)
 
 
 async def _callback(

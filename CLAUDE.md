@@ -71,16 +71,20 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   ├── src/test/           ← mise en place de Vitest, fetch et EventSource simulés, rapport d'exemple
 │   └── e2e/                ← tests Playwright (vrai serveur, front construit, CSP, axe-core) ;
 │                             helpers.ts : copie d'un mini-projet dans un dossier temporaire ;
-│                             forges.spec.ts : écrans 6, 7 et 8, GitHub et GitLab, en série (comptes du
-│                             serveur partagés)
+│                             forges.spec.ts : écrans 6, 7 et 8, GitHub, GitLab et Bitbucket, en série
+│                             (comptes du serveur partagés)
 ├── src/forceupdate/        ← le code de l'outil (architecture cible : PLAN.md)
 │   ├── forges/             ← interface Forge et OAuthFlow (base.py), GitHub (github.py : REST, dépôts,
 │   │                         arborescence, fichiers, OAuth, device flow, gh, clone, branche, push, PR),
 │   │                         GitLab (gitlab.py : gitlab.com ou une instance, projets, arborescence
-│   │                         paginée, fichiers, OAuth PKCE et refresh token, clone, branche, MR), git (git.py :
-│   │                         token par un credential helper éphémère, clone superficiel, commit, push
-│   │                         avec bail, dossier de travail), comptes connectés (accounts.py : tokens
-│   │                         dans le trousseau, keyring, un compte par forge et par hôte, renouvellement)
+│   │                         paginée, fichiers, OAuth PKCE et refresh token, clone, branche, MR), Bitbucket
+│   │                         Cloud (bitbucket.py : workspaces puis dépôts, arborescence en largeur, fichiers,
+│   │                         OAuth avec secret et refresh token, token d'API Atlassian, clone, branche dont
+│   │                         l'arbre est lu par git, PR), git (git.py : token par un credential helper
+│   │                         éphémère, clone superficiel, commit, push avec bail, arbre d'une branche
+│   │                         distante, dossier de travail), comptes connectés (accounts.py : tokens dans le
+│   │                         trousseau, keyring, en morceaux s'ils sont longs, un compte par forge et par
+│   │                         hôte, renouvellement)
 │   ├── sources/            ← d'où vient le code : local.py (dossier, fichier), forge.py (un dépôt lu par
 │   │                         l'API : seuls les fichiers que lisent les parseurs sont téléchargés ; un
 │   │                         clone superficiel si l'arborescence est tronquée)
@@ -92,13 +96,15 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │                             static/ : le front construit (npm run build), ignoré par git, livré dans le paquet
 └── tests/                  ← les tests ; conftest.py gère le marqueur network
     ├── e2e_server.py       ← le serveur de ui hors ligne pour Playwright (npm, uv, gh, GitHub, GitLab
-    │                         et une instance, leurs dépôts, trousseau simulés ; des dépôts « bare » où
-    │                         git pousse), et les
+    │                         et une instance, Bitbucket, leurs dépôts, trousseau simulés ; des dépôts
+    │                         « bare » où git pousse), et les
     │                         rapports d'exemple du front
     ├── fake_forge.py       ← GitHub simulé pour les dépôts (liste, arborescence, fichiers, organisations,
     │                         branches, comparaison, PR) ; make_remote : un dépôt « bare » local par dépôt
     ├── fake_gitlab.py      ← GitLab simulé (gitlab.com ou une instance : projets, arborescence paginée,
     │                         fichiers, branches, comparaison, MR, OAuth avec refresh token)
+    ├── fake_bitbucket.py   ← Bitbucket Cloud simulé (workspaces, droits, dépôts, arborescence en largeur,
+    │                         fichiers, branches, commits propres, PR, OAuth : Basic, refresh token renouvelé)
     ├── fixtures/           ← réponses HTTP enregistrées ; record.py les ré-enregistre
     └── projects/           ← mini-projets par outil, lockfiles produits par les vrais outils
 ```
@@ -150,14 +156,17 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   PR clonent et poussent pour de vrai, vers des dépôts « bare » du dossier du test
   (`fake_forge.make_remote`, `github.GIT_URL` vers `remotes_url(…)`). Dans un test, jamais
   `monkeypatch.undo()` : il défait aussi ces garde-fous (`monkeypatch.context()`). GitLab se simule avec
-  `fake_gitlab.FakeGitLab` (`gitlab.GIT_URL` vers `remotes_url(…)` pour git). La fixture `recorded` simule PyPI, npm
+  `fake_gitlab.FakeGitLab` (`gitlab.GIT_URL` vers `remotes_url(…)` pour git), Bitbucket avec
+  `fake_bitbucket.FakeBitbucket` (`bitbucket.GIT_URL` de même). Le trousseau des tests refuse,
+  comme Windows, un secret de plus de 1 280 caractères. La fixture `recorded` simule PyPI, npm
   et OSV avec les réponses de `tests/fixtures/` ; `fake_tools("npm", "uv")` simule les
   outils (`FakeTools`) ; `keychain` est le trousseau en mémoire du test ; `api` est le
   serveur de `ui` (client de test de FastAPI, jeton compris), `finished` attend la fin
   d'une tâche. GitHub se simule avec respx (`tests/test_web_accounts.py`, `FakeGitHub` pour les
   comptes ; `tests/fake_forge.py`, `FakeGitHubRepos`, pour les dépôts, faits des mini-projets).
-- Le retour d'OAuth (`/oauth/github/callback`) est la seule adresse que le garde du serveur
-  laisse passer sans jeton : ne pas en ajouter d'autre sans la même protection (`state`).
+- Les retours d'OAuth (`/oauth/github/callback`, `/oauth/gitlab/callback`,
+  `/oauth/bitbucket/callback`) sont les seules adresses que le garde du serveur laisse passer
+  sans jeton : ne pas en ajouter d'autre sans la même protection (`state`).
   L'essayer pour de vrai : `forceupdate ui`, par l'adresse `127.0.0.1` (pas `localhost`) ;
   le compte connecté va dans le vrai trousseau (Gestionnaire d'identification de Windows).
 - Un test qui lance une vraie commande `ui` (sans `serve` simulé) bloque la suite :
@@ -178,9 +187,12 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
 - Les tests e2e qui écrivent travaillent sur une copie (`e2e/helpers.ts`, `copyProject`) ;
   le serveur de test est partagé entre les tests : ses chemins récents s'accumulent.
 - Pour essayer les PR en vrai : le dépôt de test `Pauzzle-ozz/forceupdate-demo` (privé, créé à
-  E18, copie de `tests/projects/vulnerable`) sur GitHub, et le projet du même nom sur gitlab.com
-  (privé, créé à E19) pour les MR ; gardés pour la recette (E31) ; jamais un autre dépôt sans
-  l'accord de l'utilisateur.
+  E18, copie de `tests/projects/vulnerable`) sur GitHub, le projet du même nom sur gitlab.com
+  (privé, créé à E19) pour les MR, et `pauzzle/forceupdate-demo` sur Bitbucket (privé, créé à
+  E20 par l'utilisateur, workspace `pauzzle`) ; gardés pour la recette (E31) ; jamais un autre
+  dépôt sans l'accord de l'utilisateur.
+- Un script qui prend un chemin d'API en argument (`/user/…`) sous Git Bash : `MSYS_NO_PATHCONV=1`,
+  sinon Git Bash le réécrit en chemin Windows (`C:/Program Files/Git/user/…`).
 - Pour essayer `forceupdate update` en vrai : sur une copie dans le scratchpad, jamais
   dans `tests/projects/` (les outils réécrivent les lockfiles). yarn, poetry, pdm,
   pipenv et pip-compile ne sont pas installés (choix de l'utilisateur) : `npx yarn@1`,

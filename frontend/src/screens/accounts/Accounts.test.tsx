@@ -6,7 +6,9 @@ import {
   DOWN,
   Status,
   account,
+  BITBUCKET_TOKEN_SCOPES,
   accountList,
+  bitbucketAccount,
   deviceConnection,
   gitlabAccount,
   mockApi,
@@ -21,12 +23,16 @@ function gitlab() {
   return screen.getByRole('region', { name: 'GitLab' })
 }
 
+function bitbucket() {
+  return screen.getByRole('region', { name: 'Bitbucket' })
+}
+
 afterEach(() => {
   vi.restoreAllMocks()
 })
 
 describe('les comptes (écran 6)', () => {
-  it('sans compte : GitHub et GitLab et leurs façons de se connecter, Bitbucket bientôt', async () => {
+  it('sans compte : GitHub, GitLab et Bitbucket et leurs façons de se connecter', async () => {
     mockApi({})
     renderApp('/comptes')
     expect(await screen.findByRole('heading', { level: 1, name: 'Comptes' })).toBeInTheDocument()
@@ -56,9 +62,64 @@ describe('les comptes (écran 6)', () => {
     const instances = within(lab).getByRole('group', { name: 'Instances auto-hébergées' })
     expect(within(instances).getByLabelText("Adresse de l'instance")).toHaveAttribute('type', 'url')
     expect(within(instances).getByRole('button', { name: "Connecter l'instance" })).toBeDisabled()
-    const soon = screen.getByRole('region', { name: 'Bitbucket' })
-    expect(within(soon).getByText('Bientôt')).toBeInTheDocument()
-    expect(within(soon).queryByRole('button')).toBeNull()
+    const cloud = bitbucket()
+    expect(within(cloud).getByText('Non connecté')).toBeInTheDocument()
+    expect(within(cloud).getByRole('button', { name: 'Se connecter avec Bitbucket' })).toHaveClass('bg-primary')
+    expect(within(cloud).queryByRole('button', { name: 'Se connecter avec un code' })).toBeNull()
+    expect(within(cloud).queryByRole('group', { name: 'Instances auto-hébergées' })).toBeNull()
+    expect(screen.queryByText('Bientôt')).toBeNull()
+  })
+
+  it('Bitbucket : un token d’API Atlassian, ses portées, et où le créer', async () => {
+    mockApi({})
+    renderApp('/comptes')
+    await screen.findByRole('region', { name: 'Bitbucket' })
+    const cloud = bitbucket()
+    expect(within(cloud).getByText(/y ouvrir des PR\. Portées demandées/)).toBeInTheDocument()
+    expect(within(cloud).getByLabelText('Token Bitbucket')).toHaveAttribute('type', 'password')
+    const help = within(cloud).getByText(/Un token d'API Atlassian avec les portées/)
+    for (const scope of BITBUCKET_TOKEN_SCOPES) expect(within(help).getByText(scope)).toBeInTheDocument()
+    expect(help).toHaveTextContent(/read:pullrequest:bitbucket\set\swrite:pullrequest:bitbucket/)
+    expect(help).toHaveTextContent(/les app passwords ne marchent plus/)
+    expect(within(cloud).getByRole('link', { name: /Créer un token sur id\.atlassian\.com/ })).toHaveAttribute(
+      'href',
+      'https://id.atlassian.com/manage-profile/security/api-tokens',
+    )
+  })
+
+  it('Bitbucket : se déconnecter ne révoque pas le token, un lien pour retirer l’accès', async () => {
+    let connected = true
+    mockApi({
+      'GET /api/accounts': () => accountList({}, null, {}, { account: connected ? bitbucketAccount() : null }),
+      'POST /api/accounts/bitbucket/verify': bitbucketAccount(),
+      'DELETE /api/accounts/bitbucket': () => {
+        connected = false
+        return {
+          forge: 'bitbucket',
+          host: 'bitbucket.org',
+          login: 'ecureuil',
+          revoked: false,
+          message:
+            "Déconnecté de Bitbucket : token effacé de cet ordinateur. Bitbucket ne permet pas de le révoquer d'ici : retirer l'accès de forceupdate dans ses réglages (applications autorisées).",
+        }
+      },
+    })
+    const user = userEvent.setup()
+    renderApp('/comptes')
+    const cloud = await screen.findByRole('region', { name: 'Bitbucket' })
+    expect(await within(cloud).findByText('@ecureuil')).toBeInTheDocument()
+    expect(within(cloud).getByText('Lecture et PR')).toBeInTheDocument()
+    await user.click(within(cloud).getByRole('button', { name: 'Se déconnecter…' }))
+    const dialog = screen.getByRole('alertdialog', { name: 'Se déconnecter de Bitbucket ?' })
+    expect(dialog).toHaveTextContent("Bitbucket ne permet pas de le révoquer d'ici")
+    expect(dialog).not.toHaveTextContent('révoqué auprès de')
+    await user.click(within(dialog).getByRole('button', { name: 'Se déconnecter' }))
+    const notice = await within(bitbucket()).findByText('Déconnecté de Bitbucket')
+    expect(notice.closest('[role="status"]')).toHaveClass('bg-warning-bg')
+    expect(within(bitbucket()).getByRole('link', { name: "Retirer l'accès sur bitbucket.org (nouvel onglet)" })).toHaveAttribute(
+      'href',
+      'https://bitbucket.org/account/settings/app-authorizations/',
+    )
   })
 
   it('« Se connecter avec GitHub » part vers la page d’autorisation', async () => {

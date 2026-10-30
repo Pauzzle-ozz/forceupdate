@@ -451,6 +451,17 @@ son ou nom de personnage repris.
 - vérifié par axe-core (dépôts des deux forges, comptes GitLab avec une instance, récapitulatif PR
   et MR) en clair et en sombre, à 1440 et 375 px ; pas de défilement horizontal.
 
+**Fait à E20** (Bitbucket sur les écrans 6, 7 et 8) :
+
+- une issue qui demande d'agir ailleurs (retirer l'accès sur la forge) porte son lien en bouton
+  principal dans l'alerte (`buttonVariants`, icône `external-link`, « (nouvel onglet) » dans le
+  nom accessible), avant « Fermer » ;
+- une liste de portées dans une phrase : virgules, puis « et » avant la dernière ;
+- un texte tronqué (l'identifiant d'un compte dans sa pastille) garde le texte entier en `title` ;
+- vérifié par axe-core (comptes Bitbucket, dépôts de GitHub et de Bitbucket, récapitulatif) en
+  clair et en sombre, à 1440 et 375 px ; pas de défilement horizontal ; captures avec le vrai
+  compte.
+
 ## Anti-motifs
 
 - Couleur seule pour dire une gravité ou un état ; vert pour l'accent.

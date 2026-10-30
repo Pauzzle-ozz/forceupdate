@@ -470,3 +470,90 @@ describe('GitLab : des MR, et des récapitulatifs à plusieurs forges', () => {
     expect(screen.getByRole('link', { name: /Voir la PR #41 sur GitHub/ })).toHaveAttribute('href', REQUEST.url)
   })
 })
+
+describe('Bitbucket : des PR, avec celles de GitHub', () => {
+  const PR = {
+    number: 3,
+    url: 'https://bitbucket.org/ecureuil/app/pull-requests/3',
+    title: 'Mise à jour des dépendances (forceupdate)',
+    branch: 'forceupdate/dependencies',
+    base: 'main',
+  }
+  const cloudRow = (overrides: Parameters<typeof repositoryRow>[0] = {}) =>
+    repositoryRow({
+      forge: 'bitbucket',
+      host: 'bitbucket.org',
+      full_name: 'ecureuil/app',
+      owner: 'ecureuil',
+      name: 'app',
+      url: 'https://bitbucket.org/ecureuil/app',
+      state: 'to_update',
+      ...overrides,
+    })
+
+  it('l’écran 7 : la colonne PR, `#3`, « Préparer 2 PR »', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 })
+    const calls = mockApi({
+      'GET /api/repositories': repositoryList({
+        accounts: [
+          repositoryAccount({ repositories: 1 }),
+          repositoryAccount({ forge: 'bitbucket', host: 'bitbucket.org', login: 'ecureuil', repositories: 1, rate_limit: null }),
+        ],
+        repositories: [repositoryRow({ full_name: 'octo/boutique', state: 'to_update' }), cloudRow({ request: PR })],
+        synthesis: synthesis({ repositories: 2, to_update: 2, analyzed: 2, open_requests: 1 }),
+      }),
+      'POST /api/proposals': recap(),
+      'GET /api/proposals/pr1': recap(),
+    })
+    const user = userEvent.setup()
+    renderApp('/depots')
+    const link = await screen.findByRole('link', { name: 'PR #3 de ecureuil/app sur Bitbucket (nouvel onglet)' })
+    expect(link).toHaveAttribute('href', PR.url)
+    expect(screen.getByRole('columnheader', { name: 'PR' })).toBeInTheDocument()
+    expect(screen.getByText('PR ouvertes')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Bitbucket' })).toBeInTheDocument()
+    await user.click(screen.getByRole('checkbox', { name: 'Sélectionner octo/boutique' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Sélectionner ecureuil/app' }))
+    await user.click(screen.getByRole('button', { name: 'Préparer 2 PR' }))
+    await screen.findByRole('heading', { level: 1, name: 'Préparer les PR' })
+    const post = calls.find((call) => call.method === 'POST')!
+    expect(JSON.parse(String(post.init.body)).repositories).toEqual([
+      { forge: 'github', host: 'github.com', full_name: 'octo/boutique', selection: null },
+      { forge: 'bitbucket', host: 'bitbucket.org', full_name: 'ecureuil/app', selection: null },
+    ])
+  })
+
+  it('l’écran 8 : « met à jour la PR #3 », puis le lien vers Bitbucket', async () => {
+    const both = (sent: boolean) =>
+      proposal({
+        status: sent ? 'done' : 'planned',
+        repositories: [
+          proposedRepository({ state: sent ? 'opened' : 'ready', request: sent ? REQUEST : null }),
+          proposedRepository({
+            forge: 'bitbucket',
+            host: 'bitbucket.org',
+            full_name: 'ecureuil/app',
+            url: 'https://bitbucket.org/ecureuil/app',
+            scan: 's-app',
+            state: sent ? 'updated' : 'ready',
+            request: PR,
+            pushed: sent,
+          }),
+        ],
+      })
+    mockApi({ 'GET /api/proposals/pr1': both(false) })
+    const view = renderApp('/pr/pr1')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Préparer les PR' })).toBeInTheDocument()
+    const app = within(await card('ecureuil/app'))
+    expect(app.getByRole('checkbox', { name: 'Envoyer la PR de ecureuil/app' })).toBeChecked()
+    expect(app.getByText(/met à jour la PR\s#3/)).toBeInTheDocument()
+    expect(app.getByText('Bitbucket')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Envoyer 2 PR' })).toBeInTheDocument()
+    view.unmount()
+
+    mockApi({ 'GET /api/proposals/pr1': both(true) })
+    renderApp('/pr/pr1')
+    expect(await screen.findByRole('heading', { level: 1, name: 'PR envoyées' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Voir la PR #3 sur Bitbucket/ })).toHaveAttribute('href', PR.url)
+  })
+})

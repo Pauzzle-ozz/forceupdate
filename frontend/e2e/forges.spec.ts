@@ -4,8 +4,8 @@ import { TOKEN } from '../playwright.config.ts'
 import { watchConsole } from './helpers.ts'
 
 /**
- * Les écrans 6 (Comptes), 7 (Mes dépôts) et 8 (PR / MR) contre le vrai serveur, GitHub et GitLab
- * simulés (tests/e2e_server.py : la page d'autorisation est sur `localhost`, un autre site que
+ * Les écrans 6 (Comptes), 7 (Mes dépôts) et 8 (PR / MR) contre le vrai serveur, GitHub, GitLab et
+ * Bitbucket simulés (tests/e2e_server.py : la page d'autorisation est sur `localhost`, un autre site que
  * 127.0.0.1 ; elle renvoie aussitôt vers le serveur ; les dépôts sont des mini-projets de
  * tests/projects). Le trousseau du serveur est partagé : ces tests se suivent dans ce seul
  * fichier, et chacun commence déconnecté.
@@ -14,11 +14,12 @@ test.describe.configure({ mode: 'serial' })
 
 const INSTANCE = 'gitlab-e2e.example.com'
 
-/** Déconnecte tous les comptes : GitHub, gitlab.com, l'instance GitLab. */
+/** Déconnecte tous les comptes : GitHub, gitlab.com, l'instance GitLab, Bitbucket. */
 async function disconnectAll(page: Page) {
   await page.request.delete('/api/accounts/github')
   await page.request.delete('/api/accounts/gitlab')
   await page.request.delete(`/api/accounts/gitlab?host=${INSTANCE}`)
+  await page.request.delete('/api/accounts/bitbucket')
 }
 
 async function start(page: Page) {
@@ -440,6 +441,122 @@ for (const scheme of ['light', 'dark'] as const) {
       await expect(page.getByRole('heading', { level: 1, name: 'Préparer les PR et MR' })).toBeVisible()
       await expect(page.getByText('GitLab', { exact: true }).first()).toBeVisible()
       await audit(page, 'récapitulatif PR et MR')
+    })
+  }
+}
+
+// -- Bitbucket (E20) : compte, dépôts, PR ---------------------------------------------
+
+/** Se connecte à Bitbucket par OAuth, depuis l'écran 6. */
+async function connectBitbucket(page: Page) {
+  await page.goto('/comptes')
+  const cloud = page.getByRole('region', { name: 'Bitbucket' })
+  await cloud.getByRole('button', { name: 'Se connecter avec Bitbucket' }).click()
+  // bitbucket.org (ici localhost) renvoie vers /oauth/bitbucket/callback, qui renvoie vers /comptes.
+  await expect(page).toHaveURL(/\/comptes\?connexion=[0-9a-f]+$/)
+  await expect(cloud.getByText('Connecté à Bitbucket')).toBeVisible()
+  return cloud
+}
+
+test('Bitbucket : OAuth, la déconnexion qui ne révoque pas, puis un token d’API', async ({ page }) => {
+  const errors = watchConsole(page)
+  await start(page)
+  const cloud = await connectBitbucket(page)
+  await expect(cloud.getByText('Compte @ecureuil-e2e.')).toBeVisible()
+  await expect(cloud.getByText('Lecture et PR')).toBeVisible()
+  const listing = await (await page.request.get('/api/accounts')).text()
+  expect(listing).not.toContain('bbo-acces')
+
+  await cloud.getByRole('button', { name: 'Se déconnecter…' }).click()
+  const dialog = page.getByRole('alertdialog', { name: 'Se déconnecter de Bitbucket ?' })
+  await expect(dialog).toContainText("Bitbucket ne permet pas de le révoquer d'ici")
+  await dialog.getByRole('button', { name: 'Se déconnecter' }).click()
+  await expect(cloud.getByText('Déconnecté de Bitbucket', { exact: true })).toBeVisible()
+  await expect(cloud.getByRole('link', { name: "Retirer l'accès sur bitbucket.org (nouvel onglet)" })).toHaveAttribute(
+    'href',
+    'https://bitbucket.org/account/settings/app-authorizations/',
+  )
+
+  await expect(cloud.getByRole('link', { name: /Créer un token sur id\.atlassian\.com/ })).toBeVisible()
+  await cloud.getByLabel('Token Bitbucket').fill('ATATT-e2e')
+  await cloud.getByRole('button', { name: 'Connecter avec ce token' }).click()
+  await expect(cloud.getByText('Connecté à Bitbucket')).toBeVisible()
+  await expect(cloud.getByText('Droits non vérifiés')).toBeVisible()
+  await expect(cloud.getByText("non données par la forge (token d'API Atlassian)")).toBeVisible()
+  expect(errors).toEqual([])
+})
+
+/** GitHub (token classic) et Bitbucket (OAuth), connectés ; sur l'écran 7. */
+async function withBitbucket(page: Page) {
+  await repositories(page)
+  await connectBitbucket(page)
+  await page.goto('/depots')
+  await expect(page.getByRole('heading', { level: 2, name: 'Synthèse' })).toBeVisible()
+}
+
+test('Bitbucket : ses dépôts avec ceux de GitHub, une PR ouverte, puis la même mise à jour', async ({ page }) => {
+  const errors = watchConsole(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await withBitbucket(page)
+  await expect(page.getByRole('region', { name: 'Comptes connectés' }).getByText('ecureuil-e2e')).toBeVisible()
+  const repo = row(page, 'ecureuil-e2e/vulnerable')
+  await expect(repo.getByRole('img', { name: 'privé' })).toBeVisible()
+  await expect(repo.getByText('Bitbucket').last()).toBeVisible()
+
+  await page.getByRole('checkbox', { name: 'Sélectionner ecureuil-e2e/vulnerable' }).check()
+  const bar = page.getByRole('region', { name: 'Actions sur la sélection' })
+  await expect(bar.getByRole('button', { name: 'Préparer la PR' })).toBeVisible()
+  await bar.getByRole('button', { name: 'Analyser ce dépôt' }).click()
+  const batch = page.getByRole('region', { name: /Analyse de 1\sdépôt/ })
+  await expect(batch.getByRole('heading', { name: /terminée à/ })).toBeVisible({ timeout: 30_000 })
+  await expect(repo.getByText(/^28\sfailles$/)).toBeVisible()
+
+  await page.getByRole('checkbox', { name: 'Sélectionner ecureuil-e2e/vulnerable' }).check()
+  await bar.getByRole('button', { name: 'Préparer la PR' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Préparer les PR' })).toBeVisible()
+  const card = page.locator('[data-slot="card"]').filter({ has: page.getByRole('heading', { name: 'ecureuil-e2e/vulnerable' }) })
+  await expect(card.getByText('nouvelle PR')).toBeVisible()
+  await expect(card.getByText('régénéré par npm')).toBeVisible()
+  await page.getByRole('button', { name: 'Envoyer la PR' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'PR envoyées' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('1 PR ouverte', { exact: false })).toBeVisible()
+  await expect(page.getByRole('link', { name: /Voir la PR #1 sur Bitbucket/ })).toHaveAttribute(
+    'href',
+    'https://bitbucket.org/ecureuil-e2e/vulnerable/pull-requests/1',
+  )
+
+  await page.getByRole('link', { name: 'Retour à mes dépôts' }).click()
+  await expect(repo.getByRole('link', { name: /PR #1 de ecureuil-e2e\/vulnerable sur Bitbucket/ })).toBeVisible()
+
+  // Relancer depuis le rapport du dépôt : la même PR, rien de poussé (l'arbre lu par git).
+  await repo.getByRole('link', { name: 'ecureuil-e2e/vulnerable', exact: true }).click()
+  await expect(page.getByRole('link', { name: /Voir sur Bitbucket/ })).toHaveAttribute(
+    'href',
+    'https://bitbucket.org/ecureuil-e2e/vulnerable',
+  )
+  await page.getByRole('link', { name: /Préparer la PR/ }).click()
+  await page.getByRole('button', { name: 'Préparer la PR' }).first().click()
+  await expect(page.getByText('met à jour la PR #1')).toBeVisible()
+  await page.getByRole('button', { name: 'Envoyer la PR' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'PR envoyées' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText(/PR\s#1 mise à jour\s:\selle avait déjà ces changements/).first()).toBeVisible()
+  expect(errors).toEqual([])
+})
+
+for (const scheme of ['light', 'dark'] as const) {
+  for (const width of [1440, 375]) {
+    test(`Bitbucket, écrans 6, 7 et 8, ${scheme === 'light' ? 'clair' : 'sombre'}, ${width} px`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' })
+      await page.setViewportSize({ width, height: 900 })
+      await withBitbucket(page)
+      await audit(page, 'dépôts de GitHub et de Bitbucket')
+      await page.goto('/comptes')
+      await expect(page.getByRole('region', { name: 'Bitbucket' }).getByText('Lecture et PR')).toBeVisible()
+      await audit(page, 'comptes Bitbucket')
+      await page.goto('/pr?depots=github:github.com/octo-e2e/vulnerable,bitbucket:bitbucket.org/ecureuil-e2e/vulnerable')
+      await expect(page.getByRole('heading', { level: 1, name: 'Préparer les PR' })).toBeVisible()
+      await expect(page.getByText('Bitbucket', { exact: true }).first()).toBeVisible()
+      await audit(page, 'récapitulatif GitHub et Bitbucket')
     })
   }
 }

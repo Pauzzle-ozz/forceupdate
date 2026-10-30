@@ -453,15 +453,23 @@ class ForgeStatus:
     name: str
     host: str
     available: bool
-    """La connexion est prête ; sinon, elle arrive à une étape à venir (GitLab : E19,
-    Bitbucket : E20)."""
+    """La connexion est prête ; sinon, elle arrive à une étape à venir."""
     methods: tuple[ConnectMethod, ...]
     """Les façons de se connecter possibles maintenant : ``gh`` seulement s'il est installé,
     ``oauth`` seulement si l'application a son secret."""
     scopes: tuple[str, ...]
-    """Les portées demandées par OAuth et par le device flow."""
+    """Les portées demandées par OAuth et par le device flow (Bitbucket : celles de
+    l'application)."""
+    token_scopes: tuple[str, ...]
+    """Les portées à donner à un token collé (Bitbucket : celles d'un token d'API Atlassian,
+    qui ne s'impliquent pas entre elles)."""
     token_url: str | None
     """Où créer un token à coller, portées pré-cochées (sur le service en ligne)."""
+    revocable: bool
+    """Se déconnecter révoque auprès de la forge le token donné à forceupdate (OAuth, device
+    flow) ; Bitbucket ne le permet pas : retirer l'accès dans ``applications_url``."""
+    applications_url: str | None
+    """Où la personne retire à la main l'accès donné à forceupdate."""
     self_hosted: bool
     """On peut aussi y connecter une instance auto-hébergée (GitLab), par son adresse et un
     token."""

@@ -32,6 +32,11 @@ même fausse page, ``/oauth/authorize``) rend un code lié au ``code_challenge``
 une instance auto-hébergée (``gitlab-e2e.example.com``, token ``glpat-e2e-instance``) ; leurs
 projets ont aussi leur dépôt « bare », où git pousse les MR.
 
+Bitbucket Cloud aussi (E20, ``fake_bitbucket.FakeBitbucket``) : sa page d'autorisation (la même
+fausse page, ``/site/oauth2/authorize``) rend un code lié à l'adresse de retour reçue ; ses tokens
+d'OAuth ont plus de 2 000 caractères (rangés en morceaux dans le trousseau) ; un token d'API
+Atlassian (``ATATT-e2e``) se colle ; ses dépôts ont leur dépôt « bare », où git pousse les PR.
+
 Un rapport d'exemple (``--report`` : le JSON de ``scan --format json``, celui de
 ``GET /api/scans/{id}``, avec le chemin analysé remplacé par ``--source`` et des dates fixes)
 pour les tests du front (``frontend/src/test/fixtures/``) ::
@@ -60,11 +65,13 @@ import respx
 sys.path.insert(0, str(Path(__file__).parent))
 
 from conftest import MemoryKeyring, recorded_responses
+from fake_bitbucket import FakeBitbucket
+from fake_bitbucket import FakeToken as FakeBitbucketToken
 from fake_forge import FakeGitHubRepos, FakeRepo, from_directory, make_remote, remotes_url
 from fake_gitlab import FakeGitLab, FakeToken
 
 from forceupdate import engine
-from forceupdate.forges import github, gitlab
+from forceupdate.forges import bitbucket, github, gitlab
 from forceupdate.models import ScanOptions
 from forceupdate.net import cache as cache_module
 from forceupdate.report import json as json_report
@@ -185,6 +192,27 @@ INSTANCE = FakeGitLab(
     user=dict(GITLAB_USER),
 )
 
+BITBUCKET_REPOSITORIES = [
+    from_directory("ecureuil-e2e/vulnerable", PROJECTS / "vulnerable", private=True),
+    FakeRepo(full_name="ecureuil-e2e/a-jour", files={"requirements.txt": b"werkzeug==3.1.9\n"}),
+]
+"""Les dépôts de Bitbucket : un à mettre à jour, un à jour."""
+
+CLOUD = FakeBitbucket(
+    repos=BITBUCKET_REPOSITORIES,
+    tokens={"ATATT-e2e": FakeBitbucketToken(kind="api")},
+    user={
+        "account_id": "557058:e2e",
+        "uuid": "{e2e00000-0000-0000-0000-000000000000}",
+        "username": "ecureuil-e2e",
+        "nickname": "ecureuil-e2e",
+        "display_name": "Écureuil E2E",
+    },
+    client_id="app-bitbucket-e2e",
+    client_secret="secret-bitbucket-e2e",
+)
+"""Bitbucket simulé ; ses tokens d'OAuth s'ajoutent à ``tokens`` quand il les donne."""
+
 
 class FakeGitHub:
     """GitHub simulé pour le serveur de test : chaque code de device flow est en attente aux
@@ -236,9 +264,10 @@ class FakeGitHub:
 
 
 class _Authorize(http.server.BaseHTTPRequestHandler):
-    """La page d'autorisation de GitHub (``/login/oauth/authorize``) ou de GitLab
-    (``/oauth/authorize``) : accepte tout de suite, et renvoie vers l'adresse de retour avec un
-    code (``e2e-code`` ; pour GitLab, un code lié au ``code_challenge`` reçu) et le ``state``."""
+    """La page d'autorisation de GitHub (``/login/oauth/authorize``), de GitLab
+    (``/oauth/authorize``) ou de Bitbucket (``/site/oauth2/authorize``) : accepte tout de suite, et
+    renvoie vers l'adresse de retour avec un code (``e2e-code`` ; pour GitLab, un code lié au
+    ``code_challenge`` reçu ; pour Bitbucket, à l'adresse de retour) et le ``state``."""
 
     def do_GET(self) -> None:
         parts = urllib.parse.urlsplit(self.path)
@@ -248,6 +277,8 @@ class _Authorize(http.server.BaseHTTPRequestHandler):
         code = "e2e-code"
         if parts.path == "/oauth/authorize":
             code = LAB.code_for(query["code_challenge"][0])
+        elif parts.path == "/site/oauth2/authorize":
+            code = CLOUD.authorize(target)
         location = f"{target}?{urllib.parse.urlencode({'code': code, 'state': state})}"
         self.send_response(302)
         self.send_header("Location", location)
@@ -280,6 +311,8 @@ def serve(port: int, token: str, state_dir: Path) -> None:
     authorize = fake_authorize()
     github.AUTHORIZE_URL = f"{authorize}/login/oauth/authorize"
     gitlab.AUTHORIZE_URL = f"{authorize}/oauth/authorize"
+    bitbucket.AUTHORIZE_URL = f"{authorize}/site/oauth2/authorize"
+    bitbucket.CLIENT_ID, bitbucket.CLIENT_SECRET = CLOUD.client_id, CLOUD.client_secret
     app.serve(
         port=port,
         browser=False,
@@ -309,11 +342,12 @@ def main() -> None:
         cache_module.default_cache_path = lambda: Path(tmp) / "cache.sqlite3"
         if options.report is None:
             remotes = Path(tmp) / "distants"
-            for repo in [*REPOSITORIES, *GITLAB_PROJECTS]:
+            for repo in [*REPOSITORIES, *GITLAB_PROJECTS, *BITBUCKET_REPOSITORIES]:
                 if not repo.empty:
                     make_remote(repo, remotes)
             github.GIT_URL = remotes_url(remotes)
             gitlab.GIT_URL = remotes_url(remotes)
+            bitbucket.GIT_URL = remotes_url(remotes)
         repositories = FakeGitHubRepos(
             REPOSITORIES,
             tokens=set(TOKENS),
@@ -325,6 +359,7 @@ def main() -> None:
             repositories.routes(router)
             LAB.routes(router)
             INSTANCE.routes(router)
+            CLOUD.routes(router)
 
         with recorded_responses(routes):
             if options.report is not None:

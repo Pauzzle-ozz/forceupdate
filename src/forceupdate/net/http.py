@@ -69,8 +69,13 @@ class NetworkError(Exception):
     ligne… Le constat qui en dépend est « non concluant ».
 
     Le message, en français, est fait pour être montré tel quel dans le rapport. Il cite
-    l'hôte, jamais l'URL (une URL peut contenir un token).
+    l'hôte, jamais l'URL (une URL peut contenir un token). ``status`` : le dernier statut HTTP
+    reçu (429, 5xx), s'il y en a eu un.
     """
+
+    def __init__(self, message: str, *, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -160,13 +165,15 @@ class HttpClient:
         *,
         headers: Mapping[str, str] | None = None,
         json: Any = None,
+        form: Mapping[str, str] | None = None,
         retry: bool | None = None,
     ) -> Response:
         """Envoie la requête et rend la réponse, quel que soit son statut final.
 
         Réessaie sur 429, 5xx, coupure ou délai dépassé, si la requête peut être rejouée :
         par défaut ``GET``, ``HEAD`` et ``OPTIONS`` ; ``retry=True`` pour une autre qui ne
-        change rien (une recherche en ``POST``). ``json`` est envoyé en corps JSON.
+        change rien (une recherche en ``POST``). ``json`` est envoyé en corps JSON, ``form`` en
+        formulaire (``application/x-www-form-urlencoded`` : le point des tokens de Bitbucket).
 
         Lève ``NetworkError`` quand la requête n'aboutit pas, ou que le statut reste 429 ou
         5xx après les reprises.
@@ -186,7 +193,7 @@ class HttpClient:
         for attempt in range(attempts):
             final = attempt == attempts - 1
             try:
-                response = await self._send(host, method, url, headers, json)
+                response = await self._send(host, method, url, headers, json, form)
             except _TooLarge:
                 limit = self._max_body // 2**20
                 raise NetworkError(f"réponse de {host} trop grosse (plus de {limit} Mo).") from None
@@ -215,17 +222,25 @@ class HttpClient:
                 message = _status_failure(host, status, wait)
                 if status == 429:
                     self._abandon(host, message, wait)
-                raise NetworkError(message)
+                raise NetworkError(message, status=status)
             await self._sleep(_backoff(attempt) if wait is None else wait)
         raise AssertionError("inaccessible : le dernier essai rend ou lève")
 
     async def _send(
-        self, host: str, method: str, url: str, headers: Mapping[str, str] | None, body: Any
+        self,
+        host: str,
+        method: str,
+        url: str,
+        headers: Mapping[str, str] | None,
+        body: Any,
+        form: Mapping[str, str] | None,
     ) -> Response:
         async with (
             self._slot(host),
             asyncio.timeout(self._deadline),
-            self._client.stream(method, url, headers=headers, json=body) as response,
+            self._client.stream(
+                method, url, headers=headers, json=body, data=dict(form) if form else None
+            ) as response,
         ):
             declared = response.headers.get("content-length", "")
             if _DIGITS.fullmatch(declared) and int(declared) > self._max_body:

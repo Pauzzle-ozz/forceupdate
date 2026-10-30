@@ -87,3 +87,10 @@
 - La barre de sélection suit la maquette : « Préparer N PR » en principale, à droite ;
   « Analyser ces N dépôts » en secondaire. Le nombre de mises à jour cochées par défaut reste
   dit (« N mises à jour cochées par défaut »).
+
+## Fait à E20
+
+- Les dépôts Bitbucket (`workspace/dépôt`) dans la même liste ; la colonne reste « PR » s'il n'y
+  a pas de GitLab ; à 375 px, l'identifiant du compte se tronque dans sa pastille
+  (« pauzzle-adm… »), entier dans `title` et pour les lecteurs d'écran.
+- Pas de ligne de requêtes restantes pour Bitbucket (il ne les dit pas).

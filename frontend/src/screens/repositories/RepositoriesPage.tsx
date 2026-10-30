@@ -407,7 +407,9 @@ function AccountChip({ account }: { account: RepositoryAccount }) {
     <li className="inline-flex min-h-(--control-h) max-w-full items-center gap-2 rounded-full border border-border bg-surface px-3 text-sm">
       <ForgeLogo forge={account.forge} className="size-4" />
       <b>{name}</b>
-      <span className="truncate font-mono">{account.login}</span>
+      <span className="truncate font-mono" title={account.login}>
+        {account.login}
+      </span>
       {account.problem ? (
         <Badge variant="danger">
           <CircleX aria-hidden="true" />
