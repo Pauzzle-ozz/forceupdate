@@ -57,6 +57,14 @@ vers 2.2.8.1 donne ``~> 2.2.8``, et ``~> 2.2.8, >= 2.2.8.1`` pour un plancher : 
 qu'écrivent les avis de sécurité de Rails. Les contraintes d'une gem sont jointes par ``, ``
 (``update.writers.ruby`` remet les guillemets de chacune).
 
+**Maven** (``versions.maven``, Gradle compris) : une version nue est la version utilisée, elle
+devient la version visée telle que la publie le dépôt (``31.0.1-jre`` vers ``32.1.3-jre``) ;
+``1.2.3!!`` (Gradle) garde ses ``!!`` ; ``[1.2.3]`` devient ``[V]``. Un
+intervalle (``[1.0,2.0)``) : celui qui accepte la version visée, sinon le dernier, seul ; sa borne
+basse devient la version visée, incluse (``[1.5.3,2.0)``), une borne haute qui l'exclut se déplace
+au même niveau (``[2.1.0,3.0)``), une borne basse absente le reste, sauf pour un plancher.
+``1.+`` (Gradle) garde sa précision (``2.+``), sans plancher possible.
+
 Le résultat est relu : il doit accepter la version visée (et respecter le plancher). Sinon, ou
 pour un style qu'on ne sait pas réécrire (intervalle npm ``1.2.3 - 2.3.4`` dépassé, contrainte
 sans version comme ``*`` ou une étiquette), ``rewrite`` rend ``None`` : à réécrire à la main.
@@ -69,6 +77,7 @@ from forceupdate import versions
 from forceupdate.models import Ecosystem
 from forceupdate.versions import InvalidConstraint, InvalidVersion, VersionScheme
 from forceupdate.versions.go import canonical
+from forceupdate.versions.maven import MAVEN
 
 _OPERATORS = {
     Ecosystem.NPM: r"~>|<=|>=|[<>=~^]",
@@ -151,6 +160,16 @@ def rewrite(
         except (InvalidConstraint, InvalidVersion):
             return None
         return canonical(target)
+    if ecosystem is Ecosystem.MAVEN:
+        try:
+            new = _rewrite_maven(constraint.strip(), target, floor)
+            if new is None or not scheme.satisfies(new, target):
+                return None
+            if floor and not _reaches(scheme, new, target):
+                return None
+        except (InvalidConstraint, InvalidVersion):
+            return None
+        return new
     if ecosystem is Ecosystem.PACKAGIST:
         target = _without_v(target)
     parsed_target = _split_target(target)
@@ -169,6 +188,51 @@ def rewrite(
     except (InvalidConstraint, InvalidVersion):
         return None
     return new
+
+
+def _rewrite_maven(constraint: str, target: str, floor: bool) -> str | None:
+    """Une spécification Maven ou Gradle réécrite pour ``target`` (voir la docstring du module)."""
+    parsed = MAVEN.parse_constraint(constraint)
+    if parsed.recommended is not None:
+        return f"{target}!!" if constraint.endswith("!!") else target
+    if parsed.latest:
+        return None
+    if parsed.prefix is not None:
+        split = _split_target(target)
+        prefix = parsed.prefix
+        count = len([part for part in prefix.split(".") if part])
+        if (
+            split is None
+            or not count
+            or not all(p.isdigit() for p in prefix.rstrip(".").split("."))
+        ):
+            return None
+        return split.written(count) + ("." if prefix.endswith(".") else "") + "+"
+    restrictions = parsed.restrictions
+    wanted = MAVEN.parse(target)
+    chosen = next(
+        (r.text for r in restrictions if r.contains(wanted)),
+        restrictions[-1].text if restrictions else None,
+    )
+    if not chosen:
+        return None
+    inner = chosen[1:-1]
+    if "," not in inner:
+        return f"[{target}]"
+    lower, upper = inner.split(",", 1)
+    closing = chosen[-1]
+    if upper.strip():
+        bound = MAVEN.parse(upper.strip())
+        if bound < wanted or (bound == wanted and closing != "]"):
+            split = _split_target(target)
+            shifted = None if split is None else _shift_upper(upper.strip(), split)
+            if shifted is None:
+                return None
+            upper = upper.replace(upper.strip(), shifted)
+    if lower.strip() or floor:
+        lead = lower[: len(lower) - len(lower.lstrip())]
+        return f"[{lead}{target}{lower[len(lower.rstrip()) :]},{upper}{closing}"
+    return f"{chosen[0]}{lower},{upper}{closing}"
 
 
 def _without_v(version: str) -> str:

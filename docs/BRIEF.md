@@ -174,6 +174,15 @@ chaque fois) :
   - `Gem::Version` côté Ruby.
 
   `"1.10" < "1.9"` en texte.
+- **L'ordre Maven** (constaté à E25, contre `maven-artifact` 3.9.16) : `ComparableVersion` découpe
+  une version en nombres, mots et sous-listes (`1.0-rc-1` est `1, [rc, [1]]`), ignore les zéros et
+  les mots de version finale de fin (`1.0` = `1.0.0` = `1.0.RELEASE`), range les mots connus
+  (`alpha` < `beta` < `milestone` < `rc` < `snapshot` < finale < `sp`) et met les autres après
+  (`1.0-jre` > `1.0`). **Il n'est pas transitif** (`1` < `1a` < `1-0.alpha`, mais `1` > `1-0.alpha`) :
+  Java refuse de trier certains corpus avec lui. Une version nue de `pom.xml` est une
+  « recommandation » que `VersionRange` dit contenir toutes les versions ; `[1.0,2.0)` contient
+  `2.0-alpha-1`. **Les variantes** (`31.0.1-jre` et `31.0.1-android` de Guava) ne se remplacent
+  pas l'une l'autre, mais OSV écrit `fixed: 32.0.0-android` pour les deux.
 - **Les pré-versions** (`2.0.0rc1`, `1.0.0-beta`) ne sont pas « la dernière
   version » pour la plupart des gens.
 - **`go.sum`** contient aussi des versions qui ne sont plus utilisées, et des modules qu'aucun
@@ -268,7 +277,9 @@ chaque fois) :
   témoins qui écrivaient un fichier) : les deux sont passés. Constaté à E24 : `bundle lock` exécute
   le `Gemfile`, le fichier d'un `eval_gemfile`, le `.gemspec` du projet et ceux de ses gems `path:`
   (et `git:`) — quatre témoins ont tous tourné —, sans option pour l'en empêcher : le plan le dit.
-  forceupdate, lui, lit le `Gemfile` par motifs, sans jamais l'exécuter.
+  forceupdate, lui, lit le `Gemfile` par motifs, sans jamais l'exécuter. À E25 : un `build.gradle`
+  est un programme (Groovy ou Kotlin) ; forceupdate le lit en jetons, sans jamais lancer Gradle, et
+  n'a pas de lockfile Java en V1 (régénérer `gradle.lockfile` demanderait d'exécuter les scripts).
 - **Plafond de taille** : `safe_read_text` ignore les fichiers de plus de 2 Mo. Un
   `package-lock.json` les dépasse souvent : relever le plafond pour les lockfiles.
 - **Go, majeur ≥ 2** : changer de majeur change le chemin du module (`/v2`) et
@@ -426,7 +437,7 @@ débit changent).
 | RubyGems | **Vérifié (E24)** : l'index « compact » de Bundler, `GET https://index.rubygems.org/info/{nom}` : une ligne d'en-tête `---`, puis une ligne par version et par plateforme (`1.19.0-x86_64-linux-gnu racc:~> 1.4\|checksum:…,ruby:< 4.1.dev&>= 3.2,created_at:…`), la plateforme après le premier `-`, `created_at` même pour les versions de 2009, le Ruby demandé ; 404 pour une gem inconnue ; `max-age=60`. Huit fois plus léger que l'API (`https://rubygems.org/api/v1/versions/{nom}.json`, qui répète la description de chaque version : 1,4 Mo pour nokogiri). Les versions retirées (« yanked ») sont absentes des deux, et `api/v2` répond 404 pour elles : un retrait ne se distingue pas d'une version jamais publiée. Pas de dépréciation |
 | Go | **Vérifié (E22)** : `GET https://proxy.golang.org/{module}/@v/list` (les versions étiquetées, dans le désordre, sans pseudo-versions ni dates), `/@v/{version}.mod` (le `go.mod` de cette version : `retract` et `// Deprecated:`), `/@latest` (un module sans étiquette : la pseudo-version du dernier commit) ; majuscules du chemin encodées en `!minuscule` (`github.com/!burnt!sushi/toml`) ; 404 ou 410 : module inconnu. Une majeure v2+ est un autre chemin (`…/v2`, `gopkg.in/yaml.v3`) : sa liste à part |
 | Packagist | **Vérifié (E23)** : `GET https://repo.packagist.org/p2/{vendor}/{paquet}.json`, les métadonnées de Composer 2 : `packages.{nom}`, les versions étiquetées de la plus récente à la plus ancienne (pré-versions comprises ; les branches dans `~dev.json`), « minifiées » (`"minified": "composer/2.0"` : chaque version ne garde que ce qui change, `"__unset"` retire une clé), `time`, `abandoned` (`true` ou le remplaçant) ; noms en minuscules ; 404 pour un paquet inconnu ; `Cache-Control: max-age=900`. Le fichier donne aussi `security-advisories` (identifiants PKSA), pas lus : OSV |
-| Maven Central | `GET https://repo1.maven.org/maven2/{groupe/en/chemin}/{artifact}/maven-metadata.xml` |
+| Maven Central | **Vérifié (E25)** : `GET https://repo1.maven.org/maven2/{groupe/en/chemin}/{artifact}/maven-metadata.xml` → `<versioning><versions>` dans l'ordre de publication ; **`<latest>` et `<release>` peuvent être des pré-versions** (log4j-core : `3.0.0-beta3`) ; aucune date par version (`<lastUpdated>` date le fichier) ; 404 en HTML pour un inconnu. Le même fichier chez **Google Maven** (`https://dl.google.com/android/maven2/…`, `androidx.*`, `com.android.*`, `com.google.android.*`, Firebase, `max-age=86400`) et sur **le portail des plugins Gradle** (`https://plugins.gradle.org/m2/{id}/{id}.gradle.plugin/maven-metadata.xml`, `max-age=43200`, qui renvoie (303) vers Maven Central ce qu'il n'a pas). Pas de dépréciation ; un déplacement est dans le `pom` d'une version (`<relocation>`) |
 | NuGet | `GET https://api.nuget.org/v3-flatcontainer/{id-en-minuscules}/index.json` ; dépréciation via l'API « registration » |
 
 | Besoin | Source |

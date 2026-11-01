@@ -88,13 +88,19 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   ├── parsers/            ← un module par écosystème : python.py, npm.py, rust.py (Cargo.toml, Cargo.lock,
 │   │                         workspaces), go.py (go.mod et go.work : un lexer comme celui de modfile),
 │   │                         php.py (composer.json, composer.lock), ruby.py (Gemfile et gems.rb lus par
-│   │                         motifs, jamais exécutés ; .gemspec ; Gemfile.lock ; gems path:) ;
+│   │                         motifs, jamais exécutés ; .gemspec ; Gemfile.lock ; gems path:), java.py
+│   │                         (Maven, puis Gradle), maven.py (pom.xml : propriétés, parents du dépôt,
+│   │                         dependencyManagement, BOM, plugins), gradle.py (libs.versions.toml,
+│   │                         build.gradle(.kts) lus en jetons, jamais exécutés, gradle.properties) ;
 │   │                         lockfiles.py (lien manifeste ↔ lockfile), *_spans.py (positions ;
-│   │                         ruby_spans.py : un lexer de Ruby) ; versions/ et registries/ de même
+│   │                         ruby_spans.py, gradle_spans.py : des lexers ; xml_spans.py : expat) ;
+│   │                         versions/ et registries/ de même
 │   │                         (cargo.py, crates.py : l'index « sparse » ; go.py, goproxy.py :
 │   │                         proxy.golang.org, plusieurs requêtes par module ; composer.py, réécrit
 │   │                         d'après composer/semver, packagist.py : les métadonnées p2 minifiées ;
-│   │                         rubygems.py, réécrit d'après Gem::Version, rubygems.py : l'index compact)
+│   │                         rubygems.py, réécrit d'après Gem::Version, rubygems.py : l'index compact ;
+│   │                         maven.py, réécrit d'après ComparableVersion et VersionRange, maven.py :
+│   │                         maven-metadata.xml de Maven Central, Google Maven et du portail Gradle)
 │   ├── sources/            ← d'où vient le code : local.py (dossier, fichier), forge.py (un dépôt lu par
 │   │                         l'API : seuls les fichiers que lisent les parseurs sont téléchargés ; un
 │   │                         clone superficiel si l'arborescence est tronquée)
@@ -170,8 +176,9 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   `fake_gitlab.FakeGitLab` (`gitlab.GIT_URL` vers `remotes_url(…)` pour git), Bitbucket avec
   `fake_bitbucket.FakeBitbucket` (`bitbucket.GIT_URL` de même). Le trousseau des tests refuse,
   comme Windows, un secret de plus de 1 280 caractères. La fixture `recorded` simule PyPI, npm,
-  crates.io, le proxy Go, Packagist, RubyGems et OSV avec les réponses de `tests/fixtures/` (pour Go,
-  toutes celles d'un module dans un fichier : `goproxy/<module>.json`) ; `fake_tools("npm", "uv")`
+  crates.io, le proxy Go, Packagist, RubyGems, Maven (Central, Google, portail Gradle) et OSV avec les
+  réponses de `tests/fixtures/` (pour Go, toutes celles d'un module dans un fichier :
+  `goproxy/<module>.json` ; pour Maven, `:` s'écrit `__` dans le nom) ; `fake_tools("npm", "uv")`
   simule les outils (`FakeTools` ; `fake_bundler.FakeBundler` pour `bundle`) ; `keychain` est le
   trousseau en mémoire du test ; `api` est le
   serveur de `ui` (client de test de FastAPI, jeton compris), `finished` attend la fin
@@ -239,6 +246,12 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   le trouve). Pour un essai à la main, mettre `BUNDLE_USER_HOME`, `GEM_HOME` et `GEM_SPEC_CACHE`
   dans le scratchpad. `bundle lock` exécute le `Gemfile` et les `.gemspec` : jamais sur un projet
   inconnu ; cloner une gem `git:` d'un dépôt externe n'a pas été permis.
+- Java : ni Maven ni Gradle ne sont installés (choix de l'utilisateur, E25) : pas de lockfile Java en
+  V1, et forceupdate ne lance jamais Gradle (un script est un programme). Java 8 n'est qu'un JRE (pas de
+  `javac`) ; l'oracle des versions Maven est `~/sdk/maven-artifact/maven-artifact-3.9.16.jar`, lancé
+  par Nashorn : `"/c/Program Files/Java/jre1.8.0_481/bin/jjs.exe" -cp <jar> script.js -- <args>`
+  (`ComparableVersion`, `VersionRange` ; voir les notes de E25). `ComparableVersion` n'est pas
+  transitif : ne pas trier un corpus avec `Collections.sort` (il refuse), comparer deux à deux.
 - Pour tous les tests `network` d'un coup :
   `export PATH="$HOME/sdk/ruby-4.0.9/bin:$HOME/sdk/php-8.5.12:$HOME/sdk/composer-2.11.0:$HOME/sdk/go1.27.3/bin:$HOME/.cargo/bin:$PATH"`.
 

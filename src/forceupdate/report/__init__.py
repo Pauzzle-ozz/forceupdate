@@ -121,7 +121,7 @@ def option_changes(option: UpdateOption, project: str = ".") -> list[str]:
             override = edit.override
             where = f"{_within(edit.file, project)} ({override.section} « {override.key} »)"
         else:
-            where = _within(edit.file, project)
+            where = _relative(edit.file, project)
         lines.append(f"{where} : {edit.old} → {edit.new}")
     if option.lockfile is not None:
         lockfile = _within(option.lockfile, project)
@@ -136,6 +136,14 @@ def _within(path: str, project: str) -> str:
     if project != "." and path.startswith(project + "/"):
         return path[len(project) + 1 :]
     return path
+
+
+def _relative(path: str, project: str) -> str:
+    """Un fichier réécrit, vu depuis le dossier ``project`` : ``../pom.xml`` pour le parent Maven
+    d'un module (``pom.xml`` serait le sien)."""
+    if project == "." or path.startswith(project + "/"):
+        return _within(path, project)
+    return posixpath.relpath(path, project)
 
 
 def plural(count: int, word: str) -> str:

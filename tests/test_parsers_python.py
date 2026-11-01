@@ -944,12 +944,12 @@ version = "1.0"
         ]
 
     def test_ecosystems_not_read_yet_give_a_notice(self) -> None:
-        project = parse({"pom.xml": "", "requirements.txt": "flask\n"})
+        project = parse({"packages.config": "", "requirements.txt": "flask\n"})
         assert [d.name for d in project.dependencies] == ["flask"]
         assert project.notices == [
             Notice(
-                file="pom.xml",
-                message="dépendances Maven pas encore lues par forceupdate.",
+                file="packages.config",
+                message="dépendances NuGet pas encore lues par forceupdate.",
             )
         ]
 

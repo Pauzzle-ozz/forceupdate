@@ -7,8 +7,8 @@ interpréter, prendre les règles de l'écosystème avec ``for_ecosystem`` :
     scheme.max_satisfying("^4.17.0", ["4.17.21", "5.0.0"])  # "4.17.21"
     scheme.gap("4.17.15", "5.0.0")  # Gap.MAJOR
 
-PyPI, npm, crates.io (Cargo), Go, Packagist (Composer) et RubyGems pour l'instant ; les autres
-écosystèmes arrivent avec leur étape (E25, E26), chacun avec sa ``VersionScheme``.
+PyPI, npm, crates.io (Cargo), Go, Packagist (Composer), RubyGems et Maven pour l'instant ; NuGet
+arrive avec son étape (E26), avec sa ``VersionScheme``.
 """
 
 from typing import Any
@@ -18,6 +18,7 @@ from forceupdate.versions.base import Constraint, InvalidConstraint, InvalidVers
 from forceupdate.versions.cargo import CARGO
 from forceupdate.versions.composer import COMPOSER
 from forceupdate.versions.go import GO
+from forceupdate.versions.maven import MAVEN
 from forceupdate.versions.npm import NPM
 from forceupdate.versions.pypi import PYPI
 from forceupdate.versions.rubygems import RUBYGEMS
@@ -37,6 +38,7 @@ _SCHEMES: dict[Ecosystem, VersionScheme[Any]] = {
     Ecosystem.GO: GO,
     Ecosystem.PACKAGIST: COMPOSER,
     Ecosystem.RUBYGEMS: RUBYGEMS,
+    Ecosystem.MAVEN: MAVEN,
 }
 
 

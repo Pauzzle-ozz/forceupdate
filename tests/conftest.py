@@ -45,6 +45,7 @@ from forceupdate.net import Cache, HttpClient
 from forceupdate.net import cache as cache_module
 from forceupdate.registries import Registry
 from forceupdate.registries.crates import index_path
+from forceupdate.registries.maven import coordinates, repository
 from forceupdate.registries.pypi import ACCEPT
 from forceupdate.update import lockfiles
 from forceupdate.web import Settings, create_app
@@ -248,15 +249,16 @@ def osv_querybatch(results: dict[str, Any]) -> Callable[[httpx.Request], httpx.R
 
 @pytest.fixture
 def recorded() -> Iterator[dict[str, respx.Route]]:
-    """PyPI, npm, crates.io, le proxy Go, Packagist, RubyGems et OSV simulés par ``respx``, avec
-    les réponses enregistrées par ``tests/fixtures/record.py`` : flask, requests, aioredis, jinja2,
-    werkzeug ; left-pad, @hapi/joi, colors, crossenv, lodash ; rand, regex, time, anyhow, log,
-    smallvec ; les modules Go de ``PACKAGES["goproxy"]`` ; les paquets PHP de
-    ``PACKAGES["packagist"]`` ; les gems de ``PACKAGES["rubygems"]``. Tout autre paquet est
+    """PyPI, npm, crates.io, le proxy Go, Packagist, RubyGems, Maven (Maven Central, Google Maven,
+    le portail des plugins Gradle) et OSV simulés par ``respx``, avec les réponses enregistrées par
+    ``tests/fixtures/record.py`` : flask, requests, aioredis, jinja2, werkzeug ; left-pad,
+    @hapi/joi, colors, crossenv, lodash ; rand, regex, time, anyhow, log, smallvec ; les modules Go
+    de ``PACKAGES["goproxy"]`` ; les paquets PHP de ``PACKAGES["packagist"]`` ; les gems de
+    ``PACKAGES["rubygems"]`` ; les artefacts de ``PACKAGES["maven"]``. Tout autre paquet est
     introuvable (404). OSV connaît les failles des versions de ``tests/fixtures/osv/queries.json`` ;
     pour les autres, il n'en connaît pas. Rend les routes, par nom de paquet (``crates:<nom>`` pour
     crates.io, ``goproxy:<module>`` pour la liste d'un module Go, ``packagist:<nom>``,
-    ``rubygems:<nom>``), plus ``osv:querybatch`` et ``osv:<id>``.
+    ``rubygems:<nom>``, ``maven:<groupe:artefact>``), plus ``osv:querybatch`` et ``osv:<id>``.
     """
     with recorded_responses() as routes:
         yield routes
@@ -307,6 +309,13 @@ def recorded_responses(
             routes[f"rubygems:{path.stem}"] = router.get(
                 f"https://index.rubygems.org/info/{path.stem}"
             ).respond(200, content=path.read_bytes(), headers={"content-type": "text/plain"})
+        for path in sorted((FIXTURES / "maven").glob("*.xml")):
+            name = path.stem.replace("__", ":")
+            group, artifact = coordinates(name)
+            url = f"{repository(name)}/{group.replace('.', '/')}/{artifact}/maven-metadata.xml"
+            routes[f"maven:{name}"] = router.get(url).respond(
+                200, content=path.read_bytes(), headers={"content-type": "text/xml"}
+            )
         router.get(url__regex=r"^https://pypi\.org/simple/").respond(404)
         router.get(url__regex=r"^https://registry\.npmjs\.org/").respond(404, json={})
         router.get(url__regex=r"^https://index\.crates\.io/").respond(404)
@@ -317,6 +326,9 @@ def recorded_responses(
         router.get(url__regex=r"^https://index\.rubygems\.org/").respond(
             404, text="This rubygem could not be found."
         )
+        for maven in (r"repo1\.maven\.org/maven2", r"dl\.google\.com/android/maven2"):
+            router.get(url__regex=rf"^https://{maven}/").respond(404, text="404 Not Found")
+        router.get(url__regex=r"^https://plugins\.gradle\.org/m2/").respond(404)
         queries = json.loads((FIXTURES / "osv" / "queries.json").read_text(encoding="utf-8"))
         routes["osv:querybatch"] = router.post("https://api.osv.dev/v1/querybatch").mock(
             side_effect=osv_querybatch(queries)

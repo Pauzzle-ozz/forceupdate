@@ -393,3 +393,56 @@ def test_rubygems_styles(constraint: str, target: str, expected: str | None) -> 
 )
 def test_rubygems_floor_for_a_vulnerability(constraint: str, target: str, expected: str) -> None:
     check_floor(RUBYGEMS, constraint, target, expected)
+
+
+# -- Maven et Gradle : une version nue est la version utilisée, les plages de VersionRange -----
+
+MAVEN = Ecosystem.MAVEN
+
+
+@pytest.mark.parametrize(
+    ("constraint", "target", "expected"),
+    [
+        # Une version nue devient la version visée, telle que la publie le dépôt.
+        ("2.14.1", "2.17.1", "2.17.1"),
+        ("30.1-jre", "33.7.2-jre", "33.7.2-jre"),
+        ("5.3.17", "5.3.39", "5.3.39"),
+        ("23", "40", "40"),
+        ("1.7.15!!", "1.7.36", "1.7.36!!"),
+        ("[1.2.3]", "1.2.9", "[1.2.9]"),
+        # Un intervalle : sa borne basse monte, une borne haute dépassée se déplace.
+        ("[1.9,2.0)", "1.15.0", "[1.15.0,2.0)"),
+        ("[1.9,2.0)", "2.3.1", "[2.3.1,3.0)"),
+        ("[1.9, 2.0)", "1.10.0", "[1.10.0, 2.0)"),
+        ("(1.9,2.0]", "1.10.0", "[1.10.0,2.0]"),
+        ("[1.0,1.5)", "1.7.2", "[1.7.2,1.8)"),
+        ("[1.5,)", "2.0.1", "[2.0.1,)"),
+        ("(,1.0]", "0.9", "(,1.0]"),
+        ("(,1.0]", "2.1.0", "(,3.0]"),
+        ("(,1.0],[1.2,)", "1.5.0", "[1.5.0,)"),
+        ("[1.0,2.0[", "1.5", "[1.5,2.0["),
+        # Gradle : un préfixe garde sa précision ; la dernière n'a pas de version.
+        ("1.+", "2.3.4", "2.+"),
+        ("1.2.+", "1.9.0", "1.9.+"),
+        ("latest.release", "2.0", None),
+        ("+", "2.0", None),
+    ],
+)
+def test_maven_styles(constraint: str, target: str, expected: str | None) -> None:
+    check(MAVEN, constraint, target, expected)
+
+
+@pytest.mark.parametrize(
+    ("constraint", "target", "expected"),
+    [
+        ("2.14.1", "2.17.1", "2.17.1"),
+        ("[1.9,2.0)", "1.10.0", "[1.10.0,2.0)"),
+        ("(,2.0)", "1.10.0", "[1.10.0,2.0)"),
+    ],
+)
+def test_maven_floor_for_a_vulnerability(constraint: str, target: str, expected: str) -> None:
+    check_floor(MAVEN, constraint, target, expected)
+
+
+def test_a_gradle_prefix_cannot_take_a_floor() -> None:
+    assert rewrite(MAVEN, "1.+", "1.9.2", floor=True) is None

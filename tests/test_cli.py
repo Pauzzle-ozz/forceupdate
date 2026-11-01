@@ -97,7 +97,7 @@ def test_scan_shows_direct_dependencies() -> None:
 
 
 def test_scan_shows_notices(make_tree: MakeTree) -> None:
-    root = make_tree({"pom.xml": "", "setup.py": ""})
+    root = make_tree({"packages.config": "", "setup.py": ""})
 
     result = scan(str(root))
 
@@ -106,7 +106,7 @@ def test_scan_shows_notices(make_tree: MakeTree) -> None:
     assert "Remarques" in lines
     notices = [" ".join(line.split()) for line in lines]
     assert "setup.py pas lu : il faudrait l'exécuter pour connaître ses dépendances." in notices
-    assert "pom.xml dépendances Maven pas encore lues par forceupdate." in notices
+    assert "packages.config dépendances NuGet pas encore lues par forceupdate." in notices
 
 
 def test_scan_empty_folder(tmp_path: Path) -> None:

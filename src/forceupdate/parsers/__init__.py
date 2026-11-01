@@ -1,9 +1,9 @@
 """Les parseurs : lire les manifestes et lockfiles d'un projet, et en tirer ses dépendances.
 
-Un module par écosystème : Python (E03), npm (E04), Rust (E21), Go (E22), PHP (E23) et Ruby (E24)
-pour l'instant, les autres en phase F. Chacun relie les manifestes (dépendances directes,
-contraintes et leur emplacement) aux lockfiles (versions installées, transitives), avec ce qui est
-commun dans ``lockfiles.py``.
+Un module par écosystème : Python (E03), npm (E04), Rust (E21), Go (E22), PHP (E23), Ruby (E24) et
+Java (E25 : Maven et Gradle) pour l'instant, .NET à E26. Chacun relie les manifestes
+(dépendances directes, contraintes et leur emplacement) aux lockfiles (versions installées,
+transitives), avec ce qui est commun dans ``lockfiles.py``.
 """
 
 import posixpath
@@ -11,7 +11,7 @@ from collections.abc import Callable, Sequence
 
 from forceupdate.detect.manifests import ecosystem_for_manifest
 from forceupdate.models import Ecosystem, Notice, Project
-from forceupdate.parsers import go, npm, php, python, ruby, rust
+from forceupdate.parsers import go, java, npm, php, python, ruby, rust
 from forceupdate.parsers.base import ParseError, ReadText
 from forceupdate.parsers.lockfiles import Lockfile
 
@@ -24,6 +24,7 @@ _PARSERS: dict[Ecosystem, Callable[[Project, ReadText, Sequence[str]], None]] = 
     Ecosystem.GO: lambda project, read_text, _: go.parse_project(project, read_text),
     Ecosystem.PACKAGIST: lambda project, read_text, _: php.parse_project(project, read_text),
     Ecosystem.RUBYGEMS: lambda project, read_text, _: ruby.parse_project(project, read_text),
+    Ecosystem.MAVEN: java.parse_project,
 }
 
 _LOCKFILE_PARSERS: dict[str, Callable[[str, str], Lockfile]] = {

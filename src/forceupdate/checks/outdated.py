@@ -155,6 +155,16 @@ def _target(
             and scheme.sort_key(v.version) <= ceiling
         ]
         target = scheme.latest(fresh) or (None if refused else target)
+    if current is not None and target is not None and not scheme.compatible(current, target):
+        # Une autre variante (Maven : -android pour qui a -jre) : la plus haute de la sienne.
+        fresh = [
+            v.version
+            for v in info.versions
+            if not v.yanked
+            and v.deprecated is None
+            and not is_excluded(scheme, excluded, v.version)
+        ]
+        target = scheme.latest(fresh, current)
     if current is None or not scheme.is_prerelease(current):
         return target
     available = [v for v in info.available() if not is_excluded(scheme, excluded, v)]

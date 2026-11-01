@@ -27,10 +27,13 @@ En deux temps :
      la nouvelle y est insérée ;
    - une contrainte Ruby faite de plusieurs chaînes (``">= 1.19.0", "< 1.20"``) se réécrit avec
      ses guillemets (``ruby.written_target``) ;
+   - une version Maven ou Gradle citée par une propriété ou une variable se réécrit là où
+     celle-ci est définie (``<properties>``, ``gradle.properties``, ``[versions]`` du catalogue) :
+     l'emplacement de la dépendance est déjà celui-là (``java``) ;
    - **auto-vérification** : le fichier réécrit est relu par son parseur (``python``,
-     ``npm``, ``rust``, ``go``, ``php``, ``ruby``). Il doit redonner les mêmes déclarations, dans
-     le même ordre, avec la nouvelle contrainte à chaque endroit réécrit, et aucune autre
-     contrainte changée.
+     ``npm``, ``rust``, ``go``, ``php``, ``ruby``, ``java``). Il doit redonner les mêmes
+     déclarations, dans le même ordre, avec la nouvelle contrainte à chaque endroit réécrit,
+     et aucune autre contrainte changée.
      Sinon il n'est pas réécrit, ni les options qui le touchaient.
 
    Ce qui n'est pas appliqué est rendu avec la raison (``Skipped``).
@@ -68,7 +71,8 @@ from forceupdate.models import (
     UpdateOption,
 )
 from forceupdate.parsers.base import ParseError, ReadText
-from forceupdate.update.writers import go, npm, php, python, ruby, rust
+from forceupdate.parsers.gradle import PROPERTIES
+from forceupdate.update.writers import go, java, npm, php, python, ruby, rust
 from forceupdate.update.writers.base import Check, Reader, Refused, Target
 
 __all__ = [
@@ -98,6 +102,7 @@ _READERS: dict[str, Reader] = {
     **go.READERS,
     **php.READERS,
     **ruby.READERS,
+    **java.READERS,
 }
 _CHECKS: dict[str, Check] = python.CHECKS
 _WRITTEN: dict[str, Callable[[str, Target], Target]] = ruby.WRITTEN
@@ -490,6 +495,8 @@ def _reader(path: str, pattern: str | None = None) -> Reader | None:
     fichier qu'on ne sait pas relire."""
     if posixpath.basename(path) == npm.PNPM_WORKSPACE:
         return npm.read_pnpm_workspace
+    if posixpath.basename(path) == PROPERTIES:
+        return java.read_gradle_properties
     return _READERS.get(_pattern(path, pattern) or "")
 
 

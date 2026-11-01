@@ -2,15 +2,16 @@
 
     uv run python tests/fixtures/record.py          # toutes
     uv run python tests/fixtures/record.py npm      # celles d'un registre (pypi, npm, crates,
-                                                    # goproxy, packagist, rubygems, osv)
+                                                    # goproxy, packagist, rubygems, maven, osv)
     uv run python tests/fixtures/record.py pypi:jinja2   # un seul paquet
 
 À relancer quand un format de réponse change. Chaque réponse est demandée comme le fait
 forceupdate (même URL, mêmes en-têtes) et gardée telle quelle, dans
 ``tests/fixtures/<registre>/<paquet>.json`` (``/`` d'un nom scopé écrit ``__``) ; pour
 crates.io, le fichier de l'index, une ligne JSON par version : ``<paquet>.jsonl`` ; pour
-RubyGems, le fichier ``info`` de l'index compact, une ligne par version : ``<gem>.txt``. Le proxy Go
-demande plusieurs fichiers par module (la liste, le ``go.mod`` de la dernière version,
+RubyGems, le fichier ``info`` de l'index compact, une ligne par version : ``<gem>.txt`` ; pour
+Maven, le ``maven-metadata.xml`` de l'artefact (``:`` écrit ``__``) : ``<groupe>__<artefact>.xml``.
+Le proxy Go demande plusieurs fichiers par module (la liste, le ``go.mod`` de la dernière version,
 ``@latest``, le chemin de la majeure suivante) : ``goproxy/<module>.json`` les garde tous, par
 chemin (``github.com/!burnt!sushi/toml/@v/list``), avec leur statut (404 compris).
 
@@ -18,7 +19,7 @@ OSV : ``osv/queries.json`` garde, pour chaque version demandée (``écosystème/
 le résultat de ``querybatch`` (les identifiants des failles) ; ``osv/vulns/<id>.json``, chaque
 avis complet (``GET /v1/vulns/{id}``). Les versions demandées sont celles des mini-projets
 ``tests/projects/vulnerable``, ``cargo``, ``cargo-workspace``, ``go``, ``go-workspace``,
-``composer`` et ``bundler`` (``OSV_PROJECTS``), plus ``OSV_EXTRA``.
+``composer``, ``bundler``, ``maven`` et ``gradle`` (``OSV_PROJECTS``), plus ``OSV_EXTRA``.
 
 Les tests s'appuient surtout sur ce qui ne bouge plus : une version publiée, retirée ou
 dépréciée le reste, une faille corrigée aussi. Ceux qui citent la dernière version, le nombre
@@ -40,6 +41,7 @@ from forceupdate.net.http import Response
 from forceupdate.registries.base import PackageNotFound, Registry
 from forceupdate.registries.crates import Crates
 from forceupdate.registries.goproxy import GoProxy
+from forceupdate.registries.maven import Maven
 from forceupdate.registries.npm import Npm
 from forceupdate.registries.packagist import Packagist
 from forceupdate.registries.pypi import PyPI
@@ -56,6 +58,8 @@ OSV_PROJECTS = (
     PROJECTS / "go-workspace",
     PROJECTS / "composer",
     PROJECTS / "bundler",
+    PROJECTS / "maven",
+    PROJECTS / "gradle",
 )
 """Les mini-projets dont les versions sont demandées à OSV."""
 
@@ -149,6 +153,29 @@ PACKAGES: dict[str, tuple[type[Registry], dict[str, str]]] = {
             "rest-client": "versions retirées (1.6.10 à 1.6.13) absentes de l'index",
         },
     ),
+    "maven": (
+        Maven,
+        {
+            "org.apache.logging.log4j:log4j-core": "Log4Shell : 2.14.1 par une propriété partagée",
+            "org.apache.logging.log4j:log4j-api": "la même propriété que log4j-core (maven)",
+            "org.apache:apache": "un parent hors du dépôt (23), une majeure à chaque version",
+            "com.fasterxml.jackson:jackson-bom": "un BOM importé (maven), une plateforme (gradle)",
+            "junit:junit": "4.12 en faille, géré par le parent avec le scope test (maven)",
+            "org.apache.maven.plugins:maven-compiler-plugin": "dans pluginManagement (maven)",
+            "org.apache.maven.plugins:maven-war-plugin": "un plugin à version (maven)",
+            "com.google.guava:guava": "variantes -jre et -android ; faille corrigée en -android",
+            "org.apache.commons:commons-text": "une plage [1.9,2.0) ; Text4Shell, corrigée en 1.10",
+            "org.springframework:spring-webmvc": "5.3.17 par une propriété du module (maven)",
+            "javax.servlet:javax.servlet-api": "scope provided (maven), à jour",
+            "org.yaml:snakeyaml": "1.30 facultative (maven), dans gradle.properties (gradle)",
+            "com.squareup.okhttp3:okhttp": "version.ref du catalogue, partagée (gradle)",
+            "com.squareup.okhttp3:logging-interceptor": "la même version.ref qu'okhttp (gradle)",
+            "com.github.ben-manes.versions": "un plugin du catalogue : le portail des plugins",
+            "org.springframework.boot": "un plugin de build.gradle.kts : le portail des plugins",
+            "androidx.annotation:annotation": "Google Maven (gradle)",
+            "org.mockito:mockito-core": "notation en carte, group: name: version: (gradle)",
+        },
+    ),
 }
 """Les paquets enregistrés, par registre, avec le cas que chacun couvre."""
 
@@ -161,13 +188,14 @@ OSV_EXTRA: dict[tuple[Ecosystem, str, str], str] = {
 }
 """Les versions demandées à OSV en plus de celles des mini-projets, avec le cas couvert."""
 
-SUFFIXES = {"crates": ".jsonl", "rubygems": ".txt"}
+SUFFIXES = {"crates": ".jsonl", "rubygems": ".txt", "maven": ".xml"}
 """L'extension des réponses d'un registre ; ``.json`` sinon."""
 
 
 def fixture_path(registry: str, name: str) -> Path:
+    """Le fichier d'une réponse : ``/`` (npm) et ``:`` (Maven) s'y écrivent ``__``."""
     suffix = SUFFIXES.get(registry, ".json")
-    return FIXTURES / registry / f"{name.replace('/', '__')}{suffix}"
+    return FIXTURES / registry / f"{name.replace('/', '__').replace(':', '__')}{suffix}"
 
 
 def osv_queries() -> list[tuple[Ecosystem, str, str]]:

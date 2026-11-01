@@ -118,7 +118,7 @@ Statuts : `à faire`, `en cours`, `fait`.
 | E22 | F | Go | fait |
 | E23 | F | PHP (Composer) | fait |
 | E24 | F | Ruby (Bundler) | fait |
-| E25 | F | Java (Maven, Gradle) | à faire |
+| E25 | F | Java (Maven, Gradle) | fait |
 | E26 | F | .NET (NuGet) | à faire |
 | E27 | G. Compléments | Fin de vie des runtimes et frameworks | à faire |
 | E28 | G | Fichier de code isolé | à faire |
@@ -1369,6 +1369,17 @@ un `.gemspec` sous un `Gemfile`) ; `tests/fake_bundler.py` sert un faux outil à
 tests. Les tests qui disaient un écosystème « pas encore géré » prennent Maven : à E25, les
 passer à NuGet.
 
+Depuis E25 (voir ses notes) : une version peut être écrite une fois pour plusieurs dépendances
+(une propriété Maven, une entrée `[versions]` du catalogue Gradle) : chacune a cet emplacement,
+et `Dependency.file` est le fichier où la version est écrite (le `pom.xml` parent d'un module) ;
+la réécriture n'a lieu qu'une fois et le planificateur le dit (`_shared_warnings`). Sans
+lockfile, une version exacte qui est celle de l'outil va dans `Dependency.installed`.
+`VersionScheme.compatible` écarte une autre variante d'une version (`-jre` / `-android`).
+`parsers/xml_spans.py` lit un XML avec la position du texte (pour les `.csproj`).
+`writers._reader` reconnaît un fichier par son nom quand ce n'est pas un manifeste
+(`gradle.properties`). Les tests qui disaient un écosystème « pas encore géré » prennent NuGet :
+à E26, il n'en reste plus (voir E26).
+
 **Fini quand**, pour chaque étape : sur un mini-projet de l'écosystème, l'analyse
 et la mise à jour donnent un résultat juste, dans l'interface et en ligne de
 commande. Si l'outil natif n'est pas installé sur la machine, la régénération du
@@ -1776,18 +1787,164 @@ lockfile est testée avec une commande simulée, et c'est noté.
 
 ### E25 — Java (Maven, Gradle)
 
-- [ ] Reprendre `parse_pom_xml` et ses tests, puis le réécrire avec `xml.etree` (bibliothèque standard) au lieu de motifs :
+- [x] Reprendre `parse_pom_xml` et ses tests, puis le réécrire avec ~~`xml.etree`~~ `xml.parsers.expat` (l'analyseur de `xml.etree`, bibliothèque standard : il donne la position du texte) au lieu de motifs :
   - ordre des balises libre ;
   - `${propriété}` résolues depuis `<properties>` (et le parent s'il est dans le dépôt) ;
   - `dependencyManagement`, plugins ;
   - version héritée d'un parent ou d'un BOM distant : « gérée par le parent ».
-- [ ] Gradle :
+- [x] Gradle :
   - catalogue `gradle/libs.versions.toml` (TOML, donc fiable) ;
   - `build.gradle` et `build.gradle.kts`, formes littérales courantes (`implementation("g:a:v")`) ;
   - variables non résolues : non vérifiables.
-- [ ] Ordre des versions Maven : qualificatifs `alpha` < `beta` < `milestone` < `rc` < `snapshot` < `""` < `sp`.
-- [ ] Registre : `maven-metadata.xml` de Maven Central, et Google Maven pour `androidx.*` et `com.android.*`.
-- [ ] Réécriture là où la version est définie (la balise ou la propriété), dans `libs.versions.toml`, ou dans les littéraux Gradle. Pas de lockfile : les verrous Gradle sont hors V1.
+- [x] Ordre des versions Maven : qualificatifs `alpha` < `beta` < `milestone` < `rc` < `snapshot` < `""` < `sp`.
+- [x] Registre : `maven-metadata.xml` de Maven Central, et Google Maven pour `androidx.*` et `com.android.*`.
+- [x] Réécriture là où la version est définie (la balise ou la propriété), dans `libs.versions.toml`, ou dans les littéraux Gradle. Pas de lockfile : les verrous Gradle sont hors V1.
+- [x] Ajoutés en route : profils (`<profiles>`), `<parent>` distant et BOM importés vérifiés comme des dépendances, modules du même build non vérifiables, `<scope>system` (fichier local), plugins sans `groupId` (`org.apache.maven.plugins`) ou sans version ; les plugins Gradle (bloc `plugins`, `[plugins]` du catalogue) cherchés sur le portail des plugins Gradle ; les variables Gradle (`val`, `def`, `ext`, `extra`, `gradle.properties`) ; les plages Maven et Gradle (`1.+`, `latest.release`, `V!!`, `]a,b[`) ; les **variantes** (`-jre` / `-android` de Guava : jamais l'une pour l'autre, un point d'extension `VersionScheme.compatible`) ; une version partagée (propriété, `[versions]`, variable) dite dans le plan ; les avertissements d'une option cochée et la ligne « Aucun lockfile à régénérer » dans le plan en ligne de commande ; `../pom.xml` pour le fichier d'un parent ; la remarque sur `gradle.lockfile` ; mini-projets `maven` et `gradle`, réponses enregistrées de Maven (`tests/fixtures/maven/`).
+
+**Notes** (session 25) :
+
+- **Commit d'abord** : E24 commitée seule (`E24 : Ruby (Bundler)`, `0529c0e`), avec l'accord de
+  l'utilisateur, après 3133 tests verts. **Ni Maven ni Gradle installés** (choix de l'utilisateur :
+  pas besoin pour lire ni réécrire) ; seul le jar `maven-artifact` 3.9.16 a été téléchargé, avec son
+  accord, dans `~/sdk/maven-artifact/` (SHA-1 identique à celle publiée sur Maven Central), pour
+  l'oracle des versions. Java 8 n'a qu'un JRE (pas de `javac`) : l'oracle est un script lancé par
+  Nashorn (`jjs -cp maven-artifact-3.9.16.jar`), qui appelle `ComparableVersion` et `VersionRange`.
+- **Vérifié contre le vrai `ComparableVersion`** (maven-artifact 3.9.16), avant d'écrire les tests :
+  - **l'ordre** : `versions/maven.py` réécrit l'algorithme de Maven 3.9 (éléments, sous-listes,
+    `normalize`, mots connus, `a1`/`b1`/`m1`, `cr`, `ga`/`final`/`release`, et la règle de MNG-7559 :
+    « `.X` se lit comme `-X` ») ; comparé à l'oracle sur **9 102 versions** publiées de 67 artefacts
+    de Maven Central et de Google Maven (Guava `-jre`/`-android`, Hibernate `.Final`/`.CR1`, Jetty
+    `.v2023…`, OkHttp `-alpha.11`, PostgreSQL `.jre7`, aws-sdk…) et les cas limites des tests de
+    `ComparableVersion` : formes canoniques et **4 980 600 comparaisons, aucun écart** ; trois
+    mutations (rc et snapshot échangés, zéros retirés seulement en fin, sans la règle de MNG-7559)
+    en donnent 108, 4 398 et 1 094 : la comparaison mord ;
+  - **`ComparableVersion` n'est pas transitif** : le tri de Java refuse le corpus (« Comparison
+    method violates its general contract ») ; `1` < `1a` < `1-0.alpha`, mais `1` > `1-0.alpha`.
+    forceupdate a les mêmes réponses ; `sort_key` ne lève pas ;
+  - **`VersionRange`** : 45 spécifications, lues ou refusées comme Maven (intervalles, plusieurs,
+    chevauchement, intervalle vide, version seule hors de `[]`), et ce qu'elles contiennent : aucun
+    écart, sauf `[1.0,2.0,3.0]` (une borne haute « 2.0,3.0 ») refusée exprès ; **une version nue**
+    « contient » toutes les versions pour Maven (c'est une recommandation) : ici elle n'accepte
+    qu'elle (voir « Tranché ») ; **`[1.0,2.0)` contient `2.0-alpha-1`** (sous `2.0`) ;
+  - **Maven Central** : `maven-metadata.xml`, versions dans l'ordre de publication, **`<latest>` et
+    `<release>` peuvent être des pré-versions** (log4j-core : `3.0.0-beta3` ; maven-artifact :
+    `4.0.0-rc-7`), aucune date par version (`<lastUpdated>` date le fichier) ; 404 en HTML pour un
+    inconnu. **Google Maven** (`dl.google.com/android/maven2`) : le même fichier, `max-age=86400`.
+    **Le portail des plugins Gradle** (`plugins.gradle.org/m2`) : le marqueur `{id}:{id}.gradle.plugin`,
+    `max-age=43200` ; ce qu'il n'a pas est renvoyé (303) vers Maven Central ;
+  - **OSV** : l'écosystème `Maven`, le nom `groupe:artefact`. **Log4Shell** : log4j-core 2.14.1 →
+    CVE-2021-44228 corrigée en 2.15.0, puis CVE-2021-45046 en 2.16.0, CVE-2021-45105 en 2.17.0,
+    CVE-2021-44832 en 2.17.1 (et des avis de 2025-2026 corrigés en 2.25.x) ; commons-text 1.9 →
+    Text4Shell (CVE-2022-42889) en 1.10.0 ; junit 4.12 → CVE-2020-15250 en 4.13.1 ; **Guava : OSV
+    écrit `fixed: 32.0.0-android`** (une autre variante que `-jre`).
+- **Organisation** :
+  - `versions/maven.py` (`MAVEN`, `MavenVersion` : `canonical`, `numbers`, `prerelease`, `flavor` ;
+    `MavenRange`, `Restriction`) ; `versions/base.py` : `compatible`/`_compatible` (inerte ailleurs),
+    suivi par `candidates` ; `checks/outdated.py` : une dernière d'une autre variante est remplacée
+    par la plus haute de la sienne ;
+  - `parsers/xml_spans.py` (expat, positions du texte d'un élément, DTD et entités refusées) ;
+    `parsers/maven.py` (`read_pom` → `Pom`, `Entry`, `ParentRef`, `Property` ; `parse_pom_xml` un
+    fichier seul ; `parse_pom_project` avec les parents du dépôt et les modules du build ; les
+    `REASON_*`) ; `parsers/gradle_spans.py` (un lexer de Groovy et de Kotlin) ; `parsers/gradle.py`
+    (`read_catalog` → `Catalog`, `read_script` → `Script`, `read_properties`, `script_dependencies`,
+    `catalog_dependencies`, `parse_gradle_project`, `configuration_scope`, `plugin_id`) ;
+    `parsers/java.py` (`parse_project` : `pom.xml`, puis Gradle) ;
+  - `registries/maven.py` (`Maven`, `repository`, `coordinates`, `parse_metadata`) ;
+    `update/constraints.py` (`_rewrite_maven`) ; `update/writers/java.py` (`read_pom_xml` : les
+    dépendances puis les propriétés ; `read_build_script` : puis les variables ;
+    `read_version_catalog` : puis `[versions]` ; `read_gradle_properties`, reconnu par son nom dans
+    `writers._reader`) ; `update/planner.py` : `_shared_warnings` (index des emplacements de tout le
+    rapport) ; `report/__init__.py` : `_relative` ; `report/terminal.py` : avertissements des options
+    cochées, « Aucun lockfile à régénérer ».
+- **Tranché** :
+  - **une version est située là où elle est écrite** : le texte de `<version>`, ou la valeur de la
+    propriété qu'elle cite (`Dependency.file` est alors le fichier de la propriété : le `pom.xml`
+    parent pour un module), l'entrée `[versions]` d'un `version.ref`, la variable d'un script, la
+    ligne de `gradle.properties`. Pas d'`EditKind.CATALOG` : plusieurs dépendances ont le même
+    emplacement, la réécriture n'a lieu qu'une fois (deux versions différentes : la seconde refusée,
+    avec la raison), et le planificateur le dit (« Version partagée avec … : elle monte aussi ») ;
+    le front n'a rien eu à changer ;
+  - **une version nue est la version utilisée** (Maven : le plus proche l'emporte, une directe
+    gagne ; Gradle : « require ») : elle n'accepte qu'elle, c'est sa borne basse et sa version
+    exacte, comme Go ; elle va dans `Dependency.installed` (sans `lockfile`), pour que le rapport la
+    montre. Une plage (`[1.9,2.0)`) a sa borne basse, « approximative » ; Maven prendrait la plus
+    haute publiée, que dit la version permise ;
+  - **un `pom.xml` du dépôt** : ses parents (`<relativePath>`, `../pom.xml` par défaut, s'il a le
+    bon `groupId:artifactId`) donnent leurs propriétés (celle de l'enfant l'emporte),
+    `dependencyManagement` et `pluginManagement` (avec leur scope si la dépendance n'en écrit
+    pas) ; une dépendance sans version gérée par le même fichier ne fait qu'une déclaration ;
+    gérée par un parent du dépôt, elle est redonnée dans le module, avec l'emplacement du parent ;
+    gérée hors du dépôt : « gérée par un BOM importé (…) », « gérée par le parent … (hors du
+    dépôt) », non vérifiable. Le parent distant et les BOM sont des dépendances (leur version est
+    écrite) ; un module du même build (`${project.version}`, ou un `groupId:artifactId` d'un
+    `pom.xml` du build) est non vérifiable ;
+  - **les scopes** : `test` → `dev`, `provided`, `runtime`, `compile`, `import` → `runtime`,
+    `<optional>` → `optional`, plugins et extensions → `build` ; Gradle : `test…`, `androidTest…`,
+    `developmentOnly` → `dev`, `classpath`, `annotationProcessor`, `kapt`, `ksp` → `build` ; les
+    entrées du catalogue prennent le scope des scripts qui les citent (du projet et des
+    sous-projets), `runtime` sinon ; un script qui cite `libs.x` ne redonne pas la dépendance ;
+  - **Gradle n'est jamais lancé** ; les variables sont cherchées dans le script (`val`, `def`,
+    `ext`, `extra`, `by extra`), dans les `ext` des scripts des dossiers parents, puis dans
+    `gradle.properties` (du projet, puis des parents) ; une variable définie deux fois autrement,
+    une expression (`${deps.x}`), une concaténation : non vérifiables, avec la raison ;
+  - **les dépôts** : Google Maven pour `androidx.`, `com.android.`, `com.google.android.`,
+    `com.google.firebase`, `com.google.gms` ; le portail pour un plugin (nommé par son `id`) ;
+    Maven Central sinon ;
+  - **pré-versions** : sous la version finale pour Maven (`alpha`, `beta`, `milestone`, `rc`,
+    `snapshot`), plus `dev`, `ea`, `pre`, `preview` ; **variantes** : les autres mots (`jre`,
+    `android`, `v` de Jetty) ; une version d'une autre variante n'est jamais candidate (une version
+    sans variante l'est toujours) ;
+  - **la réécriture** : une version nue devient la version visée (`30.1-jre` → `33.7.2-jre`), `V!!`
+    garde ses `!!`, `[V]` aussi ; un intervalle : borne basse à la version visée, borne haute
+    dépassée déplacée au même niveau (`[1.9,2.0)` → `[2.3.1,3.0)`) ; `1.+` garde sa précision, sans
+    plancher possible ;
+  - **pas de lockfile** (pas de `LockKind`) : la mise à jour s'arrête à la réécriture ; le plan dit
+    « Aucun lockfile à régénérer » (ligne de commande) et « Lockfiles régénérés 0 » (écran du
+    plan) ; un `gradle.lockfile` donne une remarque (ni lu ni régénéré) ;
+  - **les réponses enregistrées** : 18 artefacts (`PACKAGES["maven"]`, 108 Ko) ; pour OSV, les 19
+    versions des deux mini-projets ajoutées à `queries.json` avec leurs 40 avis (un script qui fait
+    la requête de `record.py osv` pour ces projets seuls) : rien d'autre de changé.
+- **Trouvé** :
+  - sans précaution, la correction des failles de Guava aurait proposé `32.0.0-android` à qui a
+    `-jre` (OSV écrit cette version-là) : d'où les variantes ; le constat de faille cite toujours la
+    version d'OSV, l'option proposée garde la variante ;
+  - une dépendance sans `<scope>` gérée avec `<scope>test</scope>` sortait `runtime` : le scope de
+    la gestion vaut, comme dans Maven ;
+  - les avertissements d'une option cochée n'apparaissaient pas dans le plan en ligne de commande
+    (depuis E10) : ajoutés sous son changement ; la colonne « Changement » d'un module écrivait
+    `pom.xml` pour le `pom.xml` parent : `../pom.xml` ;
+  - le test qui remet les anciennes contraintes de tous les mini-projets les remettait deux fois à
+    un emplacement partagé : une fois.
+- **Tests** : `test_versions_maven.py` (554 : formes canoniques, ordre et plages relevés sur
+  maven-artifact 3.9.16, non-transitivité, satisfies, bornes, pré-versions, variantes, écarts) ;
+  `test_parsers_maven.py` (23, dont `TestParsePomXml` repris de `reference/`, et le lecteur XML) ;
+  `test_parsers_gradle.py` (22) ; `test_registries_maven.py` (22, plus 1 réseau) ;
+  `test_java_projects.py` (9 : inventaire, constats, plan, `scan` et `update` en ligne de commande) ;
+  `test_update_constraints.py` (24 cas Maven et Gradle) ; `test_writers.py` (4, et les deux
+  mini-projets) ; les mini-projets passent aussi par les tests des sources GitHub, GitLab et
+  Bitbucket ; les tests qui prenaient Maven pour « pas encore géré » prennent NuGet. 3801 tests
+  Python verts (plus 18 réseau), ruff propre ; 141 Vitest ; 49 Playwright.
+- **Vérifié à la main**, sur des copies dans le scratchpad, avec le vrai Maven Central, Google Maven,
+  le portail des plugins et OSV : `forceupdate scan` (Log4Shell et ses suites, la plage
+  approximative, les trois non vérifiables du module `app`, le plugin Gradle et `androidx`) ;
+  `forceupdate update --yes` sur `maven` (14 mises à jour, 3 fichiers, 9 lignes, `<log4j.version>`
+  une fois pour deux dépendances et trois projets ; relancée, l'analyse ne garde que ce que seules des
+  majeures corrigent) et sur `gradle` (4 fichiers, dont `gradle.properties` et `[versions]`) ;
+  `forceupdate ui` piloté par Playwright : rapport (versions utilisées, plage « approximative »,
+  `pom.xml, ligne 28` pour un module), écran 5 (« Version partagée avec … », « sans lockfile »,
+  « Lockfiles régénérés 0 »), plan (3 diffs), application (« Pas de lockfile : relancer
+  l'installation du projet »), nouvelle analyse ; Gradle jusqu'au plan (4 diffs) ; aucune erreur de
+  console.
+- **Limites** : un dépôt Maven déclaré (`<repositories>`, `settings.xml`, `repositories { }`) n'est
+  pas lu : ses artefacts sont cherchés sur Maven Central ; un artefact déplacé (`<relocation>`,
+  mysql-connector-java → mysql-connector-j) n'est pas vu ; une version gérée par un parent ou un
+  BOM distant n'est pas vérifiée (le parent ou le BOM, si) ; `settings.gradle(.kts)`, `buildSrc`,
+  un autre catalogue que `gradle/libs.versions.toml`, les blocs de version riches des scripts
+  (`version { strictly … }`) ne sont pas lus ; Gradle peut résoudre plus haut que la version écrite
+  (la plus haute l'emporte) ; un `kotlin("stdlib")` sans version est ignoré ; les verrous de Gradle
+  ne sont ni lus ni régénérés ; un constat de faille cite la version corrigée d'OSV, même d'une
+  autre variante (Guava : `32.0.0-android`) ; l'ordre de Gradle diffère un peu de celui de Maven
+  (`1.1.0` > `1.1` pour Gradle) : celui de Maven sert pour les deux.
 
 ### E26 — .NET (NuGet)
 
@@ -1799,6 +1956,16 @@ lockfile est testée avec une commande simulée, et c'est noté.
 - [ ] Versions NuGet : 4 segments, pré-versions, plages `[1.0,2.0)`.
 - [ ] Registre : « flat container » pour les versions, API « registration » pour la dépréciation.
 - [ ] Réécriture des `.csproj`, `.props` et `packages.config` ; lockfile : `dotnet restore --force-evaluate` si `packages.lock.json` existe.
+- [ ] Depuis E25 : lire les `.csproj` et les `.props` avec `parsers/xml_spans.py` (positions du texte
+  et des attributs à ajouter : `Version="…"` est un attribut) ; une version de
+  `Directory.Packages.props` est écrite une fois pour les projets en dessous : la même mécanique que
+  les propriétés Maven (l'emplacement de la version, `Dependency.file` = le `.props`) ; les plages
+  NuGet ressemblent à celles de Maven (`versions/maven.py`, `Restriction`), mais une version nue y
+  est un minimum (`>= V`).
+- [ ] Les tests qui prenaient NuGet pour « pas encore géré » (`test_checks_vulns.py`, `test_cli.py`,
+  `test_parsers_python.py`, `test_registries.py`, `test_versions.py`) : il ne reste plus d'écosystème
+  à prendre. Les garder en retirant un écosystème des tables (`_PARSERS`, `_SCHEMES`,
+  `_REGISTRIES`) le temps du test, ou retirer ce chemin s'il devient du code mort.
 
 ---
 
@@ -1907,6 +2074,22 @@ seulement des imports) donnent un rapport juste.
   - un refresh token de Bitbucket inutilisé pendant 3 mois expire : le compte passe en `problem` (« se reconnecter ») ; le dire dans la carte avant, ou le renouveler de temps en temps ;
   - un dépôt où le compte écrit par un groupe, sans droit explicite ni administration du workspace : vu en lecture seule (`…/permissions/repositories` ne liste que les droits explicites) ; le vérifier sur un vrai workspace d'équipe, et sinon essayer `role=contributor` ;
   - lire l'arbre de la branche par git (`git.remote_tree`) coûte un `fetch` de plus par envoi, quand la branche existe déjà : le mesurer sur un gros dépôt.
+- [ ] Depuis E25 (Java) :
+  - les dépôts Maven déclarés (`<repositories>`, miroirs de `~/.m2/settings.xml`, `repositories { }`
+    de Gradle) ne sont pas lus : leurs artefacts sont cherchés sur Maven Central (un privé y est
+    introuvable) ; les lire, avec leurs identifiants ;
+  - une version gérée par un parent ou un BOM distant (Spring Boot) est « non vérifiable » : lire le
+    `pom` du parent ou du BOM (`…/{version}/{artefact}-{version}.pom`) pour connaître la version qu'il
+    impose, et la vérifier (la mise à jour reste celle du parent ou du BOM) ;
+  - un artefact déplacé (`<relocation>` dans le `pom` de ses dernières versions : mysql-connector-java
+    → com.mysql:mysql-connector-j) : le dire comme une dépréciation, avec le remplaçant ;
+  - les verrous de Gradle (`gradle.lockfile`) : les lire pour les versions installées ; les
+    régénérer demande Gradle, qui exécute les scripts du projet (le dire, comme Bundler) ;
+  - `settings.gradle(.kts)` (`pluginManagement`, `dependencyResolutionManagement`, d'autres
+    catalogues), `buildSrc`, les versions riches des scripts (`version { strictly(…) }`) ;
+  - un constat de faille cite la version corrigée d'OSV même d'une autre variante (Guava :
+    `32.0.0-android` pour qui a `-jre`) ; citer celle de la variante utilisée (la plus petite
+    publiée qui n'est plus concernée).
 
 **Fini quand** : tests de robustesse verts, mesure notée, réglages modifiables
 depuis l'interface.
@@ -2006,3 +2189,4 @@ En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.
 | 22 | 2026-10-30 | E22 | Fait. E21 déjà commitée. Go installé avec l'accord de l'utilisateur (winget bloqué par une autre installation : l'archive officielle de Go 1.27.3, vérifiée, dans `~/sdk`). `versions/go.py` (semver à `v`, pseudo-versions, `+incompatible`, chemins de majeure ; l'ordre de `golang.org/x/mod` reproduit), `parsers/go.py` (un lexer comme celui de `modfile` : `require` en ligne et en bloc avec emplacements, `// indirect`, `replace` local ou vers un module, `exclude`, `retract`, dépréciation ; `go.work` et ses membres), `registries/goproxy.py` (liste, `go.mod` de la dernière pour les retraits et la dépréciation, `@latest`, chemins encodés, 404/410, majeure suivante sous son chemin), OSV `Go`, `writers/go.py`, pilote `go mod tidy`. Tranché : la version de `go.mod` est la version utilisée (une contrainte n'accepte qu'elle) ; une indirecte se réécrit dans `go.mod` ; une majeure est un autre module, proposée « à la main » avec `go get …/vN` ; `go mod tidy` plutôt que `go get` (vérifié : `go get` pour descendre retire d'autres modules). Trouvé en vrai : tidy relève la directive `go` (et l'écrit, à la version installée, s'il n'y en a pas) ; `GOTOOLCHAIN=auto` télécharge un autre Go (`local` passé) ; `GOFLAGS=-modfile=` détourne tidy (neutralisé) ; un `vendor/` devient périmé (dit) ; une version exclue fait sauter tidy à la dernière (jamais proposée). Corrigé en route : la « dernière » ignore les versions exclues ; deux libellés de l'écran 5 (avec le skill `ui-ux-pro-max`) ; un double point de `forceupdate update` depuis E10. Mini-projets `go` et `go-workspace` (faits par `go`). Vérifié à la main avec le vrai `go` : `scan`, `update` (versions exactes, `go build`, `go mod tidy -diff` sans rien à changer) et `ui` sur des copies. 2551 tests Python (plus 13 réseau), 141 Vitest, 49 Playwright. Cases ajoutées à E29 |
 | 23 | 2026-10-30 | E23 | Fait. Commit de E22 d'abord (accord de l'utilisateur) ; PHP 8.5.12 et Composer 2.11.0 installés avec son accord (archives officielles vérifiées, dans `~/sdk`). `versions/composer.py` (`VersionParser` de composer/semver et l'ordre de `version_compare` réécrits : **aucun écart** sur 1 282 versions, 19 600 paires et 99 contraintes ; **22 choix de `composer update` reproduits**), `parsers/php.py` (repris de `reference/` : contraintes telles qu'écrites et emplacements, noms en minuscules, paquets « plateforme », branches, `replace`/`provide`, `conflict`, dépôts `path` et autres d'après le lockfile ; `composer.lock` en graphe), `registries/packagist.py` (`p2` minifié, `abandoned` et son remplaçant), OSV `Packagist`, styles de contrainte (`~1.2` jusqu'à 2.0), `writers/php.py`, pilote `composer update x:V… -W --no-install --no-scripts --no-plugins`. Trouvé en vrai : `update --lock` garde une version que la contrainte n'accepte plus (jamais utilisé) ; `-W` nécessaire, `COMPOSER_MINIMAL_CHANGES` pour rien d'autre ; scripts et plugins lancés sans `--no-scripts`/`--no-plugins` (témoins) ; `COMPOSER_PREFER_LOWEST` fait descendre (retiré) ; **Composer 2.9+ refuse toute version qui garde une faille** : tranché avec l'utilisateur, levé pour les failles seules (`COMPOSER_POLICY_ADVISORIES_BLOCK=0`) sauf réglage du projet ou de la personne. `Dependency.excluded` devient des contraintes (`is_excluded`) ; corrigé en route : la version permise ignorait les versions exclues. Mini-projet `composer` (lockfile de Composer). Vérifié à la main avec le vrai Composer : `scan`, `update` (versions exactes, `composer validate` propre) et `ui` sur des copies. 2838 tests Python (plus 15 réseau), 141 Vitest, 49 Playwright. Cases ajoutées à E27, E29 |
 | 24 | 2026-11-01 | E24 | Fait. E23 déjà commitée. Ruby 4.0.9 (RubyGems et Bundler 4.0.20) installé avec l'accord de l'utilisateur (RubyInstaller, archive vérifiée, dans `~/sdk`). `versions/rubygems.py` (`Gem::Version` et `Gem::Requirement` réécrits : **aucun écart** sur 6 013 versions, 90 926 paires et 221 contraintes ; **25 choix de `bundle lock` reproduits**), `parsers/ruby_spans.py` (un lexer de Ruby : le `Gemfile` n'est jamais exécuté), `parsers/ruby.py` (`Gemfile` et `gems.rb` : groupes, plateformes, sources, git, chemins, `gemspec`, conditions et variables dites ; `.gemspec` ; `Gemfile.lock` repris de `reference/` et réécrit d'après le `LockfileParser` de Bundler : toutes les sections, versions à plateforme, graphe ; une gem `path:` résolue dans le lockfile du `Gemfile` qui la cite), `registries/rubygems.py` (l'index compact, huit fois plus léger que l'API v1), styles `~>` (précision gardée, plancher `, >= V`), réécriture en plusieurs chaînes (`written_target`), pilote `_Bundler` (vérifié en vrai : Bundler ne vise pas une version, donc `= V` le temps d'un `bundle lock`, une ligne `gem` pour une indirecte ; il exécute le `Gemfile` et tous les `.gemspec` (quatre témoins) ; `BUNDLE_GEMFILE` et `BUNDLE_LOCKFILE` remplacés ; la plateforme qu'il ajoute sous Windows retirée). Mini-projet `bundler` fait par le vrai Bundler, 23 gems enregistrées, 51 avis OSV ajoutés. 3133 tests Python verts (plus 17 réseau, vrai Bundler compris), 141 Vitest, 49 Playwright ; vérifié à la main en ligne de commande et dans l'interface (11 versions exactes). Pas encore commitée. |
+| 25 | 2026-11-01 | E25 | Fait. Commit de E24 d'abord (accord de l'utilisateur) ; ni Maven ni Gradle installés (son choix), seul le jar `maven-artifact` 3.9.16 téléchargé avec son accord (SHA-1 vérifiée) pour l'oracle, lancé par Nashorn (`jjs`, le JRE 8 n'a pas de `javac`). `versions/maven.py` (`ComparableVersion` et `VersionRange` réécrits : **aucun écart** sur 9 102 versions et 4 980 600 comparaisons, 45 spécifications ; trois mutations le voient ; `ComparableVersion` n'est pas transitif, comme Maven), `parsers/xml_spans.py` (expat, positions du texte, DTD refusée), `parsers/maven.py` (`pom.xml` : propriétés, parents du dépôt, `dependencyManagement`, BOM, plugins, profils, modules du build), `parsers/gradle_spans.py` et `parsers/gradle.py` (catalogue `libs.versions.toml`, `build.gradle(.kts)` lus en jetons, jamais exécutés, variables et `gradle.properties`), `registries/maven.py` (Maven Central, Google Maven, portail des plugins Gradle ; `<release>` peut être une pré-version), `update/writers/java.py`. Tranché : une version est située là où elle est écrite (propriété, `[versions]`, variable) et plusieurs dépendances partagent son emplacement (dit dans le plan) ; une version nue est la version utilisée (`installed`) ; les variantes (`-jre`/`-android`) ne se mélangent pas ; pas de lockfile (« Aucun lockfile à régénérer »). Log4Shell vérifié (2.15.0, 2.16.0, 2.17.0, 2.17.1). Mini-projets `maven` et `gradle`, 18 artefacts enregistrés, 19 versions ajoutées pour OSV. 3801 tests Python verts (plus 18 réseau), 141 Vitest, 49 Playwright ; vérifié à la main en ligne de commande et dans l'interface. |

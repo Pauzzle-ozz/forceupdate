@@ -23,8 +23,8 @@ def test_for_ecosystem() -> None:
 
 
 def test_an_ecosystem_not_yet_handled() -> None:
-    with pytest.raises(LookupError, match="Maven"):
-        for_ecosystem(Ecosystem.MAVEN)
+    with pytest.raises(LookupError, match="NuGet"):
+        for_ecosystem(Ecosystem.NUGET)
 
 
 @pytest.mark.parametrize(

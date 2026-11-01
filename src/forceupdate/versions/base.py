@@ -90,6 +90,11 @@ class VersionScheme(ABC, Generic[V]):
         ``2.0.0rc2``, ``2.0.0-beta.1`` et ``2.0.0``)."""
         return self._release(a) == self._release(b)
 
+    def _compatible(self, current: V, version: V) -> bool:
+        """Vrai si ``version`` peut remplacer ``current`` : Maven écarte une autre variante
+        (``32.0.0-android`` pour qui a ``31.0.1-jre``). Toujours vrai ailleurs."""
+        return True
+
     # -- commun --------------------------------------------------------------
 
     def compare(self, a: str, b: str) -> int:
@@ -110,6 +115,11 @@ class VersionScheme(ABC, Generic[V]):
         """Vrai pour une version que le registre ne liste jamais, sans qu'elle soit dépubliée :
         une pseudo-version Go (un commit). Faux pour les autres écosystèmes."""
         return False
+
+    def compatible(self, current: str, version: str) -> bool:
+        """Vrai si ``version`` peut remplacer ``current`` (voir ``_compatible``) : c'est le cas
+        de toutes les candidates (``candidates``)."""
+        return self._compatible(self.parse(current), self.parse(version))
 
     def moved(self, name: str, version: str) -> str | None:
         """Le nom sous lequel ``version`` de ``name`` est publiée, quand ce n'est pas ``name`` :
@@ -184,7 +194,7 @@ class VersionScheme(ABC, Generic[V]):
 
     def candidates(self, versions: Iterable[str], current: str | None = None) -> list[str]:
         """Les versions qu'on peut proposer, dans leur ordre : les versions lisibles, sans
-        les pré-versions.
+        les pré-versions, et compatibles avec ``current`` (``compatible``).
 
         Si ``current`` est une pré-version, celles de la même version restent :
         de ``2.0.0-rc.1``, on propose ``2.0.0-rc.2``, mais pas ``2.1.0-beta.1``.
@@ -193,6 +203,7 @@ class VersionScheme(ABC, Generic[V]):
 
     def _candidates(self, versions: Iterable[str], current: str | None) -> list[tuple[str, V]]:
         line = None
+        parsed = None
         if current is not None:
             parsed = self.parse(current)
             line = parsed if self._is_pre(parsed) else None
@@ -203,6 +214,8 @@ class VersionScheme(ABC, Generic[V]):
             except InvalidVersion:
                 continue
             if self._is_pre(version) and (line is None or not self._same_release(version, line)):
+                continue
+            if parsed is not None and not self._compatible(parsed, version):
                 continue
             kept.append((text, version))
         return kept

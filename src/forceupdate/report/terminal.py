@@ -292,7 +292,7 @@ def render_plan(
 def render_changes(changes: Changes, console: Console, jobs: Sequence[Job] = ()) -> None:
     """Écrit ce que la mise à jour va faire : le diff de chaque fichier, les options choisies
     qui ne seront pas appliquées et pourquoi, puis les lockfiles à régénérer (``jobs``) et avec
-    quelle commande."""
+    quelle commande, ou qu'il n'y en a pas (un projet sans lockfile, Maven, Gradle)."""
     console.print()
     if changes.files:
         console.print(Text("Fichiers à réécrire", style="bold"))
@@ -327,6 +327,11 @@ def render_changes(changes: Changes, console: Console, jobs: Sequence[Job] = ())
             for warning in job.warnings:
                 grid.add_row("", "", Text(warning, style="yellow"))
         console.print(grid)
+    elif changes.applied:
+        console.print()
+        console.print(
+            Text("Aucun lockfile à régénérer : les manifestes réécrits suffisent.", style="bold")
+        )
 
 
 def render_outcome(changes: Changes, results: Sequence[Regenerated], console: Console) -> None:
@@ -445,12 +450,15 @@ def _print_project_plan(project: Project, selection: Selection, console: Console
         for update in picked:
             option = update.option(selection[update.id])
             assert option is not None
+            changes = Text("\n".join(option_changes(option, project.path)))
+            for warning in option.warnings:
+                changes.append(f"\n{warning}", style="yellow")
             table.add_row(
                 Text(update_subject(update)),
                 Text(f"{update.current_version} → {option.version}"),
                 _gap_text(option),
                 Text(option_fixes(option)),
-                Text("\n".join(option_changes(option, project.path))),
+                changes,
             )
         console.print(table)
     else:

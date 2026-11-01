@@ -939,13 +939,17 @@ def test_on_the_mini_projects_only_constraints_change(name: str, tmp_path: Path)
         now = reader(change.path, change.after.replace("\r\n", "\n"))
         # Remettre les anciennes contraintes aux nouveaux emplacements redonne le fichier
         # d'origine, à l'octet près : rien d'autre n'a changé.
+        # Une version écrite une fois pour plusieurs déclarations (une propriété Maven, une entrée
+        # [versions] du catalogue Gradle) n'est remise qu'une fois.
         text = change.after
         lines = text.split("\n")
+        restored = set()
         for before, after in reversed(list(zip(was, now, strict=True))):
             assert before.identity == after.identity
-            if before.constraint == after.constraint:
+            if before.constraint == after.constraint or after.location in restored:
                 continue
             assert after.location is not None
+            restored.add(after.location)
             line = lines[after.location.line - 1]
             start, end = after.location.column, after.location.end_column
             assert line[start:end] == after.constraint
@@ -1053,3 +1057,142 @@ def test_a_ruby_file_changed_since_the_analysis(make_tree: MakeTree) -> None:
     assert [s.reason for s in changes.skipped] == [
         "Gemfile a changé depuis l'analyse : « >= 1.19.0, < 1.20 » n'est plus à la ligne 4."
     ]
+
+
+# ---------------------------------------------------------------------------
+# Maven et Gradle : une version se réécrit là où elle est écrite
+# ---------------------------------------------------------------------------
+
+POM_PARENT = """\
+<project>
+  <groupId>g</groupId>
+  <artifactId>parent</artifactId>
+  <version>1</version>
+  <properties>
+    <log4j.version>2.14.1</log4j.version>
+  </properties>
+  <dependencyManagement>
+    <dependencies>
+      <dependency><groupId>org.apache.logging.log4j</groupId><artifactId>log4j-api</artifactId>
+        <version>${log4j.version}</version></dependency>
+      <dependency><groupId>org.apache.logging.log4j</groupId><artifactId>log4j-core</artifactId>
+        <version>${log4j.version}</version></dependency>
+    </dependencies>
+  </dependencyManagement>
+</project>
+"""
+
+POM_MODULE = """\
+<project>
+  <parent><groupId>g</groupId><artifactId>parent</artifactId><version>1</version></parent>
+  <artifactId>app</artifactId>
+  <dependencies>
+    <dependency><groupId>org.apache.logging.log4j</groupId><artifactId>log4j-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>4.12</version>
+    </dependency>
+  </dependencies>
+</project>
+"""
+
+
+def test_a_maven_property_shared_by_two_dependencies(make_tree: MakeTree) -> None:
+    root = make_tree({"pom.xml": POM_PARENT, "app/pom.xml": POM_MODULE})
+    projects = inventory(root)
+    # log4j-core du module : sa version est la propriété du pom.xml parent.
+    picked = choice(projects["app"], "org.apache.logging.log4j:log4j-core", "2.17.1")
+    junit = choice(projects["app"], "junit:junit", "4.13.2")
+    changes = writers.prepare(root, [picked, junit])
+    assert changes.skipped == ()
+    files = written(root, changes)
+    assert files["pom.xml"] == POM_PARENT.replace("2.14.1", "2.17.1")
+    assert files["app/pom.xml"] == POM_MODULE.replace("4.12", "4.13.2")
+    # Relu, le parent donne la nouvelle version à ses deux dépendances.
+    after = inventory(root)
+    assert {d.name: d.constraint for d in after["."].dependencies} == {
+        "org.apache.logging.log4j:log4j-api": "2.17.1",
+        "org.apache.logging.log4j:log4j-core": "2.17.1",
+    }
+
+
+def test_the_same_maven_property_from_two_projects(make_tree: MakeTree) -> None:
+    """Deux options qui réécrivent la même propriété : la même réécriture n'est faite qu'une
+    fois ; une autre version est refusée, avec la raison."""
+    root = make_tree({"pom.xml": POM_PARENT, "app/pom.xml": POM_MODULE})
+    projects = inventory(root)
+    api = choice(projects["."], "org.apache.logging.log4j:log4j-api", "2.17.1")
+    core = choice(projects["app"], "org.apache.logging.log4j:log4j-core", "2.17.1")
+    assert len(writers.prepare(root, [api, core]).files) == 1
+    other = choice(projects["app"], "org.apache.logging.log4j:log4j-core", "2.20.0")
+    changes = writers.prepare(root, [api, other])
+    assert [s.reason for s in changes.skipped] == [
+        "pom.xml : « 2.14.1 » est déjà réécrite en « 2.17.1 » pour "
+        "org.apache.logging.log4j:log4j-api 1.0.0 (projet .)."
+    ]
+
+
+def test_a_maven_version_that_changed_is_not_rewritten(make_tree: MakeTree) -> None:
+    root = make_tree({"pom.xml": POM_PARENT, "app/pom.xml": POM_MODULE})
+    picked = choice(inventory(root)["app"], "org.apache.logging.log4j:log4j-core", "2.17.1")
+    (root / "pom.xml").write_text(POM_PARENT.replace("2.14.1", "2.15.0"), encoding="utf-8")
+    changes = writers.prepare(root, [picked])
+    assert [s.reason for s in changes.skipped] == [
+        "pom.xml a changé depuis l'analyse : « 2.14.1 » n'est plus à la ligne 6."
+    ]
+
+
+CATALOG = """\
+[versions]
+okhttp = "4.9.0"  # partagée
+
+[libraries]
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+logging = { module = "com.squareup.okhttp3:logging-interceptor", version.ref = "okhttp" }
+guava = "com.google.guava:guava:31.0.1-jre"
+"""
+
+SCRIPT = """\
+val commonsTextVersion = "1.9"
+
+dependencies {
+    implementation(libs.okhttp)
+    implementation("org.apache.commons:commons-text:$commonsTextVersion")
+    implementation("org.yaml:snakeyaml:$snakeyamlVersion")
+    testImplementation("junit:junit:4.12")
+}
+"""
+
+
+def test_gradle_files(make_tree: MakeTree) -> None:
+    root = make_tree(
+        {
+            "gradle/libs.versions.toml": CATALOG,
+            "build.gradle.kts": SCRIPT,
+            "gradle.properties": "org.gradle.jvmargs=-Xmx1g\nsnakeyamlVersion=1.30\n",
+        }
+    )
+    (project,) = inventory(root).values()
+    choices = [
+        choice(project, "com.squareup.okhttp3:okhttp", "4.12.1"),
+        choice(project, "com.google.guava:guava", "33.7.2-jre"),
+        choice(project, "org.apache.commons:commons-text", "1.10.0"),
+        choice(project, "org.yaml:snakeyaml", "1.33"),
+        choice(project, "junit:junit", "4.13.2"),
+    ]
+    changes = writers.prepare(root, choices)
+    assert changes.skipped == ()
+    files = written(root, changes)
+    assert files["gradle/libs.versions.toml"] == CATALOG.replace("4.9.0", "4.12.1").replace(
+        "31.0.1-jre", "33.7.2-jre"
+    )
+    assert files["build.gradle.kts"] == SCRIPT.replace('"1.9"', '"1.10.0"').replace(
+        "4.12", "4.13.2"
+    )
+    assert files["gradle.properties"] == "org.gradle.jvmargs=-Xmx1g\nsnakeyamlVersion=1.33\n"
+    (after,) = inventory(root).values()
+    versions = {d.name: d.constraint for d in after.dependencies}
+    assert versions["com.squareup.okhttp3:logging-interceptor"] == "4.12.1"  # montée avec
+    assert versions["org.yaml:snakeyaml"] == "1.33"

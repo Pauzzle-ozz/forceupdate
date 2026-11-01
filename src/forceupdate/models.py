@@ -165,10 +165,12 @@ class Dependency:
     ``constraint`` est elle-même la plage, ou si la plage est introuvable."""
     installed: str | None = None
     """Version installée, lue dans le lockfile ; ``None`` sans lockfile. Pour Go, lue dans
-    ``go.mod`` : depuis Go 1.17, il donne la version choisie de chaque module."""
+    ``go.mod`` : depuis Go 1.17, il donne la version choisie de chaque module. Pour Maven et
+    Gradle, qui n'ont pas de lockfile, la version exacte écrite : celle que l'outil prend."""
     lockfile: str | None = None
     """Le lockfile où ``installed`` a été lu, celui qu'une mise à jour régénère
-    (``update.lockfiles``) ; ``None`` sans version installée. Pour une indirecte, c'est
+    (``update.lockfiles``) ; ``None`` sans version installée, et pour Maven et Gradle. Pour une
+    indirecte, c'est
     ``file``. Un fichier de contraintes de pip (``-c``) en tient lieu : il se réécrit comme un
     manifeste (``update.writers.constraints_file``). Pour Go, le ``go.sum`` du module, même
     absent : ``go mod tidy`` le refait."""

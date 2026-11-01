@@ -34,7 +34,10 @@ option.
   manifeste (Go : ``// indirect`` dans ``go.mod``) s'y réécrit, comme une directe ;
 - une dépendance pair (npm) : sa plage s'élargit au lieu d'être remplacée ;
 - une majeure publiée sous un autre nom (Go : ``…/v2``, ``VersionScheme.moved``) : proposée, à
-  faire à la main, car les imports du code changent aussi.
+  faire à la main, car les imports du code changent aussi ;
+- une version écrite une fois pour plusieurs paquets (Maven : une propriété ; Gradle : une
+  variable, une entrée ``[versions]`` du catalogue) : la réécrire les fait tous monter, un
+  avertissement le dit.
 
 Une version que le projet exclut (``exclude`` de ``go.mod``) n'est jamais proposée.
 
@@ -73,6 +76,7 @@ from forceupdate.models import (
     Finding,
     FindingKind,
     Gap,
+    Location,
     Notice,
     Override,
     Project,
@@ -137,8 +141,15 @@ def plan(
     ce que les registres disent des paquets (``infos``, par écosystème et nom de dépendance) et
     les failles qu'OSV connaît de chaque version (``vulnerabilities``)."""
     overrides = {project.path: project.overrides for project in report.projects}
+    shared: dict[tuple[str, Location], set[str]] = {}
     for project in report.projects:
-        project.updates = _plan_project(project, infos, vulnerabilities, overrides)
+        for dependency in project.dependencies:
+            if dependency.location is not None and dependency.verifiable:
+                shared.setdefault((dependency.file, dependency.location), set()).add(
+                    dependency.name
+                )
+    for project in report.projects:
+        project.updates = _plan_project(project, infos, vulnerabilities, overrides, shared)
 
 
 def proposed_versions(report: Report) -> list[Query]:
@@ -288,6 +299,7 @@ def _plan_project(
     infos: Mapping[tuple[Ecosystem, str], PackageInfo],
     vulnerabilities: Mapping[Query, Vulnerabilities],
     overrides: Mapping[str, list[Override]],
+    shared: Mapping[tuple[str, Location], set[str]],
 ) -> list[Update]:
     groups: dict[tuple[str, ...], list[Dependency]] = {}
     for dependency in project.dependencies:
@@ -309,6 +321,7 @@ def _plan_project(
             info=infos.get((dependency.ecosystem, dependency.name)),
             vulnerabilities=vulnerabilities,
             overrides=overrides.get(dirname(dependency.file), []) if not dependency.direct else [],
+            shared=shared,
         ).plan()
     return [update for update in planned.values() if update is not None]
 
@@ -331,8 +344,11 @@ class _Group:
         info: PackageInfo | None,
         vulnerabilities: Mapping[Query, Vulnerabilities],
         overrides: Sequence[Override],
+        shared: Mapping[tuple[str, Location], set[str]],
     ) -> None:
         self.project = project
+        self.shared = shared
+        """Les paquets de chaque emplacement de version, dans tout le rapport."""
         self.dependencies = dependencies
         self.lead = dependencies[0]
         self.ecosystem = self.lead.ecosystem
@@ -523,6 +539,7 @@ class _Group:
         published = self.info.get(version)
         if published is not None and published.deprecated:
             warnings.append(f"Version dépréciée : {published.deprecated}")
+        warnings.extend(self._shared_warnings(edits))
         return UpdateOption(
             version=version,
             gap=gap,
@@ -534,6 +551,22 @@ class _Group:
             manual=manual,
             warnings=tuple(warnings),
         )
+
+    def _shared_warnings(self, edits: Iterable[Edit]) -> list[str]:
+        """Une version écrite une fois pour plusieurs paquets (une propriété Maven, une variable
+        Gradle, une entrée ``[versions]`` du catalogue) : ils montent ensemble, on le dit."""
+        found = []
+        for edit in edits:
+            if edit.location is None:
+                continue
+            others = sorted(self.shared.get((edit.file, edit.location), set()) - {self.lead.name})
+            if others:
+                verb = "elle monte" if len(others) == 1 else "elles montent"
+                found.append(
+                    f"Version partagée avec {', '.join(others)} ({edit.file}, ligne "
+                    f"{edit.location.line}) : {verb} aussi."
+                )
+        return found
 
     def _direct_edits(self, version: str, *, floor: bool) -> _Operations:
         """Les contraintes à réécrire pour monter à ``version`` : celles qui ne l'acceptent pas,
