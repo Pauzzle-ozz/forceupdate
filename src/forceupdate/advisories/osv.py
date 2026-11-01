@@ -502,8 +502,8 @@ def _same_time(first: str, second: str) -> bool:
 def _same_name(ecosystem: Ecosystem, first: str, second: str) -> bool:
     if ecosystem is Ecosystem.PYPI:
         return canonicalize_name(first) == canonicalize_name(second)
-    if ecosystem is Ecosystem.PACKAGIST:  # Composer ne tient pas compte de la casse
-        return first.lower() == second.lower()
+    if ecosystem in (Ecosystem.PACKAGIST, Ecosystem.NUGET):  # ni Composer ni NuGet ne tiennent
+        return first.lower() == second.lower()  # compte de la casse
     return first == second
 
 

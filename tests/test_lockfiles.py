@@ -1023,7 +1023,7 @@ def test_parse_lockfile_reads_a_compiled_requirements_file() -> None:
     lock = parse_lockfile("requirements.txt", "flask==3.1.3\nclick>=8\n")
     assert [(p.name, p.version) for p in lock.packages] == [("flask", "3.1.3"), ("click", "")]
     with pytest.raises(ValueError, match="pas un lockfile connu"):
-        parse_lockfile("packages.lock.json", "")
+        parse_lockfile("go.work.sum", "")
 
 
 # ---------------------------------------------------------------------------
@@ -2106,3 +2106,202 @@ def test_the_real_bundler(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     gemfile = (PROJECTS / "bundler" / "Gemfile").read_text("utf-8").replace('"5.6.4"', '"5.6.9"')
     assert (root / "Gemfile").read_text("utf-8") == gemfile
     assert {p: (root / p).read_text("utf-8") for p in before} == before
+
+
+# ---------------------------------------------------------------------------
+# NuGet
+# ---------------------------------------------------------------------------
+
+DOTNET_RUNS_CODE = (
+    "dotnet restore évalue le projet avec MSBuild : une cible du projet ou de ses "
+    "Directory.Build.targets accrochée à la restauration s'exécute, comme un SDK de projet venu de "
+    "NuGet ; il écrit aussi le dossier obj/ du projet."
+)
+RESTORE = "--force-evaluate -noAutoResponse -p:RestoreLockedMode=false"
+
+
+class FakeDotnet:
+    """``dotnet --list-sdks`` (un SDK installé, sauf ``sdk=False``), et ``dotnet restore`` : le
+    ``packages.lock.json`` du dossier prend les versions de ``versions`` (``requested`` aussi pour
+    une directe), comme NuGet, qui prend la borne basse réécrite."""
+
+    def __init__(self, versions: dict[str, str] | None = None, *, sdk: bool = True) -> None:
+        self.versions = versions or {}
+        self.sdk = sdk
+
+    def __call__(self, call: ToolCall) -> tuple[int, str, str] | None:
+        if call.arguments == ["--list-sdks"]:
+            listed = "10.0.403 [C:\\Program Files\\dotnet\\sdk]\n" if self.sdk else ""
+            return 0, listed, ""
+        assert call.arguments[0] == "restore"
+        lock = call.cwd / "packages.lock.json"
+        data = json.loads(lock.read_text(encoding="utf-8"))
+        for packages in data["dependencies"].values():
+            for name, entry in packages.items():
+                if name in self.versions:
+                    entry["resolved"] = self.versions[name]
+                    if "requested" in entry:
+                        entry["requested"] = f"[{self.versions[name]}, )"
+        lock.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        return None
+
+
+def nuget_copy(tmp_path: Path) -> Path:
+    root = tmp_path / "nuget"
+    shutil.copytree(PROJECTS / "nuget", root)
+    return root
+
+
+def test_plan_of_a_nuget_lock(tmp_path: Path, fake_tools: Tools) -> None:
+    """Une version centrale réécrite : le lockfile de la mise à jour, et celui de l'autre projet
+    qui la lit (une ``CentralTransitive``), avec la raison."""
+    root = nuget_copy(tmp_path)
+    tools = fake_tools("dotnet")
+    tools.handlers["dotnet"] = FakeDotnet()
+    source, report = analyse(root)
+    choice = wanted(
+        project_of(report, "src/App"), "Microsoft.AspNetCore.Http", "2.1.22", new="2.1.22"
+    )
+    app, tests = lockfiles.plan(source, report, writers.prepare(root, [choice]))
+    assert (app.lockfile, app.kind, app.program, app.tool) == (
+        "src/App/packages.lock.json",
+        LockKind.NUGET,
+        "/outils/dotnet",
+        "dotnet",
+    )
+    assert app.command == "dotnet restore App.csproj --force-evaluate"
+    assert (app.inputs, app.warnings, app.reason) == (
+        ("Directory.Packages.props",),
+        (DOTNET_RUNS_CODE,),
+        None,
+    )
+    assert (tests.lockfile, tests.choices, tests.reason, tests.inputs) == (
+        "src/App.Tests/packages.lock.json",
+        (),
+        "Directory.Packages.props a changé",
+        ("Directory.Packages.props",),
+    )
+    assert tests.command == "dotnet restore App.Tests.csproj --force-evaluate"
+
+
+def test_dotnet_without_an_sdk_is_missing(tmp_path: Path, fake_tools: Tools) -> None:
+    """Le ``dotnet`` des runtimes seuls ne sait pas restaurer : la commande est à lancer à la
+    main, les manifestes restent réécrits."""
+    root = nuget_copy(tmp_path)
+    tools = fake_tools("dotnet")
+    tools.handlers["dotnet"] = FakeDotnet(sdk=False)
+    source, report = analyse(root)
+    choice = wanted(project_of(report, "src/App.Tests"), "Newtonsoft.Json", "13.0.3", new="13.0.3")
+    _, (job,), (result,) = apply(root, [choice], report, source)
+    assert job.program is None
+    assert result.status is LockStatus.TOOL_MISSING
+    manifest = root / "src" / "App.Tests" / "App.Tests.csproj"
+    assert 'VersionOverride="13.0.3"' in manifest.read_text(encoding="utf-8")
+    assert tools.commands() == ["dotnet --list-sdks"]
+
+
+def test_dotnet_restore_regenerates_both_lockfiles(
+    tmp_path: Path, fake_tools: Tools, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RestoreLockedMode", "true")
+    root = nuget_copy(tmp_path)
+    tools = fake_tools("dotnet")
+    tools.handlers["dotnet"] = FakeDotnet({"Microsoft.AspNetCore.Http": "2.1.22"})
+    source, report = analyse(root)
+    choice = wanted(
+        project_of(report, "src/App"), "Microsoft.AspNetCore.Http", "2.1.22", new="2.1.22"
+    )
+
+    _, _, (app, tests) = apply(root, [choice], report, source)
+
+    assert tools.commands() == [
+        "dotnet --list-sdks",
+        "dotnet --list-sdks",
+        f"dotnet restore App.csproj {RESTORE}",
+        f"dotnet restore App.Tests.csproj {RESTORE}",
+    ]
+    restore = tools.calls[2]
+    assert restore.cwd == root / "src" / "App"
+    assert {k: restore.env[k] for k in ("DOTNET_NOLOGO", "DOTNET_CLI_TELEMETRY_OPTOUT")} == {
+        "DOTNET_NOLOGO": "1",
+        "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
+    }
+    assert restore.env["MSBUILDDISABLENODEREUSE"] == "1"
+    assert (app.status, tests.status) == (LockStatus.REGENERATED, LockStatus.REGENERATED)
+    assert [(i.update.name, i.versions, i.reach) for i in app.installed] == [
+        ("Microsoft.AspNetCore.Http", ("2.1.22",), Reach.EXACT)
+    ]
+    assert tests.installed == ()
+    assert tests.changed == ("Microsoft.AspNetCore.Http 2.1.0 → 2.1.22",)
+
+
+def test_a_nuget_failure_puts_every_file_back(tmp_path: Path, fake_tools: Tools) -> None:
+    root = nuget_copy(tmp_path)
+    names = ("Directory.Packages.props", "src/App/packages.lock.json")
+    before = {name: (root / name).read_bytes() for name in names}
+    tools = fake_tools("dotnet")
+    fake = FakeDotnet()
+    tools.handlers["dotnet"] = lambda call: (
+        fake(call)
+        if call.arguments == ["--list-sdks"]
+        else (1, "error NU1102: Unable to find package", "")
+    )
+    source, report = analyse(root)
+    choice = wanted(project_of(report, "src/App"), "Newtonsoft.Json", "13.0.1", new="13.0.1")
+
+    _, _, (result,) = apply(root, [choice], report, source)
+
+    assert result.status is LockStatus.FAILED
+    assert result.error is not None and "NU1102" in result.error
+    assert result.restored == ("Directory.Packages.props",)
+    assert {name: (root / name).read_bytes() for name in names} == before
+
+
+def test_dotnet_says_what_it_does_not_do(tmp_path: Path, fake_tools: Tools) -> None:
+    """Le SDK que demande ``global.json`` ; les sources de paquets de ``nuget.config``."""
+    root = nuget_copy(tmp_path)
+    (root / "global.json").write_text('{ "sdk": { "version": "9.0.100" } }', encoding="utf-8")
+    (root / "src" / "nuget.config").write_text("<configuration />", encoding="utf-8")
+    tools = fake_tools("dotnet")
+    tools.handlers["dotnet"] = FakeDotnet()
+    source, report = analyse(root)
+    choice = wanted(project_of(report, "src/App.Tests"), "Newtonsoft.Json", "13.0.3", new="13.0.3")
+    (job,) = lockfiles.plan(source, report, writers.prepare(root, [choice]))
+    assert job.warnings == (
+        DOTNET_RUNS_CODE,
+        "global.json demande le SDK .NET 9.0.100 : dotnet échoue s'il n'est pas installé (rien "
+        "ne change alors).",
+        "src/nuget.config : ses sources de paquets servent à la restauration ; forceupdate a "
+        "cherché les versions sur nuget.org.",
+    )
+
+
+@pytest.mark.network
+def test_the_real_dotnet(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Une version centrale, une propriété de ``Directory.Build.props`` et une ``VersionOverride``
+    réécrites : ``dotnet restore`` prend chaque borne basse (la plus basse qui convient), dans les
+    deux lockfiles ; rien d'autre ne bouge que ce que tirent ces versions. Les paquets et la
+    configuration de dotnet vont dans le dossier du test."""
+    _need("dotnet")
+    if not lockfiles._dotnet_sdk(shutil.which("dotnet") or "dotnet"):
+        pytest.skip("dotnet n'a pas de SDK")
+    monkeypatch.setenv("NUGET_PACKAGES", str(tmp_path / "packages"))
+    monkeypatch.setenv("DOTNET_CLI_HOME", str(tmp_path / "home"))
+    root = nuget_copy(tmp_path)
+    source, report = analyse(root)
+    app = project_of(report, "src/App")
+    tests = project_of(report, "src/App.Tests")
+    choices = [
+        wanted(app, "Microsoft.AspNetCore.Http", "2.1.22", new="2.1.22"),
+        wanted(app, "Serilog", "2.12.0", new="2.12.0"),
+        wanted(tests, "Newtonsoft.Json", "13.0.3", new="13.0.3"),
+    ]
+    _, _, results = apply(root, choices, report, source)
+    assert [r.status for r in results] == [LockStatus.REGENERATED] * 2, [r.error for r in results]
+    installed = sorted((i.update.name, i.versions, i.reach) for r in results for i in r.installed)
+    assert installed == [
+        ("Microsoft.AspNetCore.Http", ("2.1.22",), Reach.EXACT),
+        ("Newtonsoft.Json", ("13.0.3",), Reach.EXACT),
+        ("Serilog", ("2.12.0",), Reach.EXACT),
+    ]
+    assert (root / "src" / "App" / "obj").is_dir()

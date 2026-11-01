@@ -92,15 +92,20 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   │                         (Maven, puis Gradle), maven.py (pom.xml : propriétés, parents du dépôt,
 │   │                         dependencyManagement, BOM, plugins), gradle.py (libs.versions.toml,
 │   │                         build.gradle(.kts) lus en jetons, jamais exécutés, gradle.properties) ;
+│   │                         nuget.py (packages.config, .csproj/.fsproj/.vbproj, Directory.Build.props
+│   │                         et Directory.Packages.props, packages.lock.json ; MSBuild jamais lancé) ;
 │   │                         lockfiles.py (lien manifeste ↔ lockfile), *_spans.py (positions ;
-│   │                         ruby_spans.py, gradle_spans.py : des lexers ; xml_spans.py : expat) ;
+│   │                         ruby_spans.py, gradle_spans.py : des lexers ; xml_spans.py : expat, le
+│   │                         texte et les attributs) ;
 │   │                         versions/ et registries/ de même
 │   │                         (cargo.py, crates.py : l'index « sparse » ; go.py, goproxy.py :
 │   │                         proxy.golang.org, plusieurs requêtes par module ; composer.py, réécrit
 │   │                         d'après composer/semver, packagist.py : les métadonnées p2 minifiées ;
 │   │                         rubygems.py, réécrit d'après Gem::Version, rubygems.py : l'index compact ;
 │   │                         maven.py, réécrit d'après ComparableVersion et VersionRange, maven.py :
-│   │                         maven-metadata.xml de Maven Central, Google Maven et du portail Gradle)
+│   │                         maven-metadata.xml de Maven Central, Google Maven et du portail Gradle ;
+│   │                         nuget.py, réécrit d'après NuGet.Versioning : NuGet prend la plus basse
+│   │                         version qui convient ; nuget.py : l'API « registration » et ses pages)
 │   ├── sources/            ← d'où vient le code : local.py (dossier, fichier), forge.py (un dépôt lu par
 │   │                         l'API : seuls les fichiers que lisent les parseurs sont téléchargés ; un
 │   │                         clone superficiel si l'arborescence est tronquée)
@@ -122,7 +127,7 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
     ├── fake_bitbucket.py   ← Bitbucket Cloud simulé (workspaces, droits, dépôts, arborescence en largeur,
     │                         fichiers, branches, commits propres, PR, OAuth : Basic, refresh token renouvelé)
     ├── fake_bundler.py     ← bundle lock simulé (FakeTools.handlers["bundle"]), comme le vrai Bundler 4.0
-    ├── fixtures/           ← réponses HTTP enregistrées ; record.py les ré-enregistre
+    ├── fixtures/           ← réponses HTTP enregistrées (NuGet : compressées) ; record.py les ré-enregistre
     └── projects/           ← mini-projets par outil, lockfiles produits par les vrais outils
 ```
 
@@ -165,7 +170,8 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   défaut, pas en UTF-8. `forceupdate scan` repasse la sienne en UTF-8 (E07) ; pour
   un autre script, `PYTHONIOENCODING=utf-8`. Un script passé à Python par l'entrée
   standard (heredoc) abîme les accents, et l'outil Bash réduit `\\` à `\` dans un heredoc :
-  l'écrire dans un fichier (outil d'écriture), puis le lancer.
+  l'écrire dans un fichier (outil d'écriture), puis le lancer. `python -I` ignore
+  `PYTHONIOENCODING` : `python -I -X utf8`.
 - Les tests ne touchent jamais le réseau sans le marqueur `network` (donc jamais le vrai
   GitHub), ni le cache de l'utilisateur, ni un vrai outil de lockfile (npm, uv…), ni le
   trousseau du système ni `gh`, ne lancent git que vers des dépôts locaux, et n'ouvrent jamais
@@ -176,9 +182,11 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   `fake_gitlab.FakeGitLab` (`gitlab.GIT_URL` vers `remotes_url(…)` pour git), Bitbucket avec
   `fake_bitbucket.FakeBitbucket` (`bitbucket.GIT_URL` de même). Le trousseau des tests refuse,
   comme Windows, un secret de plus de 1 280 caractères. La fixture `recorded` simule PyPI, npm,
-  crates.io, le proxy Go, Packagist, RubyGems, Maven (Central, Google, portail Gradle) et OSV avec les
+  crates.io, le proxy Go, Packagist, RubyGems, Maven (Central, Google, portail Gradle), nuget.org et
+  OSV avec les
   réponses de `tests/fixtures/` (pour Go, toutes celles d'un module dans un fichier :
-  `goproxy/<module>.json` ; pour Maven, `:` s'écrit `__` dans le nom) ; `fake_tools("npm", "uv")`
+  `goproxy/<module>.json` ; pour NuGet, l'index et ses pages : `nuget/<id>.json.gz` ; pour Maven,
+  `:` s'écrit `__` dans le nom) ; `fake_tools("npm", "uv")`
   simule les outils (`FakeTools` ; `fake_bundler.FakeBundler` pour `bundle`) ; `keychain` est le
   trousseau en mémoire du test ; `api` est le
   serveur de `ui` (client de test de FastAPI, jeton compris), `finished` attend la fin
@@ -252,8 +260,17 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   par Nashorn : `"/c/Program Files/Java/jre1.8.0_481/bin/jjs.exe" -cp <jar> script.js -- <args>`
   (`ComparableVersion`, `VersionRange` ; voir les notes de E25). `ComparableVersion` n'est pas
   transitif : ne pas trier un corpus avec `Collections.sort` (il refuse), comparer deux à deux.
+- Le SDK .NET 10.0.403 est dans `~/sdk/dotnet-sdk-10.0.403` (E26 : l'archive zip officielle,
+  vérifiée), hors du `PATH` : `export PATH="$HOME/sdk/dotnet-sdk-10.0.403:$PATH"` avant
+  `forceupdate update`, `ui` ou `pytest --run-network`. Le `dotnet` de `C:\Program Files\dotnet`
+  n'a que des runtimes : sans SDK, forceupdate le tient pour absent. Pour un essai à la main,
+  `DOTNET_CLI_HOME` et `NUGET_PACKAGES` dans le scratchpad ; `dotnet restore` écrit `obj/` dans
+  chaque projet (ne pas le copier dans `tests/projects/`). L'oracle des versions NuGet est
+  `~/sdk/nuget-versioning-7.9.0/lib/net472/NuGet.Versioning.dll`, chargé par PowerShell 5.1
+  (`[Reflection.Assembly]::LoadFrom`) ; `[NuGet.Versioning.NuGetVersion]::TryParse` y prend la
+  surcharge stricte héritée de `SemanticVersion` : `Parse` dans un `try`.
 - Pour tous les tests `network` d'un coup :
-  `export PATH="$HOME/sdk/ruby-4.0.9/bin:$HOME/sdk/php-8.5.12:$HOME/sdk/composer-2.11.0:$HOME/sdk/go1.27.3/bin:$HOME/.cargo/bin:$PATH"`.
+  `export PATH="$HOME/sdk/dotnet-sdk-10.0.403:$HOME/sdk/ruby-4.0.9/bin:$HOME/sdk/php-8.5.12:$HOME/sdk/composer-2.11.0:$HOME/sdk/go1.27.3/bin:$HOME/.cargo/bin:$PATH"`.
 
 ## Interface
 

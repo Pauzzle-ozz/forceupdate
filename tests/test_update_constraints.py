@@ -446,3 +446,63 @@ def test_maven_floor_for_a_vulnerability(constraint: str, target: str, expected:
 
 def test_a_gradle_prefix_cannot_take_a_floor() -> None:
     assert rewrite(MAVEN, "1.+", "1.9.2", floor=True) is None
+
+
+# -- NuGet : NuGet prend la plus basse version qui convient --------------------------------------
+
+NUGET = Ecosystem.NUGET
+
+
+@pytest.mark.parametrize(
+    ("constraint", "target", "expected"),
+    [
+        # Une version nue est un minimum, que NuGet prend : elle devient la version visée.
+        ("12.0.1", "13.0.1", "13.0.1"),
+        ("1.0", "2.0.0", "2.0"),
+        ("1.0", "1.5.3", "1.5.3"),
+        ("1.2.3.4", "1.2.3.5", "1.2.3.5"),
+        ("4.5.0", "4.5.1-preview.1", "4.5.1-preview.1"),
+        ("1.0.0-beta", "1.0.0", "1.0.0"),
+        ("[1.2.3]", "1.4.0", "[1.4.0]"),
+        # Un intervalle : la borne basse devient la version visée, incluse ; une borne haute
+        # dépassée se déplace au même niveau.
+        ("[1.0,2.0)", "1.5.3", "[1.5.3,2.0)"),
+        ("(1.0,2.0)", "1.5.3", "[1.5.3,2.0)"),
+        ("(,2.0]", "1.5.3", "[1.5.3,2.0]"),
+        ("[1.0, 2.0)", "2.3.1", "[2.3.1, 3.0)"),
+        ("[1.0,)", "3.1.0", "[3.1.0,)"),
+        # Une version flottante garde sa précision.
+        ("1.*", "1.5.0", "1.*"),
+        ("1.*", "2.3.1", "2.*"),
+        ("1.2.*", "2.3.1", "2.3.*"),
+        ("1.2.3.*", "1.2.4.0", "1.2.4.*"),
+        ("1.0.0-beta.*", "2.3.1", "2.3.1-beta.*"),
+        ("1.*-*", "2.0.0", "2.*-*"),
+        ("[1.0.*, 2.0)", "2.1.0", "[2.1.*, 3.0)"),
+        # Rien à réécrire, ou rien de lisible.
+        ("*", "3.0.0", None),
+        ("*-*", "3.0.0", None),
+        ("$(Version)", "1.0.0", None),
+        ("", "1.0.0", None),
+    ],
+)
+def test_nuget_styles(constraint: str, target: str, expected: str | None) -> None:
+    check(NUGET, constraint, target, expected)
+
+
+@pytest.mark.parametrize(
+    ("constraint", "target", "expected"),
+    [
+        ("12.0.1", "13.0.1", "13.0.1"),
+        ("[1.0,2.0)", "1.5.3", "[1.5.3,2.0)"),
+        ("(,2.0)", "1.10.0", "[1.10.0,2.0)"),
+    ],
+)
+def test_nuget_floor_for_a_vulnerability(constraint: str, target: str, expected: str) -> None:
+    check_floor(NUGET, constraint, target, expected)
+
+
+def test_a_nuget_floating_version_needs_no_floor() -> None:
+    """NuGet prend la plus haute de ce que désigne une version flottante : pas de plancher."""
+    assert rewrite(NUGET, "1.*", "2.3.1", floor=True) == "2.*"
+    assert rewrite(NUGET, "1.2.*", "1.2.9", floor=True) == "1.2.*"

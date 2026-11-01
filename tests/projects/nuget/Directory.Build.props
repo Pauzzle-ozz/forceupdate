@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <SerilogVersion>2.10.0</SerilogVersion>
+  </PropertyGroup>
+</Project>

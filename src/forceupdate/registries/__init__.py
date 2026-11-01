@@ -7,8 +7,8 @@ Un client par registre, derrière l'interface de ``base.py``. Pour une session :
         info = await registry.package("lodash")  # PackageInfo
         info.latest  # "4.17.21"
 
-PyPI, npm, crates.io, le proxy Go, Packagist, RubyGems et Maven (Maven Central, Google Maven, le
-portail des plugins Gradle) pour l'instant ; NuGet arrive avec son étape (E26).
+PyPI, npm, crates.io, le proxy Go, Packagist, RubyGems, Maven (Maven Central, Google Maven, le
+portail des plugins Gradle) et NuGet (nuget.org).
 """
 
 from forceupdate.models import Ecosystem
@@ -25,6 +25,7 @@ from forceupdate.registries.crates import Crates
 from forceupdate.registries.goproxy import GoProxy
 from forceupdate.registries.maven import Maven
 from forceupdate.registries.npm import Npm
+from forceupdate.registries.nuget import NuGet
 from forceupdate.registries.packagist import Packagist
 from forceupdate.registries.pypi import PyPI
 from forceupdate.registries.rubygems import RubyGems
@@ -46,6 +47,7 @@ _REGISTRIES: dict[Ecosystem, type[Registry]] = {
     Ecosystem.PACKAGIST: Packagist,
     Ecosystem.RUBYGEMS: RubyGems,
     Ecosystem.MAVEN: Maven,
+    Ecosystem.NUGET: NuGet,
 }
 
 

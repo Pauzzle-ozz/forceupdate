@@ -17,7 +17,7 @@ Un écosystème n'écrit que la lecture d'une version et d'une contrainte.
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
-from typing import Any, Generic, Protocol, TypeVar
+from typing import Any, ClassVar, Generic, Protocol, TypeVar
 
 from forceupdate.models import Ecosystem, Gap
 
@@ -66,6 +66,9 @@ class VersionScheme(ABC, Generic[V]):
     """
 
     ecosystem: Ecosystem
+    lowest: ClassVar[bool] = False
+    """Vrai si le gestionnaire de paquets prend la plus basse version qui convient (NuGet) :
+    régénérer le lockfile ne fait alors monter ni une indirecte, ni une directe (``reaches``)."""
 
     # -- à écrire pour chaque écosystème ------------------------------------
 
@@ -178,6 +181,20 @@ class VersionScheme(ABC, Generic[V]):
     def satisfies(self, constraint: str, version: str) -> bool:
         """Vrai si ``version`` respecte ``constraint``."""
         return self.parse_constraint(constraint).contains(self.parse(version))
+
+    def reaches(self, constraint: str, version: str) -> bool:
+        """Vrai si le gestionnaire de paquets peut prendre ``version`` sans que ``constraint``
+        soit réécrite, en régénérant le lockfile : quand elle l'accepte (``satisfies``). NuGet
+        prend la plus basse version qui convient : seule une version flottante y monte."""
+        return self.satisfies(constraint, version)
+
+    def chosen(
+        self, constraint: str, versions: Iterable[str], current: str | None = None
+    ) -> str | None:
+        """La version que le gestionnaire de paquets prend parmi ``versions`` pour
+        ``constraint`` : la plus haute des candidates qui la respecte (``max_satisfying``) ; la
+        plus basse pour NuGet."""
+        return self.max_satisfying(constraint, versions, current)
 
     def lower_bound(self, constraint: str) -> str | None:
         """La plus petite version que ``constraint`` accepte (``^1.2`` → ``1.2.0`` pour npm,

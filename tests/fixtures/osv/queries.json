@@ -296,6 +296,83 @@
       }
     ]
   },
+  "NuGet/Microsoft.AspNetCore.Http.Abstractions@2.1.0": {},
+  "NuGet/Microsoft.AspNetCore.Http.Features@2.1.0": {},
+  "NuGet/Microsoft.AspNetCore.Http@2.1.0": {
+    "vulns": [
+      {
+        "id": "GHSA-hxrm-9w7p-39cc",
+        "modified": "2024-11-29T05:41:49.773176Z"
+      }
+    ]
+  },
+  "NuGet/Microsoft.AspNetCore.WebUtilities@2.1.0": {},
+  "NuGet/Microsoft.Build.Tasks.Git@1.1.1": {},
+  "NuGet/Microsoft.CodeCoverage@16.11.0": {},
+  "NuGet/Microsoft.Extensions.DependencyInjection.Abstractions@2.1.0": {},
+  "NuGet/Microsoft.Extensions.ObjectPool@2.1.0": {},
+  "NuGet/Microsoft.Extensions.Options@2.1.0": {},
+  "NuGet/Microsoft.Extensions.Primitives@2.1.0": {},
+  "NuGet/Microsoft.NET.Test.Sdk@16.11.0": {},
+  "NuGet/Microsoft.NETCore.Platforms@1.1.0": {},
+  "NuGet/Microsoft.Net.Http.Headers@2.1.0": {},
+  "NuGet/Microsoft.SourceLink.Common@1.1.1": {},
+  "NuGet/Microsoft.SourceLink.GitHub@1.1.1": {},
+  "NuGet/Microsoft.TestPlatform.ObjectModel@16.11.0": {},
+  "NuGet/Microsoft.TestPlatform.TestHost@16.11.0": {},
+  "NuGet/NETStandard.Library@1.6.1": {},
+  "NuGet/NUnit@3.12.0": {},
+  "NuGet/Newtonsoft.Json@12.0.1": {
+    "vulns": [
+      {
+        "id": "GHSA-5crp-9r3c-p9vr",
+        "modified": "2026-07-08T06:53:11.583483Z"
+      }
+    ]
+  },
+  "NuGet/Newtonsoft.Json@13.0.1": {},
+  "NuGet/Newtonsoft.Json@9.0.1": {
+    "vulns": [
+      {
+        "id": "GHSA-5crp-9r3c-p9vr",
+        "modified": "2026-07-08T06:53:11.583483Z"
+      }
+    ]
+  },
+  "NuGet/NuGet.Frameworks@5.0.0": {},
+  "NuGet/Serilog@2.10.0": {},
+  "NuGet/StyleCop.Analyzers@1.1.118": {},
+  "NuGet/System.Buffers@4.5.0": {},
+  "NuGet/System.Memory@4.5.0": {},
+  "NuGet/System.Runtime.CompilerServices.Unsafe@4.5.0": {},
+  "NuGet/System.Text.Encodings.Web@4.5.0": {
+    "vulns": [
+      {
+        "id": "GHSA-ghhp-997w-qr28",
+        "modified": "2024-12-07T05:45:57.337833Z"
+      }
+    ]
+  },
+  "NuGet/log4net@2.0.8": {
+    "vulns": [
+      {
+        "id": "GHSA-2cwj-8chv-9pp9",
+        "modified": "2024-03-12T05:19:25.985779Z"
+      },
+      {
+        "id": "GHSA-4f7c-pmjv-c25w",
+        "modified": "2026-05-05T16:01:27.342560Z"
+      }
+    ]
+  },
+  "NuGet/xunit.abstractions@2.0.3": {},
+  "NuGet/xunit.analyzers@0.10.0": {},
+  "NuGet/xunit.assert@2.4.1": {},
+  "NuGet/xunit.core@2.4.1": {},
+  "NuGet/xunit.extensibility.core@2.4.1": {},
+  "NuGet/xunit.extensibility.execution@2.4.1": {},
+  "NuGet/xunit.runner.visualstudio@2.4.3": {},
+  "NuGet/xunit@2.4.1": {},
   "Packagist/doctrine/cache@1.12.1": {},
   "Packagist/guzzlehttp/guzzle@7.4.0": {
     "vulns": [

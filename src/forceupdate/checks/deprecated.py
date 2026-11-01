@@ -13,7 +13,10 @@
   ne liste jamais (``VersionScheme.unlisted``) : rien à en dire ;
 - **version retirée d'un module Go** (``retract``) : comme un retrait PyPI, avec la raison que
   donne le ``go.mod`` du module. Son remplacement reste sous le même chemin de module (une autre
-  majeure en change : ``VersionScheme.moved``).
+  majeure en change : ``VersionScheme.moved``) ;
+- **version NuGet non listée** : son auteur l'a retirée de la liste de nuget.org (log4net 2.0.8),
+  qui la restaure encore si on la demande : comme un retrait PyPI ; une version dépréciée (ses
+  raisons, son remplaçant) comme une version npm dépréciée.
 
 Seule une version connue est examinée : l'installée, ou celle qu'impose une contrainte exacte.
 Une borne basse (``>=2.32.0``) ne dit pas qu'on utilise ``2.32.0``.
@@ -25,11 +28,15 @@ from forceupdate.models import Dependency, Ecosystem, Finding, FindingKind, Gap,
 from forceupdate.registries import PackageInfo
 from forceupdate.versions import InvalidVersion
 
-_REGISTRIES = {Ecosystem.GO: "proxy.golang.org"}
+_REGISTRIES = {Ecosystem.GO: "proxy.golang.org", Ecosystem.NUGET: "nuget.org"}
 """Le registre dans les messages, quand ce n'est pas le nom de l'écosystème."""
 
-_RETIRED = {Ecosystem.GO: "retirée par l'auteur du module (retract)"}
-"""Qui retire une version, quand ce n'est pas le registre : un module Go se retire lui-même."""
+_RETIRED = {
+    Ecosystem.GO: "retirée par l'auteur du module (retract)",
+    Ecosystem.NUGET: "retirée de la liste de nuget.org par son auteur (non listée)",
+}
+"""Qui retire une version, quand ce n'est pas le registre : un module Go se retire lui-même, un
+paquet NuGet est retiré de la liste par son auteur."""
 
 
 def check(dependency: Dependency, info: PackageInfo, current: Current) -> list[Finding]:

@@ -14,8 +14,9 @@ import respx
 from conftest import FakeTools, ToolCall
 from typer.testing import CliRunner, Result
 
-from forceupdate import __version__
+from forceupdate import __version__, parsers
 from forceupdate.cli import EXIT_ERROR, EXIT_FAIL_ON, app
+from forceupdate.models import Ecosystem
 
 runner = CliRunner()
 PROJECTS = Path(__file__).parent / "projects"
@@ -96,7 +97,9 @@ def test_scan_shows_direct_dependencies() -> None:
     assert ["requests", "<2", "-", "non", "concluant"] in rows
 
 
-def test_scan_shows_notices(make_tree: MakeTree) -> None:
+def test_scan_shows_notices(make_tree: MakeTree, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Les huit écosystèmes sont lus : NuGet est retiré le temps du test.
+    monkeypatch.delitem(parsers._PARSERS, Ecosystem.NUGET)
     root = make_tree({"packages.config": "", "setup.py": ""})
 
     result = scan(str(root))

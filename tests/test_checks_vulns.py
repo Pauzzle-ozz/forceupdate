@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from forceupdate import versions
 from forceupdate.advisories import Advisory, OsvError, Vulnerabilities, parse_vuln
 from forceupdate.checks import current_version, vulns
 from forceupdate.models import (
@@ -243,4 +244,9 @@ def test_version_to_check() -> None:
     assert version(dependency("a", "^1.2.0")) == "1.2.0"
     assert version(dependency("a", "*")) is None  # rien à demander à OSV
     assert version(dependency("a", "latest")) is None
-    assert version(dependency("a", "1.0", "1.0", ecosystem=Ecosystem.NUGET)) is None
+
+
+def test_version_to_check_of_an_ecosystem_not_yet_handled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Les huit écosystèmes sont gérés : NuGet est retiré le temps du test."""
+    monkeypatch.delitem(versions._SCHEMES, Ecosystem.NUGET)
+    assert vulns.version_to_check(dependency("a", "1.0", "1.0", ecosystem=Ecosystem.NUGET)) is None

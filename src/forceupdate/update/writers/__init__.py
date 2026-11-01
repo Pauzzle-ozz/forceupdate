@@ -29,9 +29,11 @@ En deux temps :
      ses guillemets (``ruby.written_target``) ;
    - une version Maven ou Gradle citée par une propriété ou une variable se réécrit là où
      celle-ci est définie (``<properties>``, ``gradle.properties``, ``[versions]`` du catalogue) :
-     l'emplacement de la dépendance est déjà celui-là (``java``) ;
+     l'emplacement de la dépendance est déjà celui-là (``java``) ; de même une version NuGet
+     centrale (``Directory.Packages.props``) ou citée par une propriété (``Directory.Build.props``,
+     ``nuget``) ;
    - **auto-vérification** : le fichier réécrit est relu par son parseur (``python``,
-     ``npm``, ``rust``, ``go``, ``php``, ``ruby``, ``java``). Il doit redonner les mêmes
+     ``npm``, ``rust``, ``go``, ``php``, ``ruby``, ``java``, ``nuget``). Il doit redonner les mêmes
      déclarations, dans le même ordre, avec la nouvelle contrainte à chaque endroit réécrit,
      et aucune autre contrainte changée.
      Sinon il n'est pas réécrit, ni les options qui le touchaient.
@@ -72,7 +74,7 @@ from forceupdate.models import (
 )
 from forceupdate.parsers.base import ParseError, ReadText
 from forceupdate.parsers.gradle import PROPERTIES
-from forceupdate.update.writers import go, java, npm, php, python, ruby, rust
+from forceupdate.update.writers import go, java, npm, nuget, php, python, ruby, rust
 from forceupdate.update.writers.base import Check, Reader, Refused, Target
 
 __all__ = [
@@ -103,6 +105,7 @@ _READERS: dict[str, Reader] = {
     **php.READERS,
     **ruby.READERS,
     **java.READERS,
+    **nuget.READERS,
 }
 _CHECKS: dict[str, Check] = python.CHECKS
 _WRITTEN: dict[str, Callable[[str, Target], Target]] = ruby.WRITTEN
@@ -497,6 +500,8 @@ def _reader(path: str, pattern: str | None = None) -> Reader | None:
         return npm.read_pnpm_workspace
     if posixpath.basename(path) == PROPERTIES:
         return java.read_gradle_properties
+    if posixpath.basename(path) == nuget.BUILD_PROPS:
+        return nuget.read_msbuild_file
     return _READERS.get(_pattern(path, pattern) or "")
 
 

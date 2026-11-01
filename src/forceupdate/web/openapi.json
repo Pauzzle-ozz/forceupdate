@@ -3775,7 +3775,8 @@
           "cargo",
           "go",
           "composer",
-          "bundler"
+          "bundler",
+          "nuget"
         ],
         "title": "LockKind",
         "description": "Le format d'un lockfile, donc l'outil qui le régénère."

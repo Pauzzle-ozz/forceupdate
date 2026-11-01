@@ -26,11 +26,14 @@ Lockfile                      Commande de base
                               --no-plugins`` (rien n'est installé ni exécuté du projet)
 ``Gemfile.lock``              ``bundle lock`` (rien n'est installé ; le ``Gemfile`` et les
                               ``.gemspec`` sont évalués : c'est du Ruby)
+``packages.lock.json``        ``dotnet restore <projet> --force-evaluate -noAutoResponse
+                              -p:RestoreLockedMode=false`` (MSBuild évalue le projet ; les
+                              paquets vont dans le cache de NuGet, ``obj/`` est écrit)
 ============================  ===========================================================
 
 Vérifié avec npm 11.6, pnpm 12.15, Yarn 1.22 et 4.18, uv 0.10, Poetry 1.8 et 2.5, PDM 2.29,
 pipenv 2026.10, pip-tools 7.6 (voir les notes de E11 dans ``PLAN.md``), cargo 1.99 (E21), Go 1.27
-(E22), Composer 2.11 (E23) et Bundler 4.0 (E24).
+(E22), Composer 2.11 (E23), Bundler 4.0 (E24) et le SDK .NET 10.0.403 (E26).
 
 **Viser la version choisie.** Régénérer garde les versions déjà figées qui satisfont les
 contraintes : une mise à jour par le lockfile seul (la contrainte accepte déjà la version) ne
@@ -65,6 +68,12 @@ bougerait pas. Chaque outil a sa façon de viser un paquet :
   pas celles qu'une autre gem partage. Sous une autre plateforme que celles du lockfile (Windows
   pour un projet Linux), Bundler ajoute la sienne : elle est retirée ensuite (``--remove-platform``,
   qui ne change aucune version). Vérifié avec Bundler 4.0.20 ;
+- NuGet : rien à viser, il prend la plus basse version qui convient, donc la borne basse que
+  ``update.writers`` a réécrite (une version centrale, une propriété comprises) ; ``dotnet restore``
+  refait alors le lockfile de lui-même (vérifié). ``--force-evaluate`` fait monter une version
+  flottante (``1.*``), et ne change rien d'autre. Une indirecte ne monte pas ainsi : le
+  planificateur la propose à la main. Le lockfile d'un autre projet qui lit une version réécrite
+  (``Directory.Packages.props``) est régénéré aussi ;
 - Yarn et pipenv reprennent la plus haute version que permet la contrainte : ``yarn up -R x``
   (Yarn 2+), l'entrée du paquet retirée du ``yarn.lock`` (Yarn 1, dont ``yarn upgrade``
   réordonne le ``package.json``), et ``pipenv lock``, qui re-résout tout.
@@ -164,6 +173,7 @@ class LockKind(enum.StrEnum):
     GO = "go"
     COMPOSER = "composer"
     BUNDLER = "bundler"
+    NUGET = "nuget"
 
 
 _TOOL_NAMES = {
@@ -181,6 +191,7 @@ _TOOL_NAMES = {
     LockKind.GO: "Go",
     LockKind.COMPOSER: "Composer",
     LockKind.BUNDLER: "Bundler",
+    LockKind.NUGET: "dotnet",
 }
 
 _PROGRAMS = {
@@ -198,6 +209,7 @@ _PROGRAMS = {
     LockKind.GO: "go",
     LockKind.COMPOSER: "composer",
     LockKind.BUNDLER: "bundle",
+    LockKind.NUGET: "dotnet",
 }
 """Le programme de chaque outil, cherché par ``shutil.which`` (sous Windows, ``composer`` est le
 ``composer.bat`` de son installateur, qui lance ``php composer.phar`` ; ``bundle``, le
@@ -232,6 +244,11 @@ _RUNS_CODE = {
     LockKind.BUNDLER: (
         "Bundler exécute le Gemfile (c'est du Ruby), ce qu'il charge (eval_gemfile) et les "
         ".gemspec du projet, de ses gems path: et git: ; aucune option ne l'en empêche."
+    ),
+    LockKind.NUGET: (
+        "dotnet restore évalue le projet avec MSBuild : une cible du projet ou de ses "
+        "Directory.Build.targets accrochée à la restauration s'exécute, comme un SDK de projet "
+        "venu de NuGet ; il écrit aussi le dossier obj/ du projet."
     ),
 }
 """Ce que l'outil exécute quand même, faute d'option pour l'en empêcher (brief, piège
@@ -350,8 +367,9 @@ class Regenerated:
 
 def plan(source: LocalSource, report: Report, changes: Changes) -> tuple[Job, ...]:
     """Les lockfiles à régénérer après ``changes`` (``writers.prepare``), sans rien lancer :
-    ceux des options appliquées, puis les ``.txt`` de pip-tools, dont ceux qui citent un fichier
-    réécrit ou un autre ``.txt`` régénéré. Dans l'ordre où les régénérer.
+    ceux des options appliquées, ceux de NuGet qui lisent une version réécrite ailleurs
+    (``_readers``), puis les ``.txt`` de pip-tools, dont ceux qui citent un fichier réécrit ou un
+    autre ``.txt`` régénéré. Dans l'ordre où les régénérer.
 
     ``report`` est l'analyse qui a donné ``changes``. Lève ``ValueError`` pour un lockfile que
     forceupdate ne sait pas régénérer."""
@@ -367,6 +385,8 @@ def plan(source: LocalSource, report: Report, changes: Changes) -> tuple[Job, ..
         for path, choices in sorted(by_lockfile.items())
         if path not in compiled
     ]
+    for path, reason in _readers(report, changes, set(by_lockfile)):
+        jobs.append(_job(source, report, path, [], changed, None, reason))
     regenerated: set[str] = set()
     for path in _pip_tools_order(compiled, set(by_lockfile), changed):
         reason = None
@@ -420,6 +440,11 @@ def _job(
         warnings += _composer_warnings(source.read_text, dirname(path))
     if kind is LockKind.BUNDLER:
         warnings += _bundler_warnings(source.read_text, path)
+    if kind is LockKind.NUGET:
+        warnings += _dotnet_warnings(source.read_text, dirname(path))
+        options = _dotnet_project(projects, path)
+        if program is not None and not _dotnet_sdk(program):
+            program = None  # le dotnet des runtimes seuls : pas de SDK, pas de restore
     job = Job(
         lockfile=path,
         kind=kind,
@@ -434,6 +459,33 @@ def _job(
         warnings=tuple(warnings),
     )
     return dataclasses.replace(job, command=shlex.join(_DRIVERS[kind].manual(job)))
+
+
+def _readers(report: Report, changes: Changes, known: set[str]) -> list[tuple[str, str]]:
+    """Les lockfiles NuGet d'autres projets qui lisent une version réécrite (une version centrale
+    de ``Directory.Packages.props``, une propriété de ``Directory.Build.props``), et pourquoi : sans
+    être régénérés, ils ne diraient plus ce que restaure ``dotnet``."""
+    rewritten = {
+        (edit.file, edit.location)
+        for _, _, option in changes.applied
+        for edit in option.edits
+        if edit.location is not None
+    }
+    found: dict[str, set[str]] = {}
+    for project in report.projects:
+        for dependency in project.dependencies:
+            lockfile = dependency.lockfile
+            if (
+                lockfile is not None
+                and lockfile not in known
+                and dependency.ecosystem is Ecosystem.NUGET
+                and (dependency.file, dependency.location) in rewritten
+            ):
+                found.setdefault(lockfile, set()).add(dependency.file)
+    return [
+        (path, f"{', '.join(sorted(files))} {'a' if len(files) == 1 else 'ont'} changé")
+        for path, files in sorted(found.items())
+    ]
 
 
 def _kind(source: LocalSource, path: str) -> LockKind:
@@ -462,6 +514,7 @@ _KINDS = {
     "composer.lock": LockKind.COMPOSER,
     "Gemfile.lock": LockKind.BUNDLER,
     "gems.locked": LockKind.BUNDLER,
+    "packages.lock.json": LockKind.NUGET,
 }
 
 
@@ -602,6 +655,78 @@ def _bundler_warnings(read_text: ReadText, lockfile: str) -> list[str]:
     ]
 
 
+def _dotnet_warnings(read_text: ReadText, directory: str) -> list[str]:
+    """Ce que ``dotnet restore`` fera autrement que ne le demande le plan : le SDK que demande un
+    ``global.json`` (s'il n'est pas installé, il échoue), les sources de paquets d'un
+    ``nuget.config`` (forceupdate a regardé nuget.org)."""
+    warnings = []
+    for folder in [directory, *_parents(directory)]:
+        content = _read_quietly(read_text, join(folder, "global.json"))
+        if content is None:
+            continue
+        try:
+            data = json.loads(content.removeprefix(BOM))
+        except ValueError:
+            data = None
+        sdk = data.get("sdk") if isinstance(data, dict) else None
+        version = sdk.get("version") if isinstance(sdk, dict) else None
+        if isinstance(version, str):
+            warnings.append(
+                f"{join(folder, 'global.json')} demande le SDK .NET {version} : dotnet échoue "
+                "s'il n'est pas installé (rien ne change alors)."
+            )
+        break
+    for folder in [directory, *_parents(directory)]:
+        found = next(
+            (
+                join(folder, name)
+                for name in _NUGET_CONFIGS
+                if _read_quietly(read_text, join(folder, name)) is not None
+            ),
+            None,
+        )
+        if found is not None:
+            warnings.append(
+                f"{found} : ses sources de paquets servent à la restauration ; forceupdate a "
+                "cherché les versions sur nuget.org."
+            )
+            break
+    return warnings
+
+
+_NUGET_CONFIGS = ("nuget.config", "NuGet.Config", "NuGet.config")
+
+
+def _dotnet_project(projects: Sequence[Project], lockfile: str) -> tuple[str, ...]:
+    """Le projet MSBuild à restaurer, dans le dossier du lockfile : à nommer, un dossier peut
+    aussi avoir une solution (``dotnet`` refuse alors de choisir)."""
+    found = sorted(
+        posixpath.basename(manifest)
+        for project in projects
+        for manifest in project.manifests
+        if dirname(manifest) == dirname(lockfile)
+        and posixpath.splitext(manifest)[1].lower() in (".csproj", ".fsproj", ".vbproj")
+    )
+    return tuple(found[:1])
+
+
+def _dotnet_sdk(program: str) -> bool:
+    """Vrai si ``dotnet`` a un SDK (``dotnet --list-sdks`` en cite un) : celui des runtimes
+    seuls ne sait pas restaurer."""
+    try:
+        result = _spawn(
+            [program, "--list-sdks"],
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            env={**_environment(), **_dotnet_environment()},
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and bool(_decode(result.stdout).strip())
+
+
 def _bundler_gemfile(lockfile: str) -> str:
     """Le nom du ``Gemfile`` d'un lockfile de Bundler : ``gems.rb`` pour ``gems.locked``."""
     name = posixpath.basename(lockfile)
@@ -636,6 +761,14 @@ def _manifests_of(report: Report, lockfile: str) -> set[str]:
         found.add(join(dirname(lockfile), PNPM_WORKSPACE))
     if posixpath.basename(lockfile) == go.LOCKFILE:
         found.add(join(dirname(lockfile), go.MANIFEST))
+    if ecosystem is Ecosystem.NUGET:
+        # Les versions écrites ailleurs : Directory.Packages.props, Directory.Build.props.
+        found |= {
+            dependency.file
+            for project in _projects_of(report, lockfile)
+            for dependency in project.dependencies
+            if dependency.file != lockfile
+        }
     return found
 
 
@@ -1843,6 +1976,38 @@ def _bundler_environment(root: Path, job: Job) -> dict[str, str]:
     }
 
 
+class _NuGet(_Driver):
+    def manual(self, job: Job) -> list[str]:
+        return ["dotnet", "restore", *job.options, "--force-evaluate"]
+
+    def run(self, context: _Context) -> None:
+        context.env.update(_dotnet_environment())
+        context.run(
+            "restore",
+            *context.job.options,
+            "--force-evaluate",
+            "-noAutoResponse",
+            "-p:RestoreLockedMode=false",
+        )
+
+
+def _dotnet_environment() -> dict[str, str]:
+    """Ni bannière, ni télémétrie, ni certificat de développement créé au premier lancement, ni
+    processus MSBuild laissé en arrière-plan. ``-noAutoResponse`` écarte le
+    ``Directory.Build.rsp`` du projet (ses options, ses loggers) ; ``-p:RestoreLockedMode=false``
+    lève le mode verrouillé du projet ou de l'environnement, qui refuserait de changer le
+    lockfile (NU1004). Vérifié avec le SDK .NET 10.0.403."""
+    return {
+        "DOTNET_NOLOGO": "1",
+        "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
+        "DOTNET_GENERATE_ASPNET_CERTIFICATE": "false",
+        "DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE": "1",
+        "DOTNET_SKIP_FIRST_TIME_EXPERIENCE": "1",
+        "MSBUILDDISABLENODEREUSE": "1",
+        "DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER": "1",
+    }
+
+
 _DRIVERS: dict[LockKind, _Driver] = {
     LockKind.NPM: _Npm(),
     LockKind.PNPM: _Pnpm(),
@@ -1858,4 +2023,5 @@ _DRIVERS: dict[LockKind, _Driver] = {
     LockKind.GO: _Go(),
     LockKind.COMPOSER: _Composer(),
     LockKind.BUNDLER: _Bundler(),
+    LockKind.NUGET: _NuGet(),
 }

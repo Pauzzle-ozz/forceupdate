@@ -1196,3 +1196,104 @@ def test_gradle_files(make_tree: MakeTree) -> None:
     versions = {d.name: d.constraint for d in after.dependencies}
     assert versions["com.squareup.okhttp3:logging-interceptor"] == "4.12.1"  # montée avec
     assert versions["org.yaml:snakeyaml"] == "1.33"
+
+
+# ---------------------------------------------------------------------------
+# NuGet : une version se réécrit là où elle est écrite (centrale, propriété, attribut, élément)
+# ---------------------------------------------------------------------------
+
+NUGET_BUILD_PROPS = """\
+<Project>
+  <PropertyGroup>
+    <SerilogVersion>2.10.0</SerilogVersion>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>
+"""
+
+NUGET_CENTRAL = """\
+<Project>
+  <ItemGroup>
+    <PackageVersion Include="Newtonsoft.Json" Version="12.0.1" />
+    <PackageVersion Include="Serilog" Version="$(SerilogVersion)" />
+  </ItemGroup>
+</Project>
+"""
+
+NUGET_APP = """\
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Polly" VersionOverride="7.2.3" />
+  </ItemGroup>
+</Project>
+"""
+
+NUGET_LEGACY = """\
+<Project>
+  <ItemGroup>
+    <PackageReference Include="Dapper">
+      <Version>2.0.0</Version>
+    </PackageReference>
+  </ItemGroup>
+</Project>
+"""
+
+
+def test_nuget_files(make_tree: MakeTree) -> None:
+    root = make_tree(
+        {
+            "Directory.Build.props": NUGET_BUILD_PROPS,
+            "Directory.Packages.props": NUGET_CENTRAL,
+            "src/App/App.csproj": NUGET_APP,
+            "lib/Lib.csproj": NUGET_LEGACY.replace("\n", "\r\n"),
+            "legacy/packages.config": '<packages>\n  <package id="log4net" version="2.0.8" />\n'
+            "</packages>\n",
+        }
+    )
+    (root / "lib/Lib.csproj").write_bytes(b"\xef\xbb\xbf" + (root / "lib/Lib.csproj").read_bytes())
+    projects = inventory(root)
+    choices = [
+        choice(projects["src/App"], "Newtonsoft.Json", "13.0.1"),
+        choice(projects["src/App"], "Serilog", "2.12.0"),
+        choice(projects["src/App"], "Polly", "7.2.4"),
+        choice(projects["lib"], "Dapper", "2.1.35"),
+        choice(projects["legacy"], "log4net", "2.0.17"),
+    ]
+    changes = writers.prepare(root, choices)
+    assert changes.skipped == ()
+    files = written(root, changes)
+    assert files["Directory.Packages.props"] == NUGET_CENTRAL.replace("12.0.1", "13.0.1")
+    assert files["Directory.Build.props"] == NUGET_BUILD_PROPS.replace("2.10.0", "2.12.0")
+    assert files["src/App/App.csproj"] == NUGET_APP.replace("7.2.3", "7.2.4")
+    raw = (root / "lib/Lib.csproj").read_bytes()
+    assert raw.startswith(b"\xef\xbb\xbf") and b"<Version>2.1.35</Version>\r\n" in raw
+    assert files["legacy/packages.config"].count('version="2.0.17"') == 1
+    after = inventory(root)
+    assert {d.name: d.constraint for d in after["src/App"].dependencies} == {
+        "Newtonsoft.Json": "13.0.1",
+        "Serilog": "2.12.0",
+        "Polly": "7.2.4",
+    }
+    # La version centrale vaut aussi pour le projet de Directory.Packages.props.
+    assert {d.name: d.constraint for d in after["."].dependencies} == {
+        "Newtonsoft.Json": "13.0.1",
+        "Serilog": "2.12.0",
+    }
+
+
+def test_a_nuget_central_version_from_two_projects(make_tree: MakeTree) -> None:
+    root = make_tree(
+        {
+            "Directory.Build.props": NUGET_BUILD_PROPS,
+            "Directory.Packages.props": NUGET_CENTRAL,
+            "src/App/App.csproj": NUGET_APP,
+        }
+    )
+    projects = inventory(root)
+    central = choice(projects["."], "Newtonsoft.Json", "13.0.1")
+    app = choice(projects["src/App"], "Newtonsoft.Json", "13.0.1")
+    changes = writers.prepare(root, [central, app])
+    assert [c.path for c in changes.files] == ["Directory.Packages.props"]
+    assert len(changes.applied) == 2

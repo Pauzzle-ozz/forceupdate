@@ -1081,7 +1081,7 @@ export interface components {
          * @description Le format d'un lockfile, donc l'outil qui le régénère.
          * @enum {string}
          */
-        LockKind: "npm" | "pnpm" | "yarn1" | "yarn" | "uv" | "poetry" | "pdm" | "pipenv" | "pip-compile" | "uv-pip-compile" | "cargo" | "go" | "composer" | "bundler";
+        LockKind: "npm" | "pnpm" | "yarn1" | "yarn" | "uv" | "poetry" | "pdm" | "pipenv" | "pip-compile" | "uv-pip-compile" | "cargo" | "go" | "composer" | "bundler" | "nuget";
         /**
          * LockResult
          * @description Ce qu'il est advenu d'un lockfile (``lockfiles.Regenerated``).

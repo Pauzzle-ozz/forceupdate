@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from forceupdate import engine
+from forceupdate import engine, versions
 from forceupdate.models import Ecosystem, Gap
 from forceupdate.sources.local import LocalSource
 from forceupdate.versions import InvalidConstraint, InvalidVersion, for_ecosystem
@@ -22,7 +22,9 @@ def test_for_ecosystem() -> None:
     assert NPM.ecosystem is Ecosystem.NPM
 
 
-def test_an_ecosystem_not_yet_handled() -> None:
+def test_an_ecosystem_not_yet_handled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Les huit écosystèmes sont gérés : NuGet est retiré le temps du test."""
+    monkeypatch.delitem(versions._SCHEMES, Ecosystem.NUGET)
     with pytest.raises(LookupError, match="NuGet"):
         for_ecosystem(Ecosystem.NUGET)
 

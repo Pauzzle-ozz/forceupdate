@@ -569,14 +569,15 @@ class _Group:
         return found
 
     def _direct_edits(self, version: str, *, floor: bool) -> _Operations:
-        """Les contraintes à réécrire pour monter à ``version`` : celles qui ne l'acceptent pas,
-        et, sans lockfile, celles dont la borne basse est à relever."""
+        """Les contraintes à réécrire pour monter à ``version`` : celles qui ne l'acceptent pas
+        (ou dont le gestionnaire ne la prendrait pas : ``VersionScheme.reaches``), et, sans
+        lockfile, celles dont la borne basse est à relever."""
         edits = []
         manual = None
         for dependency, current in zip(self.dependencies, self.currents, strict=True):
             text = dependency.effective_constraint
             try:
-                inside = self.scheme.satisfies(text, version)
+                inside = self.scheme.reaches(text, version)
             except (InvalidConstraint, InvalidVersion):
                 manual = f"Contrainte « {text} » illisible : à réécrire à la main."
                 continue
@@ -615,7 +616,9 @@ class _Group:
 
     def _indirect_edits(self, version: str, *, floor: bool) -> _Operations:
         """Une indirecte monte par son lockfile ; une version forcée qui ne l'accepte pas est
-        réécrite."""
+        réécrite. Pas avec NuGet, qui prend la plus basse version qui convient : à la main."""
+        if self.scheme.lowest:
+            return [], None, _lowest_manual(self.lead.name, version)
         lockfile = self.lead.lockfile or self.lead.file
         override = _override(self.lead.name, self.overrides)
         if override is None:
@@ -664,6 +667,16 @@ def _in_manifest(dependency: Dependency) -> bool:
     ``// indirect`` dans ``go.mod`` (ou la fige par un ``replace`` de ``go.work``). Celle d'un
     lockfile (un ``.txt`` compilé a aussi des emplacements) se met à jour par son outil."""
     return dependency.file != dependency.lockfile
+
+
+def _lowest_manual(name: str, version: str) -> str:
+    """Pourquoi une indirecte NuGet ne monte pas seule, et comment faire."""
+    return (
+        "NuGet prend la plus basse version qui convient : régénérer le lockfile ne fait pas "
+        "monter une indirecte. L'ajouter au projet : "
+        f'<PackageReference Include="{name}" Version="{version}" /> (gestion centrale : sa '
+        "<PackageVersion>, et la référence sans version)."
+    )
 
 
 def _moved_manual(name: str, moved: str, version: str) -> str:

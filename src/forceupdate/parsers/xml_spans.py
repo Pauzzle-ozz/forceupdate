@@ -1,10 +1,13 @@
-"""Lire un document XML (``pom.xml``, ``maven-metadata.xml``) en arbre, avec la position du texte.
+"""Lire un document XML (``pom.xml``, ``maven-metadata.xml``, un ``.csproj``) en arbre, avec la
+position du texte et des attributs.
 
 ``xml.etree`` donne les éléments d'un document, pas leur position. Ce module le lit avec
 ``xml.parsers.expat`` (l'analyseur de ``xml.etree``, dans la bibliothèque standard) et note, pour
 chaque élément, où commence et où finit son contenu. Le texte d'un élément feuille écrit tel
 quel (``<version>1.2.3</version>``, sans entité, commentaire ni ``CDATA``) a alors un emplacement
 exact (``Element.location``) : c'est ce qui permet de réécrire une version sans toucher au reste.
+De même pour la valeur d'un attribut écrite telle quelle sur une ligne (``Version="1.2.3"``, sans
+entité, tabulation ni fin de ligne, que XML remplacerait : ``Element.attribute_locations``).
 
 Les noms d'éléments sont gardés sans préfixe d'espace de noms (``<pom:version>`` donne
 ``version``) : un ``pom.xml`` déclare ``xmlns="http://maven.apache.org/POM/4.0.0"``, qu'on ignore.
@@ -21,6 +24,10 @@ from xml.parsers import expat
 
 from forceupdate.models import Location
 from forceupdate.parsers.base import ParseError
+
+_SPACES = frozenset(b" \t\r\n")
+_BREAKS = frozenset(b" \t\r\n/>")
+_QUOTES = frozenset(b"\"'")
 
 
 @dataclass(eq=False)
@@ -39,6 +46,9 @@ class Element:
     """Pour un élément sans enfant : l'emplacement de son texte (sans les espaces autour), s'il
     est écrit tel quel sur une ligne. ``None`` sinon (vide, entité, ``CDATA``, commentaire,
     plusieurs lignes)."""
+    attribute_locations: dict[str, Location] = field(default_factory=dict)
+    """L'emplacement de la valeur de chaque attribut écrite telle quelle sur une ligne, par nom
+    (tel qu'écrit) ; une valeur vide a un emplacement vide."""
 
     def find(self, tag: str) -> "Element | None":
         """Le premier enfant de ce nom."""
@@ -102,16 +112,18 @@ class _Builder:
         raise ParseError("XML refusé : il déclare une entité.")
 
     def _start(self, name: str, attributes: dict[str, str]) -> None:
+        start = self.parser.CurrentByteIndex
         element = Element(
             tag=name.rsplit(":", 1)[-1],
             attributes=attributes,
             line=self.parser.CurrentLineNumber,
+            attribute_locations=self._attribute_locations(start) if attributes else {},
         )
         if self.stack:
             self.stack[-1][0].children.append(element)
         else:
             self.root = element
-        self.stack.append((element, self.parser.CurrentByteIndex, []))
+        self.stack.append((element, start, []))
 
     def _characters(self, data: str) -> None:
         if self.stack:
@@ -131,14 +143,53 @@ class _Builder:
             return  # entité, CDATA, commentaire : le texte écrit n'est pas la valeur
         lead = len(raw) - len(raw.lstrip())
         trail = len(raw.rstrip())
-        first, last = self._char_offset(opened + lead), self._char_offset(opened + trail)
+        element.location = self._location(opened + lead, opened + trail)
+
+    def _location(self, first_byte: int, last_byte: int) -> Location | None:
+        """L'emplacement du texte entre deux octets ; ``None`` s'il tient sur plusieurs lignes."""
+        first, last = self._char_offset(first_byte), self._char_offset(last_byte)
+        if "\n" in self.text[first:last]:
+            return None
         line = bisect.bisect_right(self.line_starts, first)
         line_start = self.line_starts[line - 1]
-        if "\n" in self.text[first:last]:
-            return
-        element.location = Location(
-            line=line, column=first - line_start, end_column=last - line_start
-        )
+        return Location(line=line, column=first - line_start, end_column=last - line_start)
+
+    def _attribute_locations(self, start: int) -> dict[str, Location]:
+        """Les emplacements des valeurs d'attributs de la balise ouvrante qui commence à l'octet
+        ``start``. Une valeur que XML transforme (entité, tabulation, fin de ligne) n'en a pas."""
+        data = self.data
+        end = self._tag_end(start)
+        found: dict[str, Location] = {}
+        if end < 0:
+            return found
+        index = start + 1
+        while index < end and data[index] not in _BREAKS:
+            index += 1  # le nom de l'élément
+        while True:
+            while index < end and data[index] in _SPACES:
+                index += 1
+            name_start = index
+            while index < end and data[index] not in _BREAKS and data[index] != ord("="):
+                index += 1
+            name = data[name_start:index].decode("utf-8", errors="replace")
+            while index < end and data[index] in _SPACES:
+                index += 1
+            if not name or index >= end or data[index] != ord("="):
+                return found
+            index += 1
+            while index < end and data[index] in _SPACES:
+                index += 1
+            if index >= end or data[index] not in _QUOTES:
+                return found
+            closing = data.find(data[index : index + 1], index + 1, end)
+            if closing < 0:
+                return found
+            raw = data[index + 1 : closing]
+            if not any(byte in raw for byte in (b"&", b"<", b"\t", b"\n", b"\r")):
+                location = self._location(index + 1, closing)
+                if location is not None:
+                    found[name] = location
+            index = closing + 1
 
     def _tag_end(self, start: int) -> int:
         """L'octet qui suit le ``>`` de la balise ouvrante qui commence à ``start`` ; ``-1`` si

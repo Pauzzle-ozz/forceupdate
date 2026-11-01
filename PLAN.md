@@ -35,7 +35,7 @@ src/forceupdate/
 ├── models.py         Dependency, Finding, Project, Report, Language, Severity, FindingKind…
 ├── sources/          d'où vient le code : base.py (interface Source), local.py, forge.py
 ├── detect/           languages.py (langages), manifests.py (découverte, regroupement en projets)
-├── parsers/          un module par écosystème : python, npm, rust, go, php, ruby, java, dotnet
+├── parsers/          un module par écosystème : python, npm, rust, go, php, ruby, java, nuget
 ├── versions/         comparer, classer l'écart, tester une contrainte : un module par écosystème
 ├── net/              http.py (client commun, retries, limites de débit), cache.py (cache disque)
 ├── registries/       un client par registre : pypi, npm, crates, goproxy, packagist, rubygems, maven, nuget
@@ -119,7 +119,7 @@ Statuts : `à faire`, `en cours`, `fait`.
 | E23 | F | PHP (Composer) | fait |
 | E24 | F | Ruby (Bundler) | fait |
 | E25 | F | Java (Maven, Gradle) | fait |
-| E26 | F | .NET (NuGet) | à faire |
+| E26 | F | .NET (NuGet) | fait |
 | E27 | G. Compléments | Fin de vie des runtimes et frameworks | à faire |
 | E28 | G | Fichier de code isolé | à faire |
 | E29 | H. Livraison | Configuration, page Réglages, robustesse | à faire |
@@ -1380,6 +1380,17 @@ lockfile, une version exacte qui est celle de l'outil va dans `Dependency.instal
 (`gradle.properties`). Les tests qui disaient un écosystème « pas encore géré » prennent NuGet :
 à E26, il n'en reste plus (voir E26).
 
+Depuis E26 (voir ses notes) : les huit écosystèmes sont gérés ; les tests du chemin « pas encore
+géré » retirent NuGet des tables le temps du test. Une `VersionScheme` a trois points d'extension
+de plus, inertes ailleurs : `lowest` (le gestionnaire prend la plus basse version qui convient :
+une indirecte ne monte pas en régénérant), `reaches` (il prend la version sans réécriture : le
+planificateur s'en sert à la place de `satisfies`) et `chosen` (sa version « permise »).
+`parsers/xml_spans.py` situe aussi la valeur des attributs (`Element.attribute_locations`).
+`lockfiles._readers` régénère le lockfile d'un autre projet qui lit une version réécrite (une
+version centrale NuGet) ; `lockfiles._manifests_of` compte, pour NuGet, les fichiers où ses
+versions sont écrites. Les réponses d'un registre à plusieurs fichiers par paquet (le proxy Go,
+NuGet) s'enregistrent par `record.py` (`record_several`), compressées pour NuGet (`.json.gz`).
+
 **Fini quand**, pour chaque étape : sur un mini-projet de l'écosystème, l'analyse
 et la mise à jour donnent un résultat juste, dans l'interface et en ligne de
 commande. Si l'outil natif n'est pas installé sur la machine, la régénération du
@@ -1948,24 +1959,171 @@ lockfile est testée avec une commande simulée, et c'est noté.
 
 ### E26 — .NET (NuGet)
 
-- [ ] Reprendre `parse_packages_config` et ses tests.
-- [ ] Ajouter :
+- [x] Reprendre `parse_packages_config` et ses tests.
+- [x] Ajouter :
   - `*.csproj`, `*.fsproj`, `*.vbproj` : `<PackageReference>`, version en attribut ou en élément ;
   - `Directory.Packages.props` (versions centralisées). E02 en fait un projet à part, dans son dossier : le rattacher aux `.csproj` qui sont en dessous ;
   - `packages.lock.json`.
-- [ ] Versions NuGet : 4 segments, pré-versions, plages `[1.0,2.0)`.
-- [ ] Registre : « flat container » pour les versions, API « registration » pour la dépréciation.
-- [ ] Réécriture des `.csproj`, `.props` et `packages.config` ; lockfile : `dotnet restore --force-evaluate` si `packages.lock.json` existe.
-- [ ] Depuis E25 : lire les `.csproj` et les `.props` avec `parsers/xml_spans.py` (positions du texte
+- [x] Versions NuGet : 4 segments, pré-versions, plages `[1.0,2.0)`.
+- [x] Registre : ~~« flat container » pour les versions, API « registration » pour la dépréciation~~ l'API « registration » seule (elle a aussi les versions non listées, voir les notes).
+- [x] Réécriture des `.csproj`, `.props` et `packages.config` ; lockfile : `dotnet restore --force-evaluate` si `packages.lock.json` existe.
+- [x] Depuis E25 : lire les `.csproj` et les `.props` avec `parsers/xml_spans.py` (positions du texte
   et des attributs à ajouter : `Version="…"` est un attribut) ; une version de
   `Directory.Packages.props` est écrite une fois pour les projets en dessous : la même mécanique que
   les propriétés Maven (l'emplacement de la version, `Dependency.file` = le `.props`) ; les plages
   NuGet ressemblent à celles de Maven (`versions/maven.py`, `Restriction`), mais une version nue y
   est un minimum (`>= V`).
-- [ ] Les tests qui prenaient NuGet pour « pas encore géré » (`test_checks_vulns.py`, `test_cli.py`,
+- [x] Les tests qui prenaient NuGet pour « pas encore géré » (`test_checks_vulns.py`, `test_cli.py`,
   `test_parsers_python.py`, `test_registries.py`, `test_versions.py`) : il ne reste plus d'écosystème
   à prendre. Les garder en retirant un écosystème des tables (`_PARSERS`, `_SCHEMES`,
   `_REGISTRIES`) le temps du test, ou retirer ce chemin s'il devient du code mort.
+- [x] Ajoutés en route : `Directory.Build.props` (ses propriétés et ses `PackageReference`, et ceux
+  qu'il importe plus haut par `GetPathOfFileAbove`), `VersionOverride`, `GlobalPackageReference`,
+  les conditions MSBuild (dites, jamais évaluées), un projet de tests (`IsTestProject`,
+  `Microsoft.NET.Test.Sdk`) en `dev`, `PrivateAssets="all"` en `build`, les `CentralTransitive`
+  rattachées à leur `PackageVersion`, `allowedVersions` de `packages.config` (versions exclues) ;
+  les versions flottantes (`1.*`, `1.0.0-beta.*`) ; `VersionScheme.lowest`, `reaches`, `chosen`
+  (NuGet prend la plus basse version qui convient) ; une indirecte NuGet proposée à la main ; le
+  lockfile d'un autre projet qui lit une version centrale réécrite, régénéré aussi ; le SDK
+  absent (`dotnet` des runtimes seuls) traité comme un outil absent ; les avertissements
+  `global.json` et `nuget.config` ; mini-projet `nuget`, réponses enregistrées de nuget.org
+  (`tests/fixtures/nuget/`, compressées).
+
+**Notes** (session 26) :
+
+- **Commit d'abord** : E25 commitée seule (`E25 : Java (Maven, Gradle)`, `bed170f`), avec l'accord
+  de l'utilisateur, après 3801 tests verts. Avec son accord aussi : **NuGet.Versioning 7.9.0** (le
+  `.nupkg` de nuget.org, SHA-512 identique à celle de l'API de catalogue) dans
+  `~/sdk/nuget-versioning-7.9.0/` pour l'oracle, et **le SDK .NET 10.0.403** (l'archive zip de
+  `builds.dotnet.microsoft.com`, SHA-512 identique à celle de `releases.json`) dans
+  `~/sdk/dotnet-sdk-10.0.403/`, hors du `PATH` (voir CLAUDE.md). Le paquet n'a plus de
+  `netstandard2.0` : sa `lib/net472/` se charge dans PowerShell 5.1.
+- **Vérifié contre le vrai NuGet.Versioning** (avant d'écrire les tests ; le code réécrit d'après
+  son source, au commit `977537e` du paquet) :
+  - **l'oracle** : un script PowerShell qui charge la DLL (`[Reflection.Assembly]::LoadFrom`) ;
+    **piège** : `[NuGetVersion]::TryParse` y prend la surcharge héritée de `SemanticVersion`
+    (stricte, trois nombres) : `NuGetVersion::Parse` dans un `try` ;
+  - **les versions** : 17 866 lues (17 457 publiées de 175 paquets de nuget.org, plus des cas
+    limites : espaces, zéros en tête, étiquettes `01`, `-1`, `2147483648`, métadonnées) : forme
+    normalisée, nombres, étiquettes, métadonnées ; **leur tri** (17 824 versions, 17 506 rangs,
+    158 838 576 comparaisons implicites) ; **141 contraintes** (intervalles, flottantes, refusées)
+    et **30 189 vérifications** de `Satisfies` et `FindBestMatch` : **aucun écart** ; six mutations
+    (casse des étiquettes, nombres après les mots, sans révision, la plus haute, pré-versions
+    permises, zéros en tête) en donnent de 2 à 3 638 : la comparaison mord ;
+  - `1.0` = `1.0.0` = `1.0.0.0` ; `01.2` est `1.2.0` ; `1.2.3-beta.01` est refusée ; une étiquette
+    `-1` est un nombre ; une version nue est `[V, )` ; `[,1.0]` n'a pas de borne basse ; `1.*`
+    accepte `2.0.0` (`Satisfies` : sa borne basse est 1.0.0), mais `FindBestMatch` y prend la plus
+    haute 1.x ; `FindBestMatch` écarte une pré-version sauf si une borne en est une, ou une version
+    flottante de pré-versions ; `1*` est `[10.0.0, )` (une bizarrerie de `FloatRange`, reproduite).
+- **Vérifié avec le vrai SDK .NET 10.0.403** (`dotnet restore` sur des copies du mini-projet) :
+  - le lockfile est en **version 2** avec la gestion centrale ; les noms tels que les écrit le
+    paquet ; `Project` (le nom du projet référencé, en minuscules) ; **`CentralTransitive` même sans
+    épinglage transitif**, pour une version centrale venue par un `ProjectReference` ; un framework
+    par section (`net8.0`, `net10.0`) ;
+  - **une version centrale réécrite suffit** : `dotnet restore`, sans `--force-evaluate`, refait le
+    lockfile (NuGet prend la nouvelle borne basse) ; **une version flottante ne monte qu'avec
+    `--force-evaluate`** (sans : « All projects are up-to-date ») ; `--force-evaluate` ne change
+    rien à une version nue (lockfile identique) ; restaurer un projet restaure aussi ceux qu'il
+    référence, leurs lockfiles compris ;
+  - **`RestoreLockedMode`** (du projet ou de l'environnement) fait échouer (NU1004) ;
+    `-p:RestoreLockedMode=false` le lève ;
+  - **ce qu'il exécute** : une cible de `Directory.Build.targets` accrochée à `Restore` (témoin
+    `WriteLinesToFile`) a tourné ; `Directory.Build.rsp` est lu (un témoin `-p:`), sauf avec
+    `-noAutoResponse` (passé : il pourrait ajouter un logger, une DLL) ; une fonction de propriété
+    qui écrit (`System.IO.File::WriteAllText`) est refusée par MSBuild (MSB4185). Aucun processus
+    `dotnet` ne reste ensuite ; `obj/` est écrit dans chaque projet ;
+  - **une version non listée est restaurée** : `Version="2.0.7.1"` de log4net donne 2.0.8, non
+    listée (avertissement NU1601) : la version « permise » de NuGet se calcule sur toutes les
+    versions publiées ;
+  - `global.json` qui demande un SDK absent : `dotnet` échoue.
+- **Vérifié en vrai** sur nuget.org : l'API « registration » (`registration5-gz-semver2`,
+  compressée) donne les versions **non listées comprises** (`listed: false`, `published` à
+  1900-01-01), `deprecation` (raisons, message, `alternatePackage`) ; au-delà de 128 versions, les
+  pages sont des fichiers à part (24 pour AWSSDK.Core, 7,5 Ko chacune sur le réseau) ; un paquet
+  inconnu : 404 en XML ; `Cache-Control: no-store`. Le flat container (les versions seules, en
+  minuscules) n'est pas demandé. **OSV** : l'écosystème `NuGet` ne tient pas compte de la casse
+  (`newtonsoft.json` trouve GHSA-5crp-9r3c-p9vr) et lit `12.0` ; Newtonsoft.Json 12.0.1 →
+  CVE-2024-21907 corrigée en 13.0.1, Microsoft.AspNetCore.Http 2.1.0 → CVE-2020-1045 en 2.1.22,
+  System.Text.Encodings.Web 4.5.0 → CVE-2021-26701 en 4.5.1, log4net 2.0.8 → CVE-2018-1285 en
+  2.0.10 (et un avis de 2026 corrigé en 3.3.0).
+- **Organisation** :
+  - `versions/nuget.py` (`NUGET`, `NuGetVersion`, `NuGetRange`, `FloatRange`, `Float`) ;
+    `versions/base.py` : `lowest`, `reaches`, `chosen` ;
+  - `parsers/xml_spans.py` : `Element.attribute_locations` ; `parsers/nuget.py` (`read_msbuild` →
+    `MsBuildFile`, `Property`, `Item` ; `Properties` ; `_Evaluation` (le projet et ce que MSBuild
+    lit avant lui) ; `parse_packages_config` ; `parse_packages_lock_json` → `NuGetLockfile`,
+    `Locked` ; `parse_project`) ;
+  - `registries/nuget.py` (`NuGet`, `deprecation_message`) ; `advisories/osv.py` : noms NuGet sans
+    la casse ; `checks/outdated.py` : la version permise par `chosen` (toutes les versions pour
+    NuGet) ; `checks/deprecated.py` : « non listée » ;
+  - `update/constraints.py` (`_rewrite_nuget`, `_nuget_float`) ; `update/planner.py` : `reaches`,
+    `_lowest_manual` ; `update/writers/nuget.py` (`read_msbuild_file`, `read_packages_config`,
+    `Directory.Build.props` reconnu par son nom) ; `update/lockfiles.py` : `LockKind.NUGET`,
+    `_NuGet`, `_dotnet_environment`, `_dotnet_sdk`, `_dotnet_project`, `_dotnet_warnings`,
+    `_readers` ; `openapi.json` et `schema.d.ts` (`LockKind` : `nuget`).
+- **Tranché** :
+  - **une version nue est un minimum, et NuGet prend la plus basse qui convient** : sans lockfile,
+    la version utilisée est sa borne basse (`exact` : celle d'une contrainte qui ne flotte pas,
+    `[1.0,2.0)` compris), pas une version « approximative » ; la version « permise » est le choix de
+    NuGet (`chosen`, la version utilisée sauf une version flottante) ; **une mise à jour réécrit
+    toujours la borne basse** (`reaches` : seule une version flottante monte en régénérant) ;
+  - **la réécriture** : une version nue devient la version visée (même précision si elle s'y
+    écrit : `1.0` → `2.0`) ; `[V]` ; un intervalle prend la version visée pour borne basse, incluse
+    (`(,2.0]` → `[1.5.3,2.0]`), sa borne haute se déplace au même niveau si elle l'exclut ; une
+    version flottante garde sa précision (`1.*` → `2.*`), sans plancher (NuGet y prend la plus
+    haute) ;
+  - **une indirecte ne monte pas** : NuGet la garde à la plus basse version que demandent ceux qui
+    la tirent ; l'option est « à la main », avec la `PackageReference` (ou la `PackageVersion`) à
+    ajouter ; une `CentralTransitive` se réécrit dans sa `PackageVersion` ;
+  - **le projet de `Directory.Packages.props`** donne ses versions centrales que n'utilisent pas
+    les projets de son dossier, et ses `GlobalPackageReference` s'il n'en a pas, comme un
+    `pom.xml` parent sa `dependencyManagement` ; une version centrale est réécrite une fois ;
+  - **un projet à `packages.config`** : NuGet y ignore les `PackageReference` (le `.csproj` n'est
+    pas lu) ; la version écrite est l'installée ; pas de lockfile ;
+  - **les lockfiles** : `dotnet restore <projet> --force-evaluate -noAutoResponse
+    -p:RestoreLockedMode=false`, le projet nommé (un dossier peut aussi avoir une solution) ; ni
+    bannière, ni télémétrie, ni certificat de développement, ni nœud MSBuild laissé ; un `dotnet`
+    sans SDK (`dotnet --list-sdks` vide) est un outil absent : les manifestes restent réécrits,
+    la commande est donnée ; ce qu'il exécute est dit (`_RUNS_CODE`) ; `NUGET_PACKAGES`,
+    `nuget.config`, les identifiants d'un flux privé restent ceux de la personne ;
+  - **les réponses enregistrées** : onze paquets (`PACKAGES["nuget"]`), compressés (224 Ko au lieu
+    de 5,8 Mo) ; pour OSV, les 38 versions du mini-projet ajoutées à `queries.json` avec leurs 5
+    avis (un script qui fait la requête de `record.py osv` pour ce projet seul) : rien d'autre de
+    changé.
+- **Trouvé** :
+  - `dotnet` est souvent installé sans SDK (les runtimes seuls, comme sur cette machine avant la
+    session) : il aurait fait échouer la régénération, et remettre les manifestes ;
+  - les indirectes venues d'un projet référencé par un projet de tests sortaient `runtime` : elles
+    sont `dev` ;
+  - un heredoc a encore avalé une barre oblique (`L\'ajouter`), et `python -I` ignore
+    `PYTHONIOENCODING` (une table écrite en cp1252) : scripts écrits par l'outil d'écriture,
+    `-X utf8`.
+- **Tests** : `test_versions_nuget.py` (382 : lues ou refusées, ordre, 141 contraintes relevées sur
+  NuGet.Versioning 7.9.0, bornes, `reaches`, `chosen`, écarts, candidates) ;
+  `test_parsers_nuget.py` (22 : attributs XML, `packages.config` repris de `reference/`, projets,
+  conditions, gestion centrale, `Directory.Build.props` en chaîne, lockfile) ;
+  `test_registries_nuget.py` (17, plus 1 réseau) ; `test_nuget_projects.py` (6 : inventaire,
+  constats, plan, `scan` et `update` en ligne de commande) ; `test_update_constraints.py` (27 cas
+  NuGet) ; `test_writers.py` (2, et le mini-projet) ; `test_lockfiles.py` (5, plus le vrai
+  `dotnet` en `network`) ; le mini-projet passe aussi par les tests des sources GitHub, GitLab et
+  Bitbucket ; les tests « pas encore géré » retirent NuGet des tables le temps du test. 4268 tests
+  Python verts (plus 20 réseau), ruff propre ; 141 Vitest ; 49 Playwright.
+- **Vérifié à la main**, sur des copies dans le scratchpad, avec le vrai nuget.org, OSV et le vrai
+  `dotnet` : `forceupdate scan` (9 failles dont l'indirecte System.Text.Encodings.Web, log4net
+  2.0.8 non listée, xunit 2 déprécié et son remplaçant, NUnit gardé sous `allowedVersions`) ;
+  `forceupdate update --yes` (4 fichiers réécrits, les deux lockfiles refaits par `dotnet restore`
+  aux versions exactes, la `CentralTransitive` du projet de tests comprise) ; `forceupdate ui`
+  piloté par Playwright : rapport (versions situées dans `Directory.Packages.props`, l'indirecte
+  « à faire à la main »), écran 5 (12 cochées, 4 fichiers, 2 lockfiles), plan (trois diffs,
+  « dotnet trouvé », la commande et ce qu'elle exécute), application (12 mises à jour, toutes à la
+  version demandée), nouvelle analyse ; aucune erreur de console.
+- **Limites** : MSBuild n'est jamais lancé : les conditions ne sont pas évaluées, ni
+  `Directory.Build.targets` (une `PackageReference Update=` y est fréquente : dite, pas lue), ni
+  les imports autres que les `Directory.*.props` ; une indirecte NuGet se corrige à la main (case
+  ajoutée à E29) ; un flux privé (`nuget.config`) n'est pas interrogé : les versions viennent de
+  nuget.org ; `PackageDownload`, les SDK de projet (`<Sdk Name=… Version=…>`), un lockfile au nom
+  propre (`NuGetLockFilePath`) ne sont pas lus ; `TargetFramework` et `global.json` restent pour
+  E27.
 
 ---
 
@@ -1985,7 +2143,7 @@ lockfile est testée avec une commande simulée, et c'est noté.
   | Ruby | `.ruby-version`, `ruby "…"` du `Gemfile` |
   | PHP | `require.php` de `composer.json` |
   | Java | `maven.compiler.release`, `java.version`, toolchain Gradle |
-  | .NET | `TargetFramework` |
+  | .NET | `TargetFramework`, `TargetFrameworks` (lus par `parsers/nuget.py` sans être gardés), le SDK de `global.json` |
 
   Plus les `FROM` des `Dockerfile` (images `python`, `node`, `ruby`, `php`, `golang`, `eclipse-temurin`…).
 - [ ] Frameworks : table dépendance → produit endoflife.date (`django`, `rails`, `spring-boot`, `laravel`, `symfony`, `angular`, `vue`, `nuxt`, `electron`…).
@@ -1995,6 +2153,7 @@ lockfile est testée avec une commande simulée, et c'est noté.
 - [ ] Depuis E23 : de même pour PHP. Composer refuse une version dont le `require.php` exclut le PHP du projet (`config.platform.php`, sinon la machine) : `composer outdated` propose symfony/console 6.4.49 sous PHP 8.1.
 - [ ] Depuis E24 : de même pour Ruby. Bundler écarte une version dont le `required_ruby_version` exclut le Ruby qui tourne (minitest 5.15 demande Ruby < 4.0) ; l'index compact de RubyGems le donne pour chaque version (`ruby:< 4.1.dev&>= 3.2`), pas encore lu. La directive `ruby` du `Gemfile` et la section `RUBY VERSION` du `Gemfile.lock` disent la version du projet.30, forceupdate v8.1.10, qui demande PHP 8.4 (et la mise à jour échoue). Garder le `require.php` de chaque version (les métadonnées `p2` le donnent) et dire, ou écarter, celles qui ne conviennent pas au PHP du projet.
 - [ ] Interface : les fins de vie apparaissent dans le rapport (écran 4), avec la date et le cycle conseillé.
+- [ ] Depuis E26 : les SDK de projet MSBuild venus de NuGet (`<Project Sdk="Microsoft.Build.NoTargets/3.7.0">`, `<Sdk Name=… Version=…>`, `msbuild-sdks` de `global.json`) sont des paquets versionnés : les vérifier comme des dépendances `build`.
 
 **Fini quand** : un projet Python 3.8 + Django 3.2 + Node 16 sort trois constats
 datés et justes, dans l'interface.
@@ -2029,6 +2188,7 @@ seulement des imports) donnent un rapport juste.
 - [ ] Réglages de l'utilisateur (`platformdirs`) : sélection par défaut, dépôts exclus, cache (le vider : `Cache.clear`, E06). Écran 9 (Réglages) pour les modifier, selon `design-system/ECRANS.md` (le thème y figure aussi).
 - [ ] `requirements.txt` générés sans `.in` à côté (`uv export`, `poetry export`, `pdm export`, `pip-compile pyproject.toml`) : depuis E03, ils restent des manifestes et tous leurs paquets sortent comme directes. Les reconnaître (en-tête « autogenerated by pip-compile / uv », commentaires `# via`) et les traiter comme des lockfiles du manifeste du projet.
 - [ ] Une ligne de `requirements` à empreintes (`--hash`) : depuis E10, la réécriture la refuse, mais le planificateur ne le sait pas et pré-coche quand même l'option. Le marquer à l'analyse, pour que l'option soit `manual` (jamais pré-cochée, avec la raison).
+- [ ] Depuis E26 : une indirecte NuGet en faille ne monte pas en régénérant (NuGet prend la plus basse version qui convient) : l'option est « à la main ». L'appliquer : ajouter au projet la `PackageReference` (ou, avec la gestion centrale, la `PackageVersion` et `CentralPackageTransitivePinningEnabled`), une réécriture qui insère un élément, relue comme les autres. Et les flux privés de `nuget.config` (ses sources, leurs identifiants) pour les versions publiées, `Directory.Build.targets` (`PackageReference Update=`).
 - [ ] Robustesse :
   - dossiers énormes (plafonds, nombre maximal de fichiers) ;
   - fichiers illisibles, encodages exotiques ;
@@ -2190,3 +2350,4 @@ En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.
 | 23 | 2026-10-30 | E23 | Fait. Commit de E22 d'abord (accord de l'utilisateur) ; PHP 8.5.12 et Composer 2.11.0 installés avec son accord (archives officielles vérifiées, dans `~/sdk`). `versions/composer.py` (`VersionParser` de composer/semver et l'ordre de `version_compare` réécrits : **aucun écart** sur 1 282 versions, 19 600 paires et 99 contraintes ; **22 choix de `composer update` reproduits**), `parsers/php.py` (repris de `reference/` : contraintes telles qu'écrites et emplacements, noms en minuscules, paquets « plateforme », branches, `replace`/`provide`, `conflict`, dépôts `path` et autres d'après le lockfile ; `composer.lock` en graphe), `registries/packagist.py` (`p2` minifié, `abandoned` et son remplaçant), OSV `Packagist`, styles de contrainte (`~1.2` jusqu'à 2.0), `writers/php.py`, pilote `composer update x:V… -W --no-install --no-scripts --no-plugins`. Trouvé en vrai : `update --lock` garde une version que la contrainte n'accepte plus (jamais utilisé) ; `-W` nécessaire, `COMPOSER_MINIMAL_CHANGES` pour rien d'autre ; scripts et plugins lancés sans `--no-scripts`/`--no-plugins` (témoins) ; `COMPOSER_PREFER_LOWEST` fait descendre (retiré) ; **Composer 2.9+ refuse toute version qui garde une faille** : tranché avec l'utilisateur, levé pour les failles seules (`COMPOSER_POLICY_ADVISORIES_BLOCK=0`) sauf réglage du projet ou de la personne. `Dependency.excluded` devient des contraintes (`is_excluded`) ; corrigé en route : la version permise ignorait les versions exclues. Mini-projet `composer` (lockfile de Composer). Vérifié à la main avec le vrai Composer : `scan`, `update` (versions exactes, `composer validate` propre) et `ui` sur des copies. 2838 tests Python (plus 15 réseau), 141 Vitest, 49 Playwright. Cases ajoutées à E27, E29 |
 | 24 | 2026-11-01 | E24 | Fait. E23 déjà commitée. Ruby 4.0.9 (RubyGems et Bundler 4.0.20) installé avec l'accord de l'utilisateur (RubyInstaller, archive vérifiée, dans `~/sdk`). `versions/rubygems.py` (`Gem::Version` et `Gem::Requirement` réécrits : **aucun écart** sur 6 013 versions, 90 926 paires et 221 contraintes ; **25 choix de `bundle lock` reproduits**), `parsers/ruby_spans.py` (un lexer de Ruby : le `Gemfile` n'est jamais exécuté), `parsers/ruby.py` (`Gemfile` et `gems.rb` : groupes, plateformes, sources, git, chemins, `gemspec`, conditions et variables dites ; `.gemspec` ; `Gemfile.lock` repris de `reference/` et réécrit d'après le `LockfileParser` de Bundler : toutes les sections, versions à plateforme, graphe ; une gem `path:` résolue dans le lockfile du `Gemfile` qui la cite), `registries/rubygems.py` (l'index compact, huit fois plus léger que l'API v1), styles `~>` (précision gardée, plancher `, >= V`), réécriture en plusieurs chaînes (`written_target`), pilote `_Bundler` (vérifié en vrai : Bundler ne vise pas une version, donc `= V` le temps d'un `bundle lock`, une ligne `gem` pour une indirecte ; il exécute le `Gemfile` et tous les `.gemspec` (quatre témoins) ; `BUNDLE_GEMFILE` et `BUNDLE_LOCKFILE` remplacés ; la plateforme qu'il ajoute sous Windows retirée). Mini-projet `bundler` fait par le vrai Bundler, 23 gems enregistrées, 51 avis OSV ajoutés. 3133 tests Python verts (plus 17 réseau, vrai Bundler compris), 141 Vitest, 49 Playwright ; vérifié à la main en ligne de commande et dans l'interface (11 versions exactes). Pas encore commitée. |
 | 25 | 2026-11-01 | E25 | Fait. Commit de E24 d'abord (accord de l'utilisateur) ; ni Maven ni Gradle installés (son choix), seul le jar `maven-artifact` 3.9.16 téléchargé avec son accord (SHA-1 vérifiée) pour l'oracle, lancé par Nashorn (`jjs`, le JRE 8 n'a pas de `javac`). `versions/maven.py` (`ComparableVersion` et `VersionRange` réécrits : **aucun écart** sur 9 102 versions et 4 980 600 comparaisons, 45 spécifications ; trois mutations le voient ; `ComparableVersion` n'est pas transitif, comme Maven), `parsers/xml_spans.py` (expat, positions du texte, DTD refusée), `parsers/maven.py` (`pom.xml` : propriétés, parents du dépôt, `dependencyManagement`, BOM, plugins, profils, modules du build), `parsers/gradle_spans.py` et `parsers/gradle.py` (catalogue `libs.versions.toml`, `build.gradle(.kts)` lus en jetons, jamais exécutés, variables et `gradle.properties`), `registries/maven.py` (Maven Central, Google Maven, portail des plugins Gradle ; `<release>` peut être une pré-version), `update/writers/java.py`. Tranché : une version est située là où elle est écrite (propriété, `[versions]`, variable) et plusieurs dépendances partagent son emplacement (dit dans le plan) ; une version nue est la version utilisée (`installed`) ; les variantes (`-jre`/`-android`) ne se mélangent pas ; pas de lockfile (« Aucun lockfile à régénérer »). Log4Shell vérifié (2.15.0, 2.16.0, 2.17.0, 2.17.1). Mini-projets `maven` et `gradle`, 18 artefacts enregistrés, 19 versions ajoutées pour OSV. 3801 tests Python verts (plus 18 réseau), 141 Vitest, 49 Playwright ; vérifié à la main en ligne de commande et dans l'interface. |
+| 26 | 2026-11-01 | E26 | Fait. Commit de E25 d'abord (accord de l'utilisateur) ; NuGet.Versioning 7.9.0 (l'oracle, chargé par PowerShell 5.1) et le SDK .NET 10.0.403 installés avec son accord (empreintes SHA-512 vérifiées, dans `~/sdk`). `versions/nuget.py` (`NuGetVersion`, `VersionComparer`, `VersionRange` et ses versions flottantes réécrits d'après le source : **aucun écart** sur 17 866 versions, 158 838 576 comparaisons implicites, 141 contraintes et 30 189 vérifications de `Satisfies` et `FindBestMatch` ; six mutations le voient), `parsers/xml_spans.py` (positions des attributs), `parsers/nuget.py` (`packages.config` repris de `reference/`, projets MSBuild, `Directory.Build.props` en chaîne, gestion centrale, `VersionOverride`, `GlobalPackageReference`, conditions dites, projets de tests, `packages.lock.json` en graphe par framework, `CentralTransitive`), `registries/nuget.py` (l'API « registration », ses pages, non listées, dépréciation et remplaçant), OSV `NuGet` sans la casse. Tranché : **NuGet prend la plus basse version qui convient** (`VersionScheme.lowest`, `reaches`, `chosen`) : une mise à jour réécrit la borne basse, une indirecte est à la main, la version permise est l'utilisée. Pilote `dotnet restore --force-evaluate -noAutoResponse -p:RestoreLockedMode=false`, vérifié en vrai (version centrale réécrite suffisante, flottante seulement avec `--force-evaluate`, une cible de `Directory.Build.targets` s'exécute, `Directory.Build.rsp` écarté, version non listée restaurée) ; le lockfile d'un autre projet qui lit une version centrale réécrite est régénéré aussi ; un `dotnet` sans SDK est un outil absent. Mini-projet `nuget` (lockfiles du vrai `dotnet restore`), onze paquets enregistrés (compressés), 38 versions ajoutées pour OSV. Les huit écosystèmes sont gérés : les tests « pas encore géré » retirent NuGet des tables. 4268 tests Python verts (plus 20 réseau, vrai dotnet compris), 141 Vitest, 49 Playwright ; vérifié à la main en ligne de commande et dans l'interface. Cases ajoutées à E27, E29 |

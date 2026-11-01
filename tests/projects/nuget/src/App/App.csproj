@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Microsoft.AspNetCore.Http" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

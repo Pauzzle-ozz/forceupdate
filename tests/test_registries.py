@@ -21,6 +21,7 @@ from forceupdate.registries.crates import Crates
 from forceupdate.registries.goproxy import GoProxy
 from forceupdate.registries.maven import Maven
 from forceupdate.registries.npm import Npm
+from forceupdate.registries.nuget import NuGet
 from forceupdate.registries.packagist import Packagist
 from forceupdate.registries.pypi import ACCEPT, PyPI
 from forceupdate.registries.rubygems import RubyGems
@@ -69,8 +70,7 @@ def test_for_ecosystem() -> None:
                 registries.for_ecosystem(Ecosystem.RUBYGEMS, http, Cache(None)), RubyGems
             )
             assert isinstance(registries.for_ecosystem(Ecosystem.MAVEN, http, Cache(None)), Maven)
-            with pytest.raises(LookupError, match="NuGet"):
-                registries.for_ecosystem(Ecosystem.NUGET, http, Cache(None))
+            assert isinstance(registries.for_ecosystem(Ecosystem.NUGET, http, Cache(None)), NuGet)
 
     asyncio.run(main())
 

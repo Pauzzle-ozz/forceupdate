@@ -30,7 +30,8 @@ forceupdate ne connaît pas le Node de la machine (ni celui d'un dépôt distant
 La version de l'étiquette ``latest`` si la plage l'accepte et qu'elle n'est pas dépréciée ;
 sinon la plus haute non dépréciée ; sinon la plus haute. Une plage ``>=4`` donne donc la
 ``latest`` 4.17.21, pas une 5.0.0 publiée sous ``next``. Une étiquette (``"react": "next"``)
-donne sa version. PyPI : la plus haute non retirée qui respecte la contrainte, comme pip.
+donne sa version. PyPI : la plus haute non retirée qui respecte la contrainte, comme pip. NuGet
+prend la plus basse (``VersionScheme.chosen``) : la version utilisée, sauf une version flottante.
 """
 
 from collections.abc import Sequence
@@ -113,9 +114,11 @@ def wanted_version(dependency: Dependency, info: PackageInfo, current: Current) 
         return info.tags.get(constraint.tag)
     if dependency.ecosystem is Ecosystem.NPM:
         return _npm_wanted(current.constraint, info, current.version)
-    # Une version que le projet écarte (conflict de composer.json) n'est jamais choisie.
-    available = [v for v in info.available() if not is_excluded(scheme, dependency.excluded, v)]
-    return scheme.max_satisfying(current.constraint, available, current.version)
+    # Une version que le projet écarte (conflict de composer.json) n'est jamais choisie. NuGet
+    # restaure aussi une version non listée (vérifié : log4net 2.0.8 pour « 2.0.7.1 »).
+    published = [v.version for v in info.versions] if scheme.lowest else info.available()
+    available = [v for v in published if not is_excluded(scheme, dependency.excluded, v)]
+    return scheme.chosen(current.constraint, available, current.version)
 
 
 def _npm_wanted(constraint: str, info: PackageInfo, current: str | None) -> str | None:

@@ -171,7 +171,8 @@ chaque fois) :
   - semver côté npm ;
   - l'ordre Maven côté Java ;
   - les pseudo-versions côté Go ;
-  - `Gem::Version` côté Ruby.
+  - `Gem::Version` côté Ruby ;
+  - `NuGetVersion` côté .NET.
 
   `"1.10" < "1.9"` en texte.
 - **L'ordre Maven** (constaté à E25, contre `maven-artifact` 3.9.16) : `ComparableVersion` découpe
@@ -183,6 +184,13 @@ chaque fois) :
   « recommandation » que `VersionRange` dit contenir toutes les versions ; `[1.0,2.0)` contient
   `2.0-alpha-1`. **Les variantes** (`31.0.1-jre` et `31.0.1-android` de Guava) ne se remplacent
   pas l'une l'autre, mais OSV écrit `fixed: 32.0.0-android` pour les deux.
+- **NuGet prend la plus basse version qui convient** (constaté à E26, contre NuGet.Versioning 7.9.0
+  et le SDK .NET 10) : une version nue (`12.0.1`) est un minimum, `[12.0.1, )`, et NuGet installe
+  sa borne basse ; seule une version flottante (`1.*`) prend la plus haute. Une mise à jour doit
+  donc réécrire la borne basse, régénérer le lockfile ne fait rien monter (ni une indirecte, que
+  NuGet garde à la plus basse version que demandent ceux qui la tirent). Une version a un à quatre
+  nombres (`1.0` = `1.0.0.0`), des étiquettes comparées sans tenir compte de la casse, et une
+  version **non listée** reste restaurée si on la demande (log4net 2.0.8 pour `2.0.7.1`).
 - **Les pré-versions** (`2.0.0rc1`, `1.0.0-beta`) ne sont pas « la dernière
   version » pour la plupart des gens.
 - **`go.sum`** contient aussi des versions qui ne sont plus utilisées, et des modules qu'aucun
@@ -254,6 +262,14 @@ chaque fois) :
     `BUNDLE_LOCKFILE` hérités lui font lire et écrire d'autres fichiers ; `BUNDLE_FROZEN` et
     `BUNDLE_DEPLOYMENT` n'empêchent pas `bundle lock` d'écrire ; `BUNDLE_COOLDOWN` (Bundler 4) écarte
     les versions récentes.
+  - NuGet (E26) : rien à viser, `dotnet restore` reprend la borne basse que forceupdate a réécrite
+    (une version centrale de `Directory.Packages.props`, une propriété de `Directory.Build.props`
+    comprises) et refait le lockfile de lui-même ; **une version flottante ne monte qu'avec
+    `--force-evaluate`**, qui ne change rien d'autre ; restaurer un projet restaure aussi ceux qu'il
+    référence. `RestoreLockedMode` (du projet ou de l'environnement) refuserait de changer le
+    lockfile (NU1004) : levé par `-p:RestoreLockedMode=false`. Une version centrale vaut pour
+    plusieurs projets : les lockfiles de tous ceux qui la lisent sont régénérés. `dotnet` sans SDK
+    (les runtimes seuls) ne sait pas restaurer : traité comme un outil absent.
 - **Régénérer un lockfile peut exécuter du code du projet** : scripts npm,
   `Gemfile` (c'est du Ruby), `build.gradle`, `setup.py`. Toujours passer
   `--ignore-scripts` / `--no-scripts` quand l'outil le permet, et le dire quand il
@@ -280,6 +296,12 @@ chaque fois) :
   forceupdate, lui, lit le `Gemfile` par motifs, sans jamais l'exécuter. À E25 : un `build.gradle`
   est un programme (Groovy ou Kotlin) ; forceupdate le lit en jetons, sans jamais lancer Gradle, et
   n'a pas de lockfile Java en V1 (régénérer `gradle.lockfile` demanderait d'exécuter les scripts).
+  Constaté à E26 : `dotnet restore` évalue le projet avec MSBuild ; une cible de
+  `Directory.Build.targets` accrochée à `Restore` a tourné (un témoin), et `Directory.Build.rsp`
+  (ses options, un logger : une DLL) est lu sauf avec `-noAutoResponse` (passé) ; les fonctions de
+  propriété qui écrivent sont refusées par MSBuild ; un SDK de projet venu de NuGet est téléchargé
+  et chargé. Le plan le dit. forceupdate lit les `.csproj` et les `.props` comme du XML, sans
+  jamais lancer MSBuild.
 - **Plafond de taille** : `safe_read_text` ignore les fichiers de plus de 2 Mo. Un
   `package-lock.json` les dépasse souvent : relever le plafond pour les lockfiles.
 - **Go, majeur ≥ 2** : changer de majeur change le chemin du module (`/v2`) et
@@ -438,7 +460,7 @@ débit changent).
 | Go | **Vérifié (E22)** : `GET https://proxy.golang.org/{module}/@v/list` (les versions étiquetées, dans le désordre, sans pseudo-versions ni dates), `/@v/{version}.mod` (le `go.mod` de cette version : `retract` et `// Deprecated:`), `/@latest` (un module sans étiquette : la pseudo-version du dernier commit) ; majuscules du chemin encodées en `!minuscule` (`github.com/!burnt!sushi/toml`) ; 404 ou 410 : module inconnu. Une majeure v2+ est un autre chemin (`…/v2`, `gopkg.in/yaml.v3`) : sa liste à part |
 | Packagist | **Vérifié (E23)** : `GET https://repo.packagist.org/p2/{vendor}/{paquet}.json`, les métadonnées de Composer 2 : `packages.{nom}`, les versions étiquetées de la plus récente à la plus ancienne (pré-versions comprises ; les branches dans `~dev.json`), « minifiées » (`"minified": "composer/2.0"` : chaque version ne garde que ce qui change, `"__unset"` retire une clé), `time`, `abandoned` (`true` ou le remplaçant) ; noms en minuscules ; 404 pour un paquet inconnu ; `Cache-Control: max-age=900`. Le fichier donne aussi `security-advisories` (identifiants PKSA), pas lus : OSV |
 | Maven Central | **Vérifié (E25)** : `GET https://repo1.maven.org/maven2/{groupe/en/chemin}/{artifact}/maven-metadata.xml` → `<versioning><versions>` dans l'ordre de publication ; **`<latest>` et `<release>` peuvent être des pré-versions** (log4j-core : `3.0.0-beta3`) ; aucune date par version (`<lastUpdated>` date le fichier) ; 404 en HTML pour un inconnu. Le même fichier chez **Google Maven** (`https://dl.google.com/android/maven2/…`, `androidx.*`, `com.android.*`, `com.google.android.*`, Firebase, `max-age=86400`) et sur **le portail des plugins Gradle** (`https://plugins.gradle.org/m2/{id}/{id}.gradle.plugin/maven-metadata.xml`, `max-age=43200`, qui renvoie (303) vers Maven Central ce qu'il n'a pas). Pas de dépréciation ; un déplacement est dans le `pom` d'une version (`<relocation>`) |
-| NuGet | `GET https://api.nuget.org/v3-flatcontainer/{id-en-minuscules}/index.json` ; dépréciation via l'API « registration » |
+| NuGet | **Vérifié (E26)** : l'API « registration », `GET https://api.nuget.org/v3/registration5-gz-semver2/{id-en-minuscules}/index.json` (compressée par gzip) : les versions en pages de 64, dans l'index jusqu'à 128 versions, sinon chaque page à son adresse (`@id`) ; par version (`catalogEntry`) `version`, `listed` (`false` : non listée, `published` à 1900-01-01), `published`, `deprecation` (`reasons` : `Legacy`, `CriticalBugs`, `Other` ; `message` ; `alternatePackage`) ; 404 en XML pour un paquet inconnu ; `Cache-Control: no-store`. Le « flat container » (`/v3-flatcontainer/{id}/index.json`) ne donne que les versions, en minuscules, non listées comprises : pas demandé |
 
 | Besoin | Source |
 |---|---|

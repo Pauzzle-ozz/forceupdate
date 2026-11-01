@@ -21,6 +21,7 @@ Le serveur de l'interface se teste avec ``api``, le client de test de FastAPI.
 import asyncio
 import asyncio.base_events
 import contextlib
+import gzip
 import json
 import re
 import subprocess
@@ -46,6 +47,7 @@ from forceupdate.net import cache as cache_module
 from forceupdate.registries import Registry
 from forceupdate.registries.crates import index_path
 from forceupdate.registries.maven import coordinates, repository
+from forceupdate.registries.nuget import NuGet
 from forceupdate.registries.pypi import ACCEPT
 from forceupdate.update import lockfiles
 from forceupdate.web import Settings, create_app
@@ -250,15 +252,16 @@ def osv_querybatch(results: dict[str, Any]) -> Callable[[httpx.Request], httpx.R
 @pytest.fixture
 def recorded() -> Iterator[dict[str, respx.Route]]:
     """PyPI, npm, crates.io, le proxy Go, Packagist, RubyGems, Maven (Maven Central, Google Maven,
-    le portail des plugins Gradle) et OSV simulés par ``respx``, avec les réponses enregistrées par
-    ``tests/fixtures/record.py`` : flask, requests, aioredis, jinja2, werkzeug ; left-pad,
-    @hapi/joi, colors, crossenv, lodash ; rand, regex, time, anyhow, log, smallvec ; les modules Go
-    de ``PACKAGES["goproxy"]`` ; les paquets PHP de ``PACKAGES["packagist"]`` ; les gems de
-    ``PACKAGES["rubygems"]`` ; les artefacts de ``PACKAGES["maven"]``. Tout autre paquet est
-    introuvable (404). OSV connaît les failles des versions de ``tests/fixtures/osv/queries.json`` ;
-    pour les autres, il n'en connaît pas. Rend les routes, par nom de paquet (``crates:<nom>`` pour
-    crates.io, ``goproxy:<module>`` pour la liste d'un module Go, ``packagist:<nom>``,
-    ``rubygems:<nom>``, ``maven:<groupe:artefact>``), plus ``osv:querybatch`` et ``osv:<id>``.
+    le portail des plugins Gradle), nuget.org et OSV simulés par ``respx``, avec les réponses
+    enregistrées par ``tests/fixtures/record.py`` : flask, requests, aioredis, jinja2, werkzeug ;
+    left-pad, @hapi/joi, colors, crossenv, lodash ; rand, regex, time, anyhow, log, smallvec ; les
+    modules Go de ``PACKAGES["goproxy"]`` ; les paquets PHP de ``PACKAGES["packagist"]`` ; les gems
+    de ``PACKAGES["rubygems"]`` ; les artefacts de ``PACKAGES["maven"]`` ; les paquets NuGet de
+    ``PACKAGES["nuget"]``. Tout autre paquet est introuvable (404). OSV connaît les failles des
+    versions de ``tests/fixtures/osv/queries.json`` ; pour les autres, il n'en connaît pas. Rend
+    les routes, par nom de paquet (``crates:<nom>`` pour crates.io, ``goproxy:<module>`` pour la
+    liste d'un module Go, ``packagist:<nom>``, ``rubygems:<nom>``, ``maven:<groupe:artefact>``,
+    ``nuget:<id>`` pour l'index d'un paquet NuGet), plus ``osv:querybatch`` et ``osv:<id>``.
     """
     with recorded_responses() as routes:
         yield routes
@@ -316,6 +319,17 @@ def recorded_responses(
             routes[f"maven:{name}"] = router.get(url).respond(
                 200, content=path.read_bytes(), headers={"content-type": "text/xml"}
             )
+        for path in sorted((FIXTURES / "nuget").glob("*.json.gz")):
+            name = path.name.removesuffix(".json.gz")
+            answers = json.loads(gzip.decompress(path.read_bytes()))
+            for suffix, answer in answers.items():
+                route = router.get(f"{NuGet.base_url}/{suffix}").respond(
+                    answer["status"],
+                    content=answer["body"].encode(),
+                    headers={"content-type": answer["content_type"]},
+                )
+                if suffix.endswith("/index.json") and f"nuget:{name}" not in routes:
+                    routes[f"nuget:{name}"] = route
         router.get(url__regex=r"^https://pypi\.org/simple/").respond(404)
         router.get(url__regex=r"^https://registry\.npmjs\.org/").respond(404, json={})
         router.get(url__regex=r"^https://index\.crates\.io/").respond(404)
@@ -329,6 +343,9 @@ def recorded_responses(
         for maven in (r"repo1\.maven\.org/maven2", r"dl\.google\.com/android/maven2"):
             router.get(url__regex=rf"^https://{maven}/").respond(404, text="404 Not Found")
         router.get(url__regex=r"^https://plugins\.gradle\.org/m2/").respond(404)
+        router.get(url__regex=r"^https://api\.nuget\.org/").respond(
+            404, text="<Error><Code>BlobNotFound</Code></Error>"
+        )
         queries = json.loads((FIXTURES / "osv" / "queries.json").read_text(encoding="utf-8"))
         routes["osv:querybatch"] = router.post("https://api.osv.dev/v1/querybatch").mock(
             side_effect=osv_querybatch(queries)

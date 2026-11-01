@@ -943,7 +943,9 @@ version = "1.0"
             )
         ]
 
-    def test_ecosystems_not_read_yet_give_a_notice(self) -> None:
+    def test_ecosystems_not_read_yet_give_a_notice(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Les huit écosystèmes sont lus : NuGet est retiré le temps du test.
+        monkeypatch.delitem(parsers._PARSERS, Ecosystem.NUGET)
         project = parse({"packages.config": "", "requirements.txt": "flask\n"})
         assert [d.name for d in project.dependencies] == ["flask"]
         assert project.notices == [

@@ -2,7 +2,8 @@
 
     uv run python tests/fixtures/record.py          # toutes
     uv run python tests/fixtures/record.py npm      # celles d'un registre (pypi, npm, crates,
-                                                    # goproxy, packagist, rubygems, maven, osv)
+                                                    # goproxy, packagist, rubygems, maven, nuget,
+                                                    # osv)
     uv run python tests/fixtures/record.py pypi:jinja2   # un seul paquet
 
 À relancer quand un format de réponse change. Chaque réponse est demandée comme le fait
@@ -13,13 +14,17 @@ RubyGems, le fichier ``info`` de l'index compact, une ligne par version : ``<gem
 Maven, le ``maven-metadata.xml`` de l'artefact (``:`` écrit ``__``) : ``<groupe>__<artefact>.xml``.
 Le proxy Go demande plusieurs fichiers par module (la liste, le ``go.mod`` de la dernière version,
 ``@latest``, le chemin de la majeure suivante) : ``goproxy/<module>.json`` les garde tous, par
-chemin (``github.com/!burnt!sushi/toml/@v/list``), avec leur statut (404 compris).
+chemin (``github.com/!burnt!sushi/toml/@v/list``), avec leur statut (404 compris). NuGet aussi
+(l'index de l'API « registration », puis ses pages au-delà de 128 versions) :
+``nuget/<id>.json.gz``, compressé par gzip (les réponses de Serilog pèsent 2,7 Mo, 74 Ko une fois
+compressées).
 
 OSV : ``osv/queries.json`` garde, pour chaque version demandée (``écosystème/nom@version``),
 le résultat de ``querybatch`` (les identifiants des failles) ; ``osv/vulns/<id>.json``, chaque
 avis complet (``GET /v1/vulns/{id}``). Les versions demandées sont celles des mini-projets
 ``tests/projects/vulnerable``, ``cargo``, ``cargo-workspace``, ``go``, ``go-workspace``,
-``composer``, ``bundler``, ``maven`` et ``gradle`` (``OSV_PROJECTS``), plus ``OSV_EXTRA``.
+``composer``, ``bundler``, ``maven``, ``gradle`` et ``nuget`` (``OSV_PROJECTS``), plus
+``OSV_EXTRA``.
 
 Les tests s'appuient surtout sur ce qui ne bouge plus : une version publiée, retirée ou
 dépréciée le reste, une faille corrigée aussi. Ceux qui citent la dernière version, le nombre
@@ -27,6 +32,7 @@ de versions ou de failles, sont à mettre à jour après un nouvel enregistremen
 """
 
 import asyncio
+import gzip
 import json
 import sys
 from collections.abc import Mapping
@@ -43,6 +49,7 @@ from forceupdate.registries.crates import Crates
 from forceupdate.registries.goproxy import GoProxy
 from forceupdate.registries.maven import Maven
 from forceupdate.registries.npm import Npm
+from forceupdate.registries.nuget import NuGet
 from forceupdate.registries.packagist import Packagist
 from forceupdate.registries.pypi import PyPI
 from forceupdate.registries.rubygems import RubyGems
@@ -60,6 +67,7 @@ OSV_PROJECTS = (
     PROJECTS / "bundler",
     PROJECTS / "maven",
     PROJECTS / "gradle",
+    PROJECTS / "nuget",
 )
 """Les mini-projets dont les versions sont demandées à OSV."""
 
@@ -176,6 +184,22 @@ PACKAGES: dict[str, tuple[type[Registry], dict[str, str]]] = {
             "org.mockito:mockito-core": "notation en carte, group: name: version: (gradle)",
         },
     ),
+    "nuget": (
+        NuGet,
+        {
+            "Newtonsoft.Json": "12.0.1 centrale, en faille ; 13.0.1 en VersionOverride",
+            "Serilog": "une version centrale par une propriété ; dix pages hors de l'index",
+            "Microsoft.AspNetCore.Http": "2.1.0 en faille, CentralTransitive dans les tests",
+            "Microsoft.SourceLink.GitHub": "PrivateAssets=all : un outil de construction",
+            "xunit": "xunit 2 déprécié (Legacy), remplacé par xunit.v3",
+            "xunit.runner.visualstudio": "un projet de tests : dev",
+            "Microsoft.NET.Test.Sdk": "trois pages hors de l'index",
+            "StyleCop.Analyzers": "un GlobalPackageReference, à jour (1.2 en pré-versions)",
+            "log4net": "2.0.8 non listée et en faille (packages.config)",
+            "NUnit": "allowedVersions=[3,4) : la 4 jamais proposée",
+            "System.Text.Encodings.Web": "4.5.0 indirecte en faille (CVE-2021-26701)",
+        },
+    ),
 }
 """Les paquets enregistrés, par registre, avec le cas que chacun couvre."""
 
@@ -188,7 +212,7 @@ OSV_EXTRA: dict[tuple[Ecosystem, str, str], str] = {
 }
 """Les versions demandées à OSV en plus de celles des mini-projets, avec le cas couvert."""
 
-SUFFIXES = {"crates": ".jsonl", "rubygems": ".txt", "maven": ".xml"}
+SUFFIXES = {"crates": ".jsonl", "rubygems": ".txt", "maven": ".xml", "nuget": ".json.gz"}
 """L'extension des réponses d'un registre ; ``.json`` sinon."""
 
 
@@ -224,33 +248,40 @@ class _Recording(HttpClient):
         return response
 
 
-async def record_goproxy(only: str | None = None) -> None:
-    _, names = PACKAGES["goproxy"]
+async def record_several(key: str, only: str | None = None) -> None:
+    """Les registres qui demandent plusieurs fichiers par paquet (le proxy Go, NuGet) : toutes
+    leurs réponses, par adresse depuis celle du registre."""
+    registry_class, names = PACKAGES[key]
     for name in names if only is None else [only]:
         async with _Recording() as http:
-            proxy = GoProxy(http, Cache.disabled())
+            registry = registry_class(http, Cache.disabled())
             try:
-                await proxy.package(name)
+                await registry.package(name)
             except PackageNotFound as error:
                 raise SystemExit(str(error)) from error
             found = {
-                url.removeprefix(f"{GoProxy.base_url}/"): {
+                url.removeprefix(f"{registry_class.base_url}/"): {
                     "status": response.status_code,
                     "content_type": response.media_type,
                     "body": response.content.decode("utf-8"),
                 }
                 for url, response in http.seen.items()
             }
-        path = fixture_path("goproxy", name)
+        path = fixture_path(key, name)
         path.parent.mkdir(exist_ok=True)
         text = json.dumps(found, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
-        path.write_text(text, encoding="utf-8", newline="\n")
-        print(f"{path.relative_to(FIXTURES)} : {len(found)} réponses, {len(text) // 1024} Ko")
+        if path.name.endswith(".gz"):
+            data = gzip.compress(text.encode("utf-8"), compresslevel=9, mtime=0)
+            path.write_bytes(data)
+        else:
+            path.write_text(text, encoding="utf-8", newline="\n")
+        size = path.stat().st_size // 1024
+        print(f"{path.relative_to(FIXTURES)} : {len(found)} réponses, {size} Ko")
 
 
 async def record_registries(http: HttpClient, key: str, only: str | None = None) -> None:
-    if key == "goproxy":
-        await record_goproxy(only)
+    if key in ("goproxy", "nuget"):
+        await record_several(key, only)
         return
     registry_class, names = PACKAGES[key]
     registry = registry_class(http, Cache.disabled())

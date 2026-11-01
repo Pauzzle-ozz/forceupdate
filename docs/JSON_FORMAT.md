@@ -628,7 +628,7 @@ comme avant.
 | Champ | Type | Sens |
 |---|---|---|
 | `lockfile` | chemin | |
-| `kind` | chaîne | `npm`, `pnpm`, `yarn1`, `yarn`, `uv`, `poetry`, `pdm`, `pipenv`, `pip-compile`, `uv-pip-compile`, `cargo`, `go`, `composer`, `bundler` |
+| `kind` | chaîne | `npm`, `pnpm`, `yarn1`, `yarn`, `uv`, `poetry`, `pdm`, `pipenv`, `pip-compile`, `uv-pip-compile`, `cargo`, `go`, `composer`, `bundler`, `nuget` |
 | `tool` | chaîne | le nom de l'outil, pour le dire (`uv pip compile`) |
 | `program` | chaîne | le programme à installer (`uv`) |
 | `available` | booléen | l'outil est installé ; sinon le lockfile n'est pas régénéré, et `command` est à lancer à la main |

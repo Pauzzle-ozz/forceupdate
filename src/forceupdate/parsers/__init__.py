@@ -1,7 +1,7 @@
 """Les parseurs : lire les manifestes et lockfiles d'un projet, et en tirer ses dépendances.
 
-Un module par écosystème : Python (E03), npm (E04), Rust (E21), Go (E22), PHP (E23), Ruby (E24) et
-Java (E25 : Maven et Gradle) pour l'instant, .NET à E26. Chacun relie les manifestes
+Un module par écosystème : Python (E03), npm (E04), Rust (E21), Go (E22), PHP (E23), Ruby (E24),
+Java (E25 : Maven et Gradle) et .NET (E26 : NuGet). Chacun relie les manifestes
 (dépendances directes, contraintes et leur emplacement) aux lockfiles (versions installées,
 transitives), avec ce qui est commun dans ``lockfiles.py``.
 """
@@ -11,7 +11,7 @@ from collections.abc import Callable, Sequence
 
 from forceupdate.detect.manifests import ecosystem_for_manifest
 from forceupdate.models import Ecosystem, Notice, Project
-from forceupdate.parsers import go, java, npm, php, python, ruby, rust
+from forceupdate.parsers import go, java, npm, nuget, php, python, ruby, rust
 from forceupdate.parsers.base import ParseError, ReadText
 from forceupdate.parsers.lockfiles import Lockfile
 
@@ -25,6 +25,7 @@ _PARSERS: dict[Ecosystem, Callable[[Project, ReadText, Sequence[str]], None]] = 
     Ecosystem.PACKAGIST: lambda project, read_text, _: php.parse_project(project, read_text),
     Ecosystem.RUBYGEMS: lambda project, read_text, _: ruby.parse_project(project, read_text),
     Ecosystem.MAVEN: java.parse_project,
+    Ecosystem.NUGET: lambda project, read_text, _: nuget.parse_project(project, read_text),
 }
 
 _LOCKFILE_PARSERS: dict[str, Callable[[str, str], Lockfile]] = {
@@ -41,6 +42,7 @@ _LOCKFILE_PARSERS: dict[str, Callable[[str, str], Lockfile]] = {
     "composer.lock": lambda path, text: php.parse_composer_lock(path, text).lockfile,
     "Gemfile.lock": lambda path, text: ruby.parse_gemfile_lock(path, text).lockfile,
     "gems.locked": lambda path, text: ruby.parse_gemfile_lock(path, text).lockfile,
+    "packages.lock.json": nuget.locked_versions,
 }
 
 

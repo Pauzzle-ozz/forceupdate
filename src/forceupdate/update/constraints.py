@@ -65,6 +65,15 @@ basse devient la version visée, incluse (``[1.5.3,2.0)``), une borne haute qui 
 au même niveau (``[2.1.0,3.0)``), une borne basse absente le reste, sauf pour un plancher.
 ``1.+`` (Gradle) garde sa précision (``2.+``), sans plancher possible.
 
+**NuGet** (``versions.nuget``) : NuGet prend la plus basse version qui convient, donc la borne
+basse doit devenir la version visée. Une version nue (un minimum) devient la version visée, à la
+même précision si elle s'y écrit (``1.0`` vers 2.0.0 : ``2.0``) ; ``[1.2.3]`` devient ``[V]`` ;
+un intervalle prend la version visée pour borne basse, incluse (``(1.0,2.0)`` vers 1.5.3 :
+``[1.5.3,2.0)`` ; ``(,2.0]`` : ``[1.5.3,2.0]``), et sa borne haute se déplace au même niveau si
+elle l'exclut. Une version flottante garde sa précision (``1.*`` vers 2.3.1 : ``2.*`` ;
+``1.2.*`` : ``2.3.*`` ; ``1.0.0-beta.*`` : ``2.3.1-beta.*``) ; NuGet y prend la plus haute de ce
+qu'elle désigne, le plancher n'y a pas de sens.
+
 Le résultat est relu : il doit accepter la version visée (et respecter le plancher). Sinon, ou
 pour un style qu'on ne sait pas réécrire (intervalle npm ``1.2.3 - 2.3.4`` dépassé, contrainte
 sans version comme ``*`` ou une étiquette), ``rewrite`` rend ``None`` : à réécrire à la main.
@@ -78,6 +87,7 @@ from forceupdate.models import Ecosystem
 from forceupdate.versions import InvalidConstraint, InvalidVersion, VersionScheme
 from forceupdate.versions.go import canonical
 from forceupdate.versions.maven import MAVEN
+from forceupdate.versions.nuget import NUGET
 
 _OPERATORS = {
     Ecosystem.NPM: r"~>|<=|>=|[<>=~^]",
@@ -170,6 +180,16 @@ def rewrite(
         except (InvalidConstraint, InvalidVersion):
             return None
         return new
+    if ecosystem is Ecosystem.NUGET:
+        try:
+            new, floating = _rewrite_nuget(constraint, target)
+            if new is None or not scheme.satisfies(new, target):
+                return None
+            if floor and not floating and not _reaches(scheme, new, target):
+                return None
+        except (InvalidConstraint, InvalidVersion):
+            return None
+        return new
     if ecosystem is Ecosystem.PACKAGIST:
         target = _without_v(target)
     parsed_target = _split_target(target)
@@ -233,6 +253,57 @@ def _rewrite_maven(constraint: str, target: str, floor: bool) -> str | None:
         lead = lower[: len(lower) - len(lower.lstrip())]
         return f"[{lead}{target}{lower[len(lower.rstrip()) :]},{upper}{closing}"
     return f"{chosen[0]}{lower},{upper}{closing}"
+
+
+_NUGET_FLOAT = re.compile(
+    r"(?P<lead>\s*)(?P<numbers>\d+(?:\.\d+)*)(?P<rest>(?:\.\*)?(?:-[^*\s]*\*)?)(?P<trail>\s*)"
+)
+"""Une version flottante NuGet, en borne basse : ses nombres, puis ce qui flotte (``.*``,
+``-beta.*``)."""
+
+
+def _rewrite_nuget(constraint: str, target: str) -> tuple[str | None, bool]:
+    """Une contrainte NuGet réécrite pour ``target`` (voir la docstring du module), et si elle
+    flotte."""
+    parsed = NUGET.parse_constraint(constraint)
+    split = _split_target(target)
+    text = constraint.strip()
+    if split is None:
+        return None, False
+    if text[0] not in "([":
+        if parsed.floating:
+            return _nuget_float(text, split), True
+        count = len(text.split("-", 1)[0].split("+", 1)[0].split("."))
+        return (split.written(count) if split.fits(count) else target), False
+    inner = text[1:-1]
+    if "," not in inner:
+        return f"[{target}]", False
+    lower, upper = inner.split(",", 1)
+    closing = text[-1]
+    if upper.strip():
+        bound = NUGET.parse(upper.strip())
+        wanted = NUGET.parse(target)
+        if bound < wanted or (bound == wanted and closing != "]"):
+            shifted = _shift_upper(upper.strip(), split)
+            if shifted is None:
+                return None, False
+            upper = upper.replace(upper.strip(), shifted)
+    if parsed.floating:
+        floated = _nuget_float(lower, split)
+        return (None if floated is None else f"{text[0]}{floated},{upper}{closing}"), True
+    lead = lower[: len(lower) - len(lower.lstrip())]
+    trail = lower[len(lower.rstrip()) :]
+    return f"[{lead}{target}{trail},{upper}{closing}", False
+
+
+def _nuget_float(spec: str, target: _Target) -> str | None:
+    """Une version flottante (``1.2.*``, ``1.0.0-beta.*``) pour ``target``, à la même précision ;
+    ``None`` pour ``*`` ou ``*-*``, qui désignent déjà toutes les versions."""
+    match = _NUGET_FLOAT.fullmatch(spec)
+    if match is None:
+        return None
+    count = len(match["numbers"].split("."))
+    return f"{match['lead']}{target.written(count)}{match['rest']}{match['trail']}"
 
 
 def _without_v(version: str) -> str:
