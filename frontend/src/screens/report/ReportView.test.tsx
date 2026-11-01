@@ -176,6 +176,7 @@ describe('le rapport (écran 4)', () => {
       cvss_score: null,
       detail: null,
       url: null,
+      eol: null,
     })
     report.summary = { ...report.summary, findings: { ...report.summary.findings, inconclusive: 1 } }
     withReport(report)

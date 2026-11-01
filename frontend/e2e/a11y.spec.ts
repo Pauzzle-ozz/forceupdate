@@ -9,6 +9,7 @@ import { copyProject, gitWithChange, removeCopies } from './helpers.ts'
  * AA (contrastes compris), en clair et en sombre, au large et à 375 px.
  */
 const VULNERABLE = resolve(import.meta.dirname, '../../tests/projects/vulnerable').replaceAll('\\', '/')
+const EOL = resolve(import.meta.dirname, '../../tests/projects/eol').replaceAll('\\', '/')
 
 async function audit(page: Page, where: string) {
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
@@ -40,6 +41,26 @@ for (const scheme of ['light', 'dark'] as const) {
       await page.getByRole('button', { name: 'flask, voir le détail' }).click()
       await expect(page.getByRole('dialog', { name: 'flask' })).toBeVisible()
       await audit(page, 'détail')
+    })
+  }
+}
+
+for (const scheme of ['light', 'dark'] as const) {
+  for (const width of [1440, 375]) {
+    test(`écran 4, fins de vie, ${scheme === 'light' ? 'clair' : 'sombre'}, ${width} px`, async ({ page }) => {
+      // E27 : Python 3.8, Node.js 16 et Django 3.2 en fin de vie (tests/projects/eol).
+      await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' })
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto(`/?token=${TOKEN}`)
+      await page.getByLabel("Chemin absolu d'un dossier ou d'un fichier").fill(EOL)
+      await page.getByRole('button', { name: 'Analyser', exact: true }).click()
+      await expect(page.getByRole('heading', { level: 1, name: 'eol', exact: true })).toBeVisible({ timeout: 30_000 })
+      const section = page.locator('section#fins-de-vie')
+      await expect(section.getByRole('listitem')).toHaveCount(3)
+      await expect(section).toContainText('Fin de vie depuis le 7 oct. 2024.')
+      await audit(page, 'rapport, fins de vie')
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+      expect(overflow).toBeLessThanOrEqual(0)
     })
   }
 }

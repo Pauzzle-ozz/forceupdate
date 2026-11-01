@@ -1,10 +1,11 @@
 """Le serveur de ``forceupdate ui`` pour les tests de bout en bout du front (Playwright), et les
 rapports qui servent d'exemples à ses tests de composants.
 
-Comme les tests Python : jamais le réseau (PyPI, npm et OSV répondent par les réponses
-enregistrées de ``tests/fixtures/``, ``conftest.recorded_responses``), jamais le cache ni les
-chemins récents de l'utilisateur (un dossier temporaire), jamais le navigateur. Le jeton est
-fixe, pour que les tests ouvrent l'adresse d'entrée ::
+Comme les tests Python : jamais le réseau (PyPI, npm, OSV et endoflife.date répondent par les
+réponses enregistrées de ``tests/fixtures/``, ``conftest.recorded_responses``), jamais le cache
+ni les chemins récents de l'utilisateur (un dossier temporaire), jamais le navigateur ; les fins
+de vie se jugent au jour de l'enregistrement (``record.RECORDED_ON``). Le jeton est fixe, pour
+que les tests ouvrent l'adresse d'entrée ::
 
     uv run python tests/e2e_server.py --port 8799 --token jeton-e2e
 
@@ -69,8 +70,10 @@ from fake_bitbucket import FakeBitbucket
 from fake_bitbucket import FakeToken as FakeBitbucketToken
 from fake_forge import FakeGitHubRepos, FakeRepo, from_directory, make_remote, remotes_url
 from fake_gitlab import FakeGitLab, FakeToken
+from fixtures.record import RECORDED_ON
 
 from forceupdate import engine
+from forceupdate.checks import eol
 from forceupdate.forges import bitbucket, github, gitlab
 from forceupdate.models import ScanOptions
 from forceupdate.net import cache as cache_module
@@ -338,6 +341,8 @@ def main() -> None:
     parser.add_argument("--report", type=Path, help="écrire le rapport de ce dossier, et sortir")
     parser.add_argument("--source", default="/projets/exemple", help="le chemin à y montrer")
     options = parser.parse_args()
+    # Les fins de vie se jugent au jour où les réponses d'endoflife.date ont été enregistrées.
+    eol.today = lambda: RECORDED_ON
     with tempfile.TemporaryDirectory(prefix="forceupdate-e2e-") as tmp:
         cache_module.default_cache_path = lambda: Path(tmp) / "cache.sqlite3"
         if options.report is None:

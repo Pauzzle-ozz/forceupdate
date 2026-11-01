@@ -74,6 +74,10 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │                             forges.spec.ts : écrans 6, 7 et 8, GitHub, GitLab et Bitbucket, en série
 │                             (comptes du serveur partagés)
 ├── src/forceupdate/        ← le code de l'outil (architecture cible : PLAN.md)
+│   ├── checks/             ← les constats : outdated.py, vulns.py, deprecated.py, eol.py (fins de vie, E27 :
+│   │                         la table des frameworks, le cycle d'une version, le cycle conseillé),
+│   │                         runtimes.py (les versions que le runtime du projet ne fait pas tourner)
+│   ├── endoflife.py        ← le client d'endoflife.date (/api/v1/products/{produit}, cache 24 h)
 │   ├── forges/             ← interface Forge et OAuthFlow (base.py), GitHub (github.py : REST, dépôts,
 │   │                         arborescence, fichiers, OAuth, device flow, gh, clone, branche, push, PR),
 │   │                         GitLab (gitlab.py : gitlab.com ou une instance, projets, arborescence
@@ -93,7 +97,9 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   │                         dependencyManagement, BOM, plugins), gradle.py (libs.versions.toml,
 │   │                         build.gradle(.kts) lus en jetons, jamais exécutés, gradle.properties) ;
 │   │                         nuget.py (packages.config, .csproj/.fsproj/.vbproj, Directory.Build.props
-│   │                         et Directory.Packages.props, packages.lock.json ; MSBuild jamais lancé) ;
+│   │                         et Directory.Packages.props, packages.lock.json, SDK de projet, TargetFramework ;
+│   │                         MSBuild jamais lancé) ; runtimes.py (la version des runtimes : manifestes,
+│   │                         .python-version, .nvmrc, global.json, Dockerfile… ; E27) ;
 │   │                         lockfiles.py (lien manifeste ↔ lockfile), *_spans.py (positions ;
 │   │                         ruby_spans.py, gradle_spans.py : des lexers ; xml_spans.py : expat, le
 │   │                         texte et les attributs) ;
@@ -127,8 +133,9 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
     ├── fake_bitbucket.py   ← Bitbucket Cloud simulé (workspaces, droits, dépôts, arborescence en largeur,
     │                         fichiers, branches, commits propres, PR, OAuth : Basic, refresh token renouvelé)
     ├── fake_bundler.py     ← bundle lock simulé (FakeTools.handlers["bundle"]), comme le vrai Bundler 4.0
-    ├── fixtures/           ← réponses HTTP enregistrées (NuGet : compressées) ; record.py les ré-enregistre
-    └── projects/           ← mini-projets par outil, lockfiles produits par les vrais outils
+    ├── fixtures/           ← réponses HTTP enregistrées (NuGet : compressées ; endoflife/ : endoflife.date) ;
+    │                         record.py les ré-enregistre, RECORDED_ON : le jour des fins de vie des tests
+    └── projects/           ← mini-projets par outil, lockfiles produits par les vrais outils ; eol/ : E27
 ```
 
 ## Commandes
@@ -182,11 +189,14 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   `fake_gitlab.FakeGitLab` (`gitlab.GIT_URL` vers `remotes_url(…)` pour git), Bitbucket avec
   `fake_bitbucket.FakeBitbucket` (`bitbucket.GIT_URL` de même). Le trousseau des tests refuse,
   comme Windows, un secret de plus de 1 280 caractères. La fixture `recorded` simule PyPI, npm,
-  crates.io, le proxy Go, Packagist, RubyGems, Maven (Central, Google, portail Gradle), nuget.org et
-  OSV avec les
+  crates.io, le proxy Go, Packagist, RubyGems, Maven (Central, Google, portail Gradle), nuget.org,
+  OSV et endoflife.date avec les
   réponses de `tests/fixtures/` (pour Go, toutes celles d'un module dans un fichier :
   `goproxy/<module>.json` ; pour NuGet, l'index et ses pages : `nuget/<id>.json.gz` ; pour Maven,
-  `:` s'écrit `__` dans le nom) ; `fake_tools("npm", "uv")`
+  `:` s'écrit `__` dans le nom). Une fin de vie se juge à la date du jour : tous les tests (et le
+  serveur de `e2e_server.py`) se placent au jour de l'enregistrement d'endoflife.date
+  (`record.RECORDED_ON`, fixture `_fixed_today`), à changer avec un nouvel enregistrement ;
+  `fake_tools("npm", "uv")`
   simule les outils (`FakeTools` ; `fake_bundler.FakeBundler` pour `bundle`) ; `keychain` est le
   trousseau en mémoire du test ; `api` est le
   serveur de `ui` (client de test de FastAPI, jeton compris), `finished` attend la fin

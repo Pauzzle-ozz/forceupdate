@@ -3,8 +3,9 @@
     uv run python tests/fixtures/record.py          # toutes
     uv run python tests/fixtures/record.py npm      # celles d'un registre (pypi, npm, crates,
                                                     # goproxy, packagist, rubygems, maven, nuget,
-                                                    # osv)
+                                                    # osv, endoflife)
     uv run python tests/fixtures/record.py pypi:jinja2   # un seul paquet
+    uv run python tests/fixtures/record.py endoflife:python   # un seul produit
 
 À relancer quand un format de réponse change. Chaque réponse est demandée comme le fait
 forceupdate (même URL, mêmes en-têtes) et gardée telle quelle, dans
@@ -23,8 +24,13 @@ OSV : ``osv/queries.json`` garde, pour chaque version demandée (``écosystème/
 le résultat de ``querybatch`` (les identifiants des failles) ; ``osv/vulns/<id>.json``, chaque
 avis complet (``GET /v1/vulns/{id}``). Les versions demandées sont celles des mini-projets
 ``tests/projects/vulnerable``, ``cargo``, ``cargo-workspace``, ``go``, ``go-workspace``,
-``composer``, ``bundler``, ``maven``, ``gradle`` et ``nuget`` (``OSV_PROJECTS``), plus
+``composer``, ``bundler``, ``maven``, ``gradle``, ``nuget`` et ``eol`` (``OSV_PROJECTS``), plus
 ``OSV_EXTRA``.
+
+endoflife.date : ``endoflife/<produit>.json``, la réponse de ``/api/v1/products/{produit}`` pour
+chaque produit de ``LIFECYCLES``. Ses dates bougent avec le temps (« fin de vie dans moins de 6
+mois ») : les tests se placent au jour de l'enregistrement (``RECORDED_ON``, la fixture
+``_fixed_today`` de ``tests/conftest.py``), à changer avec un nouvel enregistrement.
 
 Les tests s'appuient surtout sur ce qui ne bouge plus : une version publiée, retirée ou
 dépréciée le reste, une faille corrigée aussi. Ceux qui citent la dernière version, le nombre
@@ -36,11 +42,13 @@ import gzip
 import json
 import sys
 from collections.abc import Mapping
+from datetime import date
 from pathlib import Path
 
 from forceupdate import engine
 from forceupdate.advisories.osv import BASE_URL
 from forceupdate.checks import vulns
+from forceupdate.endoflife import EndOfLifeDate
 from forceupdate.models import Ecosystem, ScanOptions
 from forceupdate.net import Cache, HttpClient
 from forceupdate.net.http import Response
@@ -68,8 +76,35 @@ OSV_PROJECTS = (
     PROJECTS / "maven",
     PROJECTS / "gradle",
     PROJECTS / "nuget",
+    PROJECTS / "eol",
 )
 """Les mini-projets dont les versions sont demandées à OSV."""
+
+RECORDED_ON = date(2026, 11, 1)
+"""Le jour où les réponses d'endoflife.date ont été enregistrées : celui des tests."""
+
+LIFECYCLES: dict[str, str] = {
+    "python": "Python 3.8 (eol), 3.11 et 3.12 (uv, poetry, pipenv) ; pas de LTS",
+    "nodejs": "Node.js 16 (eol) ; des LTS, 26 LTS depuis le 2026-10-28",
+    "django": "Django 3.2 du mini-projet eol ; 5.2 LTS conseillée",
+    "go": "Go 1.21 (go, go-workspace) ; les cycles maintenus sans date de fin",
+    "php": "PHP 8.1 (config.platform.php du mini-projet composer)",
+    "ruby": "Ruby 3.2 en fin de vie depuis le 2026-03-31",
+    "eclipse-temurin": "Java : 8u504-b01 pour dernière version, des LTS",
+    "dotnet": "net8.0 (fin le 2026-11-10 : bientôt) et net10.0 du mini-projet nuget ; Core 2.1",
+    "dotnetfx": "net48 ; 3.5-sp1 pour la 3.5 ; 4.8 sans date de fin",
+    "symfony": "symfony/console ~5.4 du mini-projet composer : 5.4 LTS jusqu'en 2029",
+    "guzzle": "guzzlehttp/guzzle 7.4.0 du mini-projet composer : 7 maintenue",
+    "spring-framework": "spring-webmvc 5.3.17 du mini-projet maven : 5.3 en fin de vie",
+    "spring-boot": "le plugin org.springframework.boot du mini-projet gradle",
+    "log4j": "log4j-core 2.14.1 du mini-projet maven : les cycles 2 et 2.12",
+    "react": "react des mini-projets npm : des cycles sans date de fin",
+    "numpy": "numpy du mini-projet pip",
+    "electron": "des cycles de 8 mois : la dernière finit toujours bientôt",
+    "angularjs": "tous les cycles en fin de vie : aucun à conseiller",
+    "nestjs": "NestJS 10 en fin de vie sans date",
+}
+"""Les produits d'endoflife.date enregistrés, avec le cas que chacun couvre."""
 
 PACKAGES: dict[str, tuple[type[Registry], dict[str, str]]] = {
     "pypi": (
@@ -80,6 +115,7 @@ PACKAGES: dict[str, tuple[type[Registry], dict[str, str]]] = {
             "aioredis": "un projet archivé (PEP 792)",
             "jinja2": "indirecte du mini-projet vulnerable : failles corrigées en 2.x et 3.x",
             "werkzeug": "indirecte du mini-projet vulnerable : failles corrigées en 3.x seulement",
+            "django": "3.2.25 du mini-projet eol : requires-python de chaque version (5.0 : 3.10)",
         },
     ),
     "npm": (
@@ -90,6 +126,7 @@ PACKAGES: dict[str, tuple[type[Registry], dict[str, str]]] = {
             "colors": "une étiquette next plus basse que latest",
             "crossenv": "remplacé par l'équipe sécurité de npm",
             "lodash": "une version dépréciée (4.18.0), des failles corrigées en 4.17.x et 4.18",
+            "p-limit": "engines.node de chaque version (4.0.0 : >=16 ; 5 et 6 : >=18 ; 7 : >=20)",
         },
     ),
     "crates": (
@@ -328,25 +365,42 @@ async def record_osv(http: HttpClient) -> None:
         (folder / "vulns" / f"{vuln_id}.json").write_bytes(response.content)
 
 
+async def record_endoflife(http: HttpClient, only: str | None = None) -> None:
+    client = EndOfLifeDate(http, Cache.disabled())
+    folder = FIXTURES / "endoflife"
+    folder.mkdir(exist_ok=True)
+    for name in LIFECYCLES if only is None else [only]:
+        response = await http.get(client.url_for(name), headers={"Accept": "application/json"})
+        if response.status_code != 200:
+            raise SystemExit(f"{name} : HTTP {response.status_code}")
+        path = folder / f"{name}.json"
+        path.write_bytes(response.content)
+        print(f"{path.relative_to(FIXTURES)} : {len(response.content) // 1024} Ko")
+
+
 async def record(wanted: list[str]) -> None:
     async with HttpClient() as http:
         for item in wanted:
             key, _, only = item.partition(":")
             if key == "osv":
                 await record_osv(http)
+            elif key == "endoflife":
+                await record_endoflife(http, only or None)
             else:
                 await record_registries(http, key, only or None)
 
 
 def main() -> None:
-    known = [*PACKAGES, "osv"]
+    known = [*PACKAGES, "osv", "endoflife"]
     wanted = sys.argv[1:] or known
     unknown = [item for item in wanted if item.partition(":")[0] not in known]
     if unknown:
         raise SystemExit(f"registre inconnu : {', '.join(unknown)} (connus : {', '.join(known)})")
     for item in wanted:
         key, _, only = item.partition(":")
-        if only and only not in PACKAGES.get(key, (None, {}))[1]:
+        if key == "endoflife" and only and only not in LIFECYCLES:
+            raise SystemExit(f"{only} : pas dans la liste des produits (LIFECYCLES).")
+        if key not in ("endoflife", "osv") and only and only not in PACKAGES[key][1]:
             raise SystemExit(f"{only} : pas dans la liste des paquets de {key} (PACKAGES).")
     asyncio.run(record(wanted))
 

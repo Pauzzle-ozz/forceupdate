@@ -4,7 +4,7 @@ import type { Project, Report } from '@/api/types'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardTitle } from '@/components/ui/card'
 import { count, fr } from '@/lib/format'
-import { ecosystems } from '@/lib/report'
+import { ecosystems, runtimeLines } from '@/lib/report'
 import { Section } from '@/shell/Page'
 
 /** Langages (du plus lourd au plus léger) et projets, côte à côte au-delà de 900 px. */
@@ -112,6 +112,22 @@ function Projects({ projects }: { projects: Project[] }) {
           <dd className="font-mono break-all">{project.manifests.join(' · ') || '—'}</dd>
           <dt className="text-fg-muted">Lockfiles</dt>
           <dd className="font-mono break-all">{project.lockfiles.join(' · ') || 'aucun'}</dd>
+          {project.runtimes.length > 0 && (
+            <>
+              <dt className="text-fg-muted">Runtimes</dt>
+              <dd>
+                <ul className="flex flex-col gap-0.5">
+                  {runtimeLines(project).map((line) => (
+                    <li key={`${line.label}|${line.version}|${line.approximate}`}>
+                      {line.label} <span className="font-mono">{line.version}</span>
+                      {line.approximate && ' et plus'}{' '}
+                      <span className="font-mono break-all text-fg-muted">({line.files.join(', ')})</span>
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </>
+          )}
         </dl>
       ))}
     </Card>

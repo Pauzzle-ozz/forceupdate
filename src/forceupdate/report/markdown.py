@@ -20,6 +20,7 @@ from forceupdate.report import (
     label,
     plural,
     rows,
+    runtimes,
     summarize,
 )
 
@@ -103,6 +104,8 @@ def _project(project: Project, report: Report) -> list[str]:
     lines = ["", title, ""]
     lines.append(f"- Manifestes : {_files(project.manifests)}")
     lines.append(f"- Lockfiles : {_files(project.lockfiles)}")
+    if project.runtimes:
+        lines.append(f"- Runtimes : {escape(', '.join(runtimes(project)))}")
     directs = sum(1 for d in project.dependencies if d.direct)
     lines.append(
         f"- Dépendances directes : {directs or 'aucune'} ; "

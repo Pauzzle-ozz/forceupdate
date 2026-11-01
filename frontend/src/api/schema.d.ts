@@ -832,6 +832,34 @@ export interface components {
          * @enum {string}
          */
         EditKind: "dependency" | "catalog" | "override";
+        /**
+         * EndOfLife
+         * @description La fin de vie d'un cycle de version (un constat ``eol``), d'après endoflife.date.
+         */
+        EndOfLife: {
+            /** Product */
+            product: string;
+            /** Label */
+            label: string;
+            /** Cycle */
+            cycle: string;
+            /** Ends On */
+            ends_on: string | null;
+            /** Passed */
+            passed: boolean;
+            /** Advised Cycle */
+            advised_cycle: string | null;
+            /** Advised Version */
+            advised_version: string | null;
+            /**
+             * Advised Lts
+             * @default false
+             */
+            advised_lts: boolean;
+            /** Advised Blocked */
+            advised_blocked: string | null;
+            runtime: components["schemas"]["Runtime"] | null;
+        };
         /** Entry */
         Entry: {
             /** Name */
@@ -930,6 +958,7 @@ export interface components {
             detail: string | null;
             /** Url */
             url: string | null;
+            eol: components["schemas"]["EndOfLife"] | null;
         };
         /**
          * FindingKind
@@ -1180,6 +1209,10 @@ export interface components {
             updates: components["schemas"]["Update"][];
             /** Notices */
             notices: components["schemas"]["Notice"][];
+            /** Runtime Files */
+            runtime_files: string[];
+            /** Runtimes */
+            runtimes: components["schemas"]["Runtime"][];
         };
         /**
          * Proposal
@@ -1619,6 +1652,31 @@ export interface components {
          */
         RestrictionKind: "app_access" | "sso";
         /**
+         * Runtime
+         * @description Un runtime dont dépend un projet (Python, Node.js, Go, Ruby, PHP, Java, .NET), avec sa
+         *     version, lue sans rien exécuter (E27) : ``requires-python``, ``.nvmrc``, la directive ``go``
+         *     de ``go.mod``, le ``TargetFramework`` d'un projet .NET, le ``FROM`` d'un ``Dockerfile``…
+         *
+         *     Il n'est jamais mis à jour par forceupdate : sa fin de vie est seulement signalée
+         *     (``checks.eol``), et les versions de paquets qu'il ne peut pas faire tourner ne sont pas
+         *     proposées (``checks.runtimes``).
+         */
+        Runtime: {
+            /** Product */
+            product: string;
+            /** Version */
+            version: string;
+            /**
+             * Approximate
+             * @default false
+             */
+            approximate: boolean;
+            /** File */
+            file: string;
+            /** Source */
+            source: string;
+        };
+        /**
          * ScanDetail
          * @description Une analyse, avec son rapport une fois finie.
          */
@@ -1971,7 +2029,7 @@ export interface components {
          *     (la dernière mineure corrige souvent aussi les failles).
          * @enum {string}
          */
-        UpdateReason: "latest_patch" | "latest_minor" | "latest_major" | "security_fix" | "replacement";
+        UpdateReason: "latest_patch" | "latest_minor" | "latest_major" | "security_fix" | "replacement" | "supported_cycle";
         /** ValidationError */
         ValidationError: {
             /** Location */

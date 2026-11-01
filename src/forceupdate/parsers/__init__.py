@@ -3,7 +3,8 @@
 Un module par écosystème : Python (E03), npm (E04), Rust (E21), Go (E22), PHP (E23), Ruby (E24),
 Java (E25 : Maven et Gradle) et .NET (E26 : NuGet). Chacun relie les manifestes
 (dépendances directes, contraintes et leur emplacement) aux lockfiles (versions installées,
-transitives), avec ce qui est commun dans ``lockfiles.py``.
+transitives), avec ce qui est commun dans ``lockfiles.py``. ``runtimes.py`` lit la version des
+runtimes du projet (E27).
 """
 
 import posixpath
@@ -11,7 +12,7 @@ from collections.abc import Callable, Sequence
 
 from forceupdate.detect.manifests import ecosystem_for_manifest
 from forceupdate.models import Ecosystem, Notice, Project
-from forceupdate.parsers import go, java, npm, nuget, php, python, ruby, rust
+from forceupdate.parsers import go, java, npm, nuget, php, python, ruby, runtimes, rust
 from forceupdate.parsers.base import ParseError, ReadText
 from forceupdate.parsers.lockfiles import Lockfile
 
@@ -56,6 +57,8 @@ def parse_project(project: Project, read_text: ReadText, project_dirs: Sequence[
 
     ``project_dirs`` sont les dossiers de tous les projets de la source : un
     workspace Yarn 1 ne liste pas ses membres dans son lockfile.
+
+    Puis ``project.runtimes`` : ses runtimes et leur version (``runtimes.detect``, E27).
     """
     for ecosystem in project.ecosystems:
         parser = _PARSERS.get(ecosystem)
@@ -66,6 +69,7 @@ def parse_project(project: Project, read_text: ReadText, project_dirs: Sequence[
         first = next(path for path in files if ecosystem_for_manifest(path) is ecosystem)
         message = f"dépendances {ecosystem} pas encore lues par forceupdate."
         project.notices.append(Notice(file=first, message=message))
+    project.runtimes = runtimes.detect(project, read_text)
 
 
 def parse_lockfile(path: str, content: str) -> Lockfile:

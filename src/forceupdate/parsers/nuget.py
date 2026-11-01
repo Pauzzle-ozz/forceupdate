@@ -67,6 +67,7 @@ from dataclasses import dataclass, field
 from forceupdate.detect.manifests import match_dependency_file
 from forceupdate.models import Dependency, Ecosystem, Location, Notice, Project, Scope
 from forceupdate.parsers.base import ParseError, ReadText
+from forceupdate.parsers.json_spans import BOM, string_spans
 from forceupdate.parsers.lockfiles import Edge, LockedPackage, Lockfile, Start, dirname, join
 from forceupdate.parsers.lockfiles import transitives as lockfile_transitives
 from forceupdate.parsers.xml_spans import Element, parse
@@ -77,6 +78,7 @@ CENTRAL = "Directory.Packages.props"
 BUILD_PROPS = "Directory.Build.props"
 PACKAGES_CONFIG = "packages.config"
 LOCKFILE = "packages.lock.json"
+GLOBAL_JSON = "global.json"
 PROJECTS = ("*.csproj", "*.fsproj", "*.vbproj")
 TEST_SDK = "microsoft.net.test.sdk"
 
@@ -143,6 +145,21 @@ class Item:
 
 
 @dataclass(frozen=True, kw_only=True)
+class SdkReference:
+    """Un SDK de projet MSBuild : ``<Project Sdk="Microsoft.Build.NoTargets/3.7.0">``, ``<Sdk
+    Name="…" Version="…" />``, ``<Import Project="…" Sdk="…" Version="…" />``. Un SDK versionné
+    est un paquet de nuget.org, que MSBuild prend à cette version exacte ; sans version, c'est un
+    SDK livré avec .NET (``Microsoft.NET.Sdk``), sauf si ``msbuild-sdks`` de ``global.json`` en
+    fixe une."""
+
+    name: str
+    version: str | None
+    location: Location | None
+    """L'emplacement de la version seule (dans ``Nom/Version``, après la barre)."""
+    line: int = 0
+
+
+@dataclass(frozen=True, kw_only=True)
 class MsBuildFile:
     """Un fichier MSBuild (un projet, un ``.props``) lu seul."""
 
@@ -153,6 +170,8 @@ class MsBuildFile:
     """Les ``Project`` de ses ``<Import>``."""
     updates: tuple[str, ...] = ()
     """Les ``PackageReference Update="…"`` : pas lues."""
+    sdks: tuple[SdkReference, ...] = ()
+    """Ses SDK de projet (E27)."""
 
 
 def read_msbuild(path: str, content: str) -> MsBuildFile:
@@ -174,7 +193,55 @@ def _read_once(path: str, content: str) -> MsBuildFile:
         items=tuple(found.items),
         imports=tuple(found.imports),
         updates=tuple(found.updates),
+        sdks=tuple(_sdks(root)),
     )
+
+
+def _sdks(root: Element) -> list[SdkReference]:
+    """Les SDK du projet : l'attribut ``Sdk`` de ``<Project>`` (``Nom/Version``, plusieurs
+    séparés par ``;``), puis ses ``<Sdk>`` et les ``<Import>`` qui en nomment un."""
+    found = []
+    for key, value in root.attributes.items():
+        if key.lower() != "sdk":
+            continue
+        where = root.attribute_locations.get(key)
+        offset = 0
+        for part in value.split(";"):
+            name, slash, version = part.partition("/")
+            start = offset + len(name) + len(slash)
+            offset += len(part) + 1
+            if not name.strip():
+                continue
+            location = None
+            if slash and version.strip() and where is not None:
+                column = where.column + start + len(version) - len(version.lstrip())
+                location = Location(
+                    line=where.line, column=column, end_column=column + len(version.strip())
+                )
+            found.append(
+                SdkReference(
+                    name=name.strip(),
+                    version=version.strip() or None,
+                    location=location,
+                    line=root.line,
+                )
+            )
+    for child in root.children:
+        if child.tag.lower() not in ("sdk", "import"):
+            continue
+        attribute = "Name" if child.tag.lower() == "sdk" else "Sdk"
+        name, _ = _attribute(child, attribute)
+        version, location = _attribute(child, "Version")
+        if name and name.strip():
+            found.append(
+                SdkReference(
+                    name=name.strip(),
+                    version=version.strip() if version and version.strip() else None,
+                    location=location,
+                    line=child.line,
+                )
+            )
+    return found
 
 
 def _condition(element: Element) -> str | None:
@@ -661,6 +728,75 @@ def _target_of(target: str, name: str, names: dict[str, set[str]]) -> str:
 # ---------------------------------------------------------------------------
 
 
+def global_json_sdks(path: str, content: str) -> list[SdkReference]:
+    """Les SDK de ``msbuild-sdks`` d'un ``global.json``, avec l'emplacement de leur version (pour
+    la réécrire) ; une liste vide pour un fichier illisible."""
+    try:
+        data = json.loads(content.removeprefix(BOM))
+    except ValueError:
+        return []
+    sdks = data.get("msbuild-sdks") if isinstance(data, dict) else None
+    if not isinstance(sdks, dict):
+        return []
+    spans = string_spans(content)
+    found = []
+    for name, version in sdks.items():
+        if not isinstance(version, str) or not version.strip():
+            continue
+        span = spans.get(("msbuild-sdks", name))
+        location = None
+        if span is not None and span.raw == version:
+            location = Location(
+                line=span.line, column=span.column, end_column=span.column + len(version)
+            )
+        found.append(SdkReference(name=name, version=version, location=location))
+    return found
+
+
+FRAMEWORK_PROPERTIES = ("TargetFramework", "TargetFrameworks", "TargetFrameworkVersion")
+"""Les propriétés qui donnent le framework cible d'un projet ; ``TargetFrameworkVersion``
+(``v4.7.2``) est celle d'un ancien projet .NET Framework."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class TargetFramework:
+    """Un framework cible d'un projet MSBuild (``net8.0``, ``net48``, ``v4.7.2``)."""
+
+    value: str
+    file: str
+    """Le fichier où la propriété est écrite : le projet, ou un ``Directory.Build.props``."""
+    written: str
+    """La propriété telle qu'écrite : ``<TargetFrameworks>net8.0;net48</TargetFrameworks>``."""
+
+
+def target_frameworks(project: Project, read_text: ReadText) -> list[TargetFramework]:
+    """Les frameworks cibles des projets MSBuild de ``project``, leurs propriétés résolues comme
+    pour les versions (``Directory.Build.props`` compris) : la première de
+    ``FRAMEWORK_PROPERTIES`` qui a une valeur (avec ``TargetFramework``, MSBuild construit pour lui
+    seul, même si ``TargetFrameworks`` est défini). Une propriété sous condition, ou calculée,
+    n'est pas lue."""
+    loader = _Loader(read_text, [])
+    found = []
+    for path in sorted(p for p in project.manifests if _pattern(p) in PROJECTS):
+        own = loader.load(path)
+        if own is None:
+            continue
+        properties = _Evaluation(loader, path, own).properties
+        for name in FRAMEWORK_PROPERTIES:
+            definition = properties.get(name)
+            value = properties.value(name)
+            if not isinstance(definition, Property) or not value:
+                continue
+            written = f"<{definition.name}>{definition.value}</{definition.name}>"
+            for item in value.split(";"):
+                if item.strip():
+                    found.append(
+                        TargetFramework(value=item.strip(), file=definition.file, written=written)
+                    )
+            break
+    return found
+
+
 def parse_project(project: Project, read_text: ReadText) -> None:
     """Lit les fichiers NuGet de ``project`` et remplit ses dépendances : celles des projets
     MSBuild, puis les versions centrales que n'utilisent pas les projets du dossier, puis
@@ -693,6 +829,7 @@ class _ProjectParser:
             # Un projet à packages.config : NuGet ignore ses PackageReference.
             msbuild = []
         referenced: set[str] = set()
+        sdks: list[Dependency] = []
         for path in sorted(msbuild):
             evaluation = self._evaluate(path)
             if evaluation is None:
@@ -701,6 +838,7 @@ class _ProjectParser:
             found = evaluation.dependencies()
             referenced |= {d.name.lower() for d in found}
             directs.extend(found)
+            sdks.extend(self._sdks(path))
         for path in self.manifests.get(CENTRAL, []):
             directs.extend(self._central(path, referenced, standalone=not msbuild))
         for path in config:
@@ -709,8 +847,57 @@ class _ProjectParser:
             lock = self._lockfile(self.lock_path)
             if lock is not None:
                 directs = self._link(directs, lock)
-        self.project.dependencies.extend(directs)
+        # Les SDK ne sont pas dans packages.lock.json : MSBuild les prend à leur version exacte.
+        self.project.dependencies.extend(d for d in directs if d.direct)
+        self.project.dependencies.extend(sdks)
+        self.project.dependencies.extend(d for d in directs if not d.direct)
         self.project.notices.extend(self.notices)
+
+    def _sdks(self, path: str) -> list[Dependency]:
+        """Les SDK de projet versionnés du projet MSBuild ``path``, en dépendances ``build`` ; un
+        SDK sans version prend celle de ``msbuild-sdks`` du ``global.json`` le plus proche (dans
+        son dossier ou au-dessus), s'il y en a une. Les SDK de .NET (``Microsoft.NET.Sdk``) n'en
+        ont pas : ils ne sont pas des paquets."""
+        own = self.loader.load(path)
+        if own is None or not own.sdks:
+            return []
+        pinned: dict[str, tuple[str, str, Location | None]] | None = None
+        found = []
+        for sdk in own.sdks:
+            version, file, location = sdk.version, path, sdk.location
+            if version is None:
+                if pinned is None:
+                    pinned = self._global_sdks(dirname(path))
+                entry = pinned.get(sdk.name.lower())
+                if entry is None:
+                    continue
+                version, file, location = entry
+            found.append(
+                Dependency(
+                    ecosystem=Ecosystem.NUGET,
+                    name=sdk.name,
+                    constraint=version,
+                    installed=version,
+                    scope=Scope.BUILD,
+                    file=file,
+                    location=location,
+                )
+            )
+        return found
+
+    def _global_sdks(self, directory: str) -> dict[str, tuple[str, str, Location | None]]:
+        """``msbuild-sdks`` du ``global.json`` le plus proche : par nom en minuscules, la version,
+        le fichier et l'emplacement de la version."""
+        for folder in [directory, *_ancestors(directory)]:
+            path = join(folder, GLOBAL_JSON)
+            content = self.loader.read(path)
+            if content is None:
+                continue
+            return {
+                sdk.name.lower(): (sdk.version or "", path, sdk.location)
+                for sdk in global_json_sdks(path, content)
+            }
+        return {}
 
     def _evaluate(self, path: str) -> _Evaluation | None:
         own = self.loader.load(path)

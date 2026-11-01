@@ -14,6 +14,9 @@ Ce qu'on en tire :
 - une version est **retirée** si tous ses fichiers sont « yanked » (PEP 592), avec la raison
   donnée ; sa date est celle de son premier fichier ;
 - **la dernière stable** : la plus haute des versions non retirées, pré-versions exclues ;
+- le Python que demande chaque version (``requires-python`` de ses fichiers, PEP 503) : uv,
+  Poetry et PDM refusent une version qui ne convient pas à tout le ``requires-python`` du projet
+  (``checks.runtimes``, E27) ;
 - **la dépréciation** : le statut du projet. ``archived`` (plus de nouvelles versions),
   ``deprecated``, ou ``quarantined`` (soupçon de code malveillant : PyPI ne propose plus ses
   fichiers, toutes ses versions sont donc retirées).
@@ -109,6 +112,7 @@ class PyPI(Registry):
                     published=min(dates, default=None),
                     yanked=yanked,
                     yanked_reason=reason if yanked else None,
+                    requires_runtime=_requires_python(group),
                 )
             )
         found = sorted_versions(self.ecosystem, found)
@@ -143,6 +147,16 @@ def _is_yanked(file: Mapping[str, Any]) -> bool:
     # PEP 691 : faux, vrai, ou la raison du retrait (une chaîne).
     value = file.get("yanked", False)
     return value is True or isinstance(value, str)
+
+
+def _requires_python(files: Iterable[Mapping[str, Any]]) -> str | None:
+    """Le Python que demande une version (``requires-python`` de ses fichiers, le même en
+    général) : celui de son premier fichier qui en dit un ; ``None`` sinon."""
+    for file in files:
+        value = file.get("requires-python")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
 
 
 def _yanked_reason(files: Iterable[Mapping[str, Any]]) -> str | None:

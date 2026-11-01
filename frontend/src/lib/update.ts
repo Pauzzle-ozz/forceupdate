@@ -27,6 +27,7 @@ export const REASON_WORD: Record<UpdateReason, string> = {
   latest_major: 'dernière version',
   security_fix: 'corrige les failles',
   replacement: 'remplace une version retirée ou dépréciée',
+  supported_cycle: 'cycle conseillé (fin de vie)',
 }
 
 /** Les raisons d'une option, en clair : « dernière mineure · corrige les failles ». */

@@ -543,6 +543,74 @@
     ]
   },
   "PyPI/click@7.0": {},
+  "PyPI/django@3.2.25": {
+    "vulns": [
+      {
+        "id": "GHSA-3h9f-r86x-qvjx",
+        "modified": "2026-09-10T03:51:10.140141Z"
+      },
+      {
+        "id": "GHSA-6w2r-r2m5-xq5w",
+        "modified": "2026-09-10T03:50:27.987884Z"
+      },
+      {
+        "id": "GHSA-7xr5-9hcq-chf9",
+        "modified": "2026-09-10T03:50:25.160016Z"
+      },
+      {
+        "id": "GHSA-8cjm-8mp7-r2xf",
+        "modified": "2026-09-10T03:50:48.806230Z"
+      },
+      {
+        "id": "GHSA-8qcx-xf44-272x",
+        "modified": "2026-09-10T03:51:11.070082Z"
+      },
+      {
+        "id": "GHSA-923m-gv2p-w5qp",
+        "modified": "2026-09-10T03:50:48.942703Z"
+      },
+      {
+        "id": "GHSA-crhf-3pfg-w68w",
+        "modified": "2026-09-10T03:51:11.475072Z"
+      },
+      {
+        "id": "GHSA-frmv-pr5f-9mcr",
+        "modified": "2026-06-05T14:45:52.053173Z"
+      },
+      {
+        "id": "GHSA-h7pc-vwp9-298g",
+        "modified": "2026-09-10T03:50:49.784603Z"
+      },
+      {
+        "id": "GHSA-q238-5cxm-5c9h",
+        "modified": "2026-10-12T14:45:06.559694Z"
+      },
+      {
+        "id": "GHSA-qw25-v68c-qjf3",
+        "modified": "2026-09-10T03:50:58.508072Z"
+      },
+      {
+        "id": "GHSA-rrqc-c2jx-6jgv",
+        "modified": "2026-07-07T17:57:34.018251Z"
+      },
+      {
+        "id": "GHSA-wvqv-fj8w-qmhm",
+        "modified": "2026-10-01T17:56:17.845009Z"
+      },
+      {
+        "id": "PYSEC-2026-1297",
+        "modified": "2026-07-07T17:57:34.018251Z"
+      },
+      {
+        "id": "PYSEC-2026-3717",
+        "modified": "2026-10-01T17:15:02.507678Z"
+      },
+      {
+        "id": "PYSEC-2026-4035",
+        "modified": "2026-10-01T17:56:17.845009Z"
+      }
+    ]
+  },
   "PyPI/flask@0.12": {
     "vulns": [
       {
@@ -1171,6 +1239,7 @@
       }
     ]
   },
+  "npm/p-limit@3.1.0": {},
   "npm/ua-parser-js@0.7.29": {
     "vulns": [
       {

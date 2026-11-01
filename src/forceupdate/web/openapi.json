@@ -3098,6 +3098,101 @@
         "title": "EditKind",
         "description": "Ce qu'une réécriture modifie."
       },
+      "EndOfLife": {
+        "properties": {
+          "product": {
+            "type": "string",
+            "title": "Product"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "cycle": {
+            "type": "string",
+            "title": "Cycle"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed"
+          },
+          "advised_cycle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advised Cycle"
+          },
+          "advised_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advised Version"
+          },
+          "advised_lts": {
+            "type": "boolean",
+            "title": "Advised Lts",
+            "default": false
+          },
+          "advised_blocked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advised Blocked"
+          },
+          "runtime": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Runtime"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "product",
+          "label",
+          "cycle",
+          "ends_on",
+          "passed",
+          "advised_cycle",
+          "advised_version",
+          "advised_lts",
+          "advised_blocked",
+          "runtime"
+        ],
+        "title": "EndOfLife",
+        "description": "La fin de vie d'un cycle de version (un constat ``eol``), d'après endoflife.date."
+      },
       "Entry": {
         "properties": {
           "name": {
@@ -3343,6 +3438,16 @@
               }
             ],
             "title": "Url"
+          },
+          "eol": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EndOfLife"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -3359,7 +3464,8 @@
           "identifiers",
           "cvss_score",
           "detail",
-          "url"
+          "url",
+          "eol"
         ],
         "title": "Finding",
         "description": "Un constat : quelque chose à mettre à jour, ou qui n'a pas pu être vérifié.\n\nCe sont les contrôles (``checks/``) qui les produisent ; E07, E08 et E27\ncomplètent ce que chaque type remplit."
@@ -4005,6 +4111,20 @@
             },
             "type": "array",
             "title": "Notices"
+          },
+          "runtime_files": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Runtime Files"
+          },
+          "runtimes": {
+            "items": {
+              "$ref": "#/components/schemas/Runtime"
+            },
+            "type": "array",
+            "title": "Runtimes"
           }
         },
         "type": "object",
@@ -4017,7 +4137,9 @@
           "overrides",
           "findings",
           "updates",
-          "notices"
+          "notices",
+          "runtime_files",
+          "runtimes"
         ],
         "title": "Project",
         "description": "Un projet : un dossier qui contient au moins un manifeste ou un lockfile.\n\nUn monorepo en donne plusieurs (``backend/`` en Python, ``frontend/`` en npm)."
@@ -5223,6 +5345,41 @@
         "title": "RestrictionKind",
         "description": "Pourquoi les dépôts d'une organisation ne sont pas tous lisibles."
       },
+      "Runtime": {
+        "properties": {
+          "product": {
+            "type": "string",
+            "title": "Product"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "approximate": {
+            "type": "boolean",
+            "title": "Approximate",
+            "default": false
+          },
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product",
+          "version",
+          "approximate",
+          "file",
+          "source"
+        ],
+        "title": "Runtime",
+        "description": "Un runtime dont dépend un projet (Python, Node.js, Go, Ruby, PHP, Java, .NET), avec sa\nversion, lue sans rien exécuter (E27) : ``requires-python``, ``.nvmrc``, la directive ``go``\nde ``go.mod``, le ``TargetFramework`` d'un projet .NET, le ``FROM`` d'un ``Dockerfile``…\n\nIl n'est jamais mis à jour par forceupdate : sa fin de vie est seulement signalée\n(``checks.eol``), et les versions de paquets qu'il ne peut pas faire tourner ne sont pas\nproposées (``checks.runtimes``)."
+      },
       "ScanDetail": {
         "properties": {
           "id": {
@@ -6083,7 +6240,8 @@
           "latest_minor",
           "latest_major",
           "security_fix",
-          "replacement"
+          "replacement",
+          "supported_cycle"
         ],
         "title": "UpdateReason",
         "description": "Pourquoi une version est proposée. Une même version peut l'être pour plusieurs raisons\n(la dernière mineure corrige souvent aussi les failles)."

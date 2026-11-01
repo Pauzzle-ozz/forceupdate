@@ -29,9 +29,12 @@ Ce qu'on en tire :
 - RubyGems n'a ni dépréciation ni raison de retrait : une version retirée disparaît, la version
   utilisée est alors « inconnue du registre ».
 
-Le Ruby demandé par chaque version (``ruby:``) n'est pas lu : la version de Ruby est pour E27.
+Le Ruby demandé par chaque version (``ruby:< 4.1.dev&>= 3.2``, ses conditions séparées par ``&``)
+est gardé (``PackageVersion.requires_runtime``), celui de la ligne sans plateforme d'abord : Bundler
+écarte une version que le Ruby du projet ne fait pas tourner (``checks.runtimes``, E27).
 """
 
+import dataclasses
 from datetime import datetime
 from urllib.parse import quote
 
@@ -54,23 +57,29 @@ def parse_info(text: str) -> list[PackageVersion]:
     if not lines or lines[0].strip() != "---":
         raise ValueError("pas un fichier de l'index compact (« --- » attendu)")
     found: dict[str, PackageVersion] = {}
+    rubies: dict[str, str] = {}
     for line in lines[1:]:
         if not line.strip():
             continue
         head, _, rest = line.partition(" ")
-        number = head.split("-", 1)[0]
+        number, _, platform = head.partition("-")
         _, _, requirements = rest.partition("|")
         published = None
         for item in requirements.split(","):
             key, _, value = item.partition(":")
             if key.strip() == "created_at":
                 published = parse_time(value.strip())
+            elif key.strip() == "ruby" and value.strip() and (not platform or number not in rubies):
+                rubies[number] = value.strip()
         previous = found.get(number)
         if previous is None or (
             published is not None and (previous.published is None or published < previous.published)
         ):
             found[number] = PackageVersion(version=number, published=published)
-    return list(found.values())
+    return [
+        dataclasses.replace(version, requires_runtime=rubies.get(version.version))
+        for version in found.values()
+    ]
 
 
 class RubyGems(Registry):

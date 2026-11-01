@@ -16,7 +16,7 @@ compare des chaînes.
 import dataclasses
 import enum
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 
@@ -227,6 +227,65 @@ class Override:
 
 
 @dataclass(frozen=True, kw_only=True)
+class Runtime:
+    """Un runtime dont dépend un projet (Python, Node.js, Go, Ruby, PHP, Java, .NET), avec sa
+    version, lue sans rien exécuter (E27) : ``requires-python``, ``.nvmrc``, la directive ``go``
+    de ``go.mod``, le ``TargetFramework`` d'un projet .NET, le ``FROM`` d'un ``Dockerfile``…
+
+    Il n'est jamais mis à jour par forceupdate : sa fin de vie est seulement signalée
+    (``checks.eol``), et les versions de paquets qu'il ne peut pas faire tourner ne sont pas
+    proposées (``checks.runtimes``)."""
+
+    product: str
+    """Son nom chez endoflife.date : ``python``, ``nodejs``, ``go``, ``ruby``, ``php``,
+    ``eclipse-temurin`` (Java), ``amazon-corretto``, ``dotnet`` (.NET, .NET Core),
+    ``dotnetfx`` (.NET Framework)."""
+    version: str
+    """La version lue, réduite à ses nombres : ``3.8``, ``16.20.2``, ``17``, ``8.0``."""
+    approximate: bool = False
+    """Vrai pour la borne basse d'une contrainte (``requires-python = ">=3.8"``,
+    ``engines.node``, ``require.php``, la directive ``go``) : le projet dit accepter cette
+    version, il peut tourner sur une plus récente. Faux pour une version choisie
+    (``.python-version``, ``.nvmrc``, ``config.platform.php``, un ``FROM``)."""
+    file: str
+    """Le fichier où elle est lue."""
+    source: str
+    """Ce qui a été lu, tel qu'écrit : ``requires-python = ">=3.8"``, ``FROM python:3.8-slim``,
+    ``.nvmrc : 16``."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class EndOfLife:
+    """La fin de vie d'un cycle de version (un constat ``eol``), d'après endoflife.date."""
+
+    product: str
+    """Le produit chez endoflife.date : ``python``, ``django``, ``spring-boot``…"""
+    label: str
+    """Son nom, tel qu'on l'affiche : ``Python``, ``Django``, ``Node.js``."""
+    cycle: str
+    """Le cycle utilisé : ``3.8`` pour Python 3.8.10, ``16`` pour Node.js 16.20.2."""
+    ends_on: date | None
+    """La date de fin de vie (fin des correctifs de sécurité) ; ``None`` si endoflife.date dit
+    le cycle en fin de vie sans donner de date."""
+    passed: bool
+    """Vrai si elle est passée ; faux si elle arrive dans moins de 6 mois."""
+    advised_cycle: str | None = None
+    """Le cycle conseillé : le plus récent qui est maintenu et ne finit pas dans les 6 mois, à
+    support long (LTS) si le produit en a ; ``None`` s'il n'y en a pas."""
+    advised_version: str | None = None
+    """La dernière version publiée du cycle conseillé (``3.14.10``)."""
+    advised_lts: bool = False
+    """Le cycle conseillé est à support long (LTS)."""
+    advised_blocked: str | None = None
+    """Pourquoi la version conseillée n'est pas proposée, quand le runtime du projet ne la fait
+    pas tourner (un framework) : « 5.2.18 demande Python >=3.10 ; le projet : 3.8 et plus
+    (pyproject.toml). Changer de Python d'abord. » ; ``None`` sinon."""
+    runtime: Runtime | None = None
+    """Le runtime lu dans le projet ; ``None`` pour un framework (le constat a alors sa
+    dépendance)."""
+
+
+@dataclass(frozen=True, kw_only=True)
 class Finding:
     """Un constat : quelque chose à mettre à jour, ou qui n'a pas pu être vérifié.
 
@@ -263,6 +322,10 @@ class Finding:
     titre de l'avis de sécurité."""
     url: str | None = None
     """Lien pour en savoir plus : avis de sécurité (osv.dev), page du paquet, endoflife.date."""
+    eol: EndOfLife | None = None
+    """Une fin de vie (``eol``) : le cycle, sa date, le cycle conseillé, et pour un runtime
+    (``dependency`` à ``None``) ce qui a été lu ; ``None`` pour les autres constats, et pour un
+    « non concluant » (endoflife.date injoignable, version inconnue de lui)."""
 
 
 class UpdateReason(enum.StrEnum):
@@ -279,6 +342,9 @@ class UpdateReason(enum.StrEnum):
     """La plus petite version publiée qui corrige toutes les failles qui peuvent l'être."""
     REPLACEMENT = "replacement"
     """Remplace une version retirée ou dépréciée."""
+    SUPPORTED_CYCLE = "supported_cycle"
+    """La dernière version du cycle conseillé, quand celui de la version utilisée est en fin de
+    vie, ou le sera bientôt (un framework : Django, Spring Boot…)."""
 
 
 class EditKind(enum.StrEnum):
@@ -429,6 +495,13 @@ class Project:
     (``update.planner``) ; vide si les dépendances n'ont pas été vérifiées."""
     notices: list[Notice] = field(default_factory=list)
     """Ce que l'analyse n'a pas pu lire (``setup.py``, fichier invalide…)."""
+    runtime_files: list[str] = field(default_factory=list)
+    """Les fichiers qui disent la version d'un runtime sans être des manifestes, triés :
+    ``.python-version``, ``.nvmrc``, ``global.json``… (le plus proche, dans son dossier ou
+    au-dessus), et les ``Dockerfile`` (``detect.manifests.RUNTIME_FILES``)."""
+    runtimes: list[Runtime] = field(default_factory=list)
+    """Ses runtimes et leur version, lus dans ses manifestes et dans ``runtime_files``
+    (``parsers.runtimes``)."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -524,7 +597,8 @@ class Event:
 def to_dict(model: Any) -> dict[str, Any]:
     """Convertit un modèle en dictionnaire de types simples, prêt pour ``json.dumps``.
 
-    Les enums donnent leur valeur, les tuples des listes, les dates leur forme ISO 8601.
+    Les enums donnent leur valeur, les tuples des listes, les dates leur forme ISO 8601
+    (``2024-10-07``, ``2026-10-27T14:03:00+00:00``).
     """
     if not dataclasses.is_dataclass(model) or isinstance(model, type):
         raise TypeError(f"pas un modèle : {model!r}")
@@ -536,7 +610,7 @@ def _to_plain(value: Any) -> Any:
         return {f.name: _to_plain(getattr(value, f.name)) for f in dataclasses.fields(value)}
     if isinstance(value, enum.Enum):
         return value.value
-    if isinstance(value, datetime):
+    if isinstance(value, date):  # une datetime aussi
         return value.isoformat()
     if isinstance(value, dict):
         return {str(key): _to_plain(item) for key, item in value.items()}

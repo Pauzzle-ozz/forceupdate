@@ -13,6 +13,8 @@ Ce qu'on en tire :
 - les versions (``versions``), datées par ``time``. npm n'a pas de retrait : une version
   dépubliée disparaît, aucune n'est donc « retirée » ;
 - le ``deprecated`` de chaque version (une chaîne vide veut dire « plus dépréciée ») ;
+- le Node que demande chaque version (``engines.node``), pour ne pas proposer à un projet une
+  version que son Node ne fait pas tourner (``checks.runtimes``, E27) ;
 - les étiquettes (``dist-tags``), pour une dépendance écrite avec une étiquette ;
 - **la dernière stable** : ``dist-tags.latest`` si c'est une version stable. C'est celle que
   choisit ``npm install``, et celle que suivent Renovate et Dependabot. Une version plus
@@ -85,6 +87,7 @@ class Npm(Registry):
                     version=version,
                     published=parse_time(times.get(version)),
                     deprecated=_deprecation(manifest),
+                    requires_runtime=_engines_node(manifest),
                 )
                 for version, manifest in manifests.items()
             ),
@@ -115,6 +118,16 @@ def _deprecation(manifest: Mapping[str, Any]) -> str | None:
     if isinstance(value, str):
         return value.strip() or None
     return "version dépréciée" if value is True else None
+
+
+def _engines_node(manifest: Mapping[str, Any]) -> str | None:
+    """La version de Node que demande la version (``engines.node``) ; ``None`` sans. Une très
+    vieille forme (une liste de textes) n'est pas lue."""
+    engines = manifest.get("engines")
+    node = engines.get("node") if isinstance(engines, dict) else None
+    if not isinstance(node, str):
+        return None
+    return node.strip() or None
 
 
 def _latest(published: list[str], tag: str | None) -> str | None:

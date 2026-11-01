@@ -15,7 +15,10 @@ toucher, et ce qui est pré-coché. Il n'écrit rien : la réécriture des manif
   4.18.0 corrige tout, mais est dépréciée (« Bad release ») ; c'est 4.18.1. Une faille sans
   version corrigée (paquet malveillant, ``last_affected`` seul) n'est corrigée par aucune ;
 - le **remplacement** d'une version retirée ou dépréciée (``checks.deprecated``), parfois en
-  dessous de la version utilisée.
+  dessous de la version utilisée ;
+- la **dernière version du cycle conseillé**, pour un framework en fin de vie (``checks.eol``) :
+  Django 3.2 → 5.2.18 (LTS), à côté de la dernière 6.1.2. Un runtime en fin de vie n'a pas de
+  mise à jour : il est signalé seulement.
 
 Comme ``npm-pick-manifest`` (E07), les versions dépréciées ne sont proposées que faute
 d'autre ; les retirées jamais ; les pré-versions seulement de la même version qu'une version
@@ -39,7 +42,8 @@ option.
   variable, une entrée ``[versions]`` du catalogue) : la réécrire les fait tous monter, un
   avertissement le dit.
 
-Une version que le projet exclut (``exclude`` de ``go.mod``) n'est jamais proposée.
+Une version que le projet exclut (``exclude`` de ``go.mod``) n'est jamais proposée, ni une que son
+runtime ne fait pas tourner (``checks.runtimes`` : ``engines.node``, ``require.php``…).
 
 Pour une faille, la nouvelle contrainte n'accepte plus de version concernée (``floor``).
 
@@ -66,7 +70,7 @@ from fnmatch import fnmatchcase
 
 from forceupdate import versions
 from forceupdate.advisories import Advisory, OsvError, Query, Vulnerabilities
-from forceupdate.checks import vulns
+from forceupdate.checks import runtimes, vulns
 from forceupdate.checks.base import Current, current_version, is_excluded
 from forceupdate.models import (
     Dependency,
@@ -106,7 +110,13 @@ _Operations = tuple[list[Edit], str | None, str | None]
 il faut le faire à la main s'il le faut."""
 
 _ACTIONABLE = frozenset(
-    {FindingKind.VULNERABLE, FindingKind.OUTDATED, FindingKind.YANKED, FindingKind.DEPRECATED}
+    {
+        FindingKind.VULNERABLE,
+        FindingKind.EOL,
+        FindingKind.OUTDATED,
+        FindingKind.YANKED,
+        FindingKind.DEPRECATED,
+    }
 )
 """Les constats qui peuvent donner une mise à jour."""
 
@@ -358,6 +368,8 @@ class _Group:
         self.overrides = overrides
         self.currents = [current_version(d) for d in dependencies]
         self.excluded = tuple(dict.fromkeys(c for d in dependencies for c in d.excluded))
+        runtime = runtimes.project_runtime(project, self.ecosystem)
+        self.refused = runtimes.refused(info, runtime) if info is not None else {}
         self.vulns = [f for f in findings if f.kind is FindingKind.VULNERABLE]
         self.fixable = [f for f in self.vulns if f.target_version is not None]
         self.advisories = _advisories(dependencies, self.currents, vulnerabilities)
@@ -388,7 +400,7 @@ class _Group:
             option = self._option(current.version, version, reasons[version])
             if option is not None:
                 options.append(option)
-        note = self._note(reasons)
+        note = self._note(current.version, reasons)
         if not options and note is None:
             return None
         update = Update(**base, options=tuple(options), note=note)
@@ -448,20 +460,29 @@ class _Group:
         for finding in self.findings:
             if finding.kind in (FindingKind.YANKED, FindingKind.DEPRECATED):
                 add(finding.target_version, UpdateReason.REPLACEMENT)
+            elif finding.kind is FindingKind.EOL and finding.target_version in above:
+                # Un framework en fin de vie : la dernière version du cycle conseillé, si elle
+                # est publiée sous ce nom (pas Microsoft.AspNetCore.Http 10, qui n'existe pas).
+                add(finding.target_version, UpdateReason.SUPPORTED_CYCLE)
         return found
 
-    def _security_fix(self, current: str, pool: list[str]) -> str | None:
+    def _security_fix(self, current: str, pool: list[str], *, runnable: bool = True) -> str | None:
         """La plus petite version qui corrige toutes les failles qui peuvent l'être : au moins
         la plus haute des versions corrigées, qu'aucun avis ne concerne plus ; non dépréciée
-        s'il y en a une, sinon dépréciée ; jamais retirée."""
+        s'il y en a une, sinon dépréciée ; jamais retirée. ``runnable=False`` : même une que le
+        runtime du projet ne fait pas tourner (pour le dire dans la note)."""
         if not self.fixable:
             return None
         assert self.info is not None
         floor = max((f.target_version or "" for f in self.fixable), key=self.scheme.sort_key)
+
+        def kept(version: str) -> bool:
+            if runnable:
+                return not self._excluded(version)
+            return not is_excluded(self.scheme, self.excluded, version)
+
         available = sorted(
-            self.scheme.candidates(
-                [v for v in self.info.available() if not self._excluded(v)], current
-            ),
+            self.scheme.candidates([v for v in self.info.available() if kept(v)], current),
             key=self.scheme.sort_key,
         )
         for choices in (pool, available):
@@ -479,8 +500,9 @@ class _Group:
 
     def _excluded(self, version: str) -> bool:
         """Vrai si le projet écarte ``version`` (``exclude`` de ``go.mod``, ``conflict`` de
-        ``composer.json``) : elle n'est jamais proposée."""
-        return is_excluded(self.scheme, self.excluded, version)
+        ``composer.json``), ou si son runtime ne la fait pas tourner (``checks.runtimes``) : elle
+        n'est jamais proposée."""
+        return version in self.refused or is_excluded(self.scheme, self.excluded, version)
 
     def _affected(self, finding: Finding, version: str) -> bool:
         """Vrai si la faille ``finding`` concerne encore ``version``, d'après ses avis ; faute
@@ -494,7 +516,7 @@ class _Group:
     def _advisories_of(self, finding: Finding) -> list[Advisory]:
         return [a for a in self.advisories if a.id in finding.identifiers]
 
-    def _note(self, reasons: Mapping[str, list[UpdateReason]]) -> str | None:
+    def _note(self, current: str, reasons: Mapping[str, list[UpdateReason]]) -> str | None:
         unfixable = [f for f in self.vulns if f.target_version is None]
         if unfixable:
             ids = ", ".join(_main_id(f) for f in unfixable)
@@ -503,6 +525,12 @@ class _Group:
                 return f"Code malveillant ({ids}) : retirer ce paquet, aucune version sûre connue."
             return f"Aucune version corrigée connue pour {ids}."
         if self.fixable and not any(UpdateReason.SECURITY_FIX in r for r in reasons.values()):
+            blocked = self._security_fix(current, [], runnable=False) if self.refused else None
+            if blocked is not None and blocked in self.refused:
+                return (
+                    f"La correction de toutes ses failles ({blocked}) n'est pas proposée : "
+                    f"{self.refused[blocked].reason}."
+                )
             return "Aucune version publiée ne corrige toutes ses failles."
         return None
 

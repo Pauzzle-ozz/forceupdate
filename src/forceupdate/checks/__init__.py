@@ -5,15 +5,20 @@
 - ``outdated.py`` : une version plus récente existe (type 1) ;
 - ``deprecated.py`` : paquet ou version déprécié, version retirée (type 4) ;
 - ``vulns.py`` : la version utilisée a une faille connue (type 2) ;
+- ``eol.py`` : le runtime ou le framework est en fin de vie (type 3, E27) ;
+- ``runtimes.py`` : les versions qu'un runtime du projet ne fait pas tourner (E27) ;
 - ``priority.py`` : l'ordre des constats (décision n°8) et le seuil de ``--fail-on``.
 
-Les fins de vie (``eol.py``, type 3) viennent à E27. Les contrôles ne parlent pas au réseau :
-le moteur leur donne le ``PackageInfo`` du registre, et ce qu'OSV sait des failles.
+Les contrôles ne parlent pas au réseau : le moteur leur donne le ``PackageInfo`` du registre, ce
+qu'OSV sait des failles, et ce qu'endoflife.date sait des cycles de vie.
 """
+
+from collections.abc import Mapping
 
 from forceupdate.checks import deprecated, outdated
 from forceupdate.checks.base import GAP_LABELS, Current, current_version
 from forceupdate.checks.priority import FailOn, fails, priority, reaches, sort_findings
+from forceupdate.checks.runtimes import Refusal
 from forceupdate.models import Dependency, Finding, ScanOptions, Scope
 from forceupdate.registries import PackageInfo
 
@@ -39,11 +44,16 @@ def selected(dependency: Dependency, options: ScanOptions) -> bool:
     )
 
 
-def check_dependency(dependency: Dependency, info: PackageInfo) -> list[Finding]:
+def check_dependency(
+    dependency: Dependency, info: PackageInfo, refused: Mapping[str, Refusal] | None = None
+) -> list[Finding]:
     """Les constats de ``dependency``, vérifiable, d'après ``info``, ce que son registre en
-    dit : déprécié, retiré, plus récente. Une liste vide si elle est à jour."""
+    dit : déprécié, retiré, plus récente. Une liste vide si elle est à jour. ``refused`` : les
+    versions que le runtime du projet ne fait pas tourner (``runtimes.refused``), jamais
+    proposées."""
     current = current_version(dependency)
+    refused = refused or {}
     return [
-        *deprecated.check(dependency, info, current),
-        *outdated.check(dependency, info, current),
+        *deprecated.check(dependency, info, current, refused),
+        *outdated.check(dependency, info, current, refused),
     ]

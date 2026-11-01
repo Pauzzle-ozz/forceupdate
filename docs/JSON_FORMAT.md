@@ -30,7 +30,8 @@ ignorer ce qu'il ne connaît pas. Les failles (E08) sont arrivées ainsi (champs
 proposées (E09 : `updates` et `overrides` des projets, `lockfile` des
 dépendances), puis les failles des versions proposées (E10 : `introduced` des
 options), puis les répartitions par gravité du résumé (E14 : `severities`,
-`vulnerabilities`) ; les fins de vie (E27) arriveront de même, avec des constats `eol`.
+`vulnerabilities`), puis les fins de vie (E27 : `runtime_files` et `runtimes` des
+projets, `eol` des constats, la raison `supported_cycle`).
 
 ## Le rapport
 
@@ -70,6 +71,23 @@ Un dossier qui contient au moins un manifeste ou un lockfile.
 | `findings` | liste de [constats](#constat) | **du plus grave au moins grave** (voir [l'ordre](#ordre-des-constats)) |
 | `updates` | liste de [mises à jour](#mise-à-jour) | une par paquet à mettre à jour, dans l'ordre des constats ; `[]` si les dépendances n'ont pas été vérifiées |
 | `notices` | liste de [remarques](#remarque) | ce que l'analyse n'a pas pu lire, ou pas pu vérifier |
+| `runtime_files` | liste de chemins | les fichiers qui disent la version d'un runtime sans être des manifestes : `.python-version`, `runtime.txt`, `.nvmrc`, `.node-version`, `.ruby-version`, `.tool-versions`, `global.json` (le plus proche de chaque nom, dans son dossier ou au-dessus), et les `Dockerfile` |
+| `runtimes` | liste de [runtimes](#runtime) | ses runtimes et leur version, lus dans ses manifestes et dans `runtime_files` (E27) |
+
+## Runtime
+
+Un runtime dont dépend le projet, avec sa version, lue sans rien exécuter. Il n'est
+jamais mis à jour par forceupdate : sa fin de vie est signalée (constat `eol`), et les
+versions de paquets qu'il ne fait pas tourner ne sont pas proposées (`engines.node` de
+npm, `require.php` de Packagist, `ruby` de RubyGems, `requires-python` de PyPI).
+
+| Champ | Type | Sens |
+|---|---|---|
+| `product` | chaîne | son nom chez [endoflife.date](https://endoflife.date) : `python`, `nodejs`, `go`, `ruby`, `php`, `eclipse-temurin` (Java), `amazon-corretto`, `azul-zulu`, `dotnet` (.NET, .NET Core), `dotnetfx` (.NET Framework) |
+| `version` | chaîne | la version lue, réduite à ses nombres : `3.8`, `16.20.2`, `17`, `8.0` |
+| `approximate` | booléen | `true` pour la borne basse d'une contrainte (`requires-python = ">=3.8"`, `engines.node`, `require.php`, la directive `go`, `maven.compiler.release`) : le projet accepte cette version et les suivantes ; `false` pour une version choisie (`.python-version`, `.nvmrc`, `config.platform.php`, `TargetFramework`, un `FROM`) |
+| `file` | chemin | le fichier où elle est lue |
+| `source` | chaîne | ce qui a été lu, tel qu'écrit : `requires-python = ">=3.8"`, `FROM python:3.8-slim`, `<TargetFramework>net8.0</TargetFramework>` |
 
 ## Dépendance
 
@@ -115,7 +133,8 @@ deux extras) donne deux dépendances, chacune avec son emplacement.
 | `identifiers` | liste de chaînes | `vulnerable` : les identifiants de la faille, les CVE d'abord, puis les GHSA, puis les autres (`PYSEC-…`, `MAL-…`) ; `[]` pour les autres types |
 | `cvss_score` | nombre ou `null` | `vulnerable` : le score CVSS 3 de la faille, de 0 à 10, s'il est connu ; `null` sinon, et pour les autres types |
 | `detail` | chaîne ou `null` | ce que dit la source, tel quel, souvent en anglais : la raison d'un retrait, le message de dépréciation, le titre de l'avis de sécurité |
-| `url` | chaîne ou `null` | pour en savoir plus : la page du paquet ; pour une faille, celle de l'avis sur osv.dev |
+| `url` | chaîne ou `null` | pour en savoir plus : la page du paquet ; pour une faille, celle de l'avis sur osv.dev ; pour une fin de vie, la page du produit sur endoflife.date |
+| `eol` | [fin de vie](#fin-de-vie) ou `null` | `eol` : le cycle, sa date, le cycle conseillé ; `null` pour les autres types |
 
 Ce que remplit chaque type :
 
@@ -126,8 +145,73 @@ Ce que remplit chaque type :
 | `yanked` | la plus proche version non retirée ; `null` s'il n'y en a pas | `detail` : la raison du retrait |
 | `deprecated` (paquet) | `null` : le remplacer est un choix humain | `detail` : le message du registre |
 | `deprecated` (version, npm) | la plus proche version non dépréciée | `detail` : le message du registre |
+| `eol` (runtime) | la dernière version du cycle conseillé (`3.15.2`) ; `null` s'il n'y en a pas | `dependency` à `null`, `eol` (avec `runtime`), `current_version` (la version lue), `url` |
+| `eol` (framework) | de même (`5.2.18` pour Django 3.2) | `dependency` (le premier paquet du produit dans le projet : un constat par cycle), `eol`, `gap` |
 | `unverifiable` | `null` | `message` : la raison (paquet introuvable, dépendance git…) |
-| `inconclusive` | la dernière, si on la connaît | `message` : pourquoi (réseau, hors ligne sans cache, version utilisée inconnue, version inconnue du registre, failles non vérifiées) |
+| `inconclusive` | la dernière, si on la connaît | `message` : pourquoi (réseau, hors ligne sans cache, version utilisée inconnue, version inconnue du registre, failles non vérifiées, fin de vie non vérifiée : endoflife.date injoignable, ou une version qu'il ne connaît pas) |
+
+### Fin de vie
+
+D'après [endoflife.date](https://endoflife.date). Un constat `eol` dans deux cas,
+à la date de l'analyse : la fin de vie est passée (`severity` : `medium`), ou elle
+arrive dans moins de 6 mois (`low`) et un cycle plus récent est à conseiller.
+
+| Champ | Type | Sens |
+|---|---|---|
+| `product` | chaîne | le produit chez endoflife.date : `python`, `django`, `spring-boot`… |
+| `label` | chaîne | son nom, à afficher : `Python`, `Django`, `Node.js` |
+| `cycle` | chaîne | le cycle utilisé : `3.8` pour Python 3.8.10, `16` pour Node.js 16.20.2 |
+| `ends_on` | date (`AAAA-MM-JJ`) ou `null` | la fin de vie (fin des correctifs de sécurité) ; `null` si endoflife.date dit le cycle fini sans en donner la date |
+| `passed` | booléen | `true` si elle est passée ; `false` si elle arrive dans moins de 6 mois |
+| `advised_cycle` | chaîne ou `null` | le cycle conseillé : parmi les cycles plus récents et maintenus, ceux qui ne finissent pas dans les 6 mois (sinon tous ceux-là), le plus récent à support long (LTS) s'il y en a, sinon le plus récent ; `null` si aucun n'est maintenu |
+| `advised_version` | chaîne ou `null` | la dernière version publiée du cycle conseillé |
+| `advised_lts` | booléen | le cycle conseillé est à support long |
+| `runtime` | [runtime](#runtime) ou `null` | le runtime lu ; `null` pour un framework |
+
+Les frameworks suivis (`checks.eol.FRAMEWORKS`) : Django, Wagtail, NumPy, Airflow ;
+Angular, AngularJS, Vue, Nuxt, Next.js, React, React Native, Svelte, Electron, Express,
+NestJS, Ember, jQuery, Bootstrap, Tailwind CSS, Ionic, Vuetify, Quasar, Strapi,
+AdonisJS, ESLint ; Laravel, Symfony, Drupal, TYPO3, CakePHP, Magento, Shopware, API
+Platform, Livewire, Guzzle ; Rails ; Spring Boot, Spring Framework, Spring Security,
+Spring Cloud, Hibernate ORM, Log4j, Micronaut, Quarkus, Struts, Jetty, Tomcat, Camel,
+Keycloak, Groovy ; ASP.NET Core (`Microsoft.AspNetCore.*`, d'après .NET).
+
+Un runtime en fin de vie (le mini-projet `tests/projects/eol`, analysé le 2026-11-01) :
+
+```json
+{
+  "kind": "eol",
+  "severity": "medium",
+  "message": "Python 3.8 : fin de vie depuis le 07/10/2024. Lu dans .python-version : 3.8. Cycle conseillé : 3.15, dernière version 3.15.2.",
+  "dependency": null,
+  "current_version": "3.8",
+  "current_is_approximate": false,
+  "target_version": "3.15.2",
+  "wanted_version": null,
+  "gap": null,
+  "identifiers": [],
+  "cvss_score": null,
+  "detail": null,
+  "url": "https://endoflife.date/python",
+  "eol": {
+    "product": "python",
+    "label": "Python",
+    "cycle": "3.8",
+    "ends_on": "2024-10-07",
+    "passed": true,
+    "advised_cycle": "3.15",
+    "advised_version": "3.15.2",
+    "advised_lts": false,
+    "runtime": {
+      "product": "python",
+      "version": "3.8",
+      "approximate": false,
+      "file": ".python-version",
+      "source": "3.8"
+    }
+  }
+}
+```
 
 ### Les failles
 
@@ -185,7 +269,9 @@ ne lit plus celles du `package.json`.
 
 Les mises à jour possibles d'un paquet d'un projet. C'est un groupe de cases à
 cocher : **au plus une option est choisie**. Une directe monte avec toutes ses
-déclarations ; une indirecte est une version installée précise.
+déclarations ; une indirecte est une version installée précise. Une version que le
+runtime du projet ne fait pas tourner n'est jamais proposée (voir [runtime](#runtime)) ;
+un runtime n'a pas de mise à jour.
 
 | Champ | Type | Sens |
 |---|---|---|
@@ -198,7 +284,7 @@ déclarations ; une indirecte est une version installée précise.
 | `current_is_approximate` | booléen | `true` sans lockfile : monter, c'est relever la borne basse |
 | `options` | liste d'[options](#option-de-mise-à-jour) | de la plus ancienne à la plus récente version |
 | `selected` | chaîne ou `null` | la version **pré-cochée**, ou `null` |
-| `note` | chaîne ou `null` | ce que les options ne disent pas : `Code malveillant (…) : retirer ce paquet, aucune version sûre connue.`, `Aucune version corrigée connue pour …`, `Versions publiées inconnues du registre…` |
+| `note` | chaîne ou `null` | ce que les options ne disent pas : `Code malveillant (…) : retirer ce paquet, aucune version sûre connue.`, `Aucune version corrigée connue pour …`, `Versions publiées inconnues du registre…`, `La correction de toutes ses failles (5.2.17) n'est pas proposée : elle demande Python >=3.10 ; le projet : 3.8 et plus (pyproject.toml).` |
 
 **Pré-cochée** (décision n°12 du brief) : parmi les options qui ne sont pas
 majeures, ne reviennent pas en arrière, ne sont pas à faire à la main et n'ont pas
@@ -300,7 +386,8 @@ Les noms d'OSV : `PyPI`, `npm`, `crates.io`, `Go`, `Packagist`, `RubyGems`,
 
 `critical`, `high`, `medium`, `low`, `info`. Une faille a celle de son avis
 (voir [les failles](#les-failles)). Pour
-les autres : `yanked` est `medium` ; `deprecated` est `low` ; `outdated` est `low`
+les autres : `eol` est `medium` (fin de vie passée) ou `low` (dans moins de 6 mois) ;
+`yanked` est `medium` ; `deprecated` est `low` ; `outdated` est `low`
 pour une majeure, `info` pour une mineure ou un correctif ; `unverifiable` et
 `inconclusive` sont `info`.
 
@@ -318,6 +405,7 @@ pour une majeure, `info` pour une mineure ou un correctif ; `unverifiable` et
 | `latest_major` | la dernière version, quand elle est majeure |
 | `security_fix` | la plus petite version publiée, ni retirée ni dépréciée, qui corrige toutes les failles qui peuvent l'être |
 | `replacement` | remplace une version retirée ou dépréciée |
+| `supported_cycle` | la dernière version du cycle conseillé, quand celui de la version utilisée est en fin de vie (un framework) |
 
 ## Exemple
 
@@ -367,7 +455,8 @@ chaque constat, abrégée ici) :
           "identifiers": ["CVE-2026-25645", "GHSA-gc5v-m9x4-r6x2", "PYSEC-2026-2275"],
           "cvss_score": 5.5,
           "detail": "Requests has Insecure Temp File Reuse in its extract_zipped_paths() utility function",
-          "url": "https://osv.dev/vulnerability/GHSA-gc5v-m9x4-r6x2"
+          "url": "https://osv.dev/vulnerability/GHSA-gc5v-m9x4-r6x2",
+          "eol": null
         },
         {
           "kind": "vulnerable",
@@ -382,7 +471,8 @@ chaque constat, abrégée ici) :
           "identifiers": ["CVE-2024-47081", "GHSA-9hjg-9r4m-mvj7", "PYSEC-2026-1872"],
           "cvss_score": 5.3,
           "detail": "Requests vulnerable to .netrc credentials leak via malicious URLs",
-          "url": "https://osv.dev/vulnerability/GHSA-9hjg-9r4m-mvj7"
+          "url": "https://osv.dev/vulnerability/GHSA-9hjg-9r4m-mvj7",
+          "eol": null
         },
         {
           "kind": "yanked",
@@ -397,7 +487,8 @@ chaque constat, abrégée ici) :
           "identifiers": [],
           "cvss_score": null,
           "detail": "Yanked due to conflicts with CVE-2024-35195 mitigation",
-          "url": "https://pypi.org/project/requests/"
+          "url": "https://pypi.org/project/requests/",
+          "eol": null
         },
         {
           "kind": "outdated",
@@ -412,7 +503,8 @@ chaque constat, abrégée ici) :
           "identifiers": [],
           "cvss_score": null,
           "detail": null,
-          "url": "https://pypi.org/project/requests/"
+          "url": "https://pypi.org/project/requests/",
+          "eol": null
         }
       ],
       "updates": [
@@ -454,7 +546,9 @@ chaque constat, abrégée ici) :
           "note": null
         }
       ],
-      "notices": []
+      "notices": [],
+      "runtime_files": [],
+      "runtimes": []
     }
   ],
   "ignored_manifests": [],

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from forceupdate import checks
-from forceupdate.checks import GAP_LABELS, vulns
+from forceupdate.checks import GAP_LABELS, eol, vulns
 from forceupdate.models import (
     Dependency,
     EditKind,
@@ -75,10 +75,20 @@ REASON_LABELS = {
     UpdateReason.LATEST_MAJOR: "dernière version",
     UpdateReason.SECURITY_FIX: "correction des failles",
     UpdateReason.REPLACEMENT: "remplace la version retirée ou dépréciée",
+    UpdateReason.SUPPORTED_CYCLE: "cycle conseillé (fin de vie)",
 }
 """Pourquoi une version est proposée, en français."""
 
 DOWNGRADE = "retour en arrière"
+
+
+def runtimes(project: Project) -> list[str]:
+    """Les runtimes du projet, tels que les vérifie l'analyse (``checks.eol.selected_runtimes``) :
+    ``Python 3.8 (.python-version)``, ``Node.js 16 et plus (package.json)``."""
+    return [
+        f"{eol.runtime_label(r)} {r.version}{' et plus' if r.approximate else ''} ({r.file})"
+        for r in eol.selected_runtimes(project.runtimes)
+    ]
 
 
 def update_subject(update: Update) -> str:

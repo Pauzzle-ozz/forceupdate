@@ -279,6 +279,25 @@ WORKSPACE_ROOTS: dict[str, tuple[str, ...]] = {"*.gemspec": ("Gemfile", "gems.rb
 """Le manifeste de la racine d'un workspace, quand ce n'est pas celui du membre : le ``Gemfile``
 d'une gem ``path:``."""
 
+VERSION_FILES = (
+    ".python-version",
+    "runtime.txt",
+    ".nvmrc",
+    ".node-version",
+    ".ruby-version",
+    ".tool-versions",
+    "global.json",
+)
+"""Les fichiers qui disent la version d'un runtime (E27) : pyenv et uv, Heroku, nvm, nodenv,
+rbenv, asdf et mise, le SDK .NET. Ces outils les cherchent dans le dossier courant puis au-dessus :
+un projet prend le plus proche de chaque nom, dans son dossier ou au-dessus."""
+
+DOCKERFILES = ("Dockerfile", "Dockerfile.*", "*.Dockerfile", "Containerfile")
+"""Les ``Dockerfile`` (``FROM python:3.8-slim``). Comparés sans tenir compte de la casse. Un
+``Dockerfile`` appartient au projet le plus proche, dans son dossier ou au-dessus ; sans projet
+au-dessus, à ceux qu'il a en dessous (le ``Dockerfile`` de la racine d'un dépôt dont le code est
+dans ``app/``)."""
+
 PIP_TOOLS_SOURCES = ("requirements*.in", "requirements/*.in")
 """Motifs des fichiers sources de pip-tools. ``pip-compile requirements.in`` écrit
 ``requirements.txt`` : ce ``.txt`` compilé, posé à côté de son ``.in``, est le
@@ -441,12 +460,64 @@ def find_projects(
 
     Par défaut, un manifeste rangé dans un dossier de tests, de fixtures ou
     d'exemples ne fait pas un projet : ce sont des mini-projets de démonstration,
-    souvent figés exprès sur de vieilles versions. Ils sont rendus à part.
+    souvent figés exprès sur de vieilles versions. Ils sont rendus à part. Chaque projet
+    reçoit ses fichiers de runtime (``Project.runtime_files`` : ``VERSION_FILES``,
+    ``DOCKERFILES``).
     """
+    paths = list(paths)
     found = discover_dependency_manifests(paths, max_files=max_files)
     ignored = [] if include_tests else [path for path in found if is_test_path(path)]
     skipped = set(ignored)
-    return group_projects(path for path in found if path not in skipped), ignored
+    projects = group_projects(path for path in found if path not in skipped)
+    runtime_files = [
+        path
+        for path in paths
+        if is_runtime_file(path)
+        and not is_ignored_path(path)
+        and (include_tests or not is_test_path(path))
+    ]
+    _attach_runtime_files(projects, runtime_files)
+    return projects, ignored
+
+
+def is_runtime_file(path: str) -> bool:
+    """Vrai pour un fichier de ``VERSION_FILES`` ou de ``DOCKERFILES`` (chemin POSIX)."""
+    name = path.rsplit("/", 1)[-1].lower()
+    if name in (n.lower() for n in VERSION_FILES):
+        return True
+    if name.endswith(".dockerignore"):
+        return False
+    return any(fnmatch.fnmatchcase(name, pattern.lower()) for pattern in DOCKERFILES)
+
+
+def _attach_runtime_files(projects: list[Project], paths: list[str]) -> None:
+    """Range chaque fichier de runtime dans ``Project.runtime_files`` (voir ``VERSION_FILES`` et
+    ``DOCKERFILES``)."""
+    by_dir = {project.path: project for project in projects}
+    attached: dict[str, set[str]] = {project.path: set() for project in projects}
+    versions: dict[tuple[str, str], str] = {}
+    for path in paths:
+        name = path.rsplit("/", 1)[-1].lower()
+        directory = path.rsplit("/", 1)[0] if "/" in path else "."
+        if name in (n.lower() for n in VERSION_FILES):
+            versions[directory, name] = path
+            continue
+        owner = next((d for d in [directory, *_ancestors(directory)] if d in by_dir), None)
+        if owner is not None:
+            attached[owner].add(path)
+            continue
+        for project in projects:
+            if directory == "." or project.path.startswith(directory + "/"):
+                attached[project.path].add(path)
+    names = {name for _, name in versions}
+    for project in projects:
+        for name in names:
+            for directory in [project.path, *_ancestors(project.path)]:
+                found = versions.get((directory, name))
+                if found is not None:
+                    attached[project.path].add(found)
+                    break
+        project.runtime_files = sorted(attached[project.path])
 
 
 def _workspace_lockfiles(

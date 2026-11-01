@@ -17,7 +17,7 @@ from typer.testing import CliRunner
 
 from forceupdate import engine
 from forceupdate.cli import app
-from forceupdate.models import FindingKind, Gap, Project, Report, Scope
+from forceupdate.models import FindingKind, Gap, Project, Report, Scope, Severity
 from forceupdate.net import Cache, HttpClient
 from forceupdate.sources.local import LocalSource
 
@@ -151,6 +151,27 @@ def test_findings_of_the_mini_project(recorded: Routes) -> None:
     )
     # NuGet restaure une version non listée : elle reste la « permise ».
     assert log4net.wanted_version == "2.0.8"
+
+
+def test_end_of_life_of_the_mini_project(recorded: Routes) -> None:
+    # E27 : .NET 8 finit le 2026-11-10 (le jour des tests : 2026-11-01) ; les paquets
+    # d'ASP.NET Core 2.1 suivent .NET Core 2.1, fini en 2021.
+    projects = {p.path: p for p in analyze(NUGET).projects}
+    app_ = projects["src/App"]
+    ended = [f for f in app_.findings if f.kind is FindingKind.EOL]
+    assert [(f.dependency and f.dependency.name, f.severity) for f in ended] == [
+        ("Microsoft.AspNetCore.Http", Severity.MEDIUM),
+        (None, Severity.LOW),
+    ]
+    assert ended[1].message == (
+        ".NET 8 : fin de vie le 10/11/2026, dans moins de 6 mois. Lu dans src/App/App.csproj : "
+        "<TargetFramework>net8.0</TargetFramework>. Cycle conseillé : 10 (LTS), dernière version "
+        "10.0.13."
+    )
+    # net10.0 aussi dans le projet de tests : seul net8.0 finit bientôt. ASP.NET Core n'y est
+    # qu'une indirecte (CentralTransitive) : pas vérifiée sans --transitive.
+    tests = projects["src/App.Tests"]
+    assert [f.eol.cycle for f in tests.findings if f.kind is FindingKind.EOL and f.eol] == ["8"]
 
 
 def test_plan_of_the_mini_project(recorded: Routes) -> None:

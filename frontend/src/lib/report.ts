@@ -265,6 +265,49 @@ export function ecosystems(report: Report): Ecosystem[] {
   return [...new Set(report.projects.flatMap((project) => project.ecosystems))]
 }
 
+/** Le nom affiché d'un runtime, d'après son nom chez endoflife.date (`Runtime.product`). */
+export const RUNTIME_LABEL: Record<string, string> = {
+  python: 'Python',
+  nodejs: 'Node.js',
+  go: 'Go',
+  ruby: 'Ruby',
+  php: 'PHP',
+  'eclipse-temurin': 'Java (Eclipse Temurin)',
+  'amazon-corretto': 'Java (Amazon Corretto)',
+  'azul-zulu': 'Java (Azul Zulu)',
+  dotnet: '.NET',
+  dotnetfx: '.NET Framework',
+}
+
+/** Une version de runtime lue, avec tous les fichiers qui la donnent. */
+export interface RuntimeLine {
+  label: string
+  version: string
+  /** Une borne basse (`requires-python = ">=3.8"`) : « 3.8 et plus ». */
+  approximate: boolean
+  files: string[]
+}
+
+/** Les runtimes d'un projet, une ligne par version lue (« Python 3.8 : .python-version, Dockerfile »). */
+export function runtimeLines(project: Project): RuntimeLine[] {
+  const lines = new Map<string, RuntimeLine>()
+  for (const runtime of project.runtimes) {
+    const key = `${runtime.product}|${runtime.version}|${runtime.approximate}`
+    const line = lines.get(key)
+    if (line) {
+      if (!line.files.includes(runtime.file)) line.files.push(runtime.file)
+    } else {
+      lines.set(key, {
+        label: RUNTIME_LABEL[runtime.product] ?? runtime.product,
+        version: runtime.version,
+        approximate: runtime.approximate,
+        files: [runtime.file],
+      })
+    }
+  }
+  return [...lines.values()]
+}
+
 /** « requirements.in, ligne 2 » */
 export function where(file: string, line: number | null | undefined): string {
   return line ? `${file}, ligne ${line}` : file

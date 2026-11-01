@@ -14,6 +14,8 @@ Composer. Vérifié le 2026-10-30 sur ``monolog/monolog``, ``guzzlehttp/guzzle``
 - **« minifié »** (``"minified": "composer/2.0"``) : chaque version ne garde que ce qui change
   depuis la précédente, et ``"__unset"`` retire une clé. Reconstruit comme le fait Composer
   (``MetadataMinifier::expand``) ;
+- ``require.php`` : le PHP que demande la version ; Composer la refuse si le PHP du projet
+  (``config.platform.php``, sinon celui de la machine) n'y convient pas (``checks.runtimes``, E27) ;
 - ``time`` : la date de l'étiquette ; ``abandoned`` : ``true``, ou le paquet qui le remplace
   (``"symfony/mailer"`` pour ``swiftmailer/swiftmailer``), écrit dans la plus récente et donc
   repris par toutes ;
@@ -71,6 +73,14 @@ def expand(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return expanded
 
 
+def _php(require: Any) -> str | None:
+    """Le PHP que demande une version (``require.php``) ; ``None`` sans."""
+    php = require.get("php") if isinstance(require, dict) else None
+    if not isinstance(php, str):
+        return None
+    return php.strip() or None
+
+
 def abandoned_message(value: Any) -> str | None:
     """Le message d'un paquet abandonné (``abandoned`` : ``true`` ou son remplaçant) ; ``None`` s'il
     ne l'est pas."""
@@ -107,7 +117,11 @@ class Packagist(Registry):
         if data.get("minified") is not None:
             entries = expand(entries)
         found = [
-            PackageVersion(version=entry["version"], published=parse_time(entry.get("time")))
+            PackageVersion(
+                version=entry["version"],
+                published=parse_time(entry.get("time")),
+                requires_runtime=_php(entry.get("require")),
+            )
             for entry in entries
             if isinstance(entry, dict) and isinstance(entry.get("version"), str)
         ]

@@ -123,6 +123,32 @@ def test_a_parent_pnpm_workspace_is_downloaded(github: FakeGitHubRepos, tmp_path
     assert "octo/catalogue:pnpm-workspace.yaml" in github.contents()
 
 
+def test_runtime_files_are_downloaded(github: FakeGitHubRepos, tmp_path: Path) -> None:
+    # E27 : la version des runtimes (.nvmrc d'un dossier parent, Dockerfile), pas le reste.
+    repo = FakeRepo(
+        full_name="octo/runtimes",
+        files={
+            ".nvmrc": b"16\n",
+            "Dockerfile": b"FROM node:16-alpine\n",
+            "web/package.json": b'{"engines": {"node": ">=16"}}',
+            "web/index.js": b"console.log(1)\n",
+            "docs/.python-version": b"3.8\n",
+        },
+    )
+    report = engine.inventory(fetch(github, repo, tmp_path))
+    assert sorted(github.contents()) == [
+        "octo/runtimes:.nvmrc",
+        "octo/runtimes:Dockerfile",
+        "octo/runtimes:web/package.json",
+    ]
+    (project,) = report.projects
+    assert [(r.version, r.file) for r in project.runtimes] == [
+        ("16", "web/package.json"),
+        ("16", ".nvmrc"),
+        ("16", "Dockerfile"),
+    ]
+
+
 def test_a_missing_file_is_not_an_error(github: FakeGitHubRepos, tmp_path: Path) -> None:
     repo = FakeRepo(full_name="octo/manque", files={"requirements.txt": b"-r absent.txt\nflask\n"})
     report = engine.inventory(fetch(github, repo, tmp_path))

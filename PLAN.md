@@ -120,7 +120,7 @@ Statuts : `à faire`, `en cours`, `fait`.
 | E24 | F | Ruby (Bundler) | fait |
 | E25 | F | Java (Maven, Gradle) | fait |
 | E26 | F | .NET (NuGet) | fait |
-| E27 | G. Compléments | Fin de vie des runtimes et frameworks | à faire |
+| E27 | G. Compléments | Fin de vie des runtimes et frameworks | fait |
 | E28 | G | Fichier de code isolé | à faire |
 | E29 | H. Livraison | Configuration, page Réglages, robustesse | à faire |
 | E30 | H | Documentation, packaging, CI | à faire |
@@ -2133,27 +2133,143 @@ lockfile est testée avec une commande simulée, et c'est noté.
 
 **But** : le type 3 du brief.
 
-- [ ] Détecter la version de chaque runtime :
+- [x] Détecter la version de chaque runtime :
 
   | Runtime | Où la lire |
   |---|---|
-  | Python | `requires-python`, `.python-version`, `runtime.txt` |
-  | Node | `engines.node`, `.nvmrc`, `.node-version` |
-  | Go | directive `go` de `go.mod` |
-  | Ruby | `.ruby-version`, `ruby "…"` du `Gemfile` |
-  | PHP | `require.php` de `composer.json` |
-  | Java | `maven.compiler.release`, `java.version`, toolchain Gradle |
-  | .NET | `TargetFramework`, `TargetFrameworks` (lus par `parsers/nuget.py` sans être gardés), le SDK de `global.json` |
+  | Python | `requires-python`, `.python-version`, `runtime.txt` (et `python` de Poetry, `[requires]` du `Pipfile`, `python_requires` de `setup.cfg`) |
+  | Node | `engines.node`, `.nvmrc`, `.node-version` (et `volta.node`) |
+  | Go | directive `go` de `go.mod` (et `toolchain`, `go.work`) |
+  | Ruby | `.ruby-version`, `ruby "…"` du `Gemfile` (et `RUBY VERSION` du `Gemfile.lock`) |
+  | PHP | `require.php` de `composer.json` (et `config.platform.php`) |
+  | Java | `maven.compiler.release`, `java.version`, toolchain Gradle (et `…target`, `…source`, `sourceCompatibility`, `targetCompatibility`, `jvmToolchain`) |
+  | .NET | `TargetFramework`, `TargetFrameworks` (lus par `parsers/nuget.py` sans être gardés), le SDK de `global.json` (et `TargetFrameworkVersion`) |
 
-  Plus les `FROM` des `Dockerfile` (images `python`, `node`, `ruby`, `php`, `golang`, `eclipse-temurin`…).
-- [ ] Frameworks : table dépendance → produit endoflife.date (`django`, `rails`, `spring-boot`, `laravel`, `symfony`, `angular`, `vue`, `nuxt`, `electron`…).
-- [ ] Client endoflife.date (cache 24 h). Constat `EOL` dans deux cas : fin de vie passée, ou dans moins de 6 mois. Il donne la date et le cycle conseillé.
-- [ ] Pas de mise à jour automatique d'un runtime (signalé seulement). Un framework monte comme toute autre dépendance.
-- [ ] Versions qui demandent un Node plus récent : `npm outdated` écarte celles dont `engines.node` exclut le Node installé (E07 : jsdom 30 demande `^24.15.0`, il ne la propose pas sous Node 24.12). forceupdate les propose. Une fois connue la version de Node du projet, dire quand la version proposée en demande une plus récente (garder `engines` de chaque version dans `registries/npm.py` et son cache).
-- [ ] Depuis E23 : de même pour PHP. Composer refuse une version dont le `require.php` exclut le PHP du projet (`config.platform.php`, sinon la machine) : `composer outdated` propose symfony/console 6.4.49 sous PHP 8.1.
-- [ ] Depuis E24 : de même pour Ruby. Bundler écarte une version dont le `required_ruby_version` exclut le Ruby qui tourne (minitest 5.15 demande Ruby < 4.0) ; l'index compact de RubyGems le donne pour chaque version (`ruby:< 4.1.dev&>= 3.2`), pas encore lu. La directive `ruby` du `Gemfile` et la section `RUBY VERSION` du `Gemfile.lock` disent la version du projet.30, forceupdate v8.1.10, qui demande PHP 8.4 (et la mise à jour échoue). Garder le `require.php` de chaque version (les métadonnées `p2` le donnent) et dire, ou écarter, celles qui ne conviennent pas au PHP du projet.
-- [ ] Interface : les fins de vie apparaissent dans le rapport (écran 4), avec la date et le cycle conseillé.
-- [ ] Depuis E26 : les SDK de projet MSBuild venus de NuGet (`<Project Sdk="Microsoft.Build.NoTargets/3.7.0">`, `<Sdk Name=… Version=…>`, `msbuild-sdks` de `global.json`) sont des paquets versionnés : les vérifier comme des dépendances `build`.
+  Plus les `FROM` des `Dockerfile` (images `python`, `node`, `ruby`, `php`, `golang`, `eclipse-temurin`…), et `.tool-versions` (asdf, mise).
+- [x] Frameworks : table dépendance → produit endoflife.date (`django`, `rails`, `spring-boot`, `laravel`, `symfony`, `angular`, `vue`, `nuxt`, `electron`…).
+- [x] Client endoflife.date (cache 24 h). Constat `EOL` dans deux cas : fin de vie passée, ou dans moins de 6 mois. Il donne la date et le cycle conseillé.
+- [x] Pas de mise à jour automatique d'un runtime (signalé seulement). Un framework monte comme toute autre dépendance.
+- [x] Versions qui demandent un Node plus récent : `npm outdated` écarte celles dont `engines.node` exclut le Node installé (E07 : jsdom 30 demande `^24.15.0`, il ne la propose pas sous Node 24.12). forceupdate les propose. Une fois connue la version de Node du projet, dire quand la version proposée en demande une plus récente (garder `engines` de chaque version dans `registries/npm.py` et son cache).
+- [x] Depuis E23 : de même pour PHP. Composer refuse une version dont le `require.php` exclut le PHP du projet (`config.platform.php`, sinon la machine) : `composer outdated` propose symfony/console 6.4.49 sous PHP 8.1, forceupdate proposait v8.1.10, qui demande PHP 8.4 (et la mise à jour échouait). Garder le `require.php` de chaque version (les métadonnées `p2` le donnent) et dire, ou écarter, celles qui ne conviennent pas au PHP du projet.
+- [x] Depuis E24 : de même pour Ruby. Bundler écarte une version dont le `required_ruby_version` exclut le Ruby qui tourne (minitest 5.15 demande Ruby < 4.0) ; l'index compact de RubyGems le donne pour chaque version (`ruby:< 4.1.dev&>= 3.2`). La directive `ruby` du `Gemfile` et la section `RUBY VERSION` du `Gemfile.lock` disent la version du projet.
+- [x] Interface : les fins de vie apparaissent dans le rapport (écran 4), avec la date et le cycle conseillé.
+- [x] Depuis E26 : les SDK de projet MSBuild venus de NuGet (`<Project Sdk="Microsoft.Build.NoTargets/3.7.0">`, `<Sdk Name=… Version=…>`, `msbuild-sdks` de `global.json`) sont des paquets versionnés : les vérifier comme des dépendances `build`.
+- [x] Ajoutés en route : de même pour Python (`requires-python` de chaque version, l'API Simple de PyPI : uv, Poetry et PDM refusent une version qui ne convient pas à tout le `requires-python` du projet) ; la dernière version du cycle conseillé d'un framework proposée (`UpdateReason.SUPPORTED_CYCLE`), et dite quand le runtime du projet ne la fait pas tourner (`EndOfLife.advised_blocked`) ; la note d'une mise à jour quand la correction des failles demande un runtime plus récent ; les runtimes dans les rapports (terminal, Markdown, carte du projet) ; le mini-projet `eol` ; les SDK de `<Import Sdk= Version=>`.
+
+**Notes** (session 27) :
+
+- **Commit d'abord** : E26 commitée seule (`E26 : .NET (NuGet)`, `262519a`), avec l'accord de
+  l'utilisateur, après 4268 tests verts.
+- **Vérifié en vrai** sur endoflife.date (2026-11-01), avant d'écrire : la forme v1
+  (`/api/v1/products/{produit}`, `result.releases`), sur Python, Node.js, Django, Go, Ruby, PHP,
+  Eclipse Temurin, .NET, .NET Framework, Rails, Spring Boot, Laravel, Symfony, Angular, Vue, Nuxt,
+  Electron : `isEol` est un booléen calculé le jour de la page, `eolFrom` une date ou `null` (un
+  cycle maintenu sans fin fixée : Go 1.27, Vue 3.5 ; un vieux cycle fini sans date : Node.js 1 à 3,
+  NestJS 10) ; `isLts`/`ltsFrom` (Node.js 26 LTS depuis le 2026-10-28) ; `latest.name`
+  (`8u504-b01` pour Temurin 8) ; les cycles ne sont pas tout à fait dans l'ordre des dates (Python
+  2.7 après 3.2) ; un produit inconnu : 404 en HTML ; un alias (`node`) : 301 vers `nodejs` ; la
+  `codename` des LTS de Node.js est vide (d'où `NODE_CODENAMES`, pour `lts/gallium`). L'ancienne
+  forme (`/api/{produit}.json`, `eol` date ou booléen) existe encore : pas demandée.
+  `/api/v1/products/full` (3 Mo) donne les `purl` des produits (`pkg:pypi/django`,
+  `pkg:npm/vue`, `pkg:maven/org.springframework.boot/…`) : la table des frameworks en est tirée, plus
+  ce qui leur manque (Electron, les composants de Symfony, ASP.NET Core). **Chaque produit de la
+  table vérifié** (un script : il existe, et une version typique y trouve son cycle : 58 versions
+  de 56 produits).
+- **Vérifié en vrai** sur les registres : `engines.node` de chaque version npm (p-limit : 4.0.0
+  accepte Node 16, 5 et 6 demandent 18, 7 demande 20) ; `require.php` des métadonnées `p2`
+  (symfony/console v8.1.10 : `>=8.4.1`) ; `ruby:` de l'index compact (minitest 5.15.0 :
+  `< 4.0&>= 2.2`) ; `requires-python` des fichiers de l'API Simple (Django 5.0 : `>=3.10`, 6.0 :
+  `>=3.12`).
+- **Organisation** :
+  - `endoflife.py` (`EndOfLifeDate`, `Product`, `Release`, `ProductNotFound`, `EndOfLifeError`),
+    `CacheKind.LIFECYCLES` (24 h) ;
+  - `parsers/runtimes.py` (`detect`, `LABELS`, `ECOSYSTEMS`, `NODE_CODENAMES`, `IMAGES`,
+    `dockerfile`, `target_framework`) ; `detect/manifests.py` : `VERSION_FILES`, `DOCKERFILES`,
+    `Project.runtime_files` ; `parsers/nuget.py` : `target_frameworks`, `SdkReference`,
+    `global_json_sdks` ; `parsers/maven.py` : `java_version` ;
+  - `checks/eol.py` (`FRAMEWORKS`, `framework`, `selected_runtimes`, `cycle_of`, `advised`,
+    `check_runtime`, `check_framework`, `today`) ; `checks/runtimes.py` (`project_runtime`,
+    `probe`, `refused`, `Refusal`) ; `PackageVersion.requires_runtime` (format 2 du cache des
+    registres) ; `checks/outdated.py` et `deprecated.py` : `refused` ;
+  - `models.py` : `Runtime`, `EndOfLife`, `Finding.eol`, `Project.runtime_files`,
+    `Project.runtimes`, `UpdateReason.SUPPORTED_CYCLE` ; `engine.check` : `today`,
+    `_record_lifecycles`, `_lifecycles` ; `update/planner.py` : `refused`, `SUPPORTED_CYCLE`, la
+    note ; `update/writers/nuget.py` : les SDK, `read_global_json` ;
+  - front : `screens/report/Lifecycles.tsx` (la section « Fins de vie »), les runtimes dans la
+    carte du projet (`lib/report.ts` : `RUNTIME_LABEL`, `runtimeLines`), `lib/format.ts` :
+    `formatDay` ; `openapi.json` et `schema.d.ts` régénérés.
+- **Tranché** :
+  - **un runtime est lu sans rien exécuter**, dans les manifestes et dans les fichiers de runtime
+    (le plus proche de chaque nom, dans le dossier du projet ou au-dessus ; un `Dockerfile` va au
+    projet le plus proche au-dessus, sinon à ceux d'en dessous) ; un fichier d'un autre dossier ne
+    vaut que pour un projet de l'écosystème du runtime. Une contrainte donne sa borne basse
+    (« au moins 3.8 ») ; pour la fin de vie, les versions choisies (`.python-version`, `.nvmrc`, un
+    `FROM`) comptent plutôt que les bornes basses ; Java se lit d'après Eclipse Temurin (sauf
+    `amazoncorretto`, `.tool-versions`) ;
+  - **le cycle d'une version** : le plus long cycle dont les nombres la commencent (`3.5-sp1` pour
+    3.5) ; une borne basse se complète de zéros ; une version plus récente que tous les cycles, ou
+    moins précise qu'eux (`python:3`), ne dit rien ; une inconnue est « non concluant » ;
+  - **le constat** : fin de vie passée (`MEDIUM`) ou dans moins de 6 mois (`LOW`), à la date du jour
+    (`checks.eol.today`, que les tests fixent : `record.RECORDED_ON`) ; la date compte plus que
+    `isEol`. **Le cycle conseillé** : plus récent que celui utilisé, maintenu, ne finissant pas
+    dans les 6 mois (sinon tous les maintenus), le plus récent à support long s'il y en a (Django
+    3.2 → 5.2 LTS, Node.js 16 → 26 LTS, Python 3.8 → 3.15) ; une fin prochaine sans cycle plus
+    récent (la dernière Electron) n'est pas un constat ;
+  - **un framework** : un constat par produit et par cycle, sur la première de ses dépendances
+    vérifiées (les starters de Spring Boot, les composants de Symfony ne le répètent pas) ; sa
+    montée reste celle du type 1, plus la dernière version du cycle conseillé
+    (`SUPPORTED_CYCLE`, si elle est publiée sous ce nom : pas pour Microsoft.AspNetCore.Http) ;
+  - **les versions que le runtime ne fait pas tourner ne sont pas proposées** (le constat « plus
+    récente » vise la plus haute qui convient, comme `composer outdated` et `npm outdated` ; il dit
+    la plus récente écartée et ce qu'elle demande ; si aucune ne convient, il cite la dernière sans
+    qu'elle soit proposée). Le runtime retenu est **le plus ancien** de ceux lus pour l'écosystème,
+    bornes basses comprises : uv résout pour tout `requires-python`, et un `^8.1` promet PHP 8.1. Une
+    version choisie partielle (`.nvmrc : 16`) vaut la dernière de sa ligne, une borne basse sa
+    version `.0` ;
+  - **une erreur d'endoflife.date** (réseau, hors ligne sans cache, 5xx, réponse illisible, produit
+    inconnu) donne un « non concluant », un par produit et par version, jamais un faux constat ;
+  - **les SDK de projet MSBuild** : `Sdk="Nom/Version"` (plusieurs séparés par `;`), `<Sdk>`,
+    `<Import Sdk= Version=>`, et, pour un SDK sans version, `msbuild-sdks` du `global.json` le plus
+    proche : des dépendances `build`, à leur version exacte (`installed`), réécrites là où elles
+    sont écrites (la version seule dans l'attribut). Les SDK de .NET (`Microsoft.NET.Sdk`) n'ont pas
+    de version : pas des paquets ;
+  - **avec `TargetFramework`, MSBuild construit pour lui seul**, même si `TargetFrameworks` est
+    défini : la première des deux qui a une valeur ; `netstandard` n'est pas un runtime.
+- **Trouvé** : les dates d'endoflife.date bougent avec le temps (« dans moins de 6 mois ») : sans date
+  fixée, les tests casseraient au fil des mois (d'où `_fixed_today`, aussi dans `e2e_server.py`) ;
+  un `build/` est un dossier écarté par la découverte (un test l'avait pris pour un projet) ; un
+  heredoc a encore mangé des barres obliques inverses (scripts écrits avec l'outil d'écriture) ;
+  `toHaveTextContent` de Testing Library ramène les espaces insécables à des espaces.
+- **Réponses enregistrées** : 19 produits d'endoflife.date (`LIFECYCLES` de `record.py`,
+  `endoflife/<produit>.json`) ; PyPI `django`, npm `p-limit` ; pour OSV, les deux versions du
+  mini-projet `eol` ajoutées à `queries.json` avec leurs 16 avis (un script qui fait la requête de
+  `record.py osv` pour ce projet seul) : rien d'autre de changé.
+- **Tests** : `test_parsers_runtimes.py` (63 : les fichiers de runtime rattachés aux projets, chaque
+  manifeste, les fichiers de version, les `Dockerfile`, le mini-projet) ; `test_endoflife.py` (10,
+  plus 1 réseau) ; `test_checks_eol.py` (68 : cycles, cycle conseillé selon la date, runtimes,
+  frameworks, la table) ; `test_checks_runtimes.py` (16, sur les réponses enregistrées des quatre
+  registres) ; `test_eol_project.py` (8 : les trois fins de vie, les versions écartées, `scan` en
+  terminal, JSON et Markdown, `--fail-on major`, hors ligne, endoflife.date en panne, le cycle
+  conseillé de Spring) ; `test_writers.py` (les SDK de projet), `test_sources_forge.py` (les
+  fichiers de runtime téléchargés), les fins de vie des mini-projets `composer` et `nuget` ; les
+  tests qu'E27 change (symfony/console visé en v6.4.49 sous PHP 8.1, le format du cache des
+  registres, les clés du JSON). 4441 tests Python verts (plus 21 réseau), ruff propre ; 146 Vitest
+  (`Lifecycles.test.tsx`) ; 53 Playwright (axe-core sur le rapport `eol`, en clair et en sombre, à
+  1440 et 375 px).
+- **Vérifié à la main** (le 2026-11-01 et 02, vrai réseau) : `forceupdate scan` sur une copie du
+  mini-projet `eol` dans le scratchpad (Python 3.8 depuis le 07/10/2024, Node.js 16 depuis le
+  11/09/2023, Django 3.2 depuis le 01/04/2024, avec leur cycle conseillé ; Django visé en 4.2.30 et
+  p-limit en 4.0.0, les versions écartées dites) ; `forceupdate update --dry-run --level major`
+  (django `==4.2.30`, p-limit `^4.0.0`) ; `forceupdate ui` piloté par Playwright en clair à 1440 px
+  et en sombre à 375 px : la section « Fins de vie » (trois cycles, dates, sources, cycles
+  conseillés, LTS, l'avertissement de Django), la carte du projet (ses runtimes), le compteur, le
+  détail de django et son lien vers endoflife.date ; aucune erreur de console, pas de défilement
+  horizontal.
+- **Limites** : la table des frameworks et `NODE_CODENAMES` sont à tenir à jour (un nouveau produit,
+  la LTS 26 quand elle aura un nom) ; les images Docker non officielles (`bitnami/…`, `openjdk`,
+  déprécié) ne sont pas lues ; le `required_ruby_version` d'un `.gemspec`, `mise.toml`, le
+  `rust-version` de Cargo (case de E29) ne sont pas lus ; un `TargetFramework` sous condition n'est
+  pas lu ; le Java d'un `pom.xml` est celui de Temurin, quel que soit le JDK de la machine.
 
 **Fini quand** : un projet Python 3.8 + Django 3.2 + Node 16 sort trois constats
 datés et justes, dans l'interface.
@@ -2189,6 +2305,10 @@ seulement des imports) donnent un rapport juste.
 - [ ] `requirements.txt` générés sans `.in` à côté (`uv export`, `poetry export`, `pdm export`, `pip-compile pyproject.toml`) : depuis E03, ils restent des manifestes et tous leurs paquets sortent comme directes. Les reconnaître (en-tête « autogenerated by pip-compile / uv », commentaires `# via`) et les traiter comme des lockfiles du manifeste du projet.
 - [ ] Une ligne de `requirements` à empreintes (`--hash`) : depuis E10, la réécriture la refuse, mais le planificateur ne le sait pas et pré-coche quand même l'option. Le marquer à l'analyse, pour que l'option soit `manual` (jamais pré-cochée, avec la raison).
 - [ ] Depuis E26 : une indirecte NuGet en faille ne monte pas en régénérant (NuGet prend la plus basse version qui convient) : l'option est « à la main ». L'appliquer : ajouter au projet la `PackageReference` (ou, avec la gestion centrale, la `PackageVersion` et `CentralPackageTransitivePinningEnabled`), une réécriture qui insère un élément, relue comme les autres. Et les flux privés de `nuget.config` (ses sources, leurs identifiants) pour les versions publiées, `Directory.Build.targets` (`PackageReference Update=`).
+- [ ] Depuis E27 (fins de vie) :
+  - la version de Node du projet est dans `Project.runtimes` (`parsers.runtimes`) : la case npm ci-dessous peut s'en servir (`checks.runtimes.project_runtime`), plutôt que de relire `engines.node`, `.nvmrc`, `.node-version` ;
+  - ce qui n'est pas lu : les images Docker non officielles (`bitnami/…`, `openjdk`, dépréciée), `mise.toml`, le `required_ruby_version` d'un `.gemspec`, un `TargetFramework` défini sous condition, le Java réel de la machine (un `pom.xml` se juge d'après Eclipse Temurin) ;
+  - `checks.eol.FRAMEWORKS` et `parsers.runtimes.NODE_CODENAMES` se tiennent à la main : un test `network` qui compare la table aux `purl` d'endoflife.date (`/api/v1/products/full`) et dit les produits nouveaux, et le nom de la LTS 26 de Node.js quand il sera donné.
 - [ ] Robustesse :
   - dossiers énormes (plafonds, nombre maximal de fichiers) ;
   - fichiers illisibles, encodages exotiques ;
@@ -2258,7 +2378,7 @@ depuis l'interface.
 
 - [ ] `README.md` : à quoi ça sert, installation, démarrage (`ui`), captures d'écran, la ligne de commande, les limites par écosystème.
 - [ ] Docs :
-  - `docs/USAGE.md` : l'interface écran par écran, et toutes les commandes et options. Dire que sous PowerShell 5.1, `>` recode la sortie d'un programme (en UTF-16, via le codage de la console) : y préférer `--output` (E07) ;
+  - `docs/USAGE.md` : l'interface écran par écran, et toutes les commandes et options. Dire que sous PowerShell 5.1, `>` recode la sortie d'un programme (en UTF-16, via le codage de la console) : y préférer `--output` (E07). Depuis E27 : les fins de vie (où chaque runtime est lu, la table des frameworks, le cycle conseillé, les versions écartées parce que le runtime du projet ne les fait pas tourner, Java jugé d'après Eclipse Temurin) ;
   - `docs/JSON_FORMAT.md` : à jour ;
   - `docs/FORGES.md` : connexion à GitHub, GitLab et Bitbucket, droits nécessaires, ce que contient une PR, comment enregistrer l'outil auprès de chaque forge. Depuis E16 : les quatre façons de se connecter, ce que dit « droits non vérifiés » (token fine-grained : Contents et Pull requests en écriture, Metadata en lecture), où est le token (trousseau du système) et ce qui est révoqué à la déconnexion ; enregistrer sa propre OAuth App GitHub (« Redirect URIs » `http://127.0.0.1/oauth/github/callback`, Device Flow coché, « Expire user access tokens » décoché) et la passer par `FORCEUPDATE_GITHUB_CLIENT_ID` / `…_SECRET` ;
   - `CHANGELOG.md`.
@@ -2351,3 +2471,4 @@ En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.
 | 24 | 2026-11-01 | E24 | Fait. E23 déjà commitée. Ruby 4.0.9 (RubyGems et Bundler 4.0.20) installé avec l'accord de l'utilisateur (RubyInstaller, archive vérifiée, dans `~/sdk`). `versions/rubygems.py` (`Gem::Version` et `Gem::Requirement` réécrits : **aucun écart** sur 6 013 versions, 90 926 paires et 221 contraintes ; **25 choix de `bundle lock` reproduits**), `parsers/ruby_spans.py` (un lexer de Ruby : le `Gemfile` n'est jamais exécuté), `parsers/ruby.py` (`Gemfile` et `gems.rb` : groupes, plateformes, sources, git, chemins, `gemspec`, conditions et variables dites ; `.gemspec` ; `Gemfile.lock` repris de `reference/` et réécrit d'après le `LockfileParser` de Bundler : toutes les sections, versions à plateforme, graphe ; une gem `path:` résolue dans le lockfile du `Gemfile` qui la cite), `registries/rubygems.py` (l'index compact, huit fois plus léger que l'API v1), styles `~>` (précision gardée, plancher `, >= V`), réécriture en plusieurs chaînes (`written_target`), pilote `_Bundler` (vérifié en vrai : Bundler ne vise pas une version, donc `= V` le temps d'un `bundle lock`, une ligne `gem` pour une indirecte ; il exécute le `Gemfile` et tous les `.gemspec` (quatre témoins) ; `BUNDLE_GEMFILE` et `BUNDLE_LOCKFILE` remplacés ; la plateforme qu'il ajoute sous Windows retirée). Mini-projet `bundler` fait par le vrai Bundler, 23 gems enregistrées, 51 avis OSV ajoutés. 3133 tests Python verts (plus 17 réseau, vrai Bundler compris), 141 Vitest, 49 Playwright ; vérifié à la main en ligne de commande et dans l'interface (11 versions exactes). Pas encore commitée. |
 | 25 | 2026-11-01 | E25 | Fait. Commit de E24 d'abord (accord de l'utilisateur) ; ni Maven ni Gradle installés (son choix), seul le jar `maven-artifact` 3.9.16 téléchargé avec son accord (SHA-1 vérifiée) pour l'oracle, lancé par Nashorn (`jjs`, le JRE 8 n'a pas de `javac`). `versions/maven.py` (`ComparableVersion` et `VersionRange` réécrits : **aucun écart** sur 9 102 versions et 4 980 600 comparaisons, 45 spécifications ; trois mutations le voient ; `ComparableVersion` n'est pas transitif, comme Maven), `parsers/xml_spans.py` (expat, positions du texte, DTD refusée), `parsers/maven.py` (`pom.xml` : propriétés, parents du dépôt, `dependencyManagement`, BOM, plugins, profils, modules du build), `parsers/gradle_spans.py` et `parsers/gradle.py` (catalogue `libs.versions.toml`, `build.gradle(.kts)` lus en jetons, jamais exécutés, variables et `gradle.properties`), `registries/maven.py` (Maven Central, Google Maven, portail des plugins Gradle ; `<release>` peut être une pré-version), `update/writers/java.py`. Tranché : une version est située là où elle est écrite (propriété, `[versions]`, variable) et plusieurs dépendances partagent son emplacement (dit dans le plan) ; une version nue est la version utilisée (`installed`) ; les variantes (`-jre`/`-android`) ne se mélangent pas ; pas de lockfile (« Aucun lockfile à régénérer »). Log4Shell vérifié (2.15.0, 2.16.0, 2.17.0, 2.17.1). Mini-projets `maven` et `gradle`, 18 artefacts enregistrés, 19 versions ajoutées pour OSV. 3801 tests Python verts (plus 18 réseau), 141 Vitest, 49 Playwright ; vérifié à la main en ligne de commande et dans l'interface. |
 | 26 | 2026-11-01 | E26 | Fait. Commit de E25 d'abord (accord de l'utilisateur) ; NuGet.Versioning 7.9.0 (l'oracle, chargé par PowerShell 5.1) et le SDK .NET 10.0.403 installés avec son accord (empreintes SHA-512 vérifiées, dans `~/sdk`). `versions/nuget.py` (`NuGetVersion`, `VersionComparer`, `VersionRange` et ses versions flottantes réécrits d'après le source : **aucun écart** sur 17 866 versions, 158 838 576 comparaisons implicites, 141 contraintes et 30 189 vérifications de `Satisfies` et `FindBestMatch` ; six mutations le voient), `parsers/xml_spans.py` (positions des attributs), `parsers/nuget.py` (`packages.config` repris de `reference/`, projets MSBuild, `Directory.Build.props` en chaîne, gestion centrale, `VersionOverride`, `GlobalPackageReference`, conditions dites, projets de tests, `packages.lock.json` en graphe par framework, `CentralTransitive`), `registries/nuget.py` (l'API « registration », ses pages, non listées, dépréciation et remplaçant), OSV `NuGet` sans la casse. Tranché : **NuGet prend la plus basse version qui convient** (`VersionScheme.lowest`, `reaches`, `chosen`) : une mise à jour réécrit la borne basse, une indirecte est à la main, la version permise est l'utilisée. Pilote `dotnet restore --force-evaluate -noAutoResponse -p:RestoreLockedMode=false`, vérifié en vrai (version centrale réécrite suffisante, flottante seulement avec `--force-evaluate`, une cible de `Directory.Build.targets` s'exécute, `Directory.Build.rsp` écarté, version non listée restaurée) ; le lockfile d'un autre projet qui lit une version centrale réécrite est régénéré aussi ; un `dotnet` sans SDK est un outil absent. Mini-projet `nuget` (lockfiles du vrai `dotnet restore`), onze paquets enregistrés (compressés), 38 versions ajoutées pour OSV. Les huit écosystèmes sont gérés : les tests « pas encore géré » retirent NuGet des tables. 4268 tests Python verts (plus 20 réseau, vrai dotnet compris), 141 Vitest, 49 Playwright ; vérifié à la main en ligne de commande et dans l'interface. Cases ajoutées à E27, E29 |
+| 27 | 2026-11-01 | E27 | Fait. Commit de E26 d'abord (accord de l'utilisateur). endoflife.date vérifié en vrai (forme v1 : `isEol` booléen, `eolFrom` date ou `null`, `isLts`/`ltsFrom`, `latest`, 404 en HTML, un alias en 301 ; l'ancienne forme pas demandée) : `endoflife.py` (cache 24 h, une erreur est « non concluant »). `parsers/runtimes.py` : la version des runtimes sans rien exécuter (`requires-python`, Poetry, `Pipfile`, `setup.cfg` ; `engines.node`, `volta` ; `go`, `toolchain` ; `ruby` du `Gemfile`, `RUBY VERSION` ; `require.php`, `config.platform.php` ; propriétés Maven, Gradle ; `TargetFramework(s)` ; `.python-version`, `runtime.txt`, `.nvmrc` avec `lts/…`, `.node-version`, `.ruby-version`, `.tool-versions`, `global.json`, les `FROM` des `Dockerfile` avec leurs `ARG`), rattachés aux projets (`Project.runtime_files`, `Project.runtimes`). `checks/eol.py` : la table des frameworks (tirée des `purl` d'endoflife.date, 56 produits vérifiés), le cycle d'une version, le cycle conseillé (plus récent, maintenu, LTS d'abord : Django 3.2 → 5.2, Node.js 16 → 26), un constat si la fin est passée ou dans moins de 6 mois, à la date du jour que les tests fixent. Les versions qu'un runtime du projet ne fait pas tourner ne sont plus proposées (`checks/runtimes.py` : `engines.node`, `require.php`, `ruby:`, `requires-python` gardés par les registres ; symfony/console v6.4.49 sous PHP 8.1, comme `composer outdated`), et c'est dit ; la dernière version du cycle conseillé d'un framework proposée (`SUPPORTED_CYCLE`). Les SDK de projet MSBuild (`Sdk="Nom/Version"`, `<Sdk>`, `msbuild-sdks` de `global.json`) vérifiés et réécrits. Écran 4 : la section « Fins de vie » (date, source, cycle conseillé, LTS, version conseillée bloquée par le runtime), les runtimes dans la carte du projet. Mini-projet `eol` (Python 3.8, Django 3.2, Node.js 16) : trois constats datés, dans l'interface et en ligne de commande. 4441 tests Python verts (plus 21 réseau), 146 Vitest, 53 Playwright ; vérifié à la main en vrai (scan, update à blanc, interface en clair et en sombre). Cases ajoutées à E29, E30 |

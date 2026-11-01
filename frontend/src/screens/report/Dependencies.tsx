@@ -418,7 +418,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 /** Le nom du paquet : le bouton qui ouvre son détail (souligné en pointillé). */
-function PackageButton({ row, onOpen }: { row: Row; onOpen: (row: Row) => void }) {
+export function PackageButton({ row, onOpen }: { row: Row; onOpen: (row: Row) => void }) {
   return (
     <button
       type="button"

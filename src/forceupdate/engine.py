@@ -21,15 +21,17 @@ progression, l'API l'enverra au navigateur.
 
 import asyncio
 import contextlib
-from collections.abc import Callable
-from datetime import UTC, datetime
+from collections.abc import Callable, Mapping
+from datetime import UTC, date, datetime
 
 from forceupdate import checks, parsers, registries
 from forceupdate.advisories import Osv, OsvError, Query, Vulnerabilities
-from forceupdate.checks import vulns
+from forceupdate.checks import eol, runtimes, vulns
 from forceupdate.checks.base import Current
+from forceupdate.checks.runtimes import Refusal
 from forceupdate.detect.languages import detect_languages
 from forceupdate.detect.manifests import find_projects
+from forceupdate.endoflife import EndOfLifeDate, EndOfLifeError, Product, ProductNotFound
 from forceupdate.models import (
     Dependency,
     Ecosystem,
@@ -40,6 +42,7 @@ from forceupdate.models import (
     Notice,
     Project,
     Report,
+    Runtime,
     ScanOptions,
 )
 from forceupdate.net import Cache, HttpClient
@@ -52,6 +55,7 @@ EventCallback = Callable[[Event], None]
 
 _Outcome = PackageInfo | PackageNotFound | RegistryError
 _Found = Vulnerabilities | OsvError
+_Lifecycle = Product | ProductNotFound | EndOfLifeError
 
 
 def inventory(source: Source, *, include_tests: bool = False) -> Report:
@@ -110,9 +114,15 @@ async def check(
     on_event: EventCallback | None = None,
     http: HttpClient | None = None,
     cache: Cache | None = None,
+    today: date | None = None,
 ) -> None:
     """Vérifie les dépendances du rapport auprès des registres et d'OSV, et range les constats
     dans chaque projet, du plus grave au moins grave.
+
+    Les fins de vie (E27) : celles des runtimes de chaque projet et des frameworks parmi les
+    dépendances vérifiées, d'après endoflife.date, à la date ``today`` (par défaut
+    ``checks.eol.today()``, que les tests fixent). Les versions qu'un runtime du projet ne fait
+    pas tourner ne sont pas proposées (``checks.runtimes``).
 
     Sont vérifiées auprès des registres les directes, plus les indirectes avec
     ``options.transitive`` ; les failles sont cherchées pour toutes, indirectes comprises
@@ -161,6 +171,17 @@ async def check(
         and (current := vulns.version_to_check(dependency)) is not None
     ]
     queries = sorted({_query(dependency, current) for _, dependency, current in audited})
+    lived = [
+        (project, runtime)
+        for project in report.projects
+        for runtime in eol.selected_runtimes(project.runtimes)
+    ]
+    frameworks = [
+        (project, dependency, product)
+        for project, dependency in to_check
+        if (product := eol.framework(dependency)) is not None
+    ]
+    products = sorted({r.product for _, r in lived} | {product for *_, product in frameworks})
 
     async with contextlib.AsyncExitStack() as stack:
         if http is None:
@@ -187,9 +208,10 @@ async def check(
         progress = _Progress(emit, total=len(packages) + (1 if queries else 0))
         emit(Event(kind=EventKind.CHECKING, total=progress.total))
         osv = Osv(http, cache)
-        outcomes, found = await asyncio.gather(
+        outcomes, found, lifecycles = await asyncio.gather(
             _lookup_all(clients, packages, progress),
             _vulnerabilities(osv, queries, progress),
+            _lifecycles(EndOfLifeDate(http, cache), products),
         )
         # Les versions publiées des indirectes en faille, pour choisir celle qui corrige.
         vulnerable = {
@@ -200,6 +222,17 @@ async def check(
             and result.advisories
         }
         outcomes |= await _lookup_all(clients, sorted(vulnerable - set(outcomes)), None)
+
+        def refused(project: Project, dependency: Dependency) -> Mapping[str, Refusal]:
+            client = clients.get(dependency.ecosystem)
+            if client is None:
+                return {}
+            info = outcomes.get((dependency.ecosystem, client.normalize(dependency.name)))
+            if not isinstance(info, PackageInfo):
+                return {}
+            return runtimes.refused(info, runtimes.project_runtime(project, dependency.ecosystem))
+
+        _record_lifecycles(lived, frameworks, lifecycles, today or eol.today(), refused)
         _record_findings(report, options, to_check, audited, clients, unsupported, outcomes, found)
         infos = {
             (dependency.ecosystem, dependency.name): outcome
@@ -222,7 +255,62 @@ async def check(
 
     dates = [o.fetched_at for o in outcomes.values() if isinstance(o, PackageInfo)]
     dates += [f.fetched_at for f in found.values() if isinstance(f, Vulnerabilities)]
+    dates += [p.fetched_at for p in lifecycles.values() if isinstance(p, Product)]
     report.oldest_data = min(dates, default=None)
+
+
+def _record_lifecycles(
+    lived: list[tuple[Project, Runtime]],
+    frameworks: list[tuple[Project, Dependency, str]],
+    lifecycles: dict[str, _Lifecycle],
+    today: date,
+    refused: Callable[[Project, Dependency], Mapping[str, Refusal]],
+) -> None:
+    """Range dans chaque projet les constats de fin de vie de ses runtimes, puis de ses
+    frameworks : un par produit et par cycle (``checks.eol``) ; un « non concluant » quand
+    endoflife.date n'a pas répondu, un par produit et par version. ``refused`` : les versions
+    d'une dépendance que le runtime de son projet ne fait pas tourner."""
+    seen: set[tuple[int, str, str]] = set()
+
+    def add(project: Project, finding: Finding | None, product: str) -> None:
+        if finding is None:
+            return
+        cycle = finding.eol.cycle if finding.eol is not None else finding.current_version or ""
+        key = (id(project), product, cycle)
+        if key not in seen:
+            seen.add(key)
+            project.findings.append(finding)
+
+    for project, runtime in lived:
+        result = lifecycles[runtime.product]
+        if isinstance(result, Product):
+            add(project, eol.check_runtime(runtime, result, today), runtime.product)
+        else:
+            label = eol.runtime_label(runtime)
+            add(project, eol.unchecked(label, runtime.version, result, None), runtime.product)
+    for project, dependency, product in frameworks:
+        current = checks.current_version(dependency)
+        result = lifecycles[product]
+        if isinstance(result, Product):
+            refusals = refused(project, dependency)
+            finding = eol.check_framework(dependency, current, result, today, refusals)
+            add(project, finding, product)
+        elif current.version is not None:
+            finding = eol.unchecked(dependency.name, current.version, result, dependency)
+            add(project, finding, product)
+
+
+async def _lifecycles(client: EndOfLifeDate, products: list[str]) -> dict[str, _Lifecycle]:
+    """Les cycles de vie de tous les produits demandés, en même temps."""
+
+    async def lookup(name: str) -> _Lifecycle:
+        try:
+            return await client.product(name)
+        except (ProductNotFound, EndOfLifeError) as error:
+            return error
+
+    results = await asyncio.gather(*(lookup(name) for name in products))
+    return dict(zip(products, results, strict=True))
 
 
 def _record_findings(
@@ -243,7 +331,7 @@ def _record_findings(
             outcome: _Outcome = RegistryError(unsupported[dependency.ecosystem])
         else:
             outcome = outcomes[dependency.ecosystem, client.normalize(dependency.name)]
-        project.findings.extend(_findings(dependency, outcome))
+        project.findings.extend(_findings(project, dependency, outcome))
     unchecked: dict[tuple[int, str, str], int] = {}
     for project, dependency, current in audited:
         result = found[_query(dependency, current)]
@@ -325,12 +413,13 @@ async def _lookup_all(
     return dict(zip(packages, results, strict=True))  # type: ignore[arg-type]
 
 
-def _findings(dependency: Dependency, outcome: _Outcome) -> list[Finding]:
+def _findings(project: Project, dependency: Dependency, outcome: _Outcome) -> list[Finding]:
     if isinstance(outcome, PackageNotFound):
         return [Finding(kind=FindingKind.UNVERIFIABLE, message=str(outcome), dependency=dependency)]
     if isinstance(outcome, RegistryError):
         return [Finding(kind=FindingKind.INCONCLUSIVE, message=str(outcome), dependency=dependency)]
-    return checks.check_dependency(dependency, outcome)
+    runtime = runtimes.project_runtime(project, dependency.ecosystem)
+    return checks.check_dependency(dependency, outcome, runtimes.refused(outcome, runtime))
 
 
 def _ignore(_: Event) -> None:

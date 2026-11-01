@@ -127,10 +127,22 @@ def test_findings_of_the_composer_mini_project(recorded: Routes) -> None:
     assert outdated[TWIG] == ("v3.30.0", "v3.4.3", Gap.MINOR)  # pas la 4.0.0-alpha1
     assert outdated[GUZZLE] == ("8.3.1", "7.4.0", Gap.MAJOR)
     assert outdated[MONOLOG] == ("3.12.1", "2.10.0", Gap.MAJOR)  # 2.11.* écartées (conflict)
-    assert outdated[CONSOLE] == ("v8.1.10", "v5.4.55", Gap.MAJOR)  # ~5.4 : jusqu'à 6.0
+    # ~5.4 : jusqu'à 6.0 ; symfony/console 7 et 8 demandent un PHP plus récent que celui du projet
+    # (8.1) : la plus haute qui convient est v6.4.49, comme pour « composer outdated » (E27).
+    assert outdated[CONSOLE] == ("v6.4.49", "v5.4.55", Gap.MAJOR)
+    assert messages(project, FindingKind.OUTDATED, CONSOLE) == [
+        "Version v6.4.49 disponible (majeure) ; utilisée : v5.4.10. La contrainte accepte jusqu'à "
+        "v5.4.55. La v8.1.10 n'est pas proposée : elle demande PHP >=8.4.1 ; le projet : 8.1 et "
+        "plus (composer.json)."
+    ]
     assert outdated[LOG] == ("3.0.2", "2.0.0", Gap.MAJOR)
     assert messages(project, FindingKind.UNVERIFIABLE, "psr/container") == [
         "Non vérifiable : branche de développement."
+    ]
+    # E27 : PHP 8.1 (config.platform.php) est en fin de vie ; symfony/console 5.4 non (LTS, 2029).
+    assert [f.message for f in project.findings if f.kind is FindingKind.EOL] == [
+        "PHP 8.1 : fin de vie depuis le 31/12/2025. Lu dans composer.json : config.platform.php "
+        '= "8.1.30". Cycle conseillé : 8.5, dernière version 8.5.12.'
     ]
 
 
@@ -164,8 +176,9 @@ def test_plan_of_the_composer_mini_project(recorded: Routes) -> None:
     console = updates[CONSOLE]
     assert console.selected == "v5.4.55"
     assert console.option("v5.4.55").edits == ()  # type: ignore[union-attr]
-    (edit,) = console.option("v8.1.10").edits  # type: ignore[union-attr]
-    assert (edit.old, edit.new) == ("~5.4", "~8.1")
+    assert [o.version for o in console.options] == ["v5.4.55", "v6.4.49"]  # pas de v8.1.10
+    (edit,) = console.option("v6.4.49").edits  # type: ignore[union-attr]
+    assert (edit.old, edit.new) == ("~5.4", "~6.4")
     # psr7, indirecte en faille : par le lockfile seul.
     psr7 = updates[PSR7]
     assert not psr7.direct and psr7.selected == "2.13.2"

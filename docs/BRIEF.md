@@ -465,7 +465,7 @@ débit changent).
 | Besoin | Source |
 |---|---|
 | Failles connues, complètes | **Vérifié (E08)** : OSV, `POST https://api.osv.dev/v1/querybatch` (jusqu'à 1000 versions, les identifiants seulement, `next_page_token` par version), puis `GET https://api.osv.dev/v1/vulns/{id}` (l'avis complet : `aliases`, `severity` en vecteur CVSS, `affected[].ranges[].events`). `POST /v1/query` renvoie les avis complets, mais une version par requête |
-| Fins de vie | endoflife.date : `GET https://endoflife.date/api/v1/products/{produit}` (l'ancienne forme `/api/{produit}.json` existe aussi) |
+| Fins de vie | **Vérifié (E27)** : endoflife.date, `GET https://endoflife.date/api/v1/products/{produit}` → `result.label`, `links.html`, `releases[]` : `name` (le cycle : `3.8`, `16`, `3.5-sp1`), `isLts`/`ltsFrom`, `isEol` (un booléen, calculé le jour de la page) et `eolFrom` (une date, ou `null` : pas fixée, ou pas connue), `latest.name` ; l'ordre est à peu près du plus récent au plus ancien (Python 2.7 après 3.2) ; 404 en HTML pour un produit inconnu ; un alias (`node`) renvoie (301) vers son nom (`nodejs`) ; `/api/v1/products/full` (3 Mo) donne les `purl` de chaque produit (`pkg:pypi/django`), d'où la table des frameworks. L'ancienne forme `/api/{produit}.json` existe encore (`eol` : une date ou un booléen), pas demandée. La `codename` des Node.js LTS y est vide |
 
 | Besoin | GitHub (`api.github.com`) | GitLab (`/api/v4`) | Bitbucket Cloud (`api.bitbucket.org/2.0`) |
 |---|---|---|---|

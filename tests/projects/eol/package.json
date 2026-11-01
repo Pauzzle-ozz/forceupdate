@@ -1,0 +1,11 @@
+{
+  "name": "eol-demo-assets",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=16"
+  },
+  "dependencies": {
+    "p-limit": "^3.1.0"
+  }
+}

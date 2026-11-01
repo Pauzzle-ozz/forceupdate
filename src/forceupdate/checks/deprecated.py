@@ -22,6 +22,8 @@ Seule une version connue est examinée : l'installée, ou celle qu'impose une co
 Une borne basse (``>=2.32.0``) ne dit pas qu'on utilise ``2.32.0``.
 """
 
+from collections.abc import Collection
+
 from forceupdate import versions
 from forceupdate.checks.base import Current, is_excluded, nearest, sentence
 from forceupdate.models import Dependency, Ecosystem, Finding, FindingKind, Gap, Severity
@@ -39,9 +41,15 @@ _RETIRED = {
 paquet NuGet est retiré de la liste par son auteur."""
 
 
-def check(dependency: Dependency, info: PackageInfo, current: Current) -> list[Finding]:
+def check(
+    dependency: Dependency,
+    info: PackageInfo,
+    current: Current,
+    refused: Collection[str] = (),
+) -> list[Finding]:
     """Les constats « déprécié » et « retiré » de ``dependency`` ; une liste vide s'il n'y a
-    rien à signaler."""
+    rien à signaler. Le remplaçant n'est jamais une version de ``refused``, que le runtime du
+    projet ne fait pas tourner (``checks.runtimes``)."""
     findings = []
     common = {
         "dependency": dependency,
@@ -82,6 +90,7 @@ def check(dependency: Dependency, info: PackageInfo, current: Current) -> list[F
         v
         for v in info.versions
         if scheme.moved(dependency.name, v.version) is None
+        and v.version not in refused
         and not is_excluded(scheme, dependency.excluded, v.version)
     ]
     if published.yanked:

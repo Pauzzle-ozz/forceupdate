@@ -49,6 +49,12 @@ export function formatTime(iso: string): string {
   return timeFormat.format(new Date(iso))
 }
 
+/** « 7 oct. 2024 » pour un jour du calendrier (`2024-10-07`), sans décalage de fuseau. */
+export function formatDay(day: string): string {
+  const [year, month, date] = day.split('-').map(Number)
+  return dateFormat.format(new Date(year, month - 1, date))
+}
+
 /** « 28 oct. 2026 à 18:30 » */
 export function formatDateTime(iso: string): string {
   return `${formatDate(iso)} à ${formatTime(iso)}`

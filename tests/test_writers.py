@@ -18,6 +18,7 @@ from forceupdate.models import (
     EditKind,
     Gap,
     Project,
+    Scope,
     Update,
     UpdateOption,
     UpdateReason,
@@ -1297,3 +1298,69 @@ def test_a_nuget_central_version_from_two_projects(make_tree: MakeTree) -> None:
     changes = writers.prepare(root, [central, app])
     assert [c.path for c in changes.files] == ["Directory.Packages.props"]
     assert len(changes.applied) == 2
+
+
+NUGET_SDKS = """\
+<Project Sdk="Microsoft.NET.Sdk;Microsoft.Build.NoTargets/3.7.0">
+  <Sdk Name="Microsoft.Build.CentralPackageVersions" Version="2.1.3" />
+  <Import Project="Sdk.targets" Sdk="Microsoft.Build.NoTargets" Version="3.7.0" />
+</Project>
+"""
+
+NUGET_TRAVERSAL = '<Project Sdk="Microsoft.Build.Traversal">\n</Project>\n'
+
+GLOBAL_JSON = """\
+{
+  "sdk": {"version": "8.0.100"},
+  "msbuild-sdks": {
+    "Microsoft.Build.Traversal": "4.1.0"
+  }
+}
+"""
+
+
+def test_nuget_project_sdks(make_tree: MakeTree) -> None:
+    # Les SDK de projet venus de NuGet (E27) : dans l'attribut Sdk, après la barre ; dans <Sdk> et
+    # <Import> ; un SDK sans version, dans msbuild-sdks de global.json.
+    root = make_tree(
+        {
+            "tools/Tools.csproj": NUGET_SDKS,
+            "traversal/All.csproj": NUGET_TRAVERSAL,
+            "global.json": GLOBAL_JSON,
+        }
+    )
+    projects = inventory(root)
+    sdks = [
+        (d.name, d.constraint, d.installed, d.scope, d.file) for d in projects["tools"].dependencies
+    ]
+    assert sdks == [
+        ("Microsoft.Build.NoTargets", "3.7.0", "3.7.0", Scope.BUILD, "tools/Tools.csproj"),
+        (
+            "Microsoft.Build.CentralPackageVersions",
+            "2.1.3",
+            "2.1.3",
+            Scope.BUILD,
+            "tools/Tools.csproj",
+        ),
+        ("Microsoft.Build.NoTargets", "3.7.0", "3.7.0", Scope.BUILD, "tools/Tools.csproj"),
+    ]
+    traversal = [(d.name, d.constraint, d.file) for d in projects["traversal"].dependencies]
+    assert traversal == [("Microsoft.Build.Traversal", "4.1.0", "global.json")]
+    # Chaque version est située là où elle est écrite.
+    text = (root / "tools/Tools.csproj").read_text(encoding="utf-8")
+    assert all(
+        d.location is not None and d.location.extract(text) == d.constraint
+        for d in projects["tools"].dependencies
+    )
+    choices = [
+        choice(projects["tools"], "Microsoft.Build.NoTargets", "3.7.134"),
+        choice(projects["tools"], "Microsoft.Build.CentralPackageVersions", "2.1.4"),
+        choice(projects["traversal"], "Microsoft.Build.Traversal", "4.1.82"),
+    ]
+    changes = writers.prepare(root, choices)
+    assert changes.skipped == ()
+    files = written(root, changes)
+    assert files["tools/Tools.csproj"] == NUGET_SDKS.replace("3.7.0", "3.7.134").replace(
+        "2.1.3", "2.1.4"
+    )
+    assert files["global.json"] == GLOBAL_JSON.replace("4.1.0", "4.1.82")

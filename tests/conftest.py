@@ -13,7 +13,9 @@ lockfile (npm, uv… : ``update.lockfiles`` les croit absents ; un test les simu
 ``https://`` est refusée ; les tests clonent et poussent vers des dépôts « bare » de leur
 dossier, ``fake_forge.make_remote``), aucun test n'ouvre le navigateur (``webbrowser.open``
 échoue), et aucun ne touche le trousseau du système ni ``gh`` (``keychain`` : un trousseau en
-mémoire, propre au test ; ``gh`` est absent, et le lancer échoue).
+mémoire, propre au test ; ``gh`` est absent, et le lancer échoue). Et la date du jour, qui
+décide d'une fin de vie, est celle de l'enregistrement des réponses d'endoflife.date
+(``_fixed_today``).
 
 Le serveur de l'interface se teste avec ``api``, le client de test de FastAPI.
 """
@@ -39,7 +41,10 @@ import keyring.errors
 import pytest
 import respx
 from fastapi.testclient import TestClient
+from fixtures.record import RECORDED_ON
 
+from forceupdate.checks import eol
+from forceupdate.endoflife import BASE_URL as ENDOFLIFE
 from forceupdate.forges import git as forge_git
 from forceupdate.forges import github
 from forceupdate.net import Cache, HttpClient
@@ -112,6 +117,13 @@ def _no_git_network(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPa
         return spawn(command, **options)
 
     monkeypatch.setattr(forge_git, "_spawn", guarded)
+
+
+@pytest.fixture(autouse=True)
+def _fixed_today(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Une fin de vie se juge à la date du jour : tous les tests se placent au jour où les
+    réponses d'endoflife.date ont été enregistrées (``record.RECORDED_ON``), jamais à l'horloge."""
+    monkeypatch.setattr(eol, "today", lambda: RECORDED_ON)
 
 
 @pytest.fixture(autouse=True)
@@ -252,16 +264,18 @@ def osv_querybatch(results: dict[str, Any]) -> Callable[[httpx.Request], httpx.R
 @pytest.fixture
 def recorded() -> Iterator[dict[str, respx.Route]]:
     """PyPI, npm, crates.io, le proxy Go, Packagist, RubyGems, Maven (Maven Central, Google Maven,
-    le portail des plugins Gradle), nuget.org et OSV simulés par ``respx``, avec les réponses
-    enregistrées par ``tests/fixtures/record.py`` : flask, requests, aioredis, jinja2, werkzeug ;
-    left-pad, @hapi/joi, colors, crossenv, lodash ; rand, regex, time, anyhow, log, smallvec ; les
-    modules Go de ``PACKAGES["goproxy"]`` ; les paquets PHP de ``PACKAGES["packagist"]`` ; les gems
-    de ``PACKAGES["rubygems"]`` ; les artefacts de ``PACKAGES["maven"]`` ; les paquets NuGet de
-    ``PACKAGES["nuget"]``. Tout autre paquet est introuvable (404). OSV connaît les failles des
-    versions de ``tests/fixtures/osv/queries.json`` ; pour les autres, il n'en connaît pas. Rend
-    les routes, par nom de paquet (``crates:<nom>`` pour crates.io, ``goproxy:<module>`` pour la
-    liste d'un module Go, ``packagist:<nom>``, ``rubygems:<nom>``, ``maven:<groupe:artefact>``,
-    ``nuget:<id>`` pour l'index d'un paquet NuGet), plus ``osv:querybatch`` et ``osv:<id>``.
+    le portail des plugins Gradle), nuget.org, OSV et endoflife.date simulés par ``respx``, avec
+    les réponses enregistrées par ``tests/fixtures/record.py`` : flask, requests, aioredis,
+    jinja2, werkzeug, django ; left-pad, @hapi/joi, colors, crossenv, lodash, p-limit ; rand,
+    regex, time, anyhow, log, smallvec ; les modules Go de ``PACKAGES["goproxy"]`` ; les paquets
+    PHP de ``PACKAGES["packagist"]`` ; les gems de ``PACKAGES["rubygems"]`` ; les artefacts de
+    ``PACKAGES["maven"]`` ; les paquets NuGet de ``PACKAGES["nuget"]``. Tout autre paquet est
+    introuvable (404). OSV connaît les failles des versions de ``tests/fixtures/osv/queries.json``
+    ; pour les autres, il n'en connaît pas. endoflife.date connaît les produits de
+    ``LIFECYCLES`` ; les autres sont introuvables (404). Rend les routes, par nom de paquet
+    (``crates:<nom>`` pour crates.io, ``goproxy:<module>`` pour la liste d'un module Go,
+    ``packagist:<nom>``, ``rubygems:<nom>``, ``maven:<groupe:artefact>``, ``nuget:<id>`` pour
+    l'index d'un paquet NuGet, ``endoflife:<produit>``), plus ``osv:querybatch`` et ``osv:<id>``.
     """
     with recorded_responses() as routes:
         yield routes
@@ -345,6 +359,13 @@ def recorded_responses(
         router.get(url__regex=r"^https://plugins\.gradle\.org/m2/").respond(404)
         router.get(url__regex=r"^https://api\.nuget\.org/").respond(
             404, text="<Error><Code>BlobNotFound</Code></Error>"
+        )
+        for path in sorted((FIXTURES / "endoflife").glob("*.json")):
+            routes[f"endoflife:{path.stem}"] = router.get(
+                f"{ENDOFLIFE}/api/v1/products/{path.stem}"
+            ).respond(200, content=path.read_bytes(), headers={"content-type": "application/json"})
+        router.get(url__regex=r"^https://endoflife\.date/").respond(
+            404, text="<!DOCTYPE html><title>Page not Found | endoflife.date</title>"
         )
         queries = json.loads((FIXTURES / "osv" / "queries.json").read_text(encoding="utf-8"))
         routes["osv:querybatch"] = router.post("https://api.osv.dev/v1/querybatch").mock(

@@ -58,7 +58,10 @@ export function Ignored({
 /** Les remarques : ce que l'analyse n'a pas pu lire, ou pas pu vérifier, par fichier. */
 export function Notices({ report }: { report: Report }) {
   const notices = report.projects.flatMap((project) => project.notices)
-  const loose = report.projects.flatMap((project) => project.findings.filter((finding) => !finding.dependency))
+  // Les fins de vie des runtimes ont leur section (Lifecycles) : ici, le reste.
+  const loose = report.projects.flatMap((project) =>
+    project.findings.filter((finding) => !finding.dependency && finding.kind !== 'eol'),
+  )
   if (notices.length === 0 && loose.length === 0) return null
   return (
     <>

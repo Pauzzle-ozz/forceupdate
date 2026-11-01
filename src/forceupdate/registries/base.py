@@ -31,8 +31,9 @@ from forceupdate.net.cache import Cache, CacheEntry, CacheKind
 from forceupdate.net.http import HttpClient, NetworkError, Response
 from forceupdate.versions import InvalidVersion
 
-_FORMAT = 1
-"""Version du format des entrées du cache : une autre est ignorée, et le registre réinterrogé."""
+_FORMAT = 2
+"""Version du format des entrées du cache : une autre est ignorée, et le registre réinterrogé
+(2 : le runtime que demande chaque version, E27)."""
 
 
 class PackageNotFound(LookupError):
@@ -65,6 +66,10 @@ class PackageVersion:
     """La raison du retrait donnée par le registre, s'il y en a une."""
     deprecated: str | None = None
     """npm : le message de dépréciation de cette version ; ``None`` si elle ne l'est pas."""
+    requires_runtime: str | None = None
+    """Le runtime qu'elle demande, tel que le registre l'écrit : ``engines.node`` (npm),
+    ``require.php`` (Packagist), ``ruby`` (RubyGems), ``requires-python`` (PyPI) ; ``None`` si
+    elle n'en dit rien (``checks.runtimes``)."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -272,6 +277,7 @@ def _info_to_cache(info: PackageInfo) -> dict[str, Any]:
                 v.yanked,
                 v.yanked_reason,
                 v.deprecated,
+                v.requires_runtime,
             ]
             for v in info.versions
         ],
@@ -292,8 +298,9 @@ def _info_from_cache(
             yanked=yanked,
             yanked_reason=reason,
             deprecated=deprecated,
+            requires_runtime=requires,
         )
-        for version, published, yanked, reason, deprecated in value["versions"]
+        for version, published, yanked, reason, deprecated, requires in value["versions"]
     )
     return PackageInfo(
         ecosystem=ecosystem,

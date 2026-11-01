@@ -49,6 +49,7 @@ import { Breadcrumb, Container, PageHead, useDocumentTitle } from '@/shell/Page'
 import { Dependencies } from './Dependencies'
 import { DependencyDetail } from './DependencyDetail'
 import { Ignored, Notices } from './Extras'
+import { Lifecycles } from './Lifecycles'
 import { Overview } from './Overview'
 import { Synthesis } from './Synthesis'
 
@@ -77,6 +78,7 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
   const start = useRescan()
   const title = useRef<HTMLHeadingElement>(null)
   const table = useRef<HTMLElement>(null)
+  const lifecycles = useRef<HTMLElement>(null)
   const [params, setParams] = useSearchParams()
   const [filters, setFilters] = useState<Filters>(NO_FILTERS)
   const [sort, setSort] = useState<Sort>(DEFAULT_SORT)
@@ -115,7 +117,9 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
 
   function filterKind(kind: FindingKind) {
     setFilters((current) => ({ ...NO_FILTERS, kind: current.kind === kind ? 'all' : kind }))
-    table.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    // Les fins de vie des runtimes ne sont pas dans le tableau : leur section d'abord.
+    const target = kind === 'eol' && lifecycles.current ? lifecycles.current : table.current
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   const rescan = (overrides = {}) => start.mutate({ scan, overrides: { offline: !online || scan.options.offline, ...overrides } })
@@ -302,6 +306,7 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
           <div>
             <Synthesis summary={summary} kind={filters.kind === 'all' || filters.kind === 'none' ? null : filters.kind} onKind={filterKind} />
             <Overview report={report} />
+            <Lifecycles report={report} all={all} onOpen={openDetail} sectionRef={lifecycles} />
             <Dependencies
               report={report}
               all={all}

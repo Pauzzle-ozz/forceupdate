@@ -502,6 +502,8 @@ def _reader(path: str, pattern: str | None = None) -> Reader | None:
         return java.read_gradle_properties
     if posixpath.basename(path) == nuget.BUILD_PROPS:
         return nuget.read_msbuild_file
+    if posixpath.basename(path) == nuget.GLOBAL_JSON:
+        return nuget.read_global_json
     return _READERS.get(_pattern(path, pattern) or "")
 
 

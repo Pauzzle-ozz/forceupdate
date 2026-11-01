@@ -49,6 +49,9 @@ class CacheKind(enum.StrEnum):
     ADVISORIES = "advisories"
     """Un avis de sécurité complet (OSV) : 7 jours. Il ne change pas sans que sa date de
     modification change, et on la vérifie à chaque fois."""
+    LIFECYCLES = "lifecycles"
+    """Les cycles de vie d'un runtime ou d'un framework (endoflife.date) : 24 h. Une date de
+    fin de vie est connue des mois à l'avance, et change rarement."""
 
     @property
     def ttl(self) -> float:
@@ -60,6 +63,7 @@ _TTLS = {
     CacheKind.VERSIONS: 3600.0,
     CacheKind.VULNERABILITIES: 3600.0,
     CacheKind.ADVISORIES: 7 * 24 * 3600.0,
+    CacheKind.LIFECYCLES: 24 * 3600.0,
 }
 
 

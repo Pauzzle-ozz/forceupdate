@@ -45,6 +45,7 @@ from forceupdate.report import (
     option_gap,
     plural,
     rows,
+    runtimes,
     subject,
     summarize,
     update_subject,
@@ -134,6 +135,8 @@ def _print_project(project: Project, report: Report, console: Console) -> None:
     console.print(title)
     console.print(Text(f"  manifestes : {', '.join(project.manifests) or 'aucun'}"))
     console.print(Text(f"  lockfiles  : {', '.join(project.lockfiles) or 'aucun'}"))
+    if project.runtimes:
+        console.print(Text(f"  runtimes   : {', '.join(runtimes(project))}"))
     direct_rows = rows(project, report)
     if direct_rows:
         console.print(_table(direct_rows))

@@ -95,7 +95,14 @@ def test_the_cache_is_shared_between_sessions(
     assert abs((cached.fetched_at - fresh.fetched_at).total_seconds()) < 60
     entry = cache.get(CacheKind.VERSIONS, URL)
     assert entry is not None
-    assert entry.value["versions"][0] == ["1.0", "2024-01-01T00:00:00+00:00", True, "x", None]
+    assert entry.value["versions"][0] == [
+        "1.0",
+        "2024-01-01T00:00:00+00:00",
+        True,
+        "x",
+        None,
+        None,
+    ]
 
 
 def test_without_cache_every_session_asks(respx_mock: respx.MockRouter, lookup: Lookup) -> None:

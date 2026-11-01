@@ -1,0 +1,980 @@
+{
+  "schema_version": 1,
+  "tool": {
+    "name": "forceupdate",
+    "version": "0.1.0"
+  },
+  "source": "C:/Projets/eol",
+  "languages": [
+    {
+      "name": "Dockerfile",
+      "bytes": 375,
+      "ecosystem": null
+    },
+    {
+      "name": "Python",
+      "bytes": 113,
+      "ecosystem": "PyPI"
+    }
+  ],
+  "projects": [
+    {
+      "path": ".",
+      "ecosystems": [
+        "PyPI",
+        "npm"
+      ],
+      "manifests": [
+        "package.json",
+        "pyproject.toml"
+      ],
+      "lockfiles": [],
+      "dependencies": [
+        {
+          "ecosystem": "PyPI",
+          "name": "django",
+          "constraint": "==3.2.25",
+          "resolved_constraint": null,
+          "installed": null,
+          "lockfile": null,
+          "direct": true,
+          "scope": "runtime",
+          "file": "pyproject.toml",
+          "location": {
+            "line": 6,
+            "column": 11,
+            "end_column": 19
+          },
+          "unverifiable_reason": null,
+          "excluded": []
+        },
+        {
+          "ecosystem": "npm",
+          "name": "p-limit",
+          "constraint": "^3.1.0",
+          "resolved_constraint": null,
+          "installed": null,
+          "lockfile": null,
+          "direct": true,
+          "scope": "runtime",
+          "file": "package.json",
+          "location": {
+            "line": 9,
+            "column": 16,
+            "end_column": 22
+          },
+          "unverifiable_reason": null,
+          "excluded": []
+        }
+      ],
+      "overrides": [],
+      "findings": [
+        {
+          "kind": "vulnerable",
+          "severity": "critical",
+          "message": "CVE-2025-64459, GHSA-frmv-pr5f-9mcr (gravité critique, CVSS 9,1) : Django vulnerable to SQL injection via _connector keyword argument in QuerySet and Q objects. Corrigée en 4.2.26.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "django",
+            "constraint": "==3.2.25",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "runtime",
+            "file": "pyproject.toml",
+            "location": {
+              "line": 6,
+              "column": 11,
+              "end_column": 19
+            },
+            "unverifiable_reason": null,
+            "excluded": []
+          },
+          "current_version": "3.2.25",
+          "current_is_approximate": false,
+          "target_version": "4.2.26",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2025-64459",
+            "GHSA-frmv-pr5f-9mcr",
+            "BIT-django-2025-64459",
+            "PYSEC-2025-108"
+          ],
+          "cvss_score": 9.1,
+          "detail": "Django vulnerable to SQL injection via _connector keyword argument in QuerySet and Q objects.",
+          "url": "https://osv.dev/vulnerability/GHSA-frmv-pr5f-9mcr",
+          "eol": null
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "high",
+          "message": "CVE-2026-15307, GHSA-wvqv-fj8w-qmhm (gravité élevée, CVSS 8,8) : Django GeoDjango spatial lookups allow file writes and outbound requests through GDAL raster parsing. Corrigée en 5.2.17.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "django",
+            "constraint": "==3.2.25",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "runtime",
+            "file": "pyproject.toml",
+            "location": {
+              "line": 6,
+              "column": 11,
+              "end_column": 19
+            },
+            "unverifiable_reason": null,
+            "excluded": []
+          },
+          "current_version": "3.2.25",
+          "current_is_approximate": false,
+          "target_version": "5.2.17",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2026-15307",
+            "GHSA-wvqv-fj8w-qmhm",
+            "BIT-django-2026-15307",
+            "PYSEC-2026-4035"
+          ],
+          "cvss_score": 8.8,
+          "detail": "Django GeoDjango spatial lookups allow file writes and outbound requests through GDAL raster parsing",
+          "url": "https://osv.dev/vulnerability/GHSA-wvqv-fj8w-qmhm",
+          "eol": null
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "high",
+          "message": "CVE-2025-64458, GHSA-qw25-v68c-qjf3 (gravité élevée, CVSS 7,5) : Django has a denial-of-service vulnerability in HttpResponseRedirect and HttpResponsePermanentRedirect on Windows. Corrigée en 4.2.26.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "django",
+            "constraint": "==3.2.25",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "runtime",
+            "file": "pyproject.toml",
+            "location": {
+              "line": 6,
+              "column": 11,
+              "end_column": 19
+            },
+            "unverifiable_reason": null,
+            "excluded": []
+          },
+          "current_version": "3.2.25",
+          "current_is_approximate": false,
+          "target_version": "4.2.26",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2025-64458",
+            "GHSA-qw25-v68c-qjf3",
+            "BIT-django-2025-64458",
+            "PYSEC-2025-107"
+          ],
+          "cvss_score": 7.5,
+          "detail": "Django has a denial-of-service vulnerability in HttpResponseRedirect and HttpResponsePermanentRedirect on Windows",
+          "url": "https://osv.dev/vulnerability/GHSA-qw25-v68c-qjf3",
+          "eol": null
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "high",
+          "message": "CVE-2025-57833, GHSA-6w2r-r2m5-xq5w (gravité élevée, CVSS 7,1) : Django is subject to SQL injection through its column aliases. Corrigée en 4.2.24.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "django",
+            "constraint": "==3.2.25",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "runtime",
+            "file": "pyproject.toml",
+            "location": {
+              "line": 6,
+              "column": 11,
+              "end_column": 19
+            },
+            "unverifiable_reason": null,
+            "excluded": []
+          },
+          "current_version": "3.2.25",
+          "current_is_approximate": false,
+          "target_version": "4.2.24",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2025-57833",
+            "GHSA-6w2r-r2m5-xq5w",
+            "BIT-django-2025-57833",
+            "PYSEC-2025-105"
+          ],
+          "cvss_score": 7.1,
+          "detail": "Django is subject to SQL injection through its column aliases",
+          "url": "https://osv.dev/vulnerability/GHSA-6w2r-r2m5-xq5w",
+          "eol": null
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "medium",
+          "message": "CVE-2026-53878, GHSA-8qcx-xf44-272x (gravité moyenne, CVSS 6,1) : Django: DomainNameValidator permits newline characters that may enable HTTP header injection. Corrigée en 5.2.16.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "django",
+            "constraint": "==3.2.25",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "runtime",
+            "file": "pyproject.toml",
+            "location": {
+              "line": 6,
+              "column": 11,
+              "end_column": 19
+            },
+            "unverifiable_reason": null,
+            "excluded": []
+          },
+          "current_version": "3.2.25",
+          "current_is_approximate": false,
+          "target_version": "5.2.16",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2026-53878",
+            "GHSA-8qcx-xf44-272x",
+            "BIT-django-2026-53878",
+            "PYSEC-2026-2092"
+          ],
+          "cvss_score": 6.1,
+          "detail": "Django: DomainNameValidator permits newline characters that may enable HTTP header injection",
+          "url": "https://osv.dev/vulnerability/GHSA-8qcx-xf44-272x",
+          "eol": null
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "medium",
+          "message": "CVE-2026-15830, GHSA-q238-5cxm-5c9h (gravité moyenne, CVSS 5,3) : Django GeoDjango vulnerable to denial of service through deeply nested geometry collections. Corrigée en 5.2.17.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "django",
+            "constraint": "==3.2.25",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "runtime",
+            "file": "pyproject.toml",
+            "location": {
+              "line": 6,
+              "column": 11,
+              "end_column": 19
+            },
+            "unverifiable_reason": null,
+            "excluded": []
+          },
+          "current_version": "3.2.25",
+          "current_is_approximate": false,
+          "target_version": "5.2.17",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2026-15830",
+            "GHSA-q238-5cxm-5c9h",
+            "BIT-django-2026-15830",
+            "PYSEC-2026-3717"
+          ],
+          "cvss_score": 5.3,
+          "detail": "Django GeoDjango vulnerable to denial of service through deeply nested geometry collections",
+          "url": "https://osv.dev/vulnerability/GHSA-q238-5cxm-5c9h",
+          "eol": null
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "medium",
+          "message": "CVE-2026-53877, GHSA-crhf-3pfg-w68w (gravité moyenne, CVSS 4,8) : Django: GDALRaster may over-read heap memory when constructed from bytes. Corrigée en 5.2.16.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "django",
+            "constraint": "==3.2.25",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "runtime",
+            "file": "pyproject.toml",
+            "location": {
+              "line": 6,
+              "column": 11,
+              "end_column": 19
+            },
+            "unverifiable_reason": null,
+            "excluded": []
+          },
+          "current_version": "3.2.25",
+          "current_is_approximate": false,
+          "target_version": "5.2.16",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2026-53877",
+            "GHSA-crhf-3pfg-w68w",
+            "BIT-django-2026-53877",
+            "PYSEC-2026-2091"
+          ],
+          "cvss_score": 4.8,
+          "detail": "Django: GDALRaster may over-read heap memory when constructed from bytes",
+          "url": "https://osv.dev/vulnerability/GHSA-crhf-3pfg-w68w",
+          "eol": null
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "medium",
+          "message": "CVE-2025-48432, GHSA-7xr5-9hcq-chf9 (gravité moyenne, CVSS 4,0) : Django Improper Output Neutralization for Logs vulnerability. Corrigée en 4.2.22.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "django",
+            "constraint": "==3.2.25",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "runtime",
+            "file": "pyproject.toml",
+            "location": {
+              "line": 6,
+              "column": 11,
+              "end_column": 19
+            },
+            "unverifiable_reason": null,
+            "excluded": []
+          },
+          "current_version": "3.2.25",
+          "current_is_approximate": false,
+          "target_version": "4.2.22",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2025-48432",
+            "GHSA-7xr5-9hcq-chf9",
+            "BIT-django-2025-48432",
+            "PYSEC-2025-47"
+          ],
+          "cvss_score": 4.0,
+          "detail": "Django Improper Output Neutralization for Logs vulnerability",
+          "url": "https://osv.dev/vulnerability/GHSA-7xr5-9hcq-chf9",
+          "eol": null
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "low",
+          "message": "CVE-2024-45231, GHSA-rrqc-c2jx-6jgv (gravité faible, CVSS 3,7) : Django allows enumeration of user e-mail addresses. Corrigée en 4.2.16.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "django",
+            "constraint": "==3.2.25",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "runtime",
+            "file": "pyproject.toml",
+            "location": {
+              "line": 6,
+              "column": 11,
+              "end_column": 19
+            },
+            "unverifiable_reason": null,
+            "excluded": []
+          },
+          "current_version": "3.2.25",
+          "current_is_approximate": false,
+          "target_version": "4.2.16",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2024-45231",
+            "GHSA-rrqc-c2jx-6jgv",
+            "BIT-django-2024-45231",
+            "PYSEC-2026-1297"
+          ],
+          "cvss_score": 3.7,
+          "detail": "Django allows enumeration of user e-mail addresses",
+          "url": "https://osv.dev/vulnerability/GHSA-rrqc-c2jx-6jgv",
+          "eol": null
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "low",
+          "message": "CVE-2026-48587, GHSA-923m-gv2p-w5qp (gravité faible, CVSS 3,1) : Django: has_vary_header may expose cached responses when Vary values contain whitespace. Corrigée en 5.2.15.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "django",
+            "constraint": "==3.2.25",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "runtime",
+            "file": "pyproject.toml",
+            "location": {
+              "line": 6,
+              "column": 11,
+              "end_column": 19
+            },
+            "unverifiable_reason": null,
+            "excluded": []
+          },
+          "current_version": "3.2.25",
+          "current_is_approximate": false,
+          "target_version": "5.2.15",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2026-48587",
+            "GHSA-923m-gv2p-w5qp",
+            "BIT-django-2026-48587",
+            "PYSEC-2026-198"
+          ],
+          "cvss_score": 3.1,
+          "detail": "Django: has_vary_header may expose cached responses when Vary values contain whitespace",
+          "url": "https://osv.dev/vulnerability/GHSA-923m-gv2p-w5qp",
+          "eol": null
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "low",
+          "message": "CVE-2026-48588, GHSA-3h9f-r86x-qvjx (gravité faible, CVSS 3,1) : Django: cache middleware may expose private responses when unrelated request cookies are present. Corrigée en 5.2.16.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "django",
+            "constraint": "==3.2.25",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "runtime",
+            "file": "pyproject.toml",
+            "location": {
+              "line": 6,
+              "column": 11,
+              "end_column": 19
+            },
+            "unverifiable_reason": null,
+            "excluded": []
+          },
+          "current_version": "3.2.25",
+          "current_is_approximate": false,
+          "target_version": "5.2.16",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2026-48588",
+            "GHSA-3h9f-r86x-qvjx",
+            "BIT-django-2026-48588",
+            "PYSEC-2026-2090"
+          ],
+          "cvss_score": 3.1,
+          "detail": "Django: cache middleware may expose private responses when unrelated request cookies are present",
+          "url": "https://osv.dev/vulnerability/GHSA-3h9f-r86x-qvjx",
+          "eol": null
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "low",
+          "message": "CVE-2026-6873, GHSA-h7pc-vwp9-298g (gravité faible, CVSS 3,1) : Django: signed cookies are vulnerable to salt namespace collisions. Corrigée en 5.2.15.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "django",
+            "constraint": "==3.2.25",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "runtime",
+            "file": "pyproject.toml",
+            "location": {
+              "line": 6,
+              "column": 11,
+              "end_column": 19
+            },
+            "unverifiable_reason": null,
+            "excluded": []
+          },
+          "current_version": "3.2.25",
+          "current_is_approximate": false,
+          "target_version": "5.2.15",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2026-6873",
+            "GHSA-h7pc-vwp9-298g",
+            "BIT-django-2026-6873",
+            "PYSEC-2026-199"
+          ],
+          "cvss_score": 3.1,
+          "detail": "Django: signed cookies are vulnerable to salt namespace collisions",
+          "url": "https://osv.dev/vulnerability/GHSA-h7pc-vwp9-298g",
+          "eol": null
+        },
+        {
+          "kind": "vulnerable",
+          "severity": "low",
+          "message": "CVE-2026-8404, GHSA-8cjm-8mp7-r2xf (gravité faible, CVSS 3,1) : Django: UpdateCacheMiddleware may disclose cached responses due to case-sensitive Cache-Control handling. Corrigée en 5.2.15.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "django",
+            "constraint": "==3.2.25",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "runtime",
+            "file": "pyproject.toml",
+            "location": {
+              "line": 6,
+              "column": 11,
+              "end_column": 19
+            },
+            "unverifiable_reason": null,
+            "excluded": []
+          },
+          "current_version": "3.2.25",
+          "current_is_approximate": false,
+          "target_version": "5.2.15",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [
+            "CVE-2026-8404",
+            "GHSA-8cjm-8mp7-r2xf",
+            "BIT-django-2026-8404",
+            "PYSEC-2026-201"
+          ],
+          "cvss_score": 3.1,
+          "detail": "Django: UpdateCacheMiddleware may disclose cached responses due to case-sensitive Cache-Control handling",
+          "url": "https://osv.dev/vulnerability/GHSA-8cjm-8mp7-r2xf",
+          "eol": null
+        },
+        {
+          "kind": "eol",
+          "severity": "medium",
+          "message": "Python 3.8 : fin de vie depuis le 07/10/2024. Lu dans .python-version : 3.8. Cycle conseillé : 3.15, dernière version 3.15.2.",
+          "dependency": null,
+          "current_version": "3.8",
+          "current_is_approximate": false,
+          "target_version": "3.15.2",
+          "wanted_version": null,
+          "gap": null,
+          "identifiers": [],
+          "cvss_score": null,
+          "detail": null,
+          "url": "https://endoflife.date/python",
+          "eol": {
+            "product": "python",
+            "label": "Python",
+            "cycle": "3.8",
+            "ends_on": "2024-10-07",
+            "passed": true,
+            "advised_cycle": "3.15",
+            "advised_version": "3.15.2",
+            "advised_lts": false,
+            "advised_blocked": null,
+            "runtime": {
+              "product": "python",
+              "version": "3.8",
+              "approximate": false,
+              "file": ".python-version",
+              "source": "3.8"
+            }
+          }
+        },
+        {
+          "kind": "eol",
+          "severity": "medium",
+          "message": "Node.js 16 : fin de vie depuis le 11/09/2023. Lu dans .nvmrc : 16. Cycle conseillé : 26 (LTS), dernière version 26.13.0.",
+          "dependency": null,
+          "current_version": "16",
+          "current_is_approximate": false,
+          "target_version": "26.13.0",
+          "wanted_version": null,
+          "gap": null,
+          "identifiers": [],
+          "cvss_score": null,
+          "detail": null,
+          "url": "https://endoflife.date/nodejs",
+          "eol": {
+            "product": "nodejs",
+            "label": "Node.js",
+            "cycle": "16",
+            "ends_on": "2023-09-11",
+            "passed": true,
+            "advised_cycle": "26",
+            "advised_version": "26.13.0",
+            "advised_lts": true,
+            "advised_blocked": null,
+            "runtime": {
+              "product": "nodejs",
+              "version": "16",
+              "approximate": false,
+              "file": ".nvmrc",
+              "source": "16"
+            }
+          }
+        },
+        {
+          "kind": "eol",
+          "severity": "medium",
+          "message": "Django 3.2 : fin de vie depuis le 01/04/2024. Cycle conseillé : 5.2 (LTS), dernière version 5.2.18, qui demande Python >=3.10 ; le projet : 3.8 et plus (pyproject.toml). Changer de Python d'abord.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "django",
+            "constraint": "==3.2.25",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "runtime",
+            "file": "pyproject.toml",
+            "location": {
+              "line": 6,
+              "column": 11,
+              "end_column": 19
+            },
+            "unverifiable_reason": null,
+            "excluded": []
+          },
+          "current_version": "3.2.25",
+          "current_is_approximate": false,
+          "target_version": "5.2.18",
+          "wanted_version": null,
+          "gap": "major",
+          "identifiers": [],
+          "cvss_score": null,
+          "detail": null,
+          "url": "https://endoflife.date/django",
+          "eol": {
+            "product": "django",
+            "label": "Django",
+            "cycle": "3.2",
+            "ends_on": "2024-04-01",
+            "passed": true,
+            "advised_cycle": "5.2",
+            "advised_version": "5.2.18",
+            "advised_lts": true,
+            "advised_blocked": "5.2.18 demande Python >=3.10 ; le projet : 3.8 et plus (pyproject.toml). Changer de Python d'abord.",
+            "runtime": null
+          }
+        },
+        {
+          "kind": "outdated",
+          "severity": "low",
+          "message": "Version 4.2.30 disponible (majeure) ; utilisée : 3.2.25. La 6.1.2 n'est pas proposée : elle demande Python >=3.12 ; le projet : 3.8 et plus (pyproject.toml).",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "django",
+            "constraint": "==3.2.25",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "runtime",
+            "file": "pyproject.toml",
+            "location": {
+              "line": 6,
+              "column": 11,
+              "end_column": 19
+            },
+            "unverifiable_reason": null,
+            "excluded": []
+          },
+          "current_version": "3.2.25",
+          "current_is_approximate": false,
+          "target_version": "4.2.30",
+          "wanted_version": "3.2.25",
+          "gap": "major",
+          "identifiers": [],
+          "cvss_score": null,
+          "detail": null,
+          "url": "https://pypi.org/project/django/",
+          "eol": null
+        },
+        {
+          "kind": "outdated",
+          "severity": "low",
+          "message": "Version 4.0.0 disponible (majeure) ; utilisée : au moins 3.1.0 d'après la contrainte (pas de version installée). La 7.3.3 n'est pas proposée : elle demande Node.js >=20 ; le projet : 16 et plus (package.json).",
+          "dependency": {
+            "ecosystem": "npm",
+            "name": "p-limit",
+            "constraint": "^3.1.0",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "runtime",
+            "file": "package.json",
+            "location": {
+              "line": 9,
+              "column": 16,
+              "end_column": 22
+            },
+            "unverifiable_reason": null,
+            "excluded": []
+          },
+          "current_version": "3.1.0",
+          "current_is_approximate": true,
+          "target_version": "4.0.0",
+          "wanted_version": "3.1.0",
+          "gap": "major",
+          "identifiers": [],
+          "cvss_score": null,
+          "detail": null,
+          "url": "https://www.npmjs.com/package/p-limit",
+          "eol": null
+        }
+      ],
+      "updates": [
+        {
+          "id": ".|PyPI|django",
+          "ecosystem": "PyPI",
+          "name": "django",
+          "direct": true,
+          "dependencies": [
+            {
+              "ecosystem": "PyPI",
+              "name": "django",
+              "constraint": "==3.2.25",
+              "resolved_constraint": null,
+              "installed": null,
+              "lockfile": null,
+              "direct": true,
+              "scope": "runtime",
+              "file": "pyproject.toml",
+              "location": {
+                "line": 6,
+                "column": 11,
+                "end_column": 19
+              },
+              "unverifiable_reason": null,
+              "excluded": []
+            }
+          ],
+          "current_version": "3.2.25",
+          "current_is_approximate": false,
+          "options": [
+            {
+              "version": "4.2.30",
+              "gap": "major",
+              "reasons": [
+                "latest_major"
+              ],
+              "fixes": [
+                "CVE-2025-64459",
+                "CVE-2025-64458",
+                "CVE-2025-57833",
+                "CVE-2025-48432",
+                "CVE-2024-45231"
+              ],
+              "unfixed": [
+                "CVE-2026-15307",
+                "CVE-2026-53878",
+                "CVE-2026-15830",
+                "CVE-2026-53877",
+                "CVE-2026-48587",
+                "CVE-2026-48588",
+                "CVE-2026-6873",
+                "CVE-2026-8404"
+              ],
+              "introduced": [],
+              "edits": [
+                {
+                  "kind": "dependency",
+                  "file": "pyproject.toml",
+                  "location": {
+                    "line": 6,
+                    "column": 11,
+                    "end_column": 19
+                  },
+                  "old": "==3.2.25",
+                  "new": "==4.2.30",
+                  "override": null
+                }
+              ],
+              "lockfile": null,
+              "manual": null,
+              "warnings": [
+                "Majeure : peut demander d'adapter le code."
+              ]
+            }
+          ],
+          "selected": null,
+          "note": "La correction de toutes ses failles (5.2.17) n'est pas proposée : elle demande Python >=3.10 ; le projet : 3.8 et plus (pyproject.toml)."
+        },
+        {
+          "id": ".|npm|p-limit",
+          "ecosystem": "npm",
+          "name": "p-limit",
+          "direct": true,
+          "dependencies": [
+            {
+              "ecosystem": "npm",
+              "name": "p-limit",
+              "constraint": "^3.1.0",
+              "resolved_constraint": null,
+              "installed": null,
+              "lockfile": null,
+              "direct": true,
+              "scope": "runtime",
+              "file": "package.json",
+              "location": {
+                "line": 9,
+                "column": 16,
+                "end_column": 22
+              },
+              "unverifiable_reason": null,
+              "excluded": []
+            }
+          ],
+          "current_version": "3.1.0",
+          "current_is_approximate": true,
+          "options": [
+            {
+              "version": "4.0.0",
+              "gap": "major",
+              "reasons": [
+                "latest_major"
+              ],
+              "fixes": [],
+              "unfixed": [],
+              "introduced": [],
+              "edits": [
+                {
+                  "kind": "dependency",
+                  "file": "package.json",
+                  "location": {
+                    "line": 9,
+                    "column": 16,
+                    "end_column": 22
+                  },
+                  "old": "^3.1.0",
+                  "new": "^4.0.0",
+                  "override": null
+                }
+              ],
+              "lockfile": null,
+              "manual": null,
+              "warnings": [
+                "Majeure : peut demander d'adapter le code."
+              ]
+            }
+          ],
+          "selected": null,
+          "note": null
+        }
+      ],
+      "notices": [],
+      "runtime_files": [
+        ".nvmrc",
+        ".python-version",
+        "Dockerfile"
+      ],
+      "runtimes": [
+        {
+          "product": "python",
+          "version": "3.8",
+          "approximate": true,
+          "file": "pyproject.toml",
+          "source": "requires-python = \">=3.8\""
+        },
+        {
+          "product": "nodejs",
+          "version": "16",
+          "approximate": true,
+          "file": "package.json",
+          "source": "engines.node = \">=16\""
+        },
+        {
+          "product": "nodejs",
+          "version": "16",
+          "approximate": false,
+          "file": ".nvmrc",
+          "source": "16"
+        },
+        {
+          "product": "python",
+          "version": "3.8",
+          "approximate": false,
+          "file": ".python-version",
+          "source": "3.8"
+        },
+        {
+          "product": "nodejs",
+          "version": "16",
+          "approximate": false,
+          "file": "Dockerfile",
+          "source": "FROM node:16-alpine"
+        },
+        {
+          "product": "python",
+          "version": "3.8",
+          "approximate": false,
+          "file": "Dockerfile",
+          "source": "FROM python:3.8-slim"
+        }
+      ]
+    }
+  ],
+  "ignored_manifests": [],
+  "options": {
+    "include_tests": false,
+    "dev": true,
+    "transitive": false,
+    "offline": false,
+    "cache": true
+  },
+  "scanned_at": "2026-10-28T17:30:00+00:00",
+  "oldest_data": "2026-10-28T17:30:00+00:00",
+  "summary": {
+    "projects": 1,
+    "direct": 2,
+    "transitive": 0,
+    "checked": 2,
+    "audited": 2,
+    "findings": {
+      "vulnerable": 13,
+      "eol": 3,
+      "yanked": 0,
+      "deprecated": 0,
+      "outdated": 2,
+      "unverifiable": 0,
+      "inconclusive": 0
+    },
+    "outdated": {
+      "major": 2,
+      "minor": 0,
+      "patch": 0
+    },
+    "severities": {
+      "critical": 1,
+      "high": 3,
+      "medium": 7,
+      "low": 7,
+      "info": 0
+    },
+    "vulnerabilities": {
+      "critical": 1,
+      "high": 3,
+      "medium": 4,
+      "low": 5,
+      "info": 0
+    },
+    "to_update": 18
+  }
+}

@@ -189,7 +189,9 @@ def test_json(report: Report) -> None:
         "cvss_score",
         "detail",
         "url",
+        "eol",
     }
+    assert yanked["eol"] is None
 
 
 def test_json_keeps_accents() -> None:

@@ -17,6 +17,7 @@ const REASON: Record<string, string> = {
   latest_major: 'Dernière version',
   security_fix: 'Corrige les failles',
   replacement: 'Remplace une version retirée ou dépréciée',
+  supported_cycle: 'Cycle conseillé (fin de vie)',
 }
 
 /**
@@ -256,7 +257,9 @@ function FindingItem({ finding }: { finding: Finding }) {
           {finding.url && (
             <>
               {' · '}
-              <ExternalLink href={finding.url}>{vulnerable ? 'avis sur osv.dev' : 'page du paquet'}</ExternalLink>
+              <ExternalLink href={finding.url}>
+                {vulnerable ? 'avis sur osv.dev' : finding.kind === 'eol' ? 'cycles sur endoflife.date' : 'page du paquet'}
+              </ExternalLink>
             </>
           )}
         </p>

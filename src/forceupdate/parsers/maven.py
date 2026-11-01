@@ -503,6 +503,36 @@ def parse_pom_project(
     return _Resolver(pom, parents, context, modules).dependencies()
 
 
+JAVA_PROPERTIES = (
+    "maven.compiler.release",
+    "maven.compiler.target",
+    "maven.compiler.source",
+    "java.version",
+)
+"""Les propriétés qui disent la version de Java d'un ``pom.xml``, de la plus sûre à la moins sûre :
+``release`` vaut ``source`` et ``target`` ; ``java.version`` est celle de Spring Boot (son parent
+en tire ``maven.compiler.release``)."""
+
+
+def java_version(manifest: str, read_text: ReadText) -> tuple[str, Property] | None:
+    """La version de Java du ``pom.xml`` ``manifest`` : la première propriété de
+    ``JAVA_PROPERTIES`` définie dans lui ou ses parents du dépôt, résolue, avec sa définition ;
+    ``None`` sans."""
+    pom = _load(manifest, read_text, None)
+    if pom is None:
+        return None
+    parents, remote = _parents(pom, read_text, [])
+    context = _context(pom, parents, remote)
+    for name in JAVA_PROPERTIES:
+        definition = context.properties.get(name)
+        if definition is None:
+            continue
+        resolved = _resolve(definition.value, definition.file, definition.location, context)
+        if resolved.reason is None and resolved.value.strip():
+            return resolved.value.strip(), definition
+    return None
+
+
 def _load(path: str, read_text: ReadText, notices: list[Notice] | None) -> Pom | None:
     try:
         content = read_text(path)
