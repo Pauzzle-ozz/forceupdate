@@ -1,5 +1,5 @@
 """Réécrire une contrainte pour une nouvelle version, en gardant son style : un tableau de cas
-par style, pour npm, pour PyPI (PEP 440 et Poetry), pour Cargo, Go et Composer."""
+par style, pour npm, pour PyPI (PEP 440 et Poetry), pour Cargo, Go, Composer et RubyGems."""
 
 import pytest
 
@@ -341,3 +341,55 @@ def test_composer_styles(constraint: str, target: str, expected: str | None) -> 
 )
 def test_composer_floor_for_a_vulnerability(constraint: str, target: str, expected: str) -> None:
     check_floor(COMPOSER, constraint, target, expected)
+
+
+# -- RubyGems : = par défaut, ~> garde sa précision, une chaîne par contrainte ---------------
+
+RUBYGEMS = Ecosystem.RUBYGEMS
+
+
+@pytest.mark.parametrize(
+    ("constraint", "target", "expected"),
+    [
+        # Une version nue, ou =, est exacte.
+        ("5.6.4", "5.6.9", "5.6.9"),
+        ("= 1.2", "1.3.0", "= 1.3"),
+        ("= 1.2", "1.5.3", "= 1.5.3"),
+        ("5.6.4", "2.2.8.1", "2.2.8.1"),
+        # ~> garde sa précision : le nombre de nombres y fixe la borne haute.
+        ("~> 2.2", "2.2.25", "~> 2.2"),
+        ("~> 2.2", "4.2.1", "~> 4.2"),
+        ("~> 2.2.3", "2.2.25", "~> 2.2.25"),
+        ("~> 2.2.3", "2.2.8.1", "~> 2.2.8"),
+        ("~> 2.2.3", "3.2.8", "~> 3.2.8"),
+        ("~> 1", "2.3.0", "~> 2"),
+        ("~>1.2", "1.5.0", "~>1.5"),
+        # Bornes, et plusieurs contraintes.
+        (">= 2.0", "3.1.0", ">= 3.1"),
+        (">= 1.19.0, < 1.20", "1.19.4", ">= 1.19.4, < 1.20"),
+        (">= 1.19.0, < 1.20", "1.21.2", ">= 1.21.2, < 1.22"),
+        ("~> 2.2, != 2.2.4", "2.2.6", "~> 2.2, != 2.2.4"),
+        ("> 2.0", "2.5.0", ">= 2.5"),
+        # Sans contrainte : rien à réécrire. >= 0 est une borne basse comme une autre.
+        ("", "1.0.0", None),
+        (">= 0", "1.0.0", ">= 1"),
+    ],
+)
+def test_rubygems_styles(constraint: str, target: str, expected: str | None) -> None:
+    check(RUBYGEMS, constraint, target, expected)
+
+
+@pytest.mark.parametrize(
+    ("constraint", "target", "expected"),
+    [
+        # La forme des avis de sécurité de Rails : ~> X.Y.Z, >= X.Y.Z.W.
+        ("~> 2.2.3", "2.2.8.1", "~> 2.2.8, >= 2.2.8.1"),
+        ("~> 2.2", "2.2.3", "~> 2.2, >= 2.2.3"),
+        ("~> 2.2", "4.2.1", "~> 4.2, >= 4.2.1"),
+        # Sinon, rien de plus.
+        ("~> 2.2.3", "2.2.25", "~> 2.2.25"),
+        ("5.6.4", "5.6.9", "5.6.9"),
+    ],
+)
+def test_rubygems_floor_for_a_vulnerability(constraint: str, target: str, expected: str) -> None:
+    check_floor(RUBYGEMS, constraint, target, expected)

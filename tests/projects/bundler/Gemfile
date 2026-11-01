@@ -1,0 +1,19 @@
+# frozen_string_literal: true
+
+source "https://rubygems.org"
+
+gemspec
+
+gem "rack", "~> 2.2.3"
+gem "nokogiri", ">= 1.19.0", "< 1.20"
+gem "puma", "5.6.4"
+gem 'sinatra', '~> 2.2'
+gem "rake", "~> 13.0", require: false
+gem "tzinfo-data", platforms: %i[windows jruby]
+gem "helper", path: "helper"
+
+group :development, :test do
+  gem "rspec", "~> 3.10"
+end
+
+gem "minitest", "~> 5.15", group: :test

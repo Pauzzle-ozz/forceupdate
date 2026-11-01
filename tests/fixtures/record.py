@@ -2,13 +2,14 @@
 
     uv run python tests/fixtures/record.py          # toutes
     uv run python tests/fixtures/record.py npm      # celles d'un registre (pypi, npm, crates,
-                                                    # goproxy, packagist, osv)
+                                                    # goproxy, packagist, rubygems, osv)
     uv run python tests/fixtures/record.py pypi:jinja2   # un seul paquet
 
 À relancer quand un format de réponse change. Chaque réponse est demandée comme le fait
 forceupdate (même URL, mêmes en-têtes) et gardée telle quelle, dans
 ``tests/fixtures/<registre>/<paquet>.json`` (``/`` d'un nom scopé écrit ``__``) ; pour
-crates.io, le fichier de l'index, une ligne JSON par version : ``<paquet>.jsonl``. Le proxy Go
+crates.io, le fichier de l'index, une ligne JSON par version : ``<paquet>.jsonl`` ; pour
+RubyGems, le fichier ``info`` de l'index compact, une ligne par version : ``<gem>.txt``. Le proxy Go
 demande plusieurs fichiers par module (la liste, le ``go.mod`` de la dernière version,
 ``@latest``, le chemin de la majeure suivante) : ``goproxy/<module>.json`` les garde tous, par
 chemin (``github.com/!burnt!sushi/toml/@v/list``), avec leur statut (404 compris).
@@ -16,8 +17,8 @@ chemin (``github.com/!burnt!sushi/toml/@v/list``), avec leur statut (404 compris
 OSV : ``osv/queries.json`` garde, pour chaque version demandée (``écosystème/nom@version``),
 le résultat de ``querybatch`` (les identifiants des failles) ; ``osv/vulns/<id>.json``, chaque
 avis complet (``GET /v1/vulns/{id}``). Les versions demandées sont celles des mini-projets
-``tests/projects/vulnerable``, ``cargo``, ``cargo-workspace``, ``go``, ``go-workspace`` et
-``composer`` (``OSV_PROJECTS``), plus ``OSV_EXTRA``.
+``tests/projects/vulnerable``, ``cargo``, ``cargo-workspace``, ``go``, ``go-workspace``,
+``composer`` et ``bundler`` (``OSV_PROJECTS``), plus ``OSV_EXTRA``.
 
 Les tests s'appuient surtout sur ce qui ne bouge plus : une version publiée, retirée ou
 dépréciée le reste, une faille corrigée aussi. Ceux qui citent la dernière version, le nombre
@@ -42,6 +43,7 @@ from forceupdate.registries.goproxy import GoProxy
 from forceupdate.registries.npm import Npm
 from forceupdate.registries.packagist import Packagist
 from forceupdate.registries.pypi import PyPI
+from forceupdate.registries.rubygems import RubyGems
 from forceupdate.sources.local import LocalSource
 
 FIXTURES = Path(__file__).parent
@@ -53,6 +55,7 @@ OSV_PROJECTS = (
     PROJECTS / "go",
     PROJECTS / "go-workspace",
     PROJECTS / "composer",
+    PROJECTS / "bundler",
 )
 """Les mini-projets dont les versions sont demandées à OSV."""
 
@@ -118,6 +121,34 @@ PACKAGES: dict[str, tuple[type[Registry], dict[str, str]]] = {
             "doctrine/cache": "abandonné sans remplaçant (true), en require-dev",
         },
     ),
+    "rubygems": (
+        RubyGems,
+        {
+            "rack": "~> 2.2.3 dans le mini-projet bundler, 32 failles ; les choix de Bundler",
+            "nokogiri": "des versions à plateforme (1.19.0-x86_64-linux-gnu), onze failles",
+            "puma": "5.6.4 exacte, failles corrigées en 5.6.x et 7.2.1",
+            "sinatra": "~> 2.2, une faille corrigée en 2.2.3, d'autres en 4.x",
+            "mustermann": "dans le .gemspec du mini-projet ; des pré-versions (4.0.0.rc1)",
+            "tilt": "dans le .gemspec du mini-projet (add_runtime_dependency)",
+            "diff-lcs": "add_development_dependency du .gemspec du mini-projet",
+            "rake": "require: false dans le mini-projet",
+            "rspec": "groupe :development, :test du mini-projet",
+            "minitest": "group: :test en option ; ses 5.x demandent Ruby < 4.0 jusqu'à 5.26.0",
+            "tzinfo-data": "sans contrainte, platforms: %i[windows jruby]",
+            "json": "dans le .gemspec de la gem locale helper (path:)",
+            "rack-protection": "indirecte du mini-projet, figée = 2.2.2 par sinatra",
+            "nio4r": "indirecte du mini-projet (puma)",
+            "racc": "indirecte du mini-projet (nokogiri)",
+            "concurrent-ruby": "indirecte du mini-projet (tzinfo)",
+            "tzinfo": "indirecte du mini-projet (tzinfo-data)",
+            "ruby2_keywords": "indirecte du mini-projet (mustermann)",
+            "rspec-core": "indirecte de dev du mini-projet",
+            "rspec-expectations": "indirecte de dev du mini-projet",
+            "rspec-mocks": "indirecte de dev du mini-projet",
+            "rspec-support": "indirecte de dev du mini-projet",
+            "rest-client": "versions retirées (1.6.10 à 1.6.13) absentes de l'index",
+        },
+    ),
 }
 """Les paquets enregistrés, par registre, avec le cas que chacun couvre."""
 
@@ -130,7 +161,7 @@ OSV_EXTRA: dict[tuple[Ecosystem, str, str], str] = {
 }
 """Les versions demandées à OSV en plus de celles des mini-projets, avec le cas couvert."""
 
-SUFFIXES = {"crates": ".jsonl"}
+SUFFIXES = {"crates": ".jsonl", "rubygems": ".txt"}
 """L'extension des réponses d'un registre ; ``.json`` sinon."""
 
 

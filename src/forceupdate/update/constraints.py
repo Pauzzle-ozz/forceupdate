@@ -50,6 +50,13 @@ précision (``~1.2`` vers 1.5.3 : ``~1.5``, et ``~1.5, >=1.5.3`` pour un planche
 version visée est écrite sans le ``v`` que lui donne Packagist (``v5.4.20`` pour Symfony), sauf si
 la contrainte en avait un.
 
+**RubyGems** (``versions.rubygems``) : une version nue ou ``=`` est exacte (``= 1.2`` vers 1.5.3 :
+``= 1.5.3``) ; ``~>`` garde toujours sa précision, comme ``~=`` : le nombre de nombres y fixe la
+borne haute (``~> 2.2.3`` va jusqu'à 2.3, ``~> 2.2.8.1`` seulement jusqu'à 2.2.9). ``~> 2.2.3``
+vers 2.2.8.1 donne ``~> 2.2.8``, et ``~> 2.2.8, >= 2.2.8.1`` pour un plancher : la forme
+qu'écrivent les avis de sécurité de Rails. Les contraintes d'une gem sont jointes par ``, ``
+(``update.writers.ruby`` remet les guillemets de chacune).
+
 Le résultat est relu : il doit accepter la version visée (et respecter le plancher). Sinon, ou
 pour un style qu'on ne sait pas réécrire (intervalle npm ``1.2.3 - 2.3.4`` dépassé, contrainte
 sans version comme ``*`` ou une étiquette), ``rewrite`` rend ``None`` : à réécrire à la main.
@@ -67,10 +74,16 @@ _OPERATORS = {
     Ecosystem.NPM: r"~>|<=|>=|[<>=~^]",
     Ecosystem.CRATES_IO: r"<=|>=|[<>=~^]",
     Ecosystem.PACKAGIST: r"<>|!=|==|<=|>=|[<>=~^]",
+    Ecosystem.RUBYGEMS: r"~>|!=|<=|>=|[<>=]",
 }
 _PYPI_OPERATORS = r"===|==|!=|<>|<=|>=|~=|[<>=~^]"
 """Les opérateurs de chaque écosystème ; ceux de PyPI (Poetry et Pipenv compris) sinon."""
-_FLOOR_SEPARATORS = {Ecosystem.NPM: " ", Ecosystem.CRATES_IO: ", ", Ecosystem.PACKAGIST: ", "}
+_FLOOR_SEPARATORS = {
+    Ecosystem.NPM: " ",
+    Ecosystem.CRATES_IO: ", ",
+    Ecosystem.PACKAGIST: ", ",
+    Ecosystem.RUBYGEMS: ", ",
+}
 """Ce qui précède la borne ``>=`` ajoutée pour un plancher ; ``,`` sinon (PyPI)."""
 _VERSION_TEXT = r"[vV]?(?:\d|[xX*])[0-9A-Za-z.!+*_-]*"
 """Une version telle qu'écrite dans une contrainte : complète, partielle, avec joker,
@@ -228,7 +241,8 @@ def _rewrite_member(scheme: VersionScheme, text: str, target: _Target, floor: bo
             replacements.append((comparator.operator_span, ">="))
     new = _apply(text, replacements)
     if floor and not _reaches(scheme, new, target.text):
-        new += f"{_FLOOR_SEPARATORS.get(ecosystem, ',')}>={target.text}"
+        operator = ">= " if ecosystem is Ecosystem.RUBYGEMS else ">="
+        new += f"{_FLOOR_SEPARATORS.get(ecosystem, ',')}{operator}{target.text}"
     return new
 
 
@@ -301,6 +315,8 @@ def _written(
         return prefix + target.written(count) + _joker(numbers.group("numbers"), count)
     if kind == "compatible":
         return prefix + target.written(max(count, 2))
+    if kind == "tilde" and ecosystem is Ecosystem.RUBYGEMS:
+        return prefix + target.written(count)  # ~> : la précision fixe la borne haute
     if target.fits(count):
         return prefix + target.written(count)
     if kind == "tilde" and count < (3 if ecosystem is Ecosystem.PACKAGIST else 2):

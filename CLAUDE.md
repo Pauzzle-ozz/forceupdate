@@ -87,11 +87,14 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   │                         hôte, renouvellement)
 │   ├── parsers/            ← un module par écosystème : python.py, npm.py, rust.py (Cargo.toml, Cargo.lock,
 │   │                         workspaces), go.py (go.mod et go.work : un lexer comme celui de modfile),
-│   │                         php.py (composer.json, composer.lock) ; lockfiles.py (lien manifeste ↔
-│   │                         lockfile), *_spans.py (positions) ; versions/ et registries/ de même
+│   │                         php.py (composer.json, composer.lock), ruby.py (Gemfile et gems.rb lus par
+│   │                         motifs, jamais exécutés ; .gemspec ; Gemfile.lock ; gems path:) ;
+│   │                         lockfiles.py (lien manifeste ↔ lockfile), *_spans.py (positions ;
+│   │                         ruby_spans.py : un lexer de Ruby) ; versions/ et registries/ de même
 │   │                         (cargo.py, crates.py : l'index « sparse » ; go.py, goproxy.py :
 │   │                         proxy.golang.org, plusieurs requêtes par module ; composer.py, réécrit
-│   │                         d'après composer/semver, packagist.py : les métadonnées p2 minifiées)
+│   │                         d'après composer/semver, packagist.py : les métadonnées p2 minifiées ;
+│   │                         rubygems.py, réécrit d'après Gem::Version, rubygems.py : l'index compact)
 │   ├── sources/            ← d'où vient le code : local.py (dossier, fichier), forge.py (un dépôt lu par
 │   │                         l'API : seuls les fichiers que lisent les parseurs sont téléchargés ; un
 │   │                         clone superficiel si l'arborescence est tronquée)
@@ -112,6 +115,7 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
     │                         fichiers, branches, comparaison, MR, OAuth avec refresh token)
     ├── fake_bitbucket.py   ← Bitbucket Cloud simulé (workspaces, droits, dépôts, arborescence en largeur,
     │                         fichiers, branches, commits propres, PR, OAuth : Basic, refresh token renouvelé)
+    ├── fake_bundler.py     ← bundle lock simulé (FakeTools.handlers["bundle"]), comme le vrai Bundler 4.0
     ├── fixtures/           ← réponses HTTP enregistrées ; record.py les ré-enregistre
     └── projects/           ← mini-projets par outil, lockfiles produits par les vrais outils
 ```
@@ -166,9 +170,10 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   `fake_gitlab.FakeGitLab` (`gitlab.GIT_URL` vers `remotes_url(…)` pour git), Bitbucket avec
   `fake_bitbucket.FakeBitbucket` (`bitbucket.GIT_URL` de même). Le trousseau des tests refuse,
   comme Windows, un secret de plus de 1 280 caractères. La fixture `recorded` simule PyPI, npm,
-  crates.io, le proxy Go, Packagist et OSV avec les réponses de `tests/fixtures/` (pour Go, toutes
-  celles d'un module dans un fichier : `goproxy/<module>.json`) ; `fake_tools("npm", "uv")` simule les
-  outils (`FakeTools`) ; `keychain` est le trousseau en mémoire du test ; `api` est le
+  crates.io, le proxy Go, Packagist, RubyGems et OSV avec les réponses de `tests/fixtures/` (pour Go,
+  toutes celles d'un module dans un fichier : `goproxy/<module>.json`) ; `fake_tools("npm", "uv")`
+  simule les outils (`FakeTools` ; `fake_bundler.FakeBundler` pour `bundle`) ; `keychain` est le
+  trousseau en mémoire du test ; `api` est le
   serveur de `ui` (client de test de FastAPI, jeton compris), `finished` attend la fin
   d'une tâche. GitHub se simule avec respx (`tests/test_web_accounts.py`, `FakeGitHub` pour les
   comptes ; `tests/fake_forge.py`, `FakeGitHubRepos`, pour les dépôts, faits des mini-projets).
@@ -227,8 +232,15 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   (`which composer` ne le trouve pas ; `shutil.which` si). Pour un essai à la main, mettre
   `COMPOSER_HOME` et `COMPOSER_CACHE_DIR` dans le scratchpad ; pour fabriquer un lockfile
   volontairement vulnérable, `--no-blocking` (Composer refuse sinon les versions à faille).
+- Ruby 4.0.9 (RubyGems et Bundler 4.0.20) est dans `~/sdk/ruby-4.0.9` (E24 : l'archive 7z « without
+  devkit » de RubyInstaller, dépliée par le `tar` de Windows), hors du `PATH` :
+  `export PATH="$HOME/sdk/ruby-4.0.9/bin:$PATH"` avant `forceupdate update`, `ui` ou
+  `pytest --run-network`. Sous Windows, `bundle` est le `bundle.bat` de RubyInstaller (`shutil.which`
+  le trouve). Pour un essai à la main, mettre `BUNDLE_USER_HOME`, `GEM_HOME` et `GEM_SPEC_CACHE`
+  dans le scratchpad. `bundle lock` exécute le `Gemfile` et les `.gemspec` : jamais sur un projet
+  inconnu ; cloner une gem `git:` d'un dépôt externe n'a pas été permis.
 - Pour tous les tests `network` d'un coup :
-  `export PATH="$HOME/sdk/php-8.5.12:$HOME/sdk/composer-2.11.0:$HOME/sdk/go1.27.3/bin:$HOME/.cargo/bin:$PATH"`.
+  `export PATH="$HOME/sdk/ruby-4.0.9/bin:$HOME/sdk/php-8.5.12:$HOME/sdk/composer-2.11.0:$HOME/sdk/go1.27.3/bin:$HOME/.cargo/bin:$PATH"`.
 
 ## Interface
 

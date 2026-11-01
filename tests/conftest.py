@@ -248,14 +248,15 @@ def osv_querybatch(results: dict[str, Any]) -> Callable[[httpx.Request], httpx.R
 
 @pytest.fixture
 def recorded() -> Iterator[dict[str, respx.Route]]:
-    """PyPI, npm, crates.io, le proxy Go, Packagist et OSV simulés par ``respx``, avec les
-    réponses enregistrées par ``tests/fixtures/record.py`` : flask, requests, aioredis, jinja2,
+    """PyPI, npm, crates.io, le proxy Go, Packagist, RubyGems et OSV simulés par ``respx``, avec
+    les réponses enregistrées par ``tests/fixtures/record.py`` : flask, requests, aioredis, jinja2,
     werkzeug ; left-pad, @hapi/joi, colors, crossenv, lodash ; rand, regex, time, anyhow, log,
     smallvec ; les modules Go de ``PACKAGES["goproxy"]`` ; les paquets PHP de
-    ``PACKAGES["packagist"]``. Tout autre paquet est introuvable (404). OSV connaît les failles des
-    versions de ``tests/fixtures/osv/queries.json`` ; pour les autres, il n'en connaît pas. Rend
-    les routes, par nom de paquet (``crates:<nom>`` pour crates.io, ``goproxy:<module>`` pour la
-    liste d'un module Go, ``packagist:<nom>``), plus ``osv:querybatch`` et ``osv:<id>``.
+    ``PACKAGES["packagist"]`` ; les gems de ``PACKAGES["rubygems"]``. Tout autre paquet est
+    introuvable (404). OSV connaît les failles des versions de ``tests/fixtures/osv/queries.json`` ;
+    pour les autres, il n'en connaît pas. Rend les routes, par nom de paquet (``crates:<nom>`` pour
+    crates.io, ``goproxy:<module>`` pour la liste d'un module Go, ``packagist:<nom>``,
+    ``rubygems:<nom>``), plus ``osv:querybatch`` et ``osv:<id>``.
     """
     with recorded_responses() as routes:
         yield routes
@@ -302,12 +303,19 @@ def recorded_responses(
             routes[f"packagist:{name}"] = router.get(
                 f"https://repo.packagist.org/p2/{name}.json"
             ).respond(200, content=path.read_bytes(), headers={"content-type": "application/json"})
+        for path in sorted((FIXTURES / "rubygems").glob("*.txt")):
+            routes[f"rubygems:{path.stem}"] = router.get(
+                f"https://index.rubygems.org/info/{path.stem}"
+            ).respond(200, content=path.read_bytes(), headers={"content-type": "text/plain"})
         router.get(url__regex=r"^https://pypi\.org/simple/").respond(404)
         router.get(url__regex=r"^https://registry\.npmjs\.org/").respond(404, json={})
         router.get(url__regex=r"^https://index\.crates\.io/").respond(404)
         router.get(url__regex=r"^https://proxy\.golang\.org/").respond(404, text="not found")
         router.get(url__regex=r"^https://repo\.packagist\.org/").respond(
             404, text="404 not found, no packages here"
+        )
+        router.get(url__regex=r"^https://index\.rubygems\.org/").respond(
+            404, text="This rubygem could not be found."
         )
         queries = json.loads((FIXTURES / "osv" / "queries.json").read_text(encoding="utf-8"))
         routes["osv:querybatch"] = router.post("https://api.osv.dev/v1/querybatch").mock(

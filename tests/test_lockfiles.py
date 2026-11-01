@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 from conftest import FakeTools, ToolCall
+from fake_bundler import FakeBundler
 
 from forceupdate import engine
 from forceupdate.models import (
@@ -30,7 +31,7 @@ from forceupdate.models import (
     UpdateOption,
     UpdateReason,
 )
-from forceupdate.parsers import parse_lockfile
+from forceupdate.parsers import parse_lockfile, ruby
 from forceupdate.parsers.go import parse_go_mod
 from forceupdate.parsers.lockfiles import dependents
 from forceupdate.sources.local import LocalSource
@@ -1022,7 +1023,7 @@ def test_parse_lockfile_reads_a_compiled_requirements_file() -> None:
     lock = parse_lockfile("requirements.txt", "flask==3.1.3\nclick>=8\n")
     assert [(p.name, p.version) for p in lock.packages] == [("flask", "3.1.3"), ("click", "")]
     with pytest.raises(ValueError, match="pas un lockfile connu"):
-        parse_lockfile("Gemfile.lock", "")
+        parse_lockfile("packages.lock.json", "")
 
 
 # ---------------------------------------------------------------------------
@@ -1630,6 +1631,250 @@ def test_a_composer_failure_puts_every_file_back(tmp_path: Path, fake_tools: Too
 
 
 # ---------------------------------------------------------------------------
+# Bundler
+# ---------------------------------------------------------------------------
+
+BUNDLER_RUNS_CODE = (
+    "Bundler exécute le Gemfile (c'est du Ruby), ce qu'il charge (eval_gemfile) et les .gemspec "
+    "du projet, de ses gems path: et git: ; aucune option ne l'en empêche."
+)
+
+
+def bundler_copy(tmp_path: Path) -> Path:
+    root = tmp_path / "bundler"
+    shutil.copytree(PROJECTS / "bundler", root)
+    return root
+
+
+def locked_gems(root: Path) -> dict[str, str]:
+    lock = parse_lockfile("Gemfile.lock", (root / "Gemfile.lock").read_text(encoding="utf-8"))
+    return {p.name: p.version for p in lock.packages}
+
+
+def test_plan_of_a_gemfile_lock(tmp_path: Path, fake_tools: Tools) -> None:
+    root = bundler_copy(tmp_path)
+    fake_tools("bundle")
+    source, report = analyse(root)
+    project = project_of(report)
+    rewritten = [wanted(project, "puma", "5.6.9", new="5.6.9")]
+    (job,) = lockfiles.plan(source, report, writers.prepare(root, rewritten))
+    assert (job.lockfile, job.kind, job.program, job.tool) == (
+        "Gemfile.lock",
+        LockKind.BUNDLER,
+        "/outils/bundle",
+        "Bundler",
+    )
+    assert job.command == "bundle lock"
+    assert (job.inputs, job.warnings) == (("Gemfile",), (BUNDLER_RUNS_CODE,))
+    assert job.workspace  # la gem locale helper partage le lockfile
+    others = [
+        wanted(project, "rack", "2.2.8.1"),
+        wanted(project, "nio4r", "2.5.9", direct=False),
+    ]
+    (job,) = lockfiles.plan(source, report, writers.prepare(root, rewritten + others))
+    assert job.command == "bundle lock --update rack nio4r --conservative"
+
+
+def test_bundler_targets_each_version(
+    tmp_path: Path, fake_tools: Tools, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Une directe réécrite, une directe par le lockfile seul (sous la plus haute que permet sa
+    contrainte), une du ``.gemspec``, une indirecte : épinglées (``= V``, une ligne ``gem`` pour
+    l'indirecte) le temps d'un ``bundle lock``, puis le ``Gemfile`` remis et ``bundle lock``
+    relancé, qui garde tout (vérifié avec Bundler 4.0.20). ``BUNDLE_GEMFILE`` et
+    ``BUNDLE_LOCKFILE`` hérités lui feraient lire et écrire d'autres fichiers."""
+    for name in ("BUNDLE_GEMFILE", "BUNDLE_LOCKFILE", "BUNDLE_FORCE_RUBY_PLATFORM"):
+        monkeypatch.setenv(name, "autre")
+    root = bundler_copy(tmp_path)
+    tools = fake_tools("bundle")
+    tools.handlers["bundle"] = FakeBundler()
+    tools.watch(root / "Gemfile", root / "demo.gemspec")
+    source, report = analyse(root)
+    project = project_of(report)
+    choices = [
+        wanted(project, "puma", "5.6.9", new="5.6.9"),
+        wanted(project, "rack", "2.2.8.1"),
+        wanted(project, "mustermann", "2.0.2"),
+        wanted(project, "nio4r", "2.5.9", direct=False),
+    ]
+
+    _, _, (result,) = apply(root, choices, report, source)
+
+    assert tools.commands() == ["bundle lock", "bundle lock"]
+    pinned, final = tools.calls
+    assert pinned.files["Gemfile"].endswith('gem "minitest", "~> 5.15", group: :test\n'
+                                            'gem "nio4r", "= 2.5.9"\n')  # fmt: skip
+    assert 'gem "rack", "= 2.2.8.1"' in pinned.files["Gemfile"]
+    assert 'gem "puma", "= 5.6.9"' in pinned.files["Gemfile"]
+    assert 'add_dependency "mustermann", "= 2.0.2"' in pinned.files["demo.gemspec"]
+    assert final.files["Gemfile"] == (PROJECTS / "bundler" / "Gemfile").read_text(
+        encoding="utf-8"
+    ).replace('"5.6.4"', '"5.6.9"')
+    assert final.files["demo.gemspec"] == (PROJECTS / "bundler" / "demo.gemspec").read_text(
+        encoding="utf-8"
+    )
+    assert pinned.cwd == root
+    assert pinned.env["BUNDLE_GEMFILE"] == str(root / "Gemfile")
+    assert pinned.env["BUNDLE_LOCKFILE"] == str(root / "Gemfile.lock")
+    assert "BUNDLE_FORCE_RUBY_PLATFORM" not in pinned.env
+    assert result.status is LockStatus.REGENERATED, result.error
+    assert [(i.update.name, i.versions, i.reach) for i in result.installed] == [
+        ("puma", ("5.6.9",), Reach.EXACT),
+        ("rack", ("2.2.8.1",), Reach.EXACT),
+        ("mustermann", ("2.0.2",), Reach.EXACT),
+        ("nio4r", ("2.5.9",), Reach.EXACT),
+    ]
+    assert result.changed == () and result.warnings == ()
+    gems = locked_gems(root)
+    assert (gems["rack"], gems["sinatra"], gems["nokogiri"]) == ("2.2.8.1", "2.2.2", "1.19.0")
+
+
+def test_a_refused_pin_falls_back_to_the_highest_allowed(tmp_path: Path, fake_tools: Tools) -> None:
+    """Une version qu'une autre gem empêche (rack-protection = 2.2.4, quand sinatra 2.2.2 exige
+    = 2.2.2) : Bundler refuse l'épinglage ; forceupdate le dit, puis ``bundle lock --update``,
+    qui monte rack aussi haut que permis et laisse rack-protection, retenue par sinatra."""
+    root = bundler_copy(tmp_path)
+    tools = fake_tools("bundle")
+    tools.handlers["bundle"] = FakeBundler(refuse=("rack-protection",))
+    source, report = analyse(root)
+    project = project_of(report)
+    choices = [
+        wanted(project, "rack", "2.2.8.1"),
+        wanted(project, "rack-protection", "2.2.4", direct=False),
+    ]
+
+    _, _, (result,) = apply(root, choices, report, source)
+
+    assert tools.commands() == [
+        "bundle lock",
+        "bundle lock --update rack rack-protection --conservative",
+        "bundle lock",
+    ]
+    assert result.status is LockStatus.REGENERATED, result.error
+    assert result.warnings == ("Versions exactes refusées : « bundle lock » a échoué (code 6) :",)
+    assert [(i.update.name, i.versions, i.reach, i.held_by) for i in result.installed] == [
+        ("rack", ("2.2.25",), Reach.ABOVE, ()),
+        ("rack-protection", ("2.2.2",), Reach.BELOW, ("sinatra 2.2.2",)),
+    ]
+
+
+def test_the_platform_bundler_adds_is_removed(tmp_path: Path, fake_tools: Tools) -> None:
+    """Sous Windows, Bundler ajoute sa plateforme au lockfile d'un projet Linux : elle est
+    retirée ensuite (vérifié avec Bundler 4.0.20 : ``--remove-platform`` ne change aucune
+    version). Sa version, écrite dans BUNDLED WITH, est dite."""
+    root = bundler_copy(tmp_path)
+    lock = root / "Gemfile.lock"
+    lock.write_text(lock.read_text(encoding="utf-8").replace("  x64-mingw-ucrt\n", ""), "utf-8")
+    tools = fake_tools("bundle")
+    tools.handlers["bundle"] = FakeBundler(local="x64-mingw-ucrt", bundled_with="4.1.0")
+    source, report = analyse(root)
+    choice = wanted(project_of(report), "rack", "2.2.8.1")
+
+    _, _, (result,) = apply(root, [choice], report, source)
+
+    assert tools.commands() == [
+        "bundle lock",
+        "bundle lock",
+        "bundle lock --remove-platform x64-mingw-ucrt",
+    ]
+    assert result.status is LockStatus.REGENERATED, result.error
+    assert "PLATFORMS\n  x86_64-linux\n\nDEPENDENCIES" in lock.read_text(encoding="utf-8")
+    assert result.warnings == ("Bundler a changé BUNDLED WITH dans le lockfile : 4.0.20 → 4.1.0.",)
+
+
+def test_an_indirect_without_room_at_the_end_of_the_gemfile(
+    tmp_path: Path, fake_tools: Tools
+) -> None:
+    """Après ``__END__``, une ligne ajoutée ne serait pas lue : l'indirecte passe par
+    ``--update``."""
+    root = bundler_copy(tmp_path)
+    gemfile = root / "Gemfile"
+    gemfile.write_text(gemfile.read_text(encoding="utf-8") + "__END__\nnotes\n", "utf-8")
+    tools = fake_tools("bundle")
+    tools.handlers["bundle"] = FakeBundler()
+    source, report = analyse(root)
+    project = project_of(report)
+    choices = [
+        wanted(project, "rack", "2.2.8.1"),
+        wanted(project, "nio4r", "2.5.9", direct=False),
+    ]
+    _, _, (result,) = apply(root, choices, report, source)
+    assert tools.commands() == [
+        "bundle lock",
+        "bundle lock --update nio4r --conservative",
+        "bundle lock",
+    ]
+    assert [(i.update.name, i.reach) for i in result.installed] == [
+        ("rack", Reach.EXACT),
+        ("nio4r", Reach.ABOVE),
+    ]
+
+
+def test_a_strange_gem_name_is_never_written_in_the_gemfile(
+    tmp_path: Path, fake_tools: Tools
+) -> None:
+    """Le nom d'une indirecte vient du lockfile : un nom qui n'est pas celui d'une gem (un
+    guillemet ferait du Ruby dans le ``Gemfile``) passe par ``--update``."""
+    root = bundler_copy(tmp_path)
+    lock = root / "Gemfile.lock"
+    text = lock.read_text(encoding="utf-8")
+    text = text.replace("      nio4r (~> 2.0)\n", '      nio4r (~> 2.0)\n      x"; y\n')
+    lock.write_text(text.replace("    racc (1.6.0)\n", '    racc (1.6.0)\n    x"; y (1.0)\n'))
+    tools = fake_tools("bundle")
+    tools.handlers["bundle"] = FakeBundler()
+    tools.watch(root / "Gemfile")
+    source, report = analyse(root)
+    choice = wanted(project_of(report), 'x"; y', "1.1", direct=False)
+    apply(root, [choice], report, source)
+    assert tools.commands() == ['bundle lock --update x"; y --conservative', "bundle lock"]
+    assert all('x"; y' not in call.files["Gemfile"] for call in tools.calls)
+
+
+@pytest.mark.parametrize(
+    "where", ["environment", ".bundle/config", "Gemfile", "nowhere", "environment=0"]
+)
+def test_the_cooldown_is_said(
+    tmp_path: Path, fake_tools: Tools, monkeypatch: pytest.MonkeyPatch, where: str
+) -> None:
+    root = bundler_copy(tmp_path)
+    if where.startswith("environment"):
+        monkeypatch.setenv("BUNDLE_COOLDOWN", "0" if where.endswith("=0") else "7")
+    elif where == ".bundle/config":
+        (root / ".bundle").mkdir()
+        (root / ".bundle" / "config").write_text('---\nBUNDLE_COOLDOWN: "7"\n', "utf-8")
+    elif where == "Gemfile":
+        gemfile = root / "Gemfile"
+        text = gemfile.read_text(encoding="utf-8")
+        gemfile.write_text(text.replace('rubygems.org"', 'rubygems.org", cooldown: 7'), "utf-8")
+    fake_tools("bundle")
+    source, report = analyse(root)
+    choice = wanted(project_of(report), "rack", "2.2.8.1")
+    (job,) = lockfiles.plan(source, report, writers.prepare(root, [choice]))
+    cooldown = (
+        "Bundler écarte les versions publiées depuis peu (cooldown) : une version visée trop "
+        "récente n'est pas prise, la plus haute permise plus ancienne l'est à sa place."
+    )
+    said = where not in ("nowhere", "environment=0")
+    assert job.warnings == ((BUNDLER_RUNS_CODE, cooldown) if said else (BUNDLER_RUNS_CODE,))
+
+
+def test_a_bundler_failure_puts_every_file_back(tmp_path: Path, fake_tools: Tools) -> None:
+    root = bundler_copy(tmp_path)
+    before = {name: (root / name).read_bytes() for name in ("Gemfile", "Gemfile.lock")}
+    tools = fake_tools("bundle")
+    tools.handlers["bundle"] = lambda call: (6, "", "Could not find compatible versions")
+    source, report = analyse(root)
+    choice = wanted(project_of(report), "puma", "7.2.1", new="7.2.1")
+
+    _, _, (result,) = apply(root, [choice], report, source)
+
+    assert result.status is LockStatus.FAILED
+    assert result.error is not None and "Could not find compatible versions" in result.error
+    assert result.restored == ("Gemfile",)
+    assert {name: (root / name).read_bytes() for name in before} == before
+
+
+# ---------------------------------------------------------------------------
 # Les vrais outils (réseau), sur des copies
 # ---------------------------------------------------------------------------
 
@@ -1805,3 +2050,59 @@ def test_the_real_composer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
         timeout=300,
     )
     assert "not up to date" not in check.stdout + check.stderr
+
+
+@pytest.mark.network
+def test_the_real_bundler(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Une directe réécrite, une directe par le lockfile seul, une du ``.gemspec``, celle de la
+    gem locale (helper), une indirecte : chacune à la version choisie, rien d'autre ne bouge, le
+    ``Gemfile`` et les ``.gemspec`` sont remis. Le lockfile n'a pas la plateforme de la machine
+    (retirée d'abord par Bundler) : Bundler l'ajoute, forceupdate la retire. Le cache et les gems
+    de Bundler vont dans le dossier du test."""
+    _need("bundle")
+    for name in ("BUNDLE_USER_HOME", "GEM_HOME", "GEM_SPEC_CACHE"):
+        monkeypatch.setenv(name, str(tmp_path / name.lower()))
+    root = bundler_copy(tmp_path)
+    bundle = shutil.which("bundle") or "bundle"
+    ruby_program = shutil.which("ruby") or "ruby"
+    local = subprocess.run(
+        [ruby_program, "-e", "print Gem::Platform.local"], capture_output=True, text=True
+    ).stdout.strip()
+    lock = root / "Gemfile.lock"
+    if f"\n  {local}\n" in lock.read_text(encoding="utf-8"):
+        removed = subprocess.run(
+            [bundle, "lock", "--remove-platform", local],
+            cwd=root,
+            capture_output=True,
+            timeout=300,
+            env={**os.environ, "BUNDLE_GEMFILE": str(root / "Gemfile")},
+        )
+        assert removed.returncode == 0, removed.stderr
+    platforms = ruby.parse_gemfile_lock("Gemfile.lock", lock.read_text("utf-8")).platforms
+    assert local not in platforms
+    before = {p: (root / p).read_text("utf-8") for p in ("demo.gemspec", "helper/helper.gemspec")}
+    source, report = analyse(root)
+    project = project_of(report)
+    choices = [
+        wanted(project, "puma", "5.6.9", new="5.6.9"),
+        wanted(project, "rack", "2.2.8.1"),
+        wanted(project, "mustermann", "2.0.2"),
+        wanted(project_of(report, "helper"), "json", "2.10.2"),
+        wanted(project, "nio4r", "2.5.9", direct=False),
+    ]
+    _, _, (result,) = apply(root, choices, report, source)
+    assert result.status is LockStatus.REGENERATED, result.error
+    assert [(i.update.name, i.versions, i.reach) for i in result.installed] == [
+        ("puma", ("5.6.9",), Reach.EXACT),
+        ("rack", ("2.2.8.1",), Reach.EXACT),
+        ("mustermann", ("2.0.2",), Reach.EXACT),
+        ("json", ("2.10.2",), Reach.EXACT),
+        ("nio4r", ("2.5.9",), Reach.EXACT),
+    ]
+    assert result.changed == ()
+    parsed = ruby.parse_gemfile_lock("Gemfile.lock", lock.read_text("utf-8"))
+    assert parsed.platforms == platforms
+    assert parsed.requirements["puma"] == "= 5.6.9" and "nio4r" not in parsed.requirements
+    gemfile = (PROJECTS / "bundler" / "Gemfile").read_text("utf-8").replace('"5.6.4"', '"5.6.9"')
+    assert (root / "Gemfile").read_text("utf-8") == gemfile
+    assert {p: (root / p).read_text("utf-8") for p in before} == before

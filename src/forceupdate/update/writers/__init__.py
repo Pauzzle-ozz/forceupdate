@@ -25,10 +25,12 @@ En deux temps :
    - dans un fichier, les réécritures s'appliquent de la fin vers le début : chacune garde
      l'emplacement lu dans le texte d'origine. Une contrainte absente a un emplacement vide :
      la nouvelle y est insérée ;
+   - une contrainte Ruby faite de plusieurs chaînes (``">= 1.19.0", "< 1.20"``) se réécrit avec
+     ses guillemets (``ruby.written_target``) ;
    - **auto-vérification** : le fichier réécrit est relu par son parseur (``python``,
-     ``npm``, ``rust``, ``go``, ``php``). Il doit redonner les mêmes déclarations, dans le même
-     ordre, avec la nouvelle contrainte à chaque endroit réécrit, et aucune autre contrainte
-     changée.
+     ``npm``, ``rust``, ``go``, ``php``, ``ruby``). Il doit redonner les mêmes déclarations, dans
+     le même ordre, avec la nouvelle contrainte à chaque endroit réécrit, et aucune autre
+     contrainte changée.
      Sinon il n'est pas réécrit, ni les options qui le touchaient.
 
    Ce qui n'est pas appliqué est rendu avec la raison (``Skipped``).
@@ -50,7 +52,7 @@ import os
 import posixpath
 import shutil
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -66,7 +68,7 @@ from forceupdate.models import (
     UpdateOption,
 )
 from forceupdate.parsers.base import ParseError, ReadText
-from forceupdate.update.writers import go, npm, php, python, rust
+from forceupdate.update.writers import go, npm, php, python, ruby, rust
 from forceupdate.update.writers.base import Check, Reader, Refused, Target
 
 __all__ = [
@@ -95,8 +97,12 @@ _READERS: dict[str, Reader] = {
     **rust.READERS,
     **go.READERS,
     **php.READERS,
+    **ruby.READERS,
 }
 _CHECKS: dict[str, Check] = python.CHECKS
+_WRITTEN: dict[str, Callable[[str, Target], Target]] = ruby.WRITTEN
+"""Les formats dont une contrainte s'écrit autrement qu'elle ne se lit : Ruby, une chaîne par
+contrainte."""
 
 
 class WriteError(Exception):
@@ -321,6 +327,9 @@ def _target(files: "_Files", target: Target) -> Target:
     """``target``, si son fichier a bien ``old`` à cet endroit, et que son format n'y voit pas
     d'obstacle (``CHECKS``). Lève ``Refused``."""
     text = files.text(target.path)
+    written = _WRITTEN.get(_pattern(target.path, target.pattern) or "")
+    if written is not None:
+        target = written(text, target)
     lines = text.split("\n")
     location = target.location
     line = lines[location.line - 1].removesuffix("\r") if location.line <= len(lines) else ""

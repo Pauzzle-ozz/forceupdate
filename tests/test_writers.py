@@ -952,3 +952,104 @@ def test_on_the_mini_projects_only_constraints_change(name: str, tmp_path: Path)
             lines[after.location.line - 1] = line[:start] + before.constraint + line[end:]
         assert "\n".join(lines) == change.before
         assert (root / change.path).read_bytes().decode("utf-8") == change.after
+
+
+# ---------------------------------------------------------------------------
+# Ruby : une chaîne par contrainte
+# ---------------------------------------------------------------------------
+
+GEMFILE = """\
+source "https://rubygems.org"
+
+gem "rack", "~> 2.2.3"
+gem "nokogiri", ">= 1.19.0", "< 1.20"
+gem 'sinatra', '~> 2.2'
+gem("json", [">= 2.0","< 3"], require: false)
+gem "puma",
+  ">= 5.6.4",
+  "< 6"
+"""
+GEMSPEC = """\
+Gem::Specification.new do |spec|
+  spec.name = "demo"
+  spec.add_dependency "mustermann", "~> 2.0"
+  spec.add_development_dependency 'rake', '~> 13.0', '>= 13.0.1'
+end
+"""
+
+
+@pytest.mark.parametrize(
+    ("path", "content", "name", "new", "expected"),
+    [
+        ("Gemfile", GEMFILE, "rack", "~> 2.2.25", ('"~> 2.2.3"', '"~> 2.2.25"')),
+        # Plusieurs chaînes : chacune garde ses guillemets, le séparateur reste celui du fichier.
+        (
+            "Gemfile",
+            GEMFILE,
+            "nokogiri",
+            ">= 1.21.2, < 1.22",
+            ('">= 1.19.0", "< 1.20"', '">= 1.21.2", "< 1.22"'),
+        ),
+        ("Gemfile", GEMFILE, "json", ">= 2.21.2, < 3", ('">= 2.0","< 3"', '">= 2.21.2","< 3"')),
+        # Une contrainte de plus (un plancher), avec les guillemets de la chaîne.
+        ("Gemfile", GEMFILE, "sinatra", "~> 2.2, >= 2.2.3", ("'~> 2.2'", "'~> 2.2', '>= 2.2.3'")),
+        # Une de moins.
+        ("Gemfile", GEMFILE, "nokogiri", "= 1.19.4", ('">= 1.19.0", "< 1.20"', '"= 1.19.4"')),
+        ("demo.gemspec", GEMSPEC, "mustermann", "~> 2.0.2", ('"~> 2.0"', '"~> 2.0.2"')),
+        (
+            "demo.gemspec",
+            GEMSPEC,
+            "rake",
+            "~> 13.4, >= 13.4.2",
+            ("'~> 13.0', '>= 13.0.1'", "'~> 13.4', '>= 13.4.2'"),
+        ),
+    ],
+)
+def test_ruby_constraints_keep_their_quotes(
+    make_tree: MakeTree, path: str, content: str, name: str, new: str, expected: tuple[str, str]
+) -> None:
+    files = {"Gemfile": GEMFILE if path == "Gemfile" else "gemspec\n", path: content}
+    root = make_tree(files)
+    changes = writers.prepare(root, [choice(inventory(root)["."], name, new)])
+    after = _replace(content, *expected)
+    assert changes.skipped == ()
+    assert [(c.path, c.after) for c in changes.files] == [(path, after)]
+    assert written(root, changes) == {path: after}
+    found = [d for d in inventory(root)["."].dependencies if d.direct and d.name == name]
+    assert [d.constraint for d in found] == [new]
+
+
+def test_ruby_requirements_on_several_lines_are_rewritten_by_hand(make_tree: MakeTree) -> None:
+    root = make_tree({"Gemfile": GEMFILE})
+    project, update, _ = choice(inventory(root)["."], "puma", ">= 5.6.9, < 6")
+    (puma,) = update.dependencies
+    assert (puma.constraint, puma.location) == (">= 5.6.4, < 6", None)
+    edit = edit_of(puma, ">= 5.6.9, < 6")
+    changes = writers.prepare(root, [(project, update, option(edit))])
+    assert [s.reason for s in changes.skipped] == [
+        "Gemfile : emplacement de « >= 5.6.4, < 6 » inconnu, à réécrire à la main en "
+        "« >= 5.6.9, < 6 »."
+    ]
+
+
+def test_ruby_pins_go_through_rewrite(make_tree: MakeTree) -> None:
+    """``update.lockfiles`` épingle une version (``= V``) avec ``rewrite`` : les guillemets
+    aussi."""
+    root = make_tree({"Gemfile": GEMFILE})
+    nokogiri = next(d for d in inventory(root)["."].dependencies if d.name == "nokogiri")
+    assert nokogiri.location is not None
+    target = writers.Target(
+        path="Gemfile", location=nokogiri.location, old=nokogiri.constraint, new="= 1.19.4"
+    )
+    (change,) = writers.rewrite(root, [target])
+    assert change.after == GEMFILE.replace('">= 1.19.0", "< 1.20"', '"= 1.19.4"')
+
+
+def test_a_ruby_file_changed_since_the_analysis(make_tree: MakeTree) -> None:
+    root = make_tree({"Gemfile": GEMFILE})
+    picked = choice(inventory(root)["."], "nokogiri", ">= 1.21.2, < 1.22")
+    (root / "Gemfile").write_text(GEMFILE.replace('"< 1.20"', '"< 1.21"'), encoding="utf-8")
+    changes = writers.prepare(root, [picked])
+    assert [s.reason for s in changes.skipped] == [
+        "Gemfile a changé depuis l'analyse : « >= 1.19.0, < 1.20 » n'est plus à la ligne 4."
+    ]

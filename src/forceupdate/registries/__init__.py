@@ -7,8 +7,8 @@ Un client par registre, derrière l'interface de ``base.py``. Pour une session :
         info = await registry.package("lodash")  # PackageInfo
         info.latest  # "4.17.21"
 
-PyPI, npm, crates.io, le proxy Go et Packagist pour l'instant ; les autres registres arrivent avec
-leur étape (E24-E26).
+PyPI, npm, crates.io, le proxy Go, Packagist et RubyGems pour l'instant ; les autres registres
+arrivent avec leur étape (E25, E26).
 """
 
 from forceupdate.models import Ecosystem
@@ -26,6 +26,7 @@ from forceupdate.registries.goproxy import GoProxy
 from forceupdate.registries.npm import Npm
 from forceupdate.registries.packagist import Packagist
 from forceupdate.registries.pypi import PyPI
+from forceupdate.registries.rubygems import RubyGems
 
 __all__ = [
     "PackageInfo",
@@ -42,6 +43,7 @@ _REGISTRIES: dict[Ecosystem, type[Registry]] = {
     Ecosystem.CRATES_IO: Crates,
     Ecosystem.GO: GoProxy,
     Ecosystem.PACKAGIST: Packagist,
+    Ecosystem.RUBYGEMS: RubyGems,
 }
 
 

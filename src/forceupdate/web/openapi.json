@@ -3774,7 +3774,8 @@
           "uv-pip-compile",
           "cargo",
           "go",
-          "composer"
+          "composer",
+          "bundler"
         ],
         "title": "LockKind",
         "description": "Le format d'un lockfile, donc l'outil qui le régénère."

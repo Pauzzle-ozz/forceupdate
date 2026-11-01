@@ -944,12 +944,12 @@ version = "1.0"
         ]
 
     def test_ecosystems_not_read_yet_give_a_notice(self) -> None:
-        project = parse({"Gemfile": "", "requirements.txt": "flask\n"})
+        project = parse({"pom.xml": "", "requirements.txt": "flask\n"})
         assert [d.name for d in project.dependencies] == ["flask"]
         assert project.notices == [
             Notice(
-                file="Gemfile",
-                message="dépendances RubyGems pas encore lues par forceupdate.",
+                file="pom.xml",
+                message="dépendances Maven pas encore lues par forceupdate.",
             )
         ]
 

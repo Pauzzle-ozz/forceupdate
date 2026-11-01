@@ -1,9 +1,9 @@
 """Les parseurs : lire les manifestes et lockfiles d'un projet, et en tirer ses dépendances.
 
-Un module par écosystème : Python (E03), npm (E04), Rust (E21), Go (E22) et PHP (E23) pour
-l'instant, les autres en phase F. Chacun relie les manifestes (dépendances directes, contraintes
-et leur emplacement) aux lockfiles (versions installées, transitives), avec ce qui est commun
-dans ``lockfiles.py``.
+Un module par écosystème : Python (E03), npm (E04), Rust (E21), Go (E22), PHP (E23) et Ruby (E24)
+pour l'instant, les autres en phase F. Chacun relie les manifestes (dépendances directes,
+contraintes et leur emplacement) aux lockfiles (versions installées, transitives), avec ce qui est
+commun dans ``lockfiles.py``.
 """
 
 import posixpath
@@ -11,7 +11,7 @@ from collections.abc import Callable, Sequence
 
 from forceupdate.detect.manifests import ecosystem_for_manifest
 from forceupdate.models import Ecosystem, Notice, Project
-from forceupdate.parsers import go, npm, php, python, rust
+from forceupdate.parsers import go, npm, php, python, ruby, rust
 from forceupdate.parsers.base import ParseError, ReadText
 from forceupdate.parsers.lockfiles import Lockfile
 
@@ -23,6 +23,7 @@ _PARSERS: dict[Ecosystem, Callable[[Project, ReadText, Sequence[str]], None]] = 
     Ecosystem.CRATES_IO: lambda project, read_text, _: rust.parse_project(project, read_text),
     Ecosystem.GO: lambda project, read_text, _: go.parse_project(project, read_text),
     Ecosystem.PACKAGIST: lambda project, read_text, _: php.parse_project(project, read_text),
+    Ecosystem.RUBYGEMS: lambda project, read_text, _: ruby.parse_project(project, read_text),
 }
 
 _LOCKFILE_PARSERS: dict[str, Callable[[str, str], Lockfile]] = {
@@ -37,6 +38,8 @@ _LOCKFILE_PARSERS: dict[str, Callable[[str, str], Lockfile]] = {
     "Cargo.lock": lambda path, text: rust.parse_cargo_lock(path, text).lockfile,
     "go.mod": go.locked_versions,
     "composer.lock": lambda path, text: php.parse_composer_lock(path, text).lockfile,
+    "Gemfile.lock": lambda path, text: ruby.parse_gemfile_lock(path, text).lockfile,
+    "gems.locked": lambda path, text: ruby.parse_gemfile_lock(path, text).lockfile,
 }
 
 

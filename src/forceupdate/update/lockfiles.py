@@ -24,11 +24,13 @@ Lockfile                      Commande de base
 ``go.sum``                    ``go mod tidy`` (``go.mod`` déjà réécrit ; rien n'est compilé)
 ``composer.lock``             ``composer update x:V… -W --no-install --no-scripts
                               --no-plugins`` (rien n'est installé ni exécuté du projet)
+``Gemfile.lock``              ``bundle lock`` (rien n'est installé ; le ``Gemfile`` et les
+                              ``.gemspec`` sont évalués : c'est du Ruby)
 ============================  ===========================================================
 
 Vérifié avec npm 11.6, pnpm 12.15, Yarn 1.22 et 4.18, uv 0.10, Poetry 1.8 et 2.5, PDM 2.29,
 pipenv 2026.10, pip-tools 7.6 (voir les notes de E11 dans ``PLAN.md``), cargo 1.99 (E21), Go 1.27
-(E22) et Composer 2.11 (E23).
+(E22), Composer 2.11 (E23) et Bundler 4.0 (E24).
 
 **Viser la version choisie.** Régénérer garde les versions déjà figées qui satisfont les
 contraintes : une mise à jour par le lockfile seul (la contrainte accepte déjà la version) ne
@@ -55,6 +57,14 @@ bougerait pas. Chaque outil a sa façon de viser un paquet :
   directe comprise), ``COMPOSER_MINIMAL_CHANGES`` rien d'autre. Pas ``update --lock`` : il garde
   une version que la contrainte réécrite n'accepte plus, et refait quand même le ``content-hash``
   (vérifié avec Composer 2.11) ;
+- Bundler de même : ``= V`` à la place de la contrainte (du ``Gemfile`` ou du ``.gemspec``), et
+  ``gem "x", "= V"`` ajouté à la fin du ``Gemfile`` pour une indirecte, le temps d'un ``bundle
+  lock`` ; puis le ``Gemfile`` remis et ``bundle lock`` relancé, qui garde les versions (il ne
+  défait que ce qui ne colle plus au ``Gemfile``). Sans épinglage, ``bundle lock --update x``
+  prend la plus haute version permise, dépendances de x comprises ; ``--conservative`` ne bouge
+  pas celles qu'une autre gem partage. Sous une autre plateforme que celles du lockfile (Windows
+  pour un projet Linux), Bundler ajoute la sienne : elle est retirée ensuite (``--remove-platform``,
+  qui ne change aucune version). Vérifié avec Bundler 4.0.20 ;
 - Yarn et pipenv reprennent la plus haute version que permet la contrainte : ``yarn up -R x``
   (Yarn 2+), l'entrée du paquet retirée du ``yarn.lock`` (Yarn 1, dont ``yarn upgrade``
   réordonne le ``package.json``), et ``pipenv lock``, qui re-résout tout.
@@ -105,7 +115,7 @@ from forceupdate.models import (
     Update,
     UpdateOption,
 )
-from forceupdate.parsers import go, php, python
+from forceupdate.parsers import go, php, python, ruby
 from forceupdate.parsers.base import ParseError, ReadText
 from forceupdate.parsers.json_spans import BOM
 from forceupdate.parsers.lockfiles import Lockfile, dependents, dirname, join
@@ -153,6 +163,7 @@ class LockKind(enum.StrEnum):
     CARGO = "cargo"
     GO = "go"
     COMPOSER = "composer"
+    BUNDLER = "bundler"
 
 
 _TOOL_NAMES = {
@@ -169,6 +180,7 @@ _TOOL_NAMES = {
     LockKind.CARGO: "Cargo",
     LockKind.GO: "Go",
     LockKind.COMPOSER: "Composer",
+    LockKind.BUNDLER: "Bundler",
 }
 
 _PROGRAMS = {
@@ -185,9 +197,11 @@ _PROGRAMS = {
     LockKind.CARGO: "cargo",
     LockKind.GO: "go",
     LockKind.COMPOSER: "composer",
+    LockKind.BUNDLER: "bundle",
 }
 """Le programme de chaque outil, cherché par ``shutil.which`` (sous Windows, ``composer`` est le
-``composer.bat`` de son installateur, qui lance ``php composer.phar``)."""
+``composer.bat`` de son installateur, qui lance ``php composer.phar`` ; ``bundle``, le
+``bundle.bat`` de RubyInstaller)."""
 
 _UV_BUILDS = (
     "uv construit les paquets publiés sans wheel dont il lit les dépendances, et le projet si "
@@ -214,6 +228,10 @@ _RUNS_CODE = {
     LockKind.PIP_COMPILE: (
         "pip-compile construit les paquets publiés sans wheel pour lire leurs dépendances : "
         "leur code de construction s'exécute."
+    ),
+    LockKind.BUNDLER: (
+        "Bundler exécute le Gemfile (c'est du Ruby), ce qu'il charge (eval_gemfile) et les "
+        ".gemspec du projet, de ses gems path: et git: ; aucune option ne l'en empêche."
     ),
 }
 """Ce que l'outil exécute quand même, faute d'option pour l'en empêcher (brief, piège
@@ -400,6 +418,8 @@ def _job(
         warnings += _go_warnings(source.read_text, dirname(path))
     elif kind is LockKind.COMPOSER:
         warnings += _composer_warnings(source.read_text, dirname(path))
+    if kind is LockKind.BUNDLER:
+        warnings += _bundler_warnings(source.read_text, path)
     job = Job(
         lockfile=path,
         kind=kind,
@@ -440,6 +460,8 @@ _KINDS = {
     "Cargo.lock": LockKind.CARGO,
     "go.sum": LockKind.GO,
     "composer.lock": LockKind.COMPOSER,
+    "Gemfile.lock": LockKind.BUNDLER,
+    "gems.locked": LockKind.BUNDLER,
 }
 
 
@@ -562,6 +584,28 @@ def _composer_sets_blocking(config: Mapping[str, Any]) -> bool:
         return True
     audit = config.get("audit")
     return isinstance(audit, dict) and "block-insecure" in audit
+
+
+def _bundler_warnings(read_text: ReadText, lockfile: str) -> list[str]:
+    """Ce que Bundler fera autrement que ne le demande le plan : écarter les versions trop
+    récentes (``cooldown``, Bundler 4 : dans le ``Gemfile``, la configuration du projet ou
+    ``BUNDLE_COOLDOWN``), que forceupdate respecte."""
+    directory = dirname(lockfile)
+    gemfile = _read_quietly(read_text, join(directory, _bundler_gemfile(lockfile))) or ""
+    config = _read_quietly(read_text, join(directory, ".bundle/config")) or ""
+    configured = os.environ.get("BUNDLE_COOLDOWN", "").strip() not in ("", "0")
+    if not (configured or "BUNDLE_COOLDOWN" in config or re.search(r"\bcooldown:", gemfile)):
+        return []
+    return [
+        "Bundler écarte les versions publiées depuis peu (cooldown) : une version visée trop "
+        "récente n'est pas prise, la plus haute permise plus ancienne l'est à sa place."
+    ]
+
+
+def _bundler_gemfile(lockfile: str) -> str:
+    """Le nom du ``Gemfile`` d'un lockfile de Bundler : ``gems.rb`` pour ``gems.locked``."""
+    name = posixpath.basename(lockfile)
+    return next((m for m, lock in ruby.MANIFESTS.items() if lock == name), "Gemfile")
 
 
 def _parents(directory: str) -> list[str]:
@@ -1125,13 +1169,16 @@ _DROPPED_ENV = frozenset(
         "COMPOSER_WITH_ALL_DEPENDENCIES",
         "COMPOSER_IGNORE_PLATFORM_REQ",
         "COMPOSER_IGNORE_PLATFORM_REQS",
+        "BUNDLE_FORCE_RUBY_PLATFORM",
     }
 )
 """Ce qui, hérité de l'environnement de forceupdate, ferait viser un autre projet à l'outil (le
 virtualenv activé, que pipenv et Poetry prendraient pour celui du projet ; ``COMPOSER``, l'autre
 fichier que lirait Composer), lui interdirait d'écrire le lockfile, ou lui ferait choisir
 d'autres versions que celles du plan (``COMPOSER_PREFER_LOWEST`` fait descendre : vérifié avec
-Composer 2.11)."""
+Composer 2.11 ; ``BUNDLE_FORCE_RUBY_PLATFORM`` ajoute la plateforme ``ruby`` au lockfile :
+vérifié avec Bundler 4.0.20). ``BUNDLE_GEMFILE`` et ``BUNDLE_LOCKFILE`` sont remplacés
+(``_bundler_environment``)."""
 
 _ADDED_ENV = {
     "NO_COLOR": "1",
@@ -1228,15 +1275,21 @@ class _Context:
         found = (u.name for _, u, _ in self.job.choices if direct is None or u.direct == direct)
         return list(dict.fromkeys(found))
 
-    def run_pinned(self, exact: Callable[[str], str], *arguments: str) -> bool:
+    def run_pinned(
+        self,
+        exact: Callable[[str], str],
+        *arguments: str,
+        appended: Mapping[str, str] | None = None,
+    ) -> bool:
         """Lance ``arguments`` avec, à la place des contraintes, la version choisie écrite par
-        ``exact`` (``pins``), puis remet les contraintes. Faux s'il n'y a rien à épingler, ou si
-        l'épinglage échoue : la raison va dans ``warnings``."""
+        ``exact`` (``pins``), et le texte de ``appended`` ajouté à la fin de ses fichiers (des
+        indirectes épinglées : ``gem "x", "= V"`` pour Bundler), puis remet les fichiers. Faux
+        s'il n'y a rien à épingler, ou si l'épinglage échoue : la raison va dans ``warnings``."""
         targets = self.pins(exact)
-        if not targets:
+        if not targets and not appended:
             return False
         try:
-            files = writers.rewrite(self.root, targets)
+            files = _appended(self.root, writers.rewrite(self.root, targets), appended or {})
             writers.write(self.root, Changes(files=files))
         except (Refused, writers.WriteError) as err:
             self.warnings.append(f"Versions exactes pas écrites ({err}) : régénéré sans.")
@@ -1314,6 +1367,29 @@ def _override_pins(project: Project, edit: Edit, new: str) -> list[Target]:
         and found.location is not None
         and found.constraint != new
     ]
+
+
+def _appended(
+    root: Path, files: Sequence[FileChange], appended: Mapping[str, str]
+) -> tuple[FileChange, ...]:
+    """``files``, avec le texte de ``appended`` à la fin de ses fichiers (après une fin de ligne,
+    celles du fichier). Lève ``Refused`` pour un fichier illisible."""
+    changes = {change.path: change for change in files}
+    for path, text in appended.items():
+        change = changes.get(path)
+        if change is None:
+            try:
+                before = (root / path).read_bytes().decode("utf-8")
+            except (OSError, UnicodeDecodeError) as err:
+                raise Refused(f"{path} : illisible ({err}).") from err
+            change = FileChange(path=path, before=before, after=before, diff="")
+        newline = "\r\n" if "\r\n" in change.after else "\n"
+        after = change.after
+        if after and not after.endswith("\n"):
+            after += newline
+        after += text.replace("\n", newline)
+        changes[path] = dataclasses.replace(change, after=after)
+    return tuple(changes.values())
 
 
 def _lockfile_only(job: Job) -> list[str]:
@@ -1690,6 +1766,83 @@ def _composer_environment(context: _Context) -> dict[str, str]:
     return env
 
 
+class _Bundler(_Driver):
+    def manual(self, job: Job) -> list[str]:
+        """Une mise à jour dont la contrainte n'a pas changé, ou une indirecte : ``bundle lock
+        --update x --conservative`` (la plus haute version permise). Sinon ``bundle lock``, qui
+        défait ce qui ne colle plus au ``Gemfile`` réécrit."""
+        names = _lockfile_only(job)
+        if names:
+            return ["bundle", "lock", "--update", *names, "--conservative"]
+        return ["bundle", "lock"]
+
+    def run(self, context: _Context) -> None:
+        job = context.job
+        context.env.update(_bundler_environment(context.root, job))
+        before = _bundler_lock(context)
+        gemfile = join(job.directory, _bundler_gemfile(job.lockfile))
+        indirect = {u.name: o.version for _, u, o in job.choices if not u.direct}
+        text = _read_quietly(context.source.read_text, gemfile) or ""
+        appendable = re.search(r"^__END__\s*$", text, re.MULTILINE) is None and all(
+            _GEM_NAME.fullmatch(name) and _GEM_VERSION.fullmatch(version)
+            for name, version in indirect.items()
+        )
+        lines = "".join(f'gem "{name}", "= {version}"\n' for name, version in indirect.items())
+        appended = {gemfile: lines} if lines and appendable else {}
+        if context.run_pinned(lambda version: f"= {version}", "lock", appended=appended):
+            names = [] if appended or not indirect else list(indirect)
+        else:
+            names = _lockfile_only(job)
+        if names:
+            context.run("lock", "--update", *names, "--conservative")
+        context.run("lock")
+        after = _bundler_lock(context)
+        if before is None or after is None:
+            return
+        added = [platform for platform in after.platforms if platform not in before.platforms]
+        if added:
+            context.run("lock", "--remove-platform", *added)
+        for label, was, now in (
+            ("BUNDLED WITH", before.bundled_with, after.bundled_with),
+            ("RUBY VERSION", before.ruby_version, after.ruby_version),
+        ):
+            if was != now and now is not None:
+                context.warnings.append(
+                    f"Bundler a changé {label} dans le lockfile : {was or 'absent'} → {now}."
+                )
+
+
+_GEM_NAME = re.compile(r"[A-Za-z0-9._-]+")
+"""Un nom de gem (``Gem::Specification::VALID_NAME_PATTERN``) : rien qu'une ligne ajoutée au
+``Gemfile`` puisse exécuter. Une indirecte au nom plus étrange passe par ``--update``."""
+_GEM_VERSION = re.compile(r"[0-9]+(?:\.[0-9A-Za-z]+)*")
+
+
+def _bundler_lock(context: _Context) -> ruby.GemfileLock | None:
+    """Le lockfile de Bundler du travail, relu ; ``None`` s'il est absent ou illisible."""
+    path = context.job.lockfile
+    content = _read_quietly(context.source.read_text, path)
+    if content is None:
+        return None
+    try:
+        return ruby.parse_gemfile_lock(path, content)
+    except ParseError:
+        return None
+
+
+def _bundler_environment(root: Path, job: Job) -> dict[str, str]:
+    """Le ``Gemfile`` et le lockfile du projet, quoi que disent ``BUNDLE_GEMFILE`` et
+    ``BUNDLE_LOCKFILE`` hérités : sinon Bundler en lirait ou en écrirait d'autres (vérifié avec
+    Bundler 4.0.20). ``BUNDLE_FROZEN`` et ``BUNDLE_DEPLOYMENT`` n'empêchent pas ``bundle lock``
+    d'écrire ; ``BUNDLE_COOLDOWN``, les miroirs et les identifiants d'un serveur privé restent
+    ceux de la personne."""
+    directory = root / job.directory
+    return {
+        "BUNDLE_GEMFILE": str(directory / _bundler_gemfile(job.lockfile)),
+        "BUNDLE_LOCKFILE": str(root / job.lockfile),
+    }
+
+
 _DRIVERS: dict[LockKind, _Driver] = {
     LockKind.NPM: _Npm(),
     LockKind.PNPM: _Pnpm(),
@@ -1704,4 +1857,5 @@ _DRIVERS: dict[LockKind, _Driver] = {
     LockKind.CARGO: _Cargo(),
     LockKind.GO: _Go(),
     LockKind.COMPOSER: _Composer(),
+    LockKind.BUNDLER: _Bundler(),
 }

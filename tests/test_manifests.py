@@ -56,6 +56,11 @@ class TestEcosystemMapping:
             # Ajoutés à E22 : les workspaces Go
             ("go.work", "Go"),
             ("go.work.sum", "Go"),
+            # Ajoutés à E24 : l'autre nom du Gemfile, le .gemspec d'une gem
+            ("gems.rb", "RubyGems"),
+            ("gems.locked", "RubyGems"),
+            ("demo.gemspec", "RubyGems"),
+            ("Gemfile", "RubyGems"),
         ],
     )
     def test_ecosystem(self, tmp_path: Path, filename: str, expected: str | None) -> None:
@@ -294,6 +299,36 @@ class TestGroupProjects:
         lockfiles = {p.path: p.lockfiles for p in projects}
         assert lockfiles["libs/core"] == ["uv.lock"]
         assert lockfiles["crates/cli"] == ["Cargo.lock"]
+
+    def test_a_bundler_path_gem_takes_the_lockfile_of_the_gemfile_above(self) -> None:
+        """Une gem ``path:`` (un ``.gemspec`` sans ``Gemfile``) prend le lockfile du plus proche
+        dossier parent qui a un ``Gemfile`` ; son parseur dit si elle en est membre (E24)."""
+        projects = group_projects(
+            [
+                "Gemfile",
+                "Gemfile.lock",
+                "demo.gemspec",
+                "engines/admin/admin.gemspec",
+                "tools/gems.rb",
+                "tools/gems.locked",
+                "tools/lint/lint.gemspec",
+                "gems/own/own.gemspec",
+                "gems/own/Gemfile.lock",
+            ]
+        )
+        lockfiles = {p.path: p.lockfiles for p in projects}
+        assert lockfiles == {
+            ".": ["Gemfile.lock"],
+            "engines/admin": ["Gemfile.lock"],
+            "gems/own": ["gems/own/Gemfile.lock"],
+            "tools": ["tools/gems.locked"],
+            "tools/lint": ["tools/gems.locked"],
+        }
+        assert {p.path: p.manifests for p in projects}["."] == ["Gemfile", "demo.gemspec"]
+
+    def test_a_gemspec_without_a_gemfile_above_has_no_lockfile(self) -> None:
+        projects = group_projects(["demo.gemspec", "Gemfile.lock", "sub/sub.gemspec"])
+        assert {p.path: p.lockfiles for p in projects}["sub"] == []
 
     def test_poetry_lockfile_is_not_shared(self) -> None:
         projects = group_projects(["pyproject.toml", "poetry.lock", "docs/pyproject.toml"])

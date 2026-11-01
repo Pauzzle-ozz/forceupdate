@@ -117,7 +117,7 @@ Statuts : `à faire`, `en cours`, `fait`.
 | E21 | F. Autres écosystèmes | Rust (crates.io) | fait |
 | E22 | F | Go | fait |
 | E23 | F | PHP (Composer) | fait |
-| E24 | F | Ruby (Bundler) | à faire |
+| E24 | F | Ruby (Bundler) | fait |
 | E25 | F | Java (Maven, Gradle) | à faire |
 | E26 | F | .NET (NuGet) | à faire |
 | E27 | G. Compléments | Fin de vie des runtimes et frameworks | à faire |
@@ -1360,6 +1360,15 @@ pour Go, une contrainte de `conflict` pour Composer) : `checks.base.is_excluded`
 constat « plus récente », la version permise et le planificateur. Les tests qui disaient un
 écosystème « pas encore géré » prennent RubyGems : à E24, les passer à Maven.
 
+Depuis E24 (voir ses notes) : une contrainte peut s'écrire autrement qu'elle ne se lit
+(`update.writers._WRITTEN` : Ruby, une chaîne par contrainte, jointes par `, `) ;
+`_Context.run_pinned(…, appended=)` ajoute du texte à la fin d'un fichier le temps d'un passage
+(une ligne `gem "x", "= V"` pour épingler une indirecte) ; `detect.manifests.WORKSPACE_ROOTS`
+rattache un membre au lockfile d'un parent dont le manifeste n'est pas le sien (une gem `path:`,
+un `.gemspec` sous un `Gemfile`) ; `tests/fake_bundler.py` sert un faux outil à deux fichiers de
+tests. Les tests qui disaient un écosystème « pas encore géré » prennent Maven : à E25, les
+passer à NuGet.
+
 **Fini quand**, pour chaque étape : sur un mini-projet de l'écosystème, l'analyse
 et la mise à jour donnent un résultat juste, dans l'interface et en ligne de
 commande. Si l'outil natif n'est pas installé sur la machine, la régénération du
@@ -1613,14 +1622,157 @@ lockfile est testée avec une commande simulée, et c'est noté.
 
 ### E24 — Ruby (Bundler)
 
-- [ ] Reprendre `parse_gemfile_lock` et ses tests.
-- [ ] Ajouter `Gemfile`, lu par motifs : c'est du Ruby, on ne l'exécute pas. À lire :
+- [x] Reprendre `parse_gemfile_lock` et ses tests.
+- [x] Ajouter `Gemfile`, lu par motifs : c'est du Ruby, on ne l'exécute pas. À lire :
   - `gem "nom", "~> 1.2"` ;
   - les groupes (`group :development`) ;
   - `gemspec`.
-- [ ] Versions : `Gem::Version` (segments, `.pre`) et `~>`.
-- [ ] Registre : RubyGems (`/api/v1/versions/<nom>.json`).
-- [ ] Réécriture du `Gemfile` ; lockfile : `bundle lock --update <nom>`. Prévenir que Bundler évalue le `Gemfile`, donc exécute du code du projet.
+- [x] Versions : `Gem::Version` (segments, `.pre`) et `~>`.
+- [x] Registre : RubyGems ~~(`/api/v1/versions/<nom>.json`)~~ (l'index compact de Bundler, `index.rubygems.org/info/<nom>` : voir les notes).
+- [x] Réécriture du `Gemfile` ; lockfile : ~~`bundle lock --update <nom>`~~ `bundle lock`, chaque version épinglée le temps d'un passage (voir les notes). Prévenir que Bundler évalue le `Gemfile`, donc exécute du code du projet.
+- [x] Ajoutés en route : `gems.rb` et `gems.locked` (les autres noms de Bundler) ; le `.gemspec` comme manifeste (`*.gemspec`), seul ou cité par `gemspec` ; une gem `path:` résolue dans le `Gemfile.lock` du `Gemfile` qui la cite (`WORKSPACE_ROOTS`) ; versions à plateforme ; sources à part, git et plugins non vérifiables ; `platforms` sans gem dans le lockfile ; OSV `RubyGems` ; styles de contrainte Ruby (`~>` garde sa précision, plancher `, >= V`) ; une contrainte en plusieurs chaînes réécrite avec ses guillemets (`writers._WRITTEN`) ; la plateforme que Bundler ajoute, retirée ; mini-projet `bundler` fait par le vrai Bundler, réponses enregistrées de RubyGems (`tests/fixtures/rubygems/`), faux Bundler partagé (`tests/fake_bundler.py`).
+
+**Notes** (session 24) :
+
+- **Commit d'abord** : E23 était déjà commitée (`8d52d26`, arbre propre) : rien à proposer. **Ruby
+  installé** avec l'accord de l'utilisateur : RubyInstaller 4.0.9-1 (x64, l'archive 7z sans
+  devkit), SHA-256 vérifié deux fois (GitHub et rubyinstaller.org), dépliée par le `tar` de Windows
+  dans `~/sdk/ruby-4.0.9`, hors du `PATH` (voir CLAUDE.md) : Ruby 4.0.9, RubyGems et Bundler 4.0.20.
+  Les essais ont mis `BUNDLE_USER_HOME`, `GEM_HOME` et `GEM_SPEC_CACHE` dans le scratchpad.
+- **Vérifié contre le vrai RubyGems et le vrai Bundler** (4.0.20), avant d'écrire :
+  - **les règles de version** : `versions/rubygems.py` réécrit `Gem::Version` et `Gem::Requirement`
+    (lus dans RubyGems 4.0.20) ; comparé au vrai, lancé par Ruby, sur 6 013 versions (l'index compact
+    de 39 gems, et des cas limites), 90 926 paires et 221 contraintes (1,27 million de tests) :
+    **aucun écart** ; trois mutations (borne de `~>`, mot avant nombre, zéros de fin) en donnent 22,
+    7 538 et 1 315 : la comparaison mord. Puis **25 choix de `bundle lock`** sur rack et mustermann
+    reproduits (`BUNDLER_CHOICES`) : la plus haute permise, une pré-version seulement si la
+    contrainte en nomme une ;
+  - **Bundler résout pour le Ruby qui tourne** : minitest 5.15 (Ruby < 4.0) est refusé sous Ruby
+    4.0.9 ; les versions anciennes du mini-projet ont été choisies en conséquence (E27) ;
+  - **`bundle lock --update x`** prend la plus haute version permise, et débloque aussi les
+    dépendances de x (racc a suivi nokogiri) ; `--conservative` laisse celles qu'une autre gem
+    partage ; une contrainte réécrite sans épinglage donne aussi la plus haute. **Bundler ne sait pas
+    viser une version sans toucher au `Gemfile`** : `= V` le temps d'un `bundle lock`, puis la
+    contrainte remise et `bundle lock` relancé garde V (directe, `.gemspec`, et indirecte par une
+    ligne `gem "x", "= V"` ajoutée puis retirée, `DEPENDENCIES` redevenant celle du `Gemfile`) ;
+    l'épinglage ne bouge pas les dépendances (racc reste) ; `--update` d'une gem absente : code 7 ;
+  - **ce que Bundler exécute** : quatre témoins (dans le `Gemfile`, un fichier d'`eval_gemfile`, le
+    `.gemspec` du projet, celui de la gem `path:`) ont tous écrit leur fichier pendant `bundle
+    lock` : aucune option ne l'empêche. Les crochets des plugins ne tournent qu'à l'installation
+    (`bundle lock` n'installe pas le `plugin` d'un `Gemfile`) ; une source de plugin (`source …,
+    type:`) charge le sien ;
+  - **l'environnement** : `BUNDLE_FROZEN` et `BUNDLE_DEPLOYMENT` (environnement ou `.bundle/config`)
+    n'empêchent pas `bundle lock` d'écrire (il pose `frozen: false`) ; `BUNDLE_GEMFILE` lui fait lire
+    un autre `Gemfile`, `BUNDLE_LOCKFILE` écrire un autre lockfile : remplacés par ceux du projet ;
+    `BUNDLE_FORCE_RUBY_PLATFORM` ajoute la plateforme `ruby` : retiré ; `BUNDLE_COOLDOWN` (Bundler 4)
+    écarte les versions récentes (l'épinglage échoue, code 7) : respecté, et dit dans le plan ; la
+    configuration du projet (`.bundle/config`) passe devant l'environnement ;
+  - **les plateformes** : sous Windows, `bundle lock` ajoute `x64-mingw-ucrt` à un lockfile qui ne
+    l'a pas (Linux seul, ou `ruby` seul), avec ses gems à plateforme ; `bundle lock
+    --remove-platform` ensuite ne change aucune version (dans la même commande, il re-résout) ; une
+    plateforme absente : code 15 ;
+  - **`BUNDLED WITH`** prend la version du Bundler qui tourne (2.4.10 → 4.0.20, et 9.9.9 → 4.0.20)
+    ; `bundle lock` ne change pas de Bundler (seul `bundle install` le fait) ; `RUBY VERSION` suit la
+    directive `ruby` (écrite à la version qui tourne si elle manque, gardée si elle est là, retirée
+    sans directive) ; `ruby "3.3.6"` n'empêche pas `bundle lock` sous Ruby 4.0 ;
+  - **le lockfile** : une section `GEM` par source (`source "https://gem.coop" do` en donne une
+    seconde, la gem marquée `!` dans `DEPENDENCIES`), `PATH` (`remote: .` pour le `gemspec`, dont les
+    dépendances de dev sont dans `DEPENDENCIES`), `PLATFORMS`, `DEPENDENCIES` (deux déclarations
+    d'une gem fondues : `diff-lcs (~> 1.4, = 1.4.4)`), `CHECKSUMS` (Bundler 4), `BUNDLED WITH` ; une
+    gem à plateforme `nokogiri (1.19.0-x86_64-linux-gnu)` sous `PLATFORMS x86_64-linux`. La section
+    `GIT` n'a pas pu être produite en vrai (cloner un dépôt externe, dont Bundler évalue le
+    `.gemspec`, n'a pas été permis pendant la session) : ses tests suivent le `LockfileParser` de
+    Bundler ;
+  - **RubyGems** : l'index compact (`index.rubygems.org/info/{nom}`, celui que lit Bundler), huit
+    fois plus léger que l'API v1 (186 Ko pour nokogiri, 1,4 Mo pour l'API), une ligne par version et
+    plateforme, `created_at` même pour 2009, 404 pour une gem inconnue, `max-age=60`. Les versions
+    retirées (rest-client 1.6.10 à 1.6.13) sont absentes de l'index comme de l'API v1, et l'API v2
+    répond 404 pour elles : un retrait ne se distingue pas d'une version jamais publiée ;
+  - **OSV** : l'écosystème `RubyGems`, le nom tel qu'écrit, la version sans plateforme ; nokogiri
+    1.19.0 : 11 avis, corrigés en 1.19.1, 1.19.3 et 1.19.4 ; rack 2.2.3 : 32, dont une correction à
+    quatre nombres (2.2.8.1).
+- **Organisation** :
+  - `versions/rubygems.py` (`RUBYGEMS`, `GemVersion`, `GemRequirement`) ; `parsers/ruby_spans.py`
+    (un lexer de Ruby : chaînes, symboles, étiquettes, `%w[]`/`%i[]`, heredocs, expressions
+    régulières, `=begin`, `__END__`, et les instructions) ; `parsers/ruby.py` (`parse_gemfile`,
+    `parse_gemspec`, `parse_gemfile_lock` → `GemfileLock`, `parse_project`, `is_rubygems`, les
+    `REASON_*`, `MANIFESTS`) ; `registries/rubygems.py` (`RubyGems`, `parse_info`) ;
+    `update/writers/ruby.py` (`read_gemfile`, `read_gemspec`, `written_target`) ;
+    `update/lockfiles.py` : `LockKind.BUNDLER`, `_Bundler`, `_bundler_environment`,
+    `_bundler_warnings`, `_appended`, `_Context.run_pinned(…, appended=)` ;
+  - `detect/manifests.py` : `gems.rb`, `gems.locked`, `*.gemspec`, `WORKSPACE_ROOTS` ;
+    `update/constraints.py` : opérateurs RubyGems, `~>` qui garde sa précision, `>= ` du plancher ;
+    `update/writers/__init__.py` : `_WRITTEN` ; `openapi.json` et `schema.d.ts` (`LockKind` :
+    `bundler`).
+- **Tranché** :
+  - **une contrainte Ruby** s'écrit comme dans `Gemfile.lock` (`>= 1.19.0, < 1.20`) ; son
+    emplacement couvre toutes ses chaînes d'une ligne, guillemets intérieurs compris, et
+    `written_target` passe d'une forme à l'autre (séparateurs et guillemets du fichier, une
+    contrainte ajoutée ou retirée) ; plusieurs chaînes sur plusieurs lignes : à réécrire à la main ;
+  - **`~>` garde toujours sa précision** (le nombre de nombres y fixe la borne haute) : `~> 2.2.3`
+    vers 2.2.8.1 donne `~> 2.2.8`, et `~> 2.2.8, >= 2.2.8.1` pour une faille (la forme des avis de
+    Rails) ; `=` et une version nue sont exactes ;
+  - **le `Gemfile` est lu par motifs** (jetons, blocs `do … end`, conditions), jamais exécuté :
+    groupes `development` et `test` seuls : `dev` ; un groupe `optional: true` : `optional` ; git,
+    chemin, autre serveur (source à part), plugin : non vérifiables ; une gem `platforms:` absente du
+    lockfile : non vérifiable ; la source globale n'est pas distinguée (un miroir est cherché sur
+    rubygems.org) ; `gemspec` lit le `.gemspec` du dossier (`name:` le choisit) ; un `.gemspec` que
+    le `Gemfile` ne cite pas, `eval_gemfile`, une condition, une variable : une remarque (la
+    contrainte d'une variable vient de `DEPENDENCIES`, à réécrire à la main) ;
+  - **une gem `path:`** (un `.gemspec` sans `Gemfile`, citée par le `Gemfile` d'un dossier parent)
+    est résolue dans le `Gemfile.lock` de ce parent, comme un membre de workspace ; un `.gemspec`
+    qu'aucun `Gemfile` ne cite est une gem sans lockfile ;
+  - **une version à plateforme** est lue sans sa plateforme (avant le premier `-`, comme Bundler) ;
+    ses variantes ne font qu'une version, au lockfile comme au registre ;
+  - **la régénération** : `bundle lock`, avec `BUNDLE_GEMFILE` et `BUNDLE_LOCKFILE` du projet, sans
+    `BUNDLE_FORCE_RUBY_PLATFORM` ; directes (`Gemfile`, `.gemspec`) et indirectes épinglées le temps
+    d'un passage, puis `bundle lock` ; un épinglage refusé : `bundle lock --update … --conservative`
+    ; pas de ligne ajoutée après `__END__` ni pour un nom qui n'est pas celui d'une gem (il deviendrait
+    du Ruby) ; la plateforme ajoutée par Bundler est retirée ; un changement de `BUNDLED WITH` ou de
+    `RUBY VERSION` est dit ; la commande à la main : `bundle lock --update x… --conservative` ;
+  - **`bundler` lui-même**, déclaré dans un `Gemfile` : non vérifiable (sa version est celle de
+    `BUNDLED WITH`) ;
+  - **les réponses enregistrées** : 23 gems (`PACKAGES["rubygems"]`, 568 Ko) ; pour OSV, les 22
+    versions du mini-projet ajoutées à `queries.json` avec leurs 51 avis, rien d'autre de changé.
+- **Trouvé** :
+  - la gem `path:` d'abord vue comme un projet à part, sans lockfile : sa contrainte réécrite
+    (json `>= 2.21.2`) faisait monter json à 3.1.0 dans le `Gemfile.lock` de la racine, que Bundler
+    résout avec elle ; d'où le rattachement (ci-dessus) ;
+  - une expression régulière en fin de ligne (`=~ /darwin/`) faisait continuer l'instruction sur la
+    ligne suivante : le lexer la lit comme un littéral ;
+  - le plancher s'écrivait `>=4.2.1` : `>= 4.2.1` pour Ruby ;
+  - le heredoc a encore réduit `\\n` (CLAUDE.md le dit) : les scripts passent par l'outil d'écriture.
+- **Tests** : `test_versions_rubygems.py` (191 : l'ordre, les égalités, les pré-versions, la
+  normalisation, les refusées, `~>` et les contraintes relevés sur RubyGems, `bump`, `release`,
+  écarts, bornes, et les 25 choix de `bundle lock`) ; `test_parsers_ruby.py` (32, dont
+  `test_specs_section` repris de `reference/`) ; `test_registries_rubygems.py` (10, plus 1 réseau) ;
+  `test_ruby_projects.py` (6 : inventaire, constats, plan, `scan` et `update` en ligne de commande,
+  Bundler simulé) ; `test_lockfiles.py` (12 : plan, versions visées et environnement, épinglage
+  refusé, plateforme retirée et `BUNDLED WITH`, `__END__`, nom étrange, `cooldown`, échec remis ;
+  plus le vrai Bundler en `network`, sur un lockfile privé de la plateforme de la machine) ;
+  `test_writers.py` (10), `test_update_constraints.py` (23), `test_manifests.py` (6) ; le
+  mini-projet passe aussi par les tests des sources GitHub, GitLab et Bitbucket et de la réécriture ;
+  les tests qui prenaient RubyGems pour « pas encore géré » prennent Maven. 3133 tests Python verts
+  (plus 17 réseau, avec les vrais Bundler, Composer, go, cargo, npm, uv, pnpm), ruff propre ; 141
+  Vitest ; 49 Playwright.
+- **Vérifié à la main**, sur des copies dans le scratchpad, avec le vrai RubyGems, OSV et Bundler :
+  `forceupdate scan` (51 failles, nokogiri à plateforme, la gem locale non vérifiable) ;
+  `forceupdate update --yes` (11 mises à jour, toutes à la version exacte, json de la gem locale
+  compris ; rack-protection et rspec-* montés parce que sinatra et rspec l'exigent, et dits ; le
+  `Gemfile` et les `.gemspec` remis ; un témoin ajouté au `Gemfile` a bien tourné, comme le plan le
+  dit), puis l'analyse relancée (plus que les majeures et les quatre failles qu'elles seules
+  corrigent) ; `forceupdate ui` piloté par Playwright : rapport, écran 5 (11 cochées, 47 failles
+  corrigées sur 51), plan (diff du `Gemfile`, « bundle trouvé », la commande, l'avertissement),
+  application : 11 « version exacte », « Aussi changé dans le lockfile », sans erreur de console.
+- **Limites** : la version permise ne tient pas compte du Ruby que demande une version
+  (`required_ruby_version` : Bundler l'écarte ; E27) ; le `Gemfile` est lu par motifs : une
+  condition ou une variable n'est pas évaluée, le fichier d'un `eval_gemfile` n'est pas lu ;
+  plusieurs chaînes sur plusieurs lignes ne se réécrivent pas ; une indirecte qui ne s'épingle pas
+  monte à la plus haute permise ; une gem retirée est « inconnue du registre », sans raison ; `git:`
+  et une source à part ne sont pas vérifiés, la section `GIT` est testée d'après le code de Bundler ;
+  `gemspec path:` d'un autre dossier est lu avec son propre projet ; `vendor/cache` n'est pas
+  refait ; sous une directive `ruby` sans section `RUBY VERSION`, Bundler y écrit le Ruby de la
+  machine (dit après coup).
 
 ### E25 — Java (Maven, Gradle)
 
@@ -1673,7 +1825,8 @@ lockfile est testée avec une commande simulée, et c'est noté.
 - [ ] Client endoflife.date (cache 24 h). Constat `EOL` dans deux cas : fin de vie passée, ou dans moins de 6 mois. Il donne la date et le cycle conseillé.
 - [ ] Pas de mise à jour automatique d'un runtime (signalé seulement). Un framework monte comme toute autre dépendance.
 - [ ] Versions qui demandent un Node plus récent : `npm outdated` écarte celles dont `engines.node` exclut le Node installé (E07 : jsdom 30 demande `^24.15.0`, il ne la propose pas sous Node 24.12). forceupdate les propose. Une fois connue la version de Node du projet, dire quand la version proposée en demande une plus récente (garder `engines` de chaque version dans `registries/npm.py` et son cache).
-- [ ] Depuis E23 : de même pour PHP. Composer refuse une version dont le `require.php` exclut le PHP du projet (`config.platform.php`, sinon la machine) : `composer outdated` propose symfony/console 6.4.49 sous PHP 8.1.30, forceupdate v8.1.10, qui demande PHP 8.4 (et la mise à jour échoue). Garder le `require.php` de chaque version (les métadonnées `p2` le donnent) et dire, ou écarter, celles qui ne conviennent pas au PHP du projet.
+- [ ] Depuis E23 : de même pour PHP. Composer refuse une version dont le `require.php` exclut le PHP du projet (`config.platform.php`, sinon la machine) : `composer outdated` propose symfony/console 6.4.49 sous PHP 8.1.
+- [ ] Depuis E24 : de même pour Ruby. Bundler écarte une version dont le `required_ruby_version` exclut le Ruby qui tourne (minitest 5.15 demande Ruby < 4.0) ; l'index compact de RubyGems le donne pour chaque version (`ruby:< 4.1.dev&>= 3.2`), pas encore lu. La directive `ruby` du `Gemfile` et la section `RUBY VERSION` du `Gemfile.lock` disent la version du projet.30, forceupdate v8.1.10, qui demande PHP 8.4 (et la mise à jour échoue). Garder le `require.php` de chaque version (les métadonnées `p2` le donnent) et dire, ou écarter, celles qui ne conviennent pas au PHP du projet.
 - [ ] Interface : les fins de vie apparaissent dans le rapport (écran 4), avec la date et le cycle conseillé.
 
 **Fini quand** : un projet Python 3.8 + Django 3.2 + Node 16 sort trois constats
@@ -1852,3 +2005,4 @@ En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.
 | 21 | 2026-10-30 | E21 | Fait. Commit de E20 d'abord (accord de l'utilisateur) ; cargo installé avec son accord (rustup, cargo 1.99.1). `parsers/rust.py` (repris de `reference/` : `Cargo.toml` en toutes ses formes, plateformes, renommages, git, chemins, autres registres, `workspace = true` lu dans `[workspace.dependencies]` de la racine via `resolved_constraint`, membres et `exclude` ; `Cargo.lock` 1 à 4 en graphe, dépendances de build figées), `versions/cargo.py` (le crate `semver` de Cargo réécrit : **26 choix de cargo reproduits**), `registries/crates.py` (index « sparse », `yanked`, `pubtime`), OSV `crates.io` (RUSTSEC et GHSA, versions corrigées justes), styles de contrainte Cargo, `writers/rust.py` (la racine réécrite comme un catalogue pnpm), pilote cargo. Trouvé en vrai : **`--precise` ignoré quand la contrainte réécrite n'accepte plus la version figée** (directe épinglée `=V` le temps d'un `cargo update --workspace`, `--precise` pour une indirecte) ; `build.rs` ne tourne pas, mais `rustc -vV` oui avec le résolveur 3 (`RUSTC`, `RUSTC_WRAPPER` vide) ; rustup installe et lance la chaîne d'outils d'un `rust-toolchain.toml` (dit dans le plan). Corrigé en route : le récapitulatif de l'écran 5 citait le manifeste d'un catalogue au lieu du fichier réécrit (pnpm aussi). Mini-projets `cargo` et `cargo-workspace` (lockfiles de cargo). Vérifié à la main avec le vrai cargo : `scan`, `update` et `ui` sur des copies, versions exactes. 2377 tests Python (plus 11 réseau), 139 Vitest, 49 Playwright. Cases ajoutées à E29 et à la phase F |
 | 22 | 2026-10-30 | E22 | Fait. E21 déjà commitée. Go installé avec l'accord de l'utilisateur (winget bloqué par une autre installation : l'archive officielle de Go 1.27.3, vérifiée, dans `~/sdk`). `versions/go.py` (semver à `v`, pseudo-versions, `+incompatible`, chemins de majeure ; l'ordre de `golang.org/x/mod` reproduit), `parsers/go.py` (un lexer comme celui de `modfile` : `require` en ligne et en bloc avec emplacements, `// indirect`, `replace` local ou vers un module, `exclude`, `retract`, dépréciation ; `go.work` et ses membres), `registries/goproxy.py` (liste, `go.mod` de la dernière pour les retraits et la dépréciation, `@latest`, chemins encodés, 404/410, majeure suivante sous son chemin), OSV `Go`, `writers/go.py`, pilote `go mod tidy`. Tranché : la version de `go.mod` est la version utilisée (une contrainte n'accepte qu'elle) ; une indirecte se réécrit dans `go.mod` ; une majeure est un autre module, proposée « à la main » avec `go get …/vN` ; `go mod tidy` plutôt que `go get` (vérifié : `go get` pour descendre retire d'autres modules). Trouvé en vrai : tidy relève la directive `go` (et l'écrit, à la version installée, s'il n'y en a pas) ; `GOTOOLCHAIN=auto` télécharge un autre Go (`local` passé) ; `GOFLAGS=-modfile=` détourne tidy (neutralisé) ; un `vendor/` devient périmé (dit) ; une version exclue fait sauter tidy à la dernière (jamais proposée). Corrigé en route : la « dernière » ignore les versions exclues ; deux libellés de l'écran 5 (avec le skill `ui-ux-pro-max`) ; un double point de `forceupdate update` depuis E10. Mini-projets `go` et `go-workspace` (faits par `go`). Vérifié à la main avec le vrai `go` : `scan`, `update` (versions exactes, `go build`, `go mod tidy -diff` sans rien à changer) et `ui` sur des copies. 2551 tests Python (plus 13 réseau), 141 Vitest, 49 Playwright. Cases ajoutées à E29 |
 | 23 | 2026-10-30 | E23 | Fait. Commit de E22 d'abord (accord de l'utilisateur) ; PHP 8.5.12 et Composer 2.11.0 installés avec son accord (archives officielles vérifiées, dans `~/sdk`). `versions/composer.py` (`VersionParser` de composer/semver et l'ordre de `version_compare` réécrits : **aucun écart** sur 1 282 versions, 19 600 paires et 99 contraintes ; **22 choix de `composer update` reproduits**), `parsers/php.py` (repris de `reference/` : contraintes telles qu'écrites et emplacements, noms en minuscules, paquets « plateforme », branches, `replace`/`provide`, `conflict`, dépôts `path` et autres d'après le lockfile ; `composer.lock` en graphe), `registries/packagist.py` (`p2` minifié, `abandoned` et son remplaçant), OSV `Packagist`, styles de contrainte (`~1.2` jusqu'à 2.0), `writers/php.py`, pilote `composer update x:V… -W --no-install --no-scripts --no-plugins`. Trouvé en vrai : `update --lock` garde une version que la contrainte n'accepte plus (jamais utilisé) ; `-W` nécessaire, `COMPOSER_MINIMAL_CHANGES` pour rien d'autre ; scripts et plugins lancés sans `--no-scripts`/`--no-plugins` (témoins) ; `COMPOSER_PREFER_LOWEST` fait descendre (retiré) ; **Composer 2.9+ refuse toute version qui garde une faille** : tranché avec l'utilisateur, levé pour les failles seules (`COMPOSER_POLICY_ADVISORIES_BLOCK=0`) sauf réglage du projet ou de la personne. `Dependency.excluded` devient des contraintes (`is_excluded`) ; corrigé en route : la version permise ignorait les versions exclues. Mini-projet `composer` (lockfile de Composer). Vérifié à la main avec le vrai Composer : `scan`, `update` (versions exactes, `composer validate` propre) et `ui` sur des copies. 2838 tests Python (plus 15 réseau), 141 Vitest, 49 Playwright. Cases ajoutées à E27, E29 |
+| 24 | 2026-11-01 | E24 | Fait. E23 déjà commitée. Ruby 4.0.9 (RubyGems et Bundler 4.0.20) installé avec l'accord de l'utilisateur (RubyInstaller, archive vérifiée, dans `~/sdk`). `versions/rubygems.py` (`Gem::Version` et `Gem::Requirement` réécrits : **aucun écart** sur 6 013 versions, 90 926 paires et 221 contraintes ; **25 choix de `bundle lock` reproduits**), `parsers/ruby_spans.py` (un lexer de Ruby : le `Gemfile` n'est jamais exécuté), `parsers/ruby.py` (`Gemfile` et `gems.rb` : groupes, plateformes, sources, git, chemins, `gemspec`, conditions et variables dites ; `.gemspec` ; `Gemfile.lock` repris de `reference/` et réécrit d'après le `LockfileParser` de Bundler : toutes les sections, versions à plateforme, graphe ; une gem `path:` résolue dans le lockfile du `Gemfile` qui la cite), `registries/rubygems.py` (l'index compact, huit fois plus léger que l'API v1), styles `~>` (précision gardée, plancher `, >= V`), réécriture en plusieurs chaînes (`written_target`), pilote `_Bundler` (vérifié en vrai : Bundler ne vise pas une version, donc `= V` le temps d'un `bundle lock`, une ligne `gem` pour une indirecte ; il exécute le `Gemfile` et tous les `.gemspec` (quatre témoins) ; `BUNDLE_GEMFILE` et `BUNDLE_LOCKFILE` remplacés ; la plateforme qu'il ajoute sous Windows retirée). Mini-projet `bundler` fait par le vrai Bundler, 23 gems enregistrées, 51 avis OSV ajoutés. 3133 tests Python verts (plus 17 réseau, vrai Bundler compris), 141 Vitest, 49 Playwright ; vérifié à la main en ligne de commande et dans l'interface (11 versions exactes). Pas encore commitée. |

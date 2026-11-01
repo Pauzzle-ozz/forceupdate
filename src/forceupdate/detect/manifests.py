@@ -195,8 +195,10 @@ DEPENDENCY_MANIFESTS: dict[str, Ecosystem] = {
     "setup.cfg": Ecosystem.PYPI,
     # JavaScript / TypeScript
     "package.json": Ecosystem.NPM,
-    # Ruby
+    # Ruby : le Gemfile (gems.rb, son autre nom), le .gemspec d'une gem
     "Gemfile": Ecosystem.RUBYGEMS,
+    "gems.rb": Ecosystem.RUBYGEMS,
+    "*.gemspec": Ecosystem.RUBYGEMS,
     # Go : un module, un workspace
     "go.mod": Ecosystem.GO,
     "go.work": Ecosystem.GO,
@@ -231,6 +233,7 @@ LOCKFILES: dict[str, Ecosystem] = {
     "yarn.lock": Ecosystem.NPM,
     "pnpm-lock.yaml": Ecosystem.NPM,
     "Gemfile.lock": Ecosystem.RUBYGEMS,
+    "gems.locked": Ecosystem.RUBYGEMS,
     "go.sum": Ecosystem.GO,
     "go.work.sum": Ecosystem.GO,
     "Cargo.lock": Ecosystem.CRATES_IO,
@@ -247,6 +250,7 @@ MANIFEST_LOCKFILES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("pyproject.toml", ("uv.lock", "poetry.lock", "pdm.lock")),
     ("Pipfile", ("Pipfile.lock",)),
     ("Gemfile", ("Gemfile.lock",)),
+    ("gems.rb", ("gems.locked",)),
     ("go.mod", ("go.sum",)),
     ("go.work", ("go.work.sum",)),
     ("Cargo.toml", ("Cargo.lock",)),
@@ -264,10 +268,16 @@ WORKSPACE_LOCKFILES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ),
     ("pyproject.toml", ("uv.lock",)),
     ("Cargo.toml", ("Cargo.lock",)),
+    ("*.gemspec", ("Gemfile.lock", "gems.locked")),
 )
 """Manifestes dont le lockfile peut être à la racine d'un workspace, plus haut :
-workspaces npm, Yarn et pnpm, uv, Cargo. Poetry, Pipenv, Bundler ou Composer n'en ont
+workspaces npm, Yarn et pnpm, uv, Cargo, et une gem ``path:`` de Bundler (son ``.gemspec`` est
+résolu dans le ``Gemfile.lock`` du ``Gemfile`` qui la cite). Poetry, Pipenv ou Composer n'en ont
 pas ; un module d'un workspace Go garde son ``go.sum`` (``go mod tidy`` ignore ``go.work``)."""
+
+WORKSPACE_ROOTS: dict[str, tuple[str, ...]] = {"*.gemspec": ("Gemfile", "gems.rb")}
+"""Le manifeste de la racine d'un workspace, quand ce n'est pas celui du membre : le ``Gemfile``
+d'une gem ``path:``."""
 
 PIP_TOOLS_SOURCES = ("requirements*.in", "requirements/*.in")
 """Motifs des fichiers sources de pip-tools. ``pip-compile requirements.in`` écrit
@@ -388,10 +398,10 @@ def group_projects(paths: Iterable[str]) -> list[Project]:
     """Regroupe des manifestes et lockfiles en projets : un projet par dossier.
 
     Un projet sans lockfile dans son dossier prend celui de la racine du workspace :
-    le plus proche dossier parent qui a le même manifeste et un lockfile qui va
-    avec (voir ``WORKSPACE_LOCKFILES``). Que le projet soit bien membre du
-    workspace, seul le contenu des fichiers le dit : ce sont les parseurs qui le
-    vérifient (E03, E04).
+    le plus proche dossier parent qui a le même manifeste (un ``Gemfile`` pour un
+    ``.gemspec`` : ``WORKSPACE_ROOTS``) et un lockfile qui va avec (voir
+    ``WORKSPACE_LOCKFILES``). Que le projet soit bien membre du workspace, seul le
+    contenu des fichiers le dit : ce sont les parseurs qui le vérifient (E03, E04, E24).
 
     Un ``requirements*.txt`` compilé par pip-tools (un ``.in`` du même nom est à
     côté) compte comme un lockfile, pas comme un manifeste.
@@ -451,9 +461,10 @@ def _workspace_lockfiles(
         wanted = {name.lower() for name in candidates}
         if not any(f.pattern == pattern for f in files) or names_here & wanted:
             continue
+        roots = WORKSPACE_ROOTS.get(pattern, (pattern,))
         for ancestor in _ancestors(directory):
             above = by_dir.get(ancestor, [])
-            if not any(f.pattern == pattern for f in above):
+            if not any(f.pattern in roots for f in above):
                 continue
             lockfiles = {
                 f.path for f in above if f.lockfile and f.path.rsplit("/", 1)[-1].lower() in wanted

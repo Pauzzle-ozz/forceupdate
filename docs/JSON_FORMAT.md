@@ -80,14 +80,14 @@ deux extras) donne deux dépendances, chacune avec son emplacement.
 |---|---|---|
 | `ecosystem` | [écosystème](#écosystèmes) | |
 | `name` | chaîne | nom tel que le registre le connaît (normalisé selon PEP 503 pour PyPI) |
-| `constraint` | chaîne | la contrainte telle qu'écrite (`^4.18.0`, `>=2.0,<3`) ; `""` s'il n'y en a pas |
+| `constraint` | chaîne | la contrainte telle qu'écrite (`^4.18.0`, `>=2.0,<3`) ; pour RubyGems, les chaînes d'une gem jointes par `, ` (`>= 1.19.0, < 1.20`, comme `Gemfile.lock`) ; `""` s'il n'y en a pas |
 | `resolved_constraint` | chaîne ou `null` | la plage que désigne `constraint` quand elle renvoie ailleurs : pour `catalog:` (pnpm), celle de `pnpm-workspace.yaml` ; pour `workspace = true` (Cargo), celle de `[workspace.dependencies]` du `Cargo.toml` de la racine du workspace |
 | `installed` | chaîne ou `null` | version installée, lue dans le lockfile (pour Go, dans `go.mod` : il donne la version choisie de chaque module) |
 | `lockfile` | chemin ou `null` | le fichier où `installed` a été lu : le lockfile à régénérer pour la mettre à jour (ou un fichier `-c` de pip) ; `null` sans version installée. Pour une indirecte, c'est `file` ; pour Go, le `go.sum` du module (même absent : `go mod tidy` le refait) |
 | `direct` | booléen | `false` pour une dépendance qui ne vient que du lockfile, ou une indirecte Go (`// indirect` dans `go.mod`) |
 | `scope` | [scope](#scopes) | |
 | `file` | chemin | le fichier qui la déclare (le lockfile pour une indirecte ; `go.mod` pour une indirecte Go, ou le `go.work` dont un `replace` la fixe) |
-| `location` | [emplacement](#emplacement) ou `null` | où est écrite `constraint` dans `file` ; `null` si on ne sait pas la réécrire |
+| `location` | [emplacement](#emplacement) ou `null` | où est écrite `constraint` dans `file` (pour RubyGems, de la première chaîne à la dernière, guillemets intérieurs compris) ; `null` si on ne sait pas la réécrire |
 | `unverifiable_reason` | chaîne ou `null` | pourquoi on ne peut pas la vérifier : `dépendance git`, `chemin local`, `téléchargée depuis une URL`, `membre du workspace`… |
 | `excluded` | liste de chaînes | les versions que le projet écarte, jamais proposées : des versions (`exclude` de `go.mod`) ou des contraintes (`conflict` de `composer.json`) ; vide ailleurs |
 
@@ -628,7 +628,7 @@ comme avant.
 | Champ | Type | Sens |
 |---|---|---|
 | `lockfile` | chemin | |
-| `kind` | chaîne | `npm`, `pnpm`, `yarn1`, `yarn`, `uv`, `poetry`, `pdm`, `pipenv`, `pip-compile`, `uv-pip-compile`, `cargo`, `go`, `composer` |
+| `kind` | chaîne | `npm`, `pnpm`, `yarn1`, `yarn`, `uv`, `poetry`, `pdm`, `pipenv`, `pip-compile`, `uv-pip-compile`, `cargo`, `go`, `composer`, `bundler` |
 | `tool` | chaîne | le nom de l'outil, pour le dire (`uv pip compile`) |
 | `program` | chaîne | le programme à installer (`uv`) |
 | `available` | booléen | l'outil est installé ; sinon le lockfile n'est pas régénéré, et `command` est à lancer à la main |

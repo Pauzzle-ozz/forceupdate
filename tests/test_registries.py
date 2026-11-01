@@ -22,6 +22,7 @@ from forceupdate.registries.goproxy import GoProxy
 from forceupdate.registries.npm import Npm
 from forceupdate.registries.packagist import Packagist
 from forceupdate.registries.pypi import ACCEPT, PyPI
+from forceupdate.registries.rubygems import RubyGems
 
 URL = "https://pypi.org/simple/demo/"
 PAGE = {
@@ -63,8 +64,11 @@ def test_for_ecosystem() -> None:
             assert isinstance(
                 registries.for_ecosystem(Ecosystem.PACKAGIST, http, Cache(None)), Packagist
             )
-            with pytest.raises(LookupError, match="RubyGems"):
-                registries.for_ecosystem(Ecosystem.RUBYGEMS, http, Cache(None))
+            assert isinstance(
+                registries.for_ecosystem(Ecosystem.RUBYGEMS, http, Cache(None)), RubyGems
+            )
+            with pytest.raises(LookupError, match="Maven"):
+                registries.for_ecosystem(Ecosystem.MAVEN, http, Cache(None))
 
     asyncio.run(main())
 
