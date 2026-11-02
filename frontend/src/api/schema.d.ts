@@ -211,8 +211,9 @@ export interface paths {
         put?: never;
         /**
          * Upload File
-         * @description Analyse un fichier envoyé : un manifeste ou un lockfile, son contenu dans le corps de la
-         *     requête. Rend l'analyse lancée, comme ``POST /api/scans``.
+         * @description Analyse un fichier envoyé : un manifeste, un lockfile ou un fichier de code (ses imports,
+         *     le bloc PEP 723 d'un script), son contenu dans le corps de la requête. Rend l'analyse
+         *     lancée, comme ``POST /api/scans``.
          */
         post: operations["upload_file"];
         delete?: never;
@@ -709,6 +710,28 @@ export interface components {
             version: string;
         };
         /**
+         * CodeFile
+         * @description Le fichier de code choisi, quand ce n'est ni un manifeste ni un lockfile (E28).
+         */
+        CodeFile: {
+            /** Path */
+            path: string;
+            /** Language */
+            language: string | null;
+            reading: components["schemas"]["CodeReading"];
+            /**
+             * Via
+             * @default []
+             */
+            via: string[];
+        };
+        /**
+         * CodeReading
+         * @description Comment un fichier de code choisi seul est analysé (E28).
+         * @enum {string}
+         */
+        CodeReading: "project" | "script" | "imports";
+        /**
          * ConnectMethod
          * @description Comment un compte a été connecté.
          * @enum {string}
@@ -760,6 +783,8 @@ export interface components {
              * @default []
              */
             excluded: string[];
+            /** Imported */
+            imported: string | null;
         };
         /**
          * Disconnection
@@ -790,6 +815,7 @@ export interface components {
             projects: components["schemas"]["Project"][];
             /** Ignored Manifests */
             ignored_manifests: string[];
+            code: components["schemas"]["CodeFile"] | null;
             options: components["schemas"]["ScanOptions"] | null;
             /** Scanned At */
             scanned_at: string | null;
@@ -874,7 +900,7 @@ export interface components {
          * EntryKind
          * @enum {string}
          */
-        EntryKind: "drive" | "folder" | "file";
+        EntryKind: "drive" | "folder" | "file" | "code";
         /**
          * Error
          * @description Une erreur : ``detail`` dit ce qui ne va pas, en français.
@@ -965,7 +991,7 @@ export interface components {
          * @description Le type d'un constat : les quatre types du brief, et ce qui n'a pas pu être vérifié.
          * @enum {string}
          */
-        FindingKind: "outdated" | "vulnerable" | "eol" | "yanked" | "deprecated" | "unverifiable" | "inconclusive";
+        FindingKind: "outdated" | "vulnerable" | "eol" | "yanked" | "deprecated" | "unpinned" | "unverifiable" | "inconclusive";
         /**
          * ForgeKind
          * @enum {string}
@@ -1110,7 +1136,7 @@ export interface components {
          * @description Le format d'un lockfile, donc l'outil qui le régénère.
          * @enum {string}
          */
-        LockKind: "npm" | "pnpm" | "yarn1" | "yarn" | "uv" | "poetry" | "pdm" | "pipenv" | "pip-compile" | "uv-pip-compile" | "cargo" | "go" | "composer" | "bundler" | "nuget";
+        LockKind: "npm" | "pnpm" | "yarn1" | "yarn" | "uv" | "uv-script" | "poetry" | "pdm" | "pipenv" | "pip-compile" | "uv-pip-compile" | "cargo" | "go" | "composer" | "bundler" | "nuget";
         /**
          * LockResult
          * @description Ce qu'il est advenu d'un lockfile (``lockfiles.Regenerated``).

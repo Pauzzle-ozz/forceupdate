@@ -121,7 +121,7 @@ Statuts : `à faire`, `en cours`, `fait`.
 | E25 | F | Java (Maven, Gradle) | fait |
 | E26 | F | .NET (NuGet) | fait |
 | E27 | G. Compléments | Fin de vie des runtimes et frameworks | fait |
-| E28 | G | Fichier de code isolé | à faire |
+| E28 | G | Fichier de code isolé | fait |
 | E29 | H. Livraison | Configuration, page Réglages, robustesse | à faire |
 | E30 | H | Documentation, packaging, CI | à faire |
 | E31 | H | Recette finale | à faire |
@@ -2278,14 +2278,136 @@ datés et justes, dans l'interface.
 
 **But** : choisir un fichier de code donne un résultat utile.
 
-- [ ] Fichier dans un projet : remonter les dossiers jusqu'au premier manifeste (arrêt à la racine git ou du disque). Analyser ce projet, en disant « analysé via `<manifeste>` ».
-- [ ] Fichier seul :
+- [x] Fichier dans un projet : remonter les dossiers jusqu'au premier manifeste (arrêt à la racine git ou du disque). Analyser ce projet, en disant « analysé via `<manifeste>` ».
+- [x] Fichier seul :
   - Python : bloc PEP 723 (`# /// script`), qui est un vrai manifeste, avec contraintes, et réécrivable. Sinon les imports (module `ast`), sans la bibliothèque standard (`sys.stdlib_module_names`), avec une table import → paquet (`yaml` → `PyYAML`, `cv2` → `opencv-python`, `PIL` → `Pillow`, `sklearn` → `scikit-learn`, `bs4` → `beautifulsoup4`…) ;
   - JS / TS : `import` et `require` de paquets (scopés compris), sans `node:` ni modules intégrés ;
   - Go : imports, rattachés à leur module.
-- [ ] Sans version, le constat est « version non fixée, dernière = X ». Les failles ne sont pas vérifiables sans version, et le rapport le dit.
-- [ ] Mise à jour d'un fichier seul : seulement le bloc PEP 723.
-- [ ] Marche aussi par glisser-déposer dans l'interface.
+- [x] Sans version, le constat est « version non fixée, dernière = X ». Les failles ne sont pas vérifiables sans version, et le rapport le dit.
+- [x] Mise à jour d'un fichier seul : seulement le bloc PEP 723.
+- [x] Marche aussi par glisser-déposer dans l'interface.
+- [x] Ajoutés en route : le lockfile d'un script (`uv lock --script` écrit `script.py.lock`) lu pour
+  les versions installées et régénéré par `uv lock --script` (`LockKind.UV_SCRIPT`) ; le
+  `requires-python` du bloc lu comme un runtime (E27 : fin de vie, versions écartées) ; les fichiers
+  de code dans la liste des dossiers (écran 2, `EntryKind.CODE`) et parmi les fichiers envoyés ;
+  `--fail-on` qui ne compte jamais une version non fixée ; le lien « voir les remarques » souligné
+  (axe : `link-in-text-block`, un défaut d'avant qu'aucun rapport à remarques n'exerçait) ; les huit
+  compteurs sur une ligne à 1440 px ; « Gravité du constat » au singulier.
+
+**Notes** (session 28) :
+
+- **Commit d'abord** : E27 commitée seule (`E27 : fin de vie des runtimes et frameworks`,
+  `cb1bde4`), avec l'accord de l'utilisateur, après 4441 tests verts.
+- **Vérifié en vrai** avant d'écrire (2026-11-02) :
+  - uv 0.10 et PEP 723, sur douze scripts (`uv export --script`) : un bloc est lu n'importe où dans
+    le fichier, même dans une chaîne (la spécification est une expression régulière sur le texte) ;
+    il va jusqu'au **dernier** `# ///` de la suite de commentaires (deux blocs collés, ou un `#` puis
+    un second `# ///` : erreur TOML) ; une ligne sans `#` au début (`#dependencies`) : « an opening
+    tag was found without a closing tag », refusé ; un champ inconnu est accepté ; `# /// pyproject`
+    n'est pas un script ; un BOM cache le bloc ; CRLF va ; `[tool.uv] exclude-newer` est suivi.
+    `uv lock --script x.py` écrit `x.py.lock` (au format de `uv.lock`, `[manifest] requirements`) ;
+    **un script à bloc ignore le projet autour de lui** (`uv run` dans un projet : ses dépendances ne
+    sont pas visibles), un script sans bloc prend celles du projet ;
+  - Node 24.12 : `require('module').builtinModules` a 72 noms, dont 4 seulement avec `node:`
+    (`node:sea`, `node:sqlite`, `node:test`, `node:test/reporters`) : un `test` nu est un paquet npm ;
+    `fs/promises`, `punycode`, `sys`, `wasi` sont intégrés ;
+  - Go : le proxy rend 404 pour un sous-dossier qui n'est pas un module
+    (`golang.org/x/text/language/@v/list` : « no matching versions »), 404 aussi pour
+    `golang.org/x` (« known non-module ») ; le plus long préfixe qui répond est le module
+    (`aws-sdk-go-v2/service/s3` est le sien) ; un vrai `go mod tidy` (Go 1.27.3) rattache
+    `golang.org/x/text/language` à `golang.org/x/text` v0.43.0 et `go-chi/chi/v5/middleware` à
+    `go-chi/chi/v5` ;
+  - les 89 paquets de la table import → paquet existent sur PyPI (une requête JSON chacun).
+- **Organisation** :
+  - `detect/code.py` (`code_language`, `code_ecosystem`, `is_code_file`, `READ_ALONE`,
+    `read_alone`) ; `sources/base.py` : `ChosenCode`, `Source.code_file` ; `sources/local.py` :
+    `alone`, `_project_dir`, `_has_manifest`, `_project_root`, `_home` ;
+  - `parsers/imports.py` (`python_imports` par `ast`, `js_imports` et `go_imports` par des lexers ;
+    `Import`) ; `parsers/code.py` (`parse_project`, `imported`, `IMPORT_PACKAGES` : 96 entrées,
+    `NAMESPACES`, `PYTHON_STDLIB` et `PYTHON_REMOVED`, `NODE_BUILTINS`, `npm_package`,
+    `python_package`, `go_candidates`, `candidates`) ; `parsers/python.py` : `ScriptBlock`,
+    `script_block`, `has_script_block`, `is_script`, `parse_script`, `script_requires_python`,
+    `_ProjectParser._script` ; `parsers/runtimes.py` : le `requires-python` d'un bloc ;
+    `parsers.parse_lockfile` : `script.py.lock` ;
+  - `models.py` : `FindingKind.UNPINNED`, `Dependency.imported`, `CodeReading`, `CodeFile`,
+    `Report.code` ; `checks/base.py` : `Current.unpinned` ; `checks/outdated.py` : `_unpinned` ;
+    `checks/priority.py` : `NOT_TO_UPDATE` ; `engine.py` : `_code_inventory`, `_check` (les clients
+    des registres partagés), `_resolve_imports`, `_unpinned_notices` ; `report/` : `code_reading`,
+    l'import en note de la ligne, `_IN_TABLE` ; `update/writers` : `read_script` ;
+    `update/lockfiles.py` : `LockKind.UV_SCRIPT`, `_UvScript` ; `web` : `EntryKind.CODE`, l'envoi
+    d'un fichier de code (`LocalSource(…, alone=True)`) ;
+  - front : `unpinned` (`KIND_ICON` : `pin-off`, `KIND_LABEL`, `KIND_WORD`, le compteur « Versions
+    non fixées », le badge info « non fixée · dernière X », « Utilisée : non fixée », « aucune : un
+    import »), `CodeReading` et `UnpinnedAlert` de `ReportView.tsx`, la carte du projet
+    (« Manifeste … (son bloc PEP 723) », « Fichier de code … (ses imports, sans version) »),
+    l'écran 2 (`code` : icône `file`, compté à part), les textes de dépôt ; `openapi.json`,
+    `schema.d.ts`, les fixtures du front régénérés.
+- **Tranché** :
+  - **la remontée cherche un manifeste de l'écosystème du fichier** (un `.py` passe un
+    `package.json` ; un fichier d'un autre langage prend le premier manifeste venu) ; un lockfile
+    seul n'est pas un projet ; elle s'arrête à la racine git (incluse), à celle du disque, ou **avant
+    le dossier personnel** (un `package.json` laissé dans `~` ferait parcourir tout `~`) ;
+  - **la source est le dépôt git qui contient le projet** (ses lockfiles de workspace, ses
+    `Directory.Packages.props`, ses `pom.xml` parents, son `.python-version` sont au-dessus), sauf un
+    projet rangé dans un dossier jamais parcouru (`node_modules/x`) : le projet lui-même ; hors git,
+    le dossier du projet. Seul ce projet est analysé, même dans un dossier de tests (il a été
+    choisi) ; les langages sont ceux de son dossier ;
+  - **un script à bloc PEP 723 est son propre manifeste, même dans un projet**, comme pour
+    `uv run` ; un bloc mal formé est une remarque (uv refuse le script), sans repli sur les imports ;
+  - **un nouveau type de constat, `unpinned`** (« version non fixée »), plutôt qu'un « non
+    concluant » : rien n'a échoué, et relancer n'y changerait rien. Il vaut pour un import, et pour
+    toute dépendance sans contrainte ni lockfile (`requests` seul dans un `requirements.txt`, avant
+    « non concluant ») ; jamais « à mettre à jour », jamais pour `--fail-on`, de gravité `info`,
+    rangé avant « non vérifiable ». Une remarque par fichier dit que les failles ne sont pas
+    vérifiables ;
+  - **un import se rattache à son paquet à la vérification** : un module Go au plus long préfixe que
+    le proxy connaît (au moins trois éléments chez `github.com`, `gitlab.com`, `bitbucket.org`,
+    `golang.org`) ; un import sous un espace de noms Python partagé (`google`, `azure`, `zope`…) au
+    plus long nom que PyPI connaît (`google-cloud-storage`) ; aucun : non vérifiable, avec les noms
+    essayés ; le registre muet : non concluant. Deux imports du même module n'en font qu'un ;
+  - **un import n'a ni contrainte ni emplacement** : rien n'est réécrit dans le code ; seul le bloc
+    PEP 723 l'est. Un module posé à côté du script (`util.py`, `util/__init__.py`) n'est pas un
+    paquet ; un import gardé par un `try … except ImportError` est facultatif ; sous
+    `if TYPE_CHECKING:` ou `import type`, de développement ;
+  - **un fichier envoyé n'a jamais de projet autour** (son dossier temporaire) : ses imports, ou son
+    bloc.
+- **Trouvé** : l'outil d'écriture change `\uXXXX` en caractère (le lexer en a reçu d'invisibles :
+  `chr(…)` à la place), et les heredocs mangent encore des barres obliques inverses (scripts
+  d'édition écrits avec l'outil d'écriture) ; un test du moteur et un de la source disaient
+  « un fichier de code donne zéro projet » (comportement d'avant, mis à jour) ; le badge « non
+  fixée · dernière 5.0.0.93 » débordait de 3 px à 375 px (vu sur le vrai réseau, pas avec les
+  réponses enregistrées) : il passe à la ligne.
+- **Réponses enregistrées** : PyPI `python-dateutil` (l'import `dateutil`) ; rien d'autre (les
+  modules Go, lodash, @hapi/joi, colors, left-pad, flask, requests, jinja2 l'étaient ; un préfixe
+  inconnu du proxy simulé rend 404).
+- **Tests** : `test_parsers_imports.py` (lecteurs, jamais exécutés), `test_parsers_code.py` (table,
+  espaces de noms, `npm_package`, modules intégrés, Go, le projet d'un fichier), `test_pep723.py`
+  (le bloc comme uv, positions, lockfile du script, réécriture), `test_sources_code.py` (la
+  remontée et ses arrêts), `test_code_files.py` (les trois cas de bout en bout, TypeScript, Go,
+  le script verrouillé régénéré par un faux `uv`, `scan` en terminal, JSON, Markdown,
+  `--fail-on any`) ; `test_web_api.py` (un script envoyé et sa version téléchargée, la liste des
+  dossiers, les récents) ; les tests qu'E28 change. 4587 tests Python verts, ruff propre ;
+  151 Vitest (`CodeFile.test.tsx`, l'écran 2) ; 59 Playwright (`code.spec.ts` : un vrai
+  « drop » d'un script, son plan et sa version téléchargée ; un fichier dans un projet ; axe-core
+  en clair et en sombre, à 1440 et 375 px).
+- **Vérifié à la main** (le 2026-11-02, vrai réseau) : `forceupdate scan` sur des copies dans le
+  scratchpad : `imports.py` (`google.cloud` → `google-cloud-storage`, `cv2`, `PIL`, `yaml`, un
+  module voisin écarté, `ujson` facultatif), `index.ts`, `main.go` (`golang.org/x/text/cases` →
+  `golang.org/x/text`), un script PEP 723 (Python 3.9 en fin de vie, requests 2.33 écartée car il
+  demande Python 3.10), `app/__init__.py` de `eol` (via `pyproject.toml`), `frontend/src/main.tsx` et
+  `src/forceupdate/engine.py` du dépôt (racine git, projet `frontend`, puis `.`) ; `forceupdate
+  update --yes` d'un script (le bloc seul réécrit, relu par `uv export --script`) et d'un script
+  verrouillé (`uv lock --script locked.py -P requests==2.34.2` : 2.31.0 → 2.34.2) ;
+  `forceupdate ui` piloté par Playwright : un script déposé (le voile, le rapport), un fichier dans
+  un projet, des imports en sombre à 375 px (le débordement trouvé puis corrigé), le détail, l'écran
+  2 ; aucune erreur de console.
+- **Limites** (reportées à E29) : les imports `npm:` et `jsr:` (Deno) et les alias de
+  `tsconfig.json` (`paths`) ne sont pas lus ; un `.ipynb`, un `.vue` ou un `.svelte` seul n'a pas
+  ses imports lus ; `importlib.import_module("x")` non plus ; un dossier voisin sans `__init__.py`
+  (paquet d'espace de noms local) passe pour un paquet ; un import dont le nom de paquet n'est pas
+  dans la table et existe sur PyPI sous ce nom (un homonyme) est pris pour lui ; `[tool.uv]
+  exclude-newer` d'un script (ou d'un `pyproject.toml`) n'est pas suivi : une version proposée peut
+  être refusée par uv.
 
 **Fini quand** : les trois cas (fichier dans un projet, script PEP 723, script avec
 seulement des imports) donnent un rapport juste.
@@ -2345,6 +2467,16 @@ seulement des imports) donnent un rapport juste.
   - la même question pour pnpm et Yarn (`packageManager`, corepack les lance déjà à la bonne version : le vérifier), et pour les PR des forges (le clone a la CI du dépôt : même lecture) ;
   - un test qui reproduit le cas (un `package.json` et une CI en Node 22, un npm 11 simulé : l'avertissement, puis `npx npm@10`), et un test `network` avec les deux vrais npm.
   Fini quand : sur une copie d'un projet dont la CI est en Node 22, une mise à jour faite avec npm 11 installé donne un lockfile que `npm@10 ci` accepte.
+- [ ] Depuis E28 (fichier de code isolé) :
+  - les imports `npm:` et `jsr:` de Deno (avec leur version : un vrai manifeste), les alias de
+    `tsconfig.json` (`paths`, `baseUrl` : `src/x` n'est pas le paquet `src`) ;
+  - les imports d'un `.ipynb` (ses cellules de code), d'un `.vue` ou d'un `.svelte` (son
+    `<script>`) ; `importlib.import_module` et `__import__` d'un nom écrit ;
+  - un paquet d'espace de noms local (un dossier voisin sans `__init__.py`) pris pour un paquet ;
+  - `[tool.uv] exclude-newer` (script ou `pyproject.toml`) : ne pas proposer de version publiée
+    après, ou le dire ; `[tool.uv] index` d'un script (un autre index que PyPI) ;
+  - la table `IMPORT_PACKAGES` se tient à la main : un test `network` qui vérifie que chaque paquet
+    existe sur PyPI (et, si possible, qu'il fournit l'import : `top_level.txt` de sa dernière roue).
 - [ ] Depuis E23 (PHP) :
   - les avis de la base FriendsOfPHP qui manquent à OSV ne sont pas vus (twig 3.4.1 : 15 failles sur les 17 de `composer audit`) : lire aussi ceux de Packagist (`security-advisories` des métadonnées `p2`, détail par `https://packagist.org/api/security-advisories/`), réunis à ceux d'OSV par leurs CVE ;
   - un dépôt `composer` de `repositories` (Satis, Private Packagist) : ses paquets sont cherchés sur Packagist ; les demander à ce dépôt (son `packages.json`, `metadata-url`), avec `auth.json` ;
@@ -2382,6 +2514,9 @@ depuis l'interface.
   - `docs/JSON_FORMAT.md` : à jour ;
   - `docs/FORGES.md` : connexion à GitHub, GitLab et Bitbucket, droits nécessaires, ce que contient une PR, comment enregistrer l'outil auprès de chaque forge. Depuis E16 : les quatre façons de se connecter, ce que dit « droits non vérifiés » (token fine-grained : Contents et Pull requests en écriture, Metadata en lecture), où est le token (trousseau du système) et ce qui est révoqué à la déconnexion ; enregistrer sa propre OAuth App GitHub (« Redirect URIs » `http://127.0.0.1/oauth/github/callback`, Device Flow coché, « Expire user access tokens » décoché) et la passer par `FORCEUPDATE_GITHUB_CLIENT_ID` / `…_SECRET` ;
   - `CHANGELOG.md`.
+  - Depuis E28 : dans `docs/USAGE.md`, un fichier de code (la remontée jusqu'au manifeste de son
+    écosystème et ses arrêts, le bloc PEP 723 et son `script.py.lock`, les imports lus par langage,
+    la table import → paquet, « version non fixée »).
 - [ ] Depuis E20 : dans `docs/FORGES.md`, Bitbucket : enregistrer son propre « OAuth client » (Workspace settings → OAuth clients ; « Authorization code » et « Refresh token », jamais « Client credentials » ; Account Read et Email, Repositories et Pull requests en écriture ; adresse de retour `http://127.0.0.1/oauth/bitbucket/callback`) et le passer par `FORCEUPDATE_BITBUCKET_CLIENT_ID` / `…_SECRET` ; le token d'API Atlassian (`id.atlassian.com`, application Bitbucket, ses six portées), les app passwords qui ne marchent plus ; pas de révocation (« Retirer l'accès » dans `bitbucket.org/account/settings/app-authorizations/`) ; pas d'adresse `noreply` (l'adresse principale du compte signe les commits) ; Bitbucket Data Center hors V1.
 - [ ] Depuis E18 : dans `docs/FORGES.md`, ce que fait une PR (branche `forceupdate/dependencies` remplacée à chaque envoi, un commit au nom du compte avec son adresse `noreply`, marqué `Generated-by: forceupdate` ; jamais par-dessus le commit d'un autre ; ce que dit la description ; un lockfile dont l'outil manque sur l'ordinateur) et qu'il faut git ; dans le README, une capture de l'écran 8 et d'une PR.
 - [ ] Packaging :
@@ -2472,3 +2607,4 @@ En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.
 | 25 | 2026-11-01 | E25 | Fait. Commit de E24 d'abord (accord de l'utilisateur) ; ni Maven ni Gradle installés (son choix), seul le jar `maven-artifact` 3.9.16 téléchargé avec son accord (SHA-1 vérifiée) pour l'oracle, lancé par Nashorn (`jjs`, le JRE 8 n'a pas de `javac`). `versions/maven.py` (`ComparableVersion` et `VersionRange` réécrits : **aucun écart** sur 9 102 versions et 4 980 600 comparaisons, 45 spécifications ; trois mutations le voient ; `ComparableVersion` n'est pas transitif, comme Maven), `parsers/xml_spans.py` (expat, positions du texte, DTD refusée), `parsers/maven.py` (`pom.xml` : propriétés, parents du dépôt, `dependencyManagement`, BOM, plugins, profils, modules du build), `parsers/gradle_spans.py` et `parsers/gradle.py` (catalogue `libs.versions.toml`, `build.gradle(.kts)` lus en jetons, jamais exécutés, variables et `gradle.properties`), `registries/maven.py` (Maven Central, Google Maven, portail des plugins Gradle ; `<release>` peut être une pré-version), `update/writers/java.py`. Tranché : une version est située là où elle est écrite (propriété, `[versions]`, variable) et plusieurs dépendances partagent son emplacement (dit dans le plan) ; une version nue est la version utilisée (`installed`) ; les variantes (`-jre`/`-android`) ne se mélangent pas ; pas de lockfile (« Aucun lockfile à régénérer »). Log4Shell vérifié (2.15.0, 2.16.0, 2.17.0, 2.17.1). Mini-projets `maven` et `gradle`, 18 artefacts enregistrés, 19 versions ajoutées pour OSV. 3801 tests Python verts (plus 18 réseau), 141 Vitest, 49 Playwright ; vérifié à la main en ligne de commande et dans l'interface. |
 | 26 | 2026-11-01 | E26 | Fait. Commit de E25 d'abord (accord de l'utilisateur) ; NuGet.Versioning 7.9.0 (l'oracle, chargé par PowerShell 5.1) et le SDK .NET 10.0.403 installés avec son accord (empreintes SHA-512 vérifiées, dans `~/sdk`). `versions/nuget.py` (`NuGetVersion`, `VersionComparer`, `VersionRange` et ses versions flottantes réécrits d'après le source : **aucun écart** sur 17 866 versions, 158 838 576 comparaisons implicites, 141 contraintes et 30 189 vérifications de `Satisfies` et `FindBestMatch` ; six mutations le voient), `parsers/xml_spans.py` (positions des attributs), `parsers/nuget.py` (`packages.config` repris de `reference/`, projets MSBuild, `Directory.Build.props` en chaîne, gestion centrale, `VersionOverride`, `GlobalPackageReference`, conditions dites, projets de tests, `packages.lock.json` en graphe par framework, `CentralTransitive`), `registries/nuget.py` (l'API « registration », ses pages, non listées, dépréciation et remplaçant), OSV `NuGet` sans la casse. Tranché : **NuGet prend la plus basse version qui convient** (`VersionScheme.lowest`, `reaches`, `chosen`) : une mise à jour réécrit la borne basse, une indirecte est à la main, la version permise est l'utilisée. Pilote `dotnet restore --force-evaluate -noAutoResponse -p:RestoreLockedMode=false`, vérifié en vrai (version centrale réécrite suffisante, flottante seulement avec `--force-evaluate`, une cible de `Directory.Build.targets` s'exécute, `Directory.Build.rsp` écarté, version non listée restaurée) ; le lockfile d'un autre projet qui lit une version centrale réécrite est régénéré aussi ; un `dotnet` sans SDK est un outil absent. Mini-projet `nuget` (lockfiles du vrai `dotnet restore`), onze paquets enregistrés (compressés), 38 versions ajoutées pour OSV. Les huit écosystèmes sont gérés : les tests « pas encore géré » retirent NuGet des tables. 4268 tests Python verts (plus 20 réseau, vrai dotnet compris), 141 Vitest, 49 Playwright ; vérifié à la main en ligne de commande et dans l'interface. Cases ajoutées à E27, E29 |
 | 27 | 2026-11-01 | E27 | Fait. Commit de E26 d'abord (accord de l'utilisateur). endoflife.date vérifié en vrai (forme v1 : `isEol` booléen, `eolFrom` date ou `null`, `isLts`/`ltsFrom`, `latest`, 404 en HTML, un alias en 301 ; l'ancienne forme pas demandée) : `endoflife.py` (cache 24 h, une erreur est « non concluant »). `parsers/runtimes.py` : la version des runtimes sans rien exécuter (`requires-python`, Poetry, `Pipfile`, `setup.cfg` ; `engines.node`, `volta` ; `go`, `toolchain` ; `ruby` du `Gemfile`, `RUBY VERSION` ; `require.php`, `config.platform.php` ; propriétés Maven, Gradle ; `TargetFramework(s)` ; `.python-version`, `runtime.txt`, `.nvmrc` avec `lts/…`, `.node-version`, `.ruby-version`, `.tool-versions`, `global.json`, les `FROM` des `Dockerfile` avec leurs `ARG`), rattachés aux projets (`Project.runtime_files`, `Project.runtimes`). `checks/eol.py` : la table des frameworks (tirée des `purl` d'endoflife.date, 56 produits vérifiés), le cycle d'une version, le cycle conseillé (plus récent, maintenu, LTS d'abord : Django 3.2 → 5.2, Node.js 16 → 26), un constat si la fin est passée ou dans moins de 6 mois, à la date du jour que les tests fixent. Les versions qu'un runtime du projet ne fait pas tourner ne sont plus proposées (`checks/runtimes.py` : `engines.node`, `require.php`, `ruby:`, `requires-python` gardés par les registres ; symfony/console v6.4.49 sous PHP 8.1, comme `composer outdated`), et c'est dit ; la dernière version du cycle conseillé d'un framework proposée (`SUPPORTED_CYCLE`). Les SDK de projet MSBuild (`Sdk="Nom/Version"`, `<Sdk>`, `msbuild-sdks` de `global.json`) vérifiés et réécrits. Écran 4 : la section « Fins de vie » (date, source, cycle conseillé, LTS, version conseillée bloquée par le runtime), les runtimes dans la carte du projet. Mini-projet `eol` (Python 3.8, Django 3.2, Node.js 16) : trois constats datés, dans l'interface et en ligne de commande. 4441 tests Python verts (plus 21 réseau), 146 Vitest, 53 Playwright ; vérifié à la main en vrai (scan, update à blanc, interface en clair et en sombre). Cases ajoutées à E29, E30 |
+| 28 | 2026-11-02 | E28 | Fait. Commit de E27 d'abord (accord de l'utilisateur). Vérifié en vrai : uv 0.10 et PEP 723 (bloc n'importe où, jusqu'au dernier `# ///`, refusé s'il n'est pas fermé, invisible derrière un BOM ; `uv lock --script` écrit `x.py.lock` ; un script à bloc ignore le projet autour), les 72 modules intégrés de Node 24.12 (4 seulement avec `node:`), le proxy Go (404 pour un sous-paquet ; `go mod tidy` rattache `golang.org/x/text/language` à `golang.org/x/text`). Un fichier de code dans un projet : la remontée jusqu'au premier manifeste de son écosystème (arrêt à la racine git, du disque, ou avant le dossier personnel), la source est le dépôt git, « analysé via `<manifeste>` ». Seul : le bloc PEP 723 (vrai manifeste, réécrivable, `requires-python` en runtime, `script.py.lock` lu et régénéré par `uv lock --script`), sinon ses imports (`ast` ; des lexers pour JS/TS et Go ; table import → paquet, espaces de noms et modules Go rattachés à la vérification). Nouveau constat `unpinned` (« version non fixée, dernière X »), remarque « failles non vérifiables ». Interface : écran 2 (fichiers de code, dépôt), écran 4 (lecture du fichier, compteur et alerte, badges). 4587 tests Python verts, 151 Vitest, 59 Playwright ; vérifié à la main en ligne de commande et dans l'interface (un débordement à 375 px trouvé et corrigé). |

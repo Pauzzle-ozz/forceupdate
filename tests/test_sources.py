@@ -126,9 +126,17 @@ class TestSingleFile:
         assert source.root == root.resolve()
         assert source.origin == (root / "package.json").resolve().as_posix()
 
-    def test_code_file_comes_alone(self, make_tree: MakeTree) -> None:
+    def test_code_file_comes_with_its_project(self, make_tree: MakeTree, no_git: None) -> None:
+        # E28 : un fichier de code est analysé à travers son projet (tests/test_sources_code.py).
         root = make_tree({"app.py": "print(1)\n", "requirements.txt": ""})
-        assert LocalSource(root / "app.py").files() == [SourceFile("app.py", 9)]
+        assert LocalSource(root / "app.py").files() == [
+            SourceFile("app.py", 9),
+            SourceFile("requirements.txt", 0),
+        ]
+
+    def test_a_lone_code_file_comes_alone(self, make_tree: MakeTree) -> None:
+        root = make_tree({"app.py": "print(1)\n", "README.md": ""})
+        assert LocalSource(root / "app.py", alone=True).files() == [SourceFile("app.py", 9)]
 
     def test_lockfile_comes_alone(self, make_tree: MakeTree) -> None:
         root = make_tree({"uv.lock": "", "pyproject.toml": ""})

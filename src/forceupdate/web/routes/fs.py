@@ -2,8 +2,9 @@
 le chemin d'un dossier à une page web (brief, « Les sources »), c'est donc le serveur qui les
 liste.
 
-Seulement des noms : les dossiers, et les fichiers de dépendances qu'on peut choisir
-(``detect.manifests.match_dependency_file``). Jamais le contenu d'un fichier. Les liens
+Seulement des noms : les dossiers, les fichiers de dépendances qu'on peut choisir
+(``detect.manifests.match_dependency_file``) et les fichiers de code (``detect.code``, E28).
+Jamais le contenu d'un fichier. Les liens
 symboliques et les jonctions Windows ne sont pas listés : l'analyse ne les suit jamais (E02).
 Un dossier OneDrive, autre « point d'analyse » de Windows, l'est.
 
@@ -21,6 +22,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
+from forceupdate.detect.code import is_code_file
 from forceupdate.detect.manifests import match_dependency_file
 from forceupdate.web.routes import CurrentJobs, errors, respond
 from forceupdate.web.schemas import Entry, EntryKind, Listing, RecentPath
@@ -107,7 +109,8 @@ def _listing(path: str, recent: tuple[RecentPath, ...]) -> Listing:
 
 
 def _entry(folder: Path, item: os.DirEntry[str]) -> Entry | None:
-    """Un dossier, ou un fichier de dépendances ; ``None`` pour le reste (liens compris)."""
+    """Un dossier, un fichier de dépendances ou de code ; ``None`` pour le reste (liens
+    compris)."""
     try:
         info = item.stat(follow_symlinks=False)
     except OSError:
@@ -118,8 +121,12 @@ def _entry(folder: Path, item: os.DirEntry[str]) -> Entry | None:
     path = (folder / item.name).as_posix()
     if stat.S_ISDIR(info.st_mode):
         return Entry(name=item.name, path=path, kind=EntryKind.FOLDER, hidden=hidden)
-    if stat.S_ISREG(info.st_mode) and match_dependency_file(f"{folder.name}/{item.name}"):
+    if not stat.S_ISREG(info.st_mode):
+        return None
+    if match_dependency_file(f"{folder.name}/{item.name}"):
         return Entry(name=item.name, path=path, kind=EntryKind.FILE, hidden=hidden)
+    if is_code_file(item.name):
+        return Entry(name=item.name, path=path, kind=EntryKind.CODE, hidden=hidden)
     return None
 
 
@@ -144,7 +151,9 @@ def _recent(paths: list[str]) -> tuple[RecentPath, ...]:
     for path in paths:
         found = Path(path)
         if found.is_file():
-            recent.append(RecentPath(path=path, kind=EntryKind.FILE))
+            code = match_dependency_file(f"{found.parent.name}/{found.name}") is None
+            kind = EntryKind.CODE if code and is_code_file(found.name) else EntryKind.FILE
+            recent.append(RecentPath(path=path, kind=kind))
         elif found.is_dir():
             recent.append(RecentPath(path=path, kind=EntryKind.FOLDER))
     return tuple(recent)

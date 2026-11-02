@@ -61,6 +61,14 @@ function approximate(row: Row): string | null {
 
 export function UsedCell({ row }: { row: Row }) {
   const { dependency } = row
+  if (!dependency.installed && row.findings.some((finding) => finding.kind === 'unpinned')) {
+    return (
+      <>
+        <span className="text-sm">non fixée</span>
+        <Sub>{dependency.imported ? 'un import, sans version' : 'ni contrainte ni lockfile'}</Sub>
+      </>
+    )
+  }
   if (dependency.installed) {
     return (
       <>
@@ -93,6 +101,17 @@ export function ConstraintCell({ row }: { row: Row }) {
   const { dependency } = row
   if (!dependency.direct) {
     return <span className="text-sm text-fg-muted">{fr('aucune : vient du lockfile')}</span>
+  }
+  if (dependency.imported) {
+    return (
+      <>
+        <span className="text-sm text-fg-muted">{fr('aucune : un import')}</span>
+        <Sub>
+          import <span className="font-mono">{dependency.imported}</span>
+        </Sub>
+        <Sub>{dependency.file}</Sub>
+      </>
+    )
   }
   return (
     <>
@@ -136,6 +155,22 @@ export function FindingBadges({ findings }: { findings: Finding[] }) {
               {finding.gap && GAP_WORD[finding.gap][0]}
             </Badge>
           ))
+        }
+        if (kind === 'unpinned') {
+          const latest = group[0].target_version
+          return [
+            // Il passe à la ligne s'il le faut : à 375 px, « dernière 5.0.0.93 » déborderait.
+            <Badge key={kind} variant="info" className="min-w-0 shrink flex-wrap whitespace-normal">
+              <Icon aria-hidden="true" />
+              {latest ? (
+                <>
+                  non fixée · dernière <span className="font-mono whitespace-nowrap">{latest}</span>
+                </>
+              ) : (
+                KIND_WORD.unpinned[0]
+              )}
+            </Badge>,
+          ]
         }
         const [one, many] = KIND_WORD[kind]
         return [

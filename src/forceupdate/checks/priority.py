@@ -1,8 +1,9 @@
 """L'ordre des constats, et le seuil qui fait échouer ``scan --fail-on``.
 
 L'ordre est celui du brief (décision n°8) : faille (par sévérité) > fin de vie > retiré >
-déprécié > majeure > mineure > correctif. Viennent ensuite ce qui n'a pas pu être vérifié
-(non vérifiable), puis ce qui n'a rien conclu (non concluant).
+déprécié > majeure > mineure > correctif. Viennent ensuite ce dont la version n'est pas fixée
+(E28 : la dernière est dite, rien n'est à mettre à jour), ce qui n'a pas pu être vérifié (non
+vérifiable), puis ce qui n'a rien conclu (non concluant).
 
 **Gravité des constats autres que les failles (tranché à E07)**. Une faille a celle de son
 avis (CVSS, E08). Pour les autres, elle sert à l'affichage ; l'ordre, lui, suit le type :
@@ -11,7 +12,7 @@ avis (CVSS, E08). Pour les autres, elle sert à l'affichage ; l'ordre, lui, suit
   ou qu'elle est dangereuse) ;
 - paquet ou version déprécié : ``LOW`` ;
 - version plus récente : ``LOW`` pour une majeure, ``INFO`` pour une mineure ou un correctif ;
-- non vérifiable, non concluant : ``INFO``.
+- version non fixée, non vérifiable, non concluant : ``INFO``.
 
 Un paquet malveillant retiré par npm (crossenv) est aussi une faille critique : OSV le connaît
 (``checks.vulns``).
@@ -28,9 +29,17 @@ _KIND_ORDER = {
     FindingKind.YANKED: 2,
     FindingKind.DEPRECATED: 3,
     FindingKind.OUTDATED: 4,
-    FindingKind.UNVERIFIABLE: 5,
-    FindingKind.INCONCLUSIVE: 6,
+    FindingKind.UNPINNED: 5,
+    FindingKind.UNVERIFIABLE: 6,
+    FindingKind.INCONCLUSIVE: 7,
 }
+
+
+NOT_TO_UPDATE = frozenset(
+    {FindingKind.UNPINNED, FindingKind.UNVERIFIABLE, FindingKind.INCONCLUSIVE}
+)
+"""Les constats qui ne disent rien à mettre à jour : une version non fixée (la dernière est
+seulement dite), ce qui n'a pas pu être vérifié, ce qui n'a rien conclu."""
 
 
 def priority(finding: Finding) -> tuple[int, int]:
@@ -62,15 +71,15 @@ class FailOn(enum.StrEnum):
     """Une faille, une fin de vie, une version retirée, un paquet ou une version déprécié, une
     version majeure plus récente : tout ce qui précède les mineures dans l'ordre du brief."""
     ANY = "any"
-    """Tout ce qui est à mettre à jour, mineures et correctifs compris. Ce qui n'a pas pu être
-    vérifié ou n'a rien conclu ne compte jamais."""
+    """Tout ce qui est à mettre à jour, mineures et correctifs compris. Une version non fixée, ce
+    qui n'a pas pu être vérifié ou n'a rien conclu ne comptent jamais."""
 
 
 def reaches(finding: Finding, threshold: FailOn) -> bool:
     """Vrai si ``finding`` atteint le seuil ``threshold``."""
     if threshold is FailOn.VULN:
         return finding.kind is FindingKind.VULNERABLE
-    if finding.kind in (FindingKind.UNVERIFIABLE, FindingKind.INCONCLUSIVE):
+    if finding.kind in NOT_TO_UPDATE:
         return False
     if threshold is FailOn.ANY:
         return True

@@ -74,6 +74,10 @@ class FindingKind(enum.StrEnum):
     DEPRECATED = "deprecated"
     """Type 4 : le paquet est déprécié ou abandonné, ou la version utilisée est dépréciée (npm,
     qui n'a pas de retrait : c'est sa façon de désavouer une version)."""
+    UNPINNED = "unpinned"
+    """Aucune version n'est fixée, ni par une contrainte ni par un lockfile : un import d'un
+    fichier de code seul, une dépendance écrite sans version (E28). On donne la dernière
+    publiée ; les failles ne se vérifient pas sans version."""
     UNVERIFIABLE = "unverifiable"
     """Impossible à vérifier : dépendance git ou locale, paquet introuvable sur le registre."""
     INCONCLUSIVE = "inconclusive"
@@ -186,6 +190,11 @@ class Dependency:
     """Les versions que le projet écarte, jamais proposées : des versions (``exclude`` de
     ``go.mod``) ou des contraintes (``conflict`` de ``composer.json``) ; voir
     ``checks.base.is_excluded``."""
+    imported: str | None = None
+    """Pour une dépendance tirée des imports d'un fichier de code seul (E28), l'import tel
+    qu'écrit : ``cv2`` (le paquet ``opencv-python``), ``google.cloud.storage``, ``lodash``,
+    ``golang.org/x/text/language`` (le module ``golang.org/x/text``) ; ``None`` pour une
+    dépendance déclarée. Sans contrainte ni emplacement : rien à réécrire."""
 
     @property
     def verifiable(self) -> bool:
@@ -504,6 +513,35 @@ class Project:
     (``parsers.runtimes``)."""
 
 
+class CodeReading(enum.StrEnum):
+    """Comment un fichier de code choisi seul est analysé (E28)."""
+
+    PROJECT = "project"
+    """Il est dans un projet : c'est le projet qui est analysé, celui du premier manifeste de
+    son écosystème trouvé en remontant les dossiers (``CodeFile.via``)."""
+    SCRIPT = "script"
+    """Un script Python à bloc PEP 723 (``# /// script``) : le bloc est son manifeste, comme
+    pour ``uv run``, même dans un projet."""
+    IMPORTS = "imports"
+    """Sans projet autour : ses imports, sans version."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class CodeFile:
+    """Le fichier de code choisi, quand ce n'est ni un manifeste ni un lockfile (E28)."""
+
+    path: str
+    """Son chemin, relatif à la racine de la source : le dossier du projet trouvé (la racine
+    du dépôt git qui le contient, s'il y en a un), sinon son propre dossier."""
+    language: str | None
+    """Son langage (``Python``, ``TypeScript``…), comme ``Language.name`` ; ``None`` si
+    forceupdate ne le reconnaît pas."""
+    reading: CodeReading
+    via: tuple[str, ...] = ()
+    """``PROJECT`` : les manifestes de son écosystème dans le dossier du projet, relatifs à la
+    racine (``backend/pyproject.toml``) ; vide sinon."""
+
+
 @dataclass(frozen=True, kw_only=True)
 class ScanOptions:
     """Ce que vérifie une analyse."""
@@ -534,6 +572,9 @@ class Report:
     ignored_manifests: list[str] = field(default_factory=list)
     """Manifestes et lockfiles écartés : rangés dans un dossier de tests, de fixtures ou
     d'exemples, ce ne sont pas de vrais projets (voir ``detect.manifests.is_test_path``)."""
+    code: CodeFile | None = None
+    """Le fichier de code choisi, et comment il est analysé (E28) ; ``None`` pour un dossier,
+    un manifeste, un lockfile ou un dépôt."""
     options: ScanOptions | None = None
     """Ce qui a été vérifié ; ``None`` si les dépendances n'ont pas été vérifiées auprès des
     registres (``engine.inventory``)."""

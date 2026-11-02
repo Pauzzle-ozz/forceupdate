@@ -16,7 +16,10 @@ from datetime import datetime
 
 from forceupdate import checks
 from forceupdate.checks import GAP_LABELS, eol, vulns
+from forceupdate.checks.priority import NOT_TO_UPDATE
 from forceupdate.models import (
+    CodeFile,
+    CodeReading,
     Dependency,
     EditKind,
     Finding,
@@ -37,6 +40,7 @@ KIND_LABELS = {
     FindingKind.YANKED: "retirée",
     FindingKind.DEPRECATED: "déprécié",
     FindingKind.OUTDATED: "plus récente",
+    FindingKind.UNPINNED: "version non fixée",
     FindingKind.UNVERIFIABLE: "non vérifiable",
     FindingKind.INCONCLUSIVE: "non concluant",
 }
@@ -80,6 +84,22 @@ REASON_LABELS = {
 """Pourquoi une version est proposée, en français."""
 
 DOWNGRADE = "retour en arrière"
+
+
+def code_reading(code: CodeFile) -> str:
+    """Comment un fichier de code choisi seul a été analysé (E28), en une phrase."""
+    if code.reading is CodeReading.PROJECT:
+        via = " et ".join(code.via)
+        return f"Fichier de code {code.path} : analysé via {via}, le projet qui le contient."
+    if code.reading is CodeReading.SCRIPT:
+        return (
+            f"Script {code.path} : son bloc PEP 723 (« # /// script ») tient lieu de manifeste, "
+            "comme pour uv run."
+        )
+    return (
+        f"Fichier de code {code.path}, sans projet autour : ses imports, sans version. Les "
+        "failles ne sont pas vérifiables sans version."
+    )
 
 
 def runtimes(project: Project) -> list[str]:
@@ -163,7 +183,7 @@ def plural(count: int, word: str) -> str:
     return f"{count} {word}"
 
 
-_PLURALS = {"fin de vie": "fins de vie"}
+_PLURALS = {"fin de vie": "fins de vie", "version non fixée": "versions non fixées"}
 
 
 def format_date(when: datetime) -> str:
@@ -195,19 +215,17 @@ class Summary:
     outdated: dict[Gap, int] = field(default_factory=dict)
     """Versions plus récentes par écart, de la majeure au correctif."""
     severities: dict[Severity, int] = field(default_factory=dict)
-    """Les constats de ``to_update`` (tous sauf « non vérifiable » et « non concluant ») par
-    gravité, de la plus haute à la plus basse ; toutes les gravités y sont, même à 0."""
+    """Les constats de ``to_update`` (tous sauf « version non fixée », « non vérifiable » et « non
+    concluant ») par gravité, de la plus haute à la plus basse ; toutes les gravités y sont, même
+    à 0."""
     vulnerabilities: dict[Severity, int] = field(default_factory=dict)
     """Les failles par gravité, de même."""
 
     @property
     def to_update(self) -> int:
-        """Ce qui est à mettre à jour : tout sauf « non vérifiable » et « non concluant »."""
-        return sum(
-            count
-            for kind, count in self.findings.items()
-            if kind not in (FindingKind.UNVERIFIABLE, FindingKind.INCONCLUSIVE)
-        )
+        """Ce qui est à mettre à jour : tout sauf « version non fixée », « non vérifiable » et
+        « non concluant » (``checks.priority.NOT_TO_UPDATE``)."""
+        return sum(count for kind, count in self.findings.items() if kind not in NOT_TO_UPDATE)
 
 
 def summarize(report: Report) -> Summary:
@@ -220,7 +238,7 @@ def summarize(report: Report) -> Summary:
         findings[finding.kind] += 1
         if finding.kind is FindingKind.OUTDATED and finding.gap is not None:
             outdated[finding.gap] += 1
-        if finding.kind not in (FindingKind.UNVERIFIABLE, FindingKind.INCONCLUSIVE):
+        if finding.kind not in NOT_TO_UPDATE:
             severities[finding.severity] += 1
         if finding.kind is FindingKind.VULNERABLE:
             vulnerabilities[finding.severity] += 1
@@ -276,7 +294,8 @@ class Row:
 
     name: str
     notes: tuple[str, ...]
-    """Ce qui la distingue : scope (sauf ``runtime``), fichier quand le projet en a plusieurs."""
+    """Ce qui la distingue : scope (sauf ``runtime``), fichier quand le projet en a plusieurs,
+    l'import qui la désigne quand ce n'est pas son nom (``import cv2``)."""
     constraint: str
     """La contrainte telle qu'écrite (``-`` s'il n'y en a pas), avec la plage d'un catalogue
     pnpm ou de ``[workspace.dependencies]`` (Cargo) entre parenthèses ; plusieurs, séparées par
@@ -349,6 +368,8 @@ def _row(
             notes.append(str(dependency.scope))
         if several_files:
             notes.append(dependency.file)
+        if dependency.imported is not None and dependency.imported != dependency.name:
+            notes.append(f"import {dependency.imported}")
     versions = [f for f in unique.values() if f.target_version and f.kind in _VERSION_KINDS]
     return Row(
         name=group[0].name,
@@ -363,7 +384,7 @@ def _row(
     )
 
 
-_VERSION_KINDS = (FindingKind.OUTDATED, FindingKind.INCONCLUSIVE)
+_VERSION_KINDS = (FindingKind.OUTDATED, FindingKind.UNPINNED, FindingKind.INCONCLUSIVE)
 """Les constats qui portent la dernière version et celle de la contrainte."""
 
 

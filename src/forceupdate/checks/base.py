@@ -34,12 +34,20 @@ class Current:
     illisible (ou un ``catalog:`` introuvable) : on se fie alors à la version installée."""
     unknown: str | None = None
     """Pourquoi la version actuelle est inconnue, en français, quand ``version`` est ``None``."""
+    unpinned: bool = False
+    """Vrai quand rien ne fixe la version : ni contrainte, ni version installée (un import d'un
+    fichier de code, ``requests`` écrit sans version) ; le constat est « version non fixée »."""
 
 
 def current_version(dependency: Dependency) -> Current:
     """La version actuelle de ``dependency`` (voir ``Current``)."""
     scheme = versions.for_ecosystem(dependency.ecosystem)
     text = dependency.effective_constraint
+    if dependency.imported is not None and not text and dependency.installed is None:
+        # Un import (E28) : rien n'écrit de version, quel que soit l'écosystème (une contrainte
+        # vide est illisible pour Go).
+        why = "un import, sans version écrite nulle part"
+        return Current(version=None, unknown=why, unpinned=True)
     try:
         parsed = scheme.parse_constraint(text)
     except InvalidConstraint:
@@ -69,7 +77,10 @@ def current_version(dependency: Dependency) -> Current:
     else:
         why = f"la contrainte « {text} » n'a pas de borne basse"
     return Current(
-        version=None, constraint=constraint, unknown=f"{why}, et pas de version installée"
+        version=None,
+        constraint=constraint,
+        unknown=f"{why}, et pas de version installée",
+        unpinned=not text.strip(),
     )
 
 

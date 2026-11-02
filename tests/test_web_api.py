@@ -115,7 +115,9 @@ def test_the_starting_points(api: TestClient) -> None:
         assert drives == [{"name": "/", "path": "/", "kind": "drive", "hidden": False}]
 
 
-def test_a_folder_lists_its_folders_and_dependency_files(api: TestClient, tmp_path: Path) -> None:
+def test_a_folder_lists_its_folders_dependency_and_code_files(
+    api: TestClient, tmp_path: Path
+) -> None:
     root = tmp_path / "projet"
     for folder in ("src", "Docs", ".venv", "requirements"):
         (root / folder).mkdir(parents=True)
@@ -131,6 +133,7 @@ def test_a_folder_lists_its_folders_and_dependency_files(api: TestClient, tmp_pa
         ("Docs", "folder", False),
         ("requirements", "folder", False),
         ("src", "folder", False),
+        ("app.py", "code", False),
         ("package.json", "file", False),
         ("pyproject.toml", "file", False),
     ]
@@ -202,10 +205,13 @@ def test_recent_paths(
         folder.mkdir()
         (folder / "requirements.txt").write_text("flask==0.12\n", encoding="utf-8")
     alone = second / "requirements.txt"
-    for path in (first, second, alone, first):
+    script = second / "run.py"
+    script.write_text("import flask\n", encoding="utf-8")
+    for path in (first, second, alone, script, first):
         scan(api, finished, path)
     assert api.get("/api/fs").json()["recent"] == [
         {"path": first.as_posix(), "kind": "folder"},
+        {"path": script.as_posix(), "kind": "code"},
         {"path": alone.as_posix(), "kind": "file"},
         {"path": second.as_posix(), "kind": "folder"},
     ]
@@ -684,6 +690,43 @@ def test_an_uploaded_file(
     assert api.get("/api/fs").json()["recent"] == []
 
 
+def test_an_uploaded_script(
+    api: TestClient, finished: Finished, recorded: dict[str, respx.Route]
+) -> None:
+    """E28 : un script envoyé est lu seul, son bloc PEP 723 réécrit se télécharge."""
+    content = (PROJECTS / "scripts" / "pep723.py").read_bytes()
+    started = api.post("/api/files", params={"name": "pep723.py"}, content=content).json()
+    state = finished(f"/api/scans/{started['id']}")
+    assert state["status"] == "done"
+    report = state["report"]
+    assert report["source"] == "pep723.py"
+    assert report["code"] == {
+        "path": "pep723.py",
+        "language": "Python",
+        "reading": "script",
+        "via": [],
+    }
+    assert report["summary"]["findings"]["unpinned"] == 1
+    planned = plan(api, state).json()
+    assert [f["path"] for f in planned["files"]] == ["pep723.py"]
+    download = api.get(f"/api/updates/{planned['id']}/files/pep723.py")
+    assert download.status_code == 200
+    rewritten = download.content.decode("utf-8")
+    assert rewritten != content.decode("utf-8")
+    assert rewritten.splitlines()[5:] == content.decode("utf-8").splitlines()[5:]
+
+
+def test_an_uploaded_code_file_has_no_project_around(
+    api: TestClient, finished: Finished, recorded: dict[str, respx.Route]
+) -> None:
+    content = b"import _ from 'lodash'\n"
+    started = api.post("/api/files", params={"name": "index.ts"}, content=content)
+    state = finished(f"/api/scans/{started.json()['id']}")
+    assert state["report"]["code"]["reading"] == "imports"
+    (dependency,) = state["report"]["projects"][0]["dependencies"]
+    assert (dependency["name"], dependency["imported"]) == ("lodash", "lodash")
+
+
 def test_an_uploaded_file_is_removed_with_the_server(
     web_settings: Settings, recorded: dict[str, respx.Route]
 ) -> None:
@@ -712,7 +755,13 @@ def test_an_uploaded_file_is_removed_with_the_server(
         ("", "Nom de fichier manquant."),
         (
             "notes.txt",
-            "« notes.txt » n'est pas un manifeste ni un lockfile que forceupdate sait lire.",
+            "« notes.txt » n'est pas un manifeste, un lockfile ni un fichier de code (Python, "
+            "JavaScript, TypeScript, Go) que forceupdate sait lire.",
+        ),
+        (
+            "App.java",
+            "« App.java » n'est pas un manifeste, un lockfile ni un fichier de code (Python, "
+            "JavaScript, TypeScript, Go) que forceupdate sait lire.",
         ),
     ],
 )

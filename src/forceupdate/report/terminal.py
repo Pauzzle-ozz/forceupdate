@@ -19,6 +19,7 @@ from rich.text import Text
 
 from forceupdate.checks import GAP_LABELS
 from forceupdate.checks.base import sentence
+from forceupdate.checks.priority import NOT_TO_UPDATE
 from forceupdate.models import (
     Finding,
     FindingKind,
@@ -35,6 +36,7 @@ from forceupdate.report import (
     UP_TO_DATE,
     Row,
     Summary,
+    code_reading,
     distinct_findings,
     format_date,
     format_share,
@@ -57,6 +59,7 @@ from forceupdate.update.writers import Changes
 _STYLES = {
     FindingKind.YANKED: "bold red",
     FindingKind.DEPRECATED: "yellow",
+    FindingKind.UNPINNED: "cyan",
     FindingKind.UNVERIFIABLE: "magenta",
     FindingKind.INCONCLUSIVE: "magenta",
 }
@@ -70,9 +73,15 @@ _SEVERITY_STYLES = {
 }
 
 
+_IN_TABLE = (FindingKind.OUTDATED, FindingKind.UNPINNED)
+"""Les constats que dit le tableau (la dernière version), sans détail en dessous."""
+
+
 def render(report: Report, console: Console) -> None:
     """Écrit le rapport sur ``console``."""
     console.print(Text.assemble(("Source : ", "bold"), report.source))
+    if report.code is not None:
+        console.print(Text(code_reading(report.code)))
     _print_dates(report, console)
     _print_languages(report, console)
     console.print()
@@ -145,7 +154,7 @@ def _print_project(project: Project, report: Report, console: Console) -> None:
     if indirect_rows:
         console.print(Text("  Dépendances indirectes à signaler", style="bold"))
         console.print(_table(indirect_rows))
-    details = [f for f in distinct_findings([project]) if f.kind is not FindingKind.OUTDATED]
+    details = [f for f in distinct_findings([project]) if f.kind not in _IN_TABLE]
     if details:
         console.print(Text("  Détails", style="bold"))
         grid = _grid()
@@ -247,7 +256,7 @@ def _summary_line(summary: Summary) -> Text:
     else:
         parts = []
         for kind, count in summary.findings.items():
-            if not count or kind in (FindingKind.UNVERIFIABLE, FindingKind.INCONCLUSIVE):
+            if not count or kind in NOT_TO_UPDATE:
                 continue
             if kind is FindingKind.OUTDATED:
                 parts += [plural(n, GAP_LABELS[gap]) for gap, n in summary.outdated.items() if n]
@@ -256,7 +265,7 @@ def _summary_line(summary: Summary) -> Text:
         text.append(f", {summary.to_update} à mettre à jour : {', '.join(parts)}")
     others = [
         plural(summary.findings[kind], KIND_LABELS[kind])
-        for kind in (FindingKind.UNVERIFIABLE, FindingKind.INCONCLUSIVE)
+        for kind in (FindingKind.UNPINNED, FindingKind.UNVERIFIABLE, FindingKind.INCONCLUSIVE)
         if summary.findings[kind]
     ]
     if others:

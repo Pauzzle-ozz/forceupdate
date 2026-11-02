@@ -364,6 +364,9 @@ class EntryKind(enum.StrEnum):
     FOLDER = "folder"
     FILE = "file"
     """Un manifeste ou un lockfile que forceupdate sait reconnaître."""
+    CODE = "code"
+    """Un fichier de code d'un langage dont forceupdate connaît l'écosystème (E28 : ``app.py``,
+    ``index.ts``…) : analysé à travers son projet, ou par ses imports."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -382,7 +385,7 @@ class RecentPath:
 
     path: str
     kind: EntryKind
-    """``folder`` ou ``file`` (un lecteur est un dossier)."""
+    """``folder``, ``file`` ou ``code`` (un lecteur est un dossier)."""
 
 
 @dataclass(frozen=True, kw_only=True)

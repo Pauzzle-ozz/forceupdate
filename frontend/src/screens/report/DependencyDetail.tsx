@@ -51,6 +51,7 @@ function Detail({ rows, report, scanId, onClose }: { rows: Row[]; report: Report
   const findings = uniqueFindings(rows)
   const update = rows.find((row) => row.update)?.update ?? null
   const outdated = findings.find((finding) => finding.kind === 'outdated')
+  const latest = outdated ?? findings.find((finding) => finding.kind === 'unpinned')
   const scopes = [...new Set(rows.map((row) => row.dependency.scope))]
 
   return (
@@ -93,6 +94,14 @@ function Detail({ rows, report, scanId, onClose }: { rows: Row[]; report: Report
                   <Version>{dependency.installed}</Version>{' '}
                   {dependency.lockfile && <span className="text-fg-muted">lue dans {dependency.lockfile}</span>}
                 </>
+              ) : findings.some((finding) => finding.kind === 'unpinned') ? (
+                <span className="text-fg-muted">
+                  {fr(
+                    dependency.imported
+                      ? 'non fixée : un import, sans version écrite nulle part'
+                      : 'non fixée : ni contrainte ni lockfile',
+                  )}
+                </span>
               ) : update?.current_is_approximate ? (
                 <>
                   <Version>{update.current_version}</Version>{' '}
@@ -104,7 +113,17 @@ function Detail({ rows, report, scanId, onClose }: { rows: Row[]; report: Report
                 <span className="text-fg-muted">inconnue (pas de lockfile)</span>
               )}
             </dd>
+            {dependency.imported && (
+              <>
+                <dt className="text-fg-muted">Import</dt>
+                <dd>
+                  <Version>{dependency.imported}</Version>{' '}
+                  <span className="text-fg-muted">{fr(`dans ${dependency.file}`)}</span>
+                </dd>
+              </>
+            )}
             {dependency.direct &&
+              !dependency.imported &&
               rows.map((row) => (
                 <ConstraintLine key={row.key} row={row} />
               ))}
@@ -121,12 +140,12 @@ function Detail({ rows, report, scanId, onClose }: { rows: Row[]; report: Report
                 </dd>
               </>
             )}
-            {outdated?.target_version && (
+            {latest?.target_version && (
               <>
                 <dt className="text-fg-muted">Dernière</dt>
                 <dd className="flex flex-wrap items-center gap-2">
-                  <Version>{outdated.target_version}</Version>
-                  {outdated.gap && <GapBadge gap={outdated.gap} />}
+                  <Version>{latest.target_version}</Version>
+                  {latest.gap && <GapBadge gap={latest.gap} />}
                 </dd>
               </>
             )}

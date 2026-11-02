@@ -43,6 +43,7 @@ projets, `eol` des constats, la raison `supported_cycle`).
 | `languages` | liste de [langages](#langage) | du plus lourd au plus léger |
 | `projects` | liste de [projets](#projet) | dans l'ordre des chemins |
 | `ignored_manifests` | liste de chemins | manifestes et lockfiles écartés, parce que rangés dans un dossier de tests, de fixtures ou d'exemples |
+| `code` | [fichier de code](#fichier-de-code) ou `null` | le fichier de code choisi, et comment il est analysé (E28) ; `null` pour un dossier, un manifeste, un lockfile ou un dépôt |
 | `options` | [options](#options) ou `null` | ce qui a été vérifié ; `null` si les dépendances n'ont pas été vérifiées auprès des registres |
 | `scanned_at` | date ou `null` | début de l'analyse |
 | `oldest_data` | date ou `null` | date des plus anciennes données des registres et d'OSV utilisées. Hors ligne (`options.offline`), elles viennent du cache et peuvent dater de plusieurs jours : à afficher |
@@ -89,6 +90,24 @@ npm, `require.php` de Packagist, `ruby` de RubyGems, `requires-python` de PyPI).
 | `file` | chemin | le fichier où elle est lue |
 | `source` | chaîne | ce qui a été lu, tel qu'écrit : `requires-python = ">=3.8"`, `FROM python:3.8-slim`, `<TargetFramework>net8.0</TargetFramework>` |
 
+## Fichier de code
+
+Un fichier de code choisi seul, ni manifeste ni lockfile (E28 : `app.py`, `index.ts`,
+`main.go`…). `source` reste le chemin choisi ; les chemins du rapport sont relatifs à la racine
+de la source : le dépôt git qui contient le projet trouvé, sinon le dossier de ce projet, sinon
+le dossier du fichier.
+
+| Champ | Type | Sens |
+|---|---|---|
+| `path` | chemin | le fichier, relatif à la racine de la source |
+| `language` | chaîne ou `null` | son langage (`Python`, `TypeScript`…), comme `languages[].name` |
+| `reading` | chaîne | `project` : dans un projet, le premier manifeste de son écosystème trouvé en remontant les dossiers (arrêt à la racine git, à celle du disque, ou avant le dossier personnel), et c'est ce projet seul qui est analysé ; `script` : un script Python à bloc PEP 723 (`# /// script`), son propre manifeste, comme pour `uv run`, même dans un projet ; `imports` : sans projet autour, ses imports, sans version |
+| `via` | liste de chemins | `project` : les manifestes de son écosystème dans le dossier du projet (`backend/pyproject.toml`) ; vide sinon |
+
+Pour `script` et `imports`, le rapport a un seul projet, le dossier du fichier, dont le
+manifeste est le fichier lui-même (`manifests: ["run.py"]`) ; un script verrouillé par
+`uv lock --script` a pour lockfile `run.py.lock`.
+
 ## Dépendance
 
 Une déclaration. Un paquet déclaré deux fois (en `runtime` et en `dev`, ou dans
@@ -108,6 +127,7 @@ deux extras) donne deux dépendances, chacune avec son emplacement.
 | `location` | [emplacement](#emplacement) ou `null` | où est écrite `constraint` dans `file` (pour RubyGems, de la première chaîne à la dernière, guillemets intérieurs compris) ; `null` si on ne sait pas la réécrire |
 | `unverifiable_reason` | chaîne ou `null` | pourquoi on ne peut pas la vérifier : `dépendance git`, `chemin local`, `téléchargée depuis une URL`, `membre du workspace`… |
 | `excluded` | liste de chaînes | les versions que le projet écarte, jamais proposées : des versions (`exclude` de `go.mod`) ou des contraintes (`conflict` de `composer.json`) ; vide ailleurs |
+| `imported` | chaîne ou `null` | pour une dépendance tirée des imports d'un fichier de code seul (E28), l'import tel qu'écrit : `cv2` (le paquet `opencv-python`), `google.cloud.storage`, `lodash/fp`, `golang.org/x/text/cases` (le module `golang.org/x/text`) ; sans contrainte ni emplacement ; `null` pour une dépendance déclarée |
 
 ### Emplacement
 
@@ -147,6 +167,7 @@ Ce que remplit chaque type :
 | `deprecated` (version, npm) | la plus proche version non dépréciée | `detail` : le message du registre |
 | `eol` (runtime) | la dernière version du cycle conseillé (`3.15.2`) ; `null` s'il n'y en a pas | `dependency` à `null`, `eol` (avec `runtime`), `current_version` (la version lue), `url` |
 | `eol` (framework) | de même (`5.2.18` pour Django 3.2) | `dependency` (le premier paquet du produit dans le projet : un constat par cycle), `eol`, `gap` |
+| `unpinned` | la dernière version stable, si le registre en a une | `message` : « Version non fixée : la dernière est X. » (« (importé : cv2) » pour un import) |
 | `unverifiable` | `null` | `message` : la raison (paquet introuvable, dépendance git…) |
 | `inconclusive` | la dernière, si on la connaît | `message` : pourquoi (réseau, hors ligne sans cache, version utilisée inconnue, version inconnue du registre, failles non vérifiées, fin de vie non vérifiée : endoflife.date injoignable, ou une version qu'il ne connaît pas) |
 
@@ -355,7 +376,7 @@ Un paquet déclaré deux fois dans un projet y compte pour un.
 | `audited` | entier | dépendances dont les failles ont été cherchées (OSV) : toutes celles dont on connaît la version, indirectes comprises |
 | `findings` | objet | constats par type, tous les types présents (`{"yanked": 1, "outdated": 3, …}`) |
 | `outdated` | objet | constats `outdated` par écart (`{"major": 1, "minor": 2, "patch": 0}`) |
-| `to_update` | entier | ce qui est à mettre à jour : tous les constats sauf `unverifiable` et `inconclusive` |
+| `to_update` | entier | ce qui est à mettre à jour : tous les constats sauf `unpinned`, `unverifiable` et `inconclusive` |
 | `severities` | objet | les constats de `to_update` par gravité, toutes les gravités présentes (`{"critical": 0, "high": 13, …}`) |
 | `vulnerabilities` | objet | les failles par gravité, de même |
 
@@ -379,6 +400,7 @@ Les noms d'OSV : `PyPI`, `npm`, `crates.io`, `Go`, `Packagist`, `RubyGems`,
 | `eol` | le runtime ou le framework est en fin de vie (E27) |
 | `yanked` | la version utilisée a été retirée du registre |
 | `deprecated` | le paquet, ou la version utilisée (npm), est déprécié |
+| `unpinned` | rien ne fixe la version, ni contrainte ni lockfile (un import d'un fichier de code seul, une dépendance écrite sans version : E28) ; la dernière est dite, les failles ne sont pas vérifiables (une remarque du projet le dit, par fichier) ; jamais pour `--fail-on` |
 | `unverifiable` | impossible à vérifier : paquet introuvable, dépendance git ou locale |
 | `inconclusive` | on ne conclut rien : erreur réseau, hors ligne sans cache, version utilisée inconnue |
 
@@ -389,7 +411,7 @@ Les noms d'OSV : `PyPI`, `npm`, `crates.io`, `Go`, `Packagist`, `RubyGems`,
 les autres : `eol` est `medium` (fin de vie passée) ou `low` (dans moins de 6 mois) ;
 `yanked` est `medium` ; `deprecated` est `low` ; `outdated` est `low`
 pour une majeure, `info` pour une mineure ou un correctif ; `unverifiable` et
-`inconclusive` sont `info`.
+`inconclusive` sont `info`, comme `unpinned`.
 
 ### Écarts
 
@@ -788,24 +810,25 @@ plus par commande).
 
 ## Liste de dossier
 
-Seulement des noms : les dossiers, et les fichiers de dépendances que forceupdate sait
-lire. Jamais le contenu d'un fichier. Les liens symboliques et les jonctions Windows
+Seulement des noms : les dossiers, les fichiers de dépendances que forceupdate sait
+lire, et les fichiers de code (E28). Jamais le contenu d'un fichier. Les liens symboliques et les jonctions Windows
 ne sont pas listés (un dossier OneDrive l'est).
 
 | Champ | Type | Sens |
 |---|---|---|
 | `path` | chemin ou `null` | le dossier listé ; `null` pour les points de départ (le dossier personnel, puis les lecteurs : `C:/`… sous Windows, `/` ailleurs) |
 | `parent` | chemin ou `null` | |
-| `entries` | liste de `{"name", "path", "kind", "hidden"}` | les dossiers puis les fichiers, par nom ; `kind` : `drive`, `folder` ou `file` ; `hidden` : nom en `.`, ou caché pour Windows |
+| `entries` | liste de `{"name", "path", "kind", "hidden"}` | les dossiers puis les fichiers, par nom ; `kind` : `drive`, `folder`, `file` (un manifeste ou un lockfile) ou `code` (un fichier de code d'un langage dont forceupdate connaît l'écosystème) ; `hidden` : nom en `.`, ou caché pour Windows |
 | `truncated` | booléen | plus de 5000 entrées : la liste est coupée |
 | `home` | chemin | le dossier personnel |
-| `recent` | liste de `{"path", "kind"}` | les 10 derniers chemins analysés qui existent encore, du plus récent au plus ancien ; `kind` : `folder` (dossier, lecteur compris) ou `file` |
+| `recent` | liste de `{"path", "kind"}` | les 10 derniers chemins analysés qui existent encore, du plus récent au plus ancien ; `kind` : `folder` (dossier, lecteur compris), `file` ou `code` |
 
 ## Fichier envoyé
 
 `POST /api/files?name=package.json`, avec le contenu du fichier comme corps
-(`application/octet-stream`) : un manifeste ou un lockfile (`400` sinon), de 2 Mo au
-plus (50 Mo pour un lockfile ; `413` au-delà). Il est analysé comme un fichier de
+(`application/octet-stream`) : un manifeste, un lockfile, ou un fichier de code Python,
+JavaScript, TypeScript ou Go (E28 : lu seul, par ses imports ou son bloc PEP 723 ; jamais de
+projet autour) ; `400` sinon ; de 2 Mo au plus (50 Mo pour un lockfile ; `413` au-delà). Il est analysé comme un fichier de
 l'ordinateur (`kind: "upload"`) : même progression, même rapport (`source` est son
 nom), même plan. Mais rien ne s'écrit sur le disque de la personne et aucun outil
 n'est lancé : le plan n'a pas de lockfiles, ne s'applique pas (`409`), et sa version

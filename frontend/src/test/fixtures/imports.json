@@ -1,0 +1,274 @@
+{
+  "schema_version": 1,
+  "tool": {
+    "name": "forceupdate",
+    "version": "0.1.0"
+  },
+  "source": "C:/Projets/scripts/imports.py",
+  "languages": [
+    {
+      "name": "Python",
+      "bytes": 308,
+      "ecosystem": "PyPI"
+    }
+  ],
+  "projects": [
+    {
+      "path": ".",
+      "ecosystems": [
+        "PyPI"
+      ],
+      "manifests": [
+        "imports.py"
+      ],
+      "lockfiles": [],
+      "dependencies": [
+        {
+          "ecosystem": "PyPI",
+          "name": "requests",
+          "constraint": "",
+          "resolved_constraint": null,
+          "installed": null,
+          "lockfile": null,
+          "direct": true,
+          "scope": "runtime",
+          "file": "imports.py",
+          "location": null,
+          "unverifiable_reason": null,
+          "excluded": [],
+          "imported": "requests"
+        },
+        {
+          "ecosystem": "PyPI",
+          "name": "python-dateutil",
+          "constraint": "",
+          "resolved_constraint": null,
+          "installed": null,
+          "lockfile": null,
+          "direct": true,
+          "scope": "runtime",
+          "file": "imports.py",
+          "location": null,
+          "unverifiable_reason": null,
+          "excluded": [],
+          "imported": "dateutil"
+        },
+        {
+          "ecosystem": "PyPI",
+          "name": "flask",
+          "constraint": "",
+          "resolved_constraint": null,
+          "installed": null,
+          "lockfile": null,
+          "direct": true,
+          "scope": "runtime",
+          "file": "imports.py",
+          "location": null,
+          "unverifiable_reason": null,
+          "excluded": [],
+          "imported": "flask"
+        },
+        {
+          "ecosystem": "PyPI",
+          "name": "jinja2",
+          "constraint": "",
+          "resolved_constraint": null,
+          "installed": null,
+          "lockfile": null,
+          "direct": true,
+          "scope": "optional",
+          "file": "imports.py",
+          "location": null,
+          "unverifiable_reason": null,
+          "excluded": [],
+          "imported": "jinja2"
+        }
+      ],
+      "overrides": [],
+      "findings": [
+        {
+          "kind": "unpinned",
+          "severity": "info",
+          "message": "Version non fixée (importé : flask) : la dernière est 3.1.3.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "flask",
+            "constraint": "",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "runtime",
+            "file": "imports.py",
+            "location": null,
+            "unverifiable_reason": null,
+            "excluded": [],
+            "imported": "flask"
+          },
+          "current_version": null,
+          "current_is_approximate": false,
+          "target_version": "3.1.3",
+          "wanted_version": null,
+          "gap": null,
+          "identifiers": [],
+          "cvss_score": null,
+          "detail": null,
+          "url": "https://pypi.org/project/flask/",
+          "eol": null
+        },
+        {
+          "kind": "unpinned",
+          "severity": "info",
+          "message": "Version non fixée (importé : jinja2) : la dernière est 3.1.6.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "jinja2",
+            "constraint": "",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "optional",
+            "file": "imports.py",
+            "location": null,
+            "unverifiable_reason": null,
+            "excluded": [],
+            "imported": "jinja2"
+          },
+          "current_version": null,
+          "current_is_approximate": false,
+          "target_version": "3.1.6",
+          "wanted_version": null,
+          "gap": null,
+          "identifiers": [],
+          "cvss_score": null,
+          "detail": null,
+          "url": "https://pypi.org/project/jinja2/",
+          "eol": null
+        },
+        {
+          "kind": "unpinned",
+          "severity": "info",
+          "message": "Version non fixée (importé : dateutil) : la dernière est 4.0.0.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "python-dateutil",
+            "constraint": "",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "runtime",
+            "file": "imports.py",
+            "location": null,
+            "unverifiable_reason": null,
+            "excluded": [],
+            "imported": "dateutil"
+          },
+          "current_version": null,
+          "current_is_approximate": false,
+          "target_version": "4.0.0",
+          "wanted_version": null,
+          "gap": null,
+          "identifiers": [],
+          "cvss_score": null,
+          "detail": null,
+          "url": "https://pypi.org/project/python-dateutil/",
+          "eol": null
+        },
+        {
+          "kind": "unpinned",
+          "severity": "info",
+          "message": "Version non fixée (importé : requests) : la dernière est 2.34.2.",
+          "dependency": {
+            "ecosystem": "PyPI",
+            "name": "requests",
+            "constraint": "",
+            "resolved_constraint": null,
+            "installed": null,
+            "lockfile": null,
+            "direct": true,
+            "scope": "runtime",
+            "file": "imports.py",
+            "location": null,
+            "unverifiable_reason": null,
+            "excluded": [],
+            "imported": "requests"
+          },
+          "current_version": null,
+          "current_is_approximate": false,
+          "target_version": "2.34.2",
+          "wanted_version": null,
+          "gap": null,
+          "identifiers": [],
+          "cvss_score": null,
+          "detail": null,
+          "url": "https://pypi.org/project/requests/",
+          "eol": null
+        }
+      ],
+      "updates": [],
+      "notices": [
+        {
+          "file": "imports.py",
+          "message": "Failles non vérifiables pour les 4 dépendances sans version fixée : OSV juge une version. Fixer les versions (un manifeste, un lockfile, un bloc PEP 723) pour qu'elles le soient."
+        }
+      ],
+      "runtime_files": [],
+      "runtimes": []
+    }
+  ],
+  "ignored_manifests": [],
+  "code": {
+    "path": "imports.py",
+    "language": "Python",
+    "reading": "imports",
+    "via": []
+  },
+  "options": {
+    "include_tests": false,
+    "dev": true,
+    "transitive": false,
+    "offline": false,
+    "cache": true
+  },
+  "scanned_at": "2026-10-28T17:30:00+00:00",
+  "oldest_data": "2026-10-28T17:30:00+00:00",
+  "summary": {
+    "projects": 1,
+    "direct": 4,
+    "transitive": 0,
+    "checked": 4,
+    "audited": 0,
+    "findings": {
+      "vulnerable": 0,
+      "eol": 0,
+      "yanked": 0,
+      "deprecated": 0,
+      "outdated": 0,
+      "unpinned": 4,
+      "unverifiable": 0,
+      "inconclusive": 0
+    },
+    "outdated": {
+      "major": 0,
+      "minor": 0,
+      "patch": 0
+    },
+    "severities": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0,
+      "info": 0
+    },
+    "vulnerabilities": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0,
+      "info": 0
+    },
+    "to_update": 0
+  }
+}

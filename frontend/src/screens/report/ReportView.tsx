@@ -1,11 +1,13 @@
 import {
   CircleCheck,
   CircleHelp,
+  FileCode,
   FolderGit2,
   FolderOpen,
   GitPullRequest,
   Info,
   ListChecks,
+  PinOff,
   RefreshCw,
   TriangleAlert,
   Upload,
@@ -13,7 +15,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import type { FindingKind, ForgeKind, Report, ScanDetail } from '@/api/types'
+import type { CodeFile, FindingKind, ForgeKind, Report, ScanDetail } from '@/api/types'
 import { EmptyState } from '@/components/EmptyState'
 import { OptionBadges } from '@/components/OptionBadges'
 import { Alert, AlertActions, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -94,6 +96,7 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
   const selected = selectedCount(report)
   const updates = report.projects.some((project) => project.updates.length > 0)
   const inconclusive = summary.findings.inconclusive ?? 0
+  const unpinned = summary.findings.unpinned ?? 0
 
   const paquet = params.get('paquet')
   const projet = params.get('projet')
@@ -183,6 +186,7 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
         ) : (
           <p className="font-mono text-sm break-all text-fg-muted">{upload ? 'fichier envoyé' : report.source}</p>
         )}
+        {report.code && <CodeReading code={report.code} source={upload ? null : report.source} />}
         <p className="text-sm text-fg-muted">
           {offline
             ? fr(
@@ -203,7 +207,11 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
         </p>
       )}
 
-      {(offline || inconclusive > 0 || repository?.truncated || report.projects.some((project) => project.notices.length > 0)) && (
+      {(offline ||
+        inconclusive > 0 ||
+        unpinned > 0 ||
+        repository?.truncated ||
+        report.projects.some((project) => project.notices.length > 0)) && (
         <div className="mb-6 flex flex-col gap-4">
           {repository?.truncated && (
             <Alert variant="warning" role="status">
@@ -251,13 +259,14 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
               pending={start.isPending}
             />
           )}
+          {unpinned > 0 && <UnpinnedAlert count={unpinned} onShow={() => filterKind('unpinned')} />}
           {report.projects.some((project) => project.notices.length > 0) && (
             <Alert variant="info" role="status">
               <Info aria-hidden="true" />
               <AlertTitle>{count(report.projects.reduce((n, p) => n + p.notices.length, 0), 'remarque')}</AlertTitle>
               <AlertDescription>
                 <p>
-                  Des fichiers n'ont pas pu être lus, ou des dépendances vérifiées : <a href="#remarques">voir les remarques</a>.
+                  Des fichiers n'ont pas pu être lus, ou des dépendances vérifiées : <a href="#remarques" className="underline">voir les remarques</a>.
                 </p>
               </AlertDescription>
             </Alert>
@@ -300,7 +309,7 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
         </EmptyState>
       ) : (
         <>
-          {summary.to_update === 0 && inconclusive === 0 && (
+          {summary.to_update === 0 && inconclusive === 0 && unpinned === 0 && (
             <UpToDate report={report} onTransitive={upload || options?.transitive ? null : () => rescan({ transitive: true })} pending={start.isPending} />
           )}
           <div>
@@ -330,6 +339,73 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
 
       <DependencyDetail rows={opened} report={report} scanId={scan.id} onClose={closeDetail} />
     </Container>
+  )
+}
+
+/** La racine de la source : le chemin choisi, sans le chemin du fichier de code relatif à elle. */
+function rootOf(source: string, code: CodeFile): string | null {
+  return source.endsWith(`/${code.path}`) ? source.slice(0, -code.path.length - 1) : null
+}
+
+/** Comment un fichier de code choisi seul a été analysé (E28). */
+function CodeReading({ code, source }: { code: CodeFile; source: string | null }) {
+  const root = source ? rootOf(source, code) : null
+  let text: React.ReactNode
+  if (code.reading === 'project') {
+    text = (
+      <>
+        Fichier de code dans un projet{NBSP}: analysé via{' '}
+        {code.via.map((path, index) => (
+          <span key={path}>
+            {index > 0 && (index === code.via.length - 1 ? ' et ' : ', ')}
+            <code className="font-mono">{path}</code>
+          </span>
+        ))}
+        {root && (
+          <>
+            {' '}
+            (dans <span className="font-mono break-all">{root}</span>)
+          </>
+        )}
+        , le premier manifeste {code.language ? `${code.language} ` : ''}au-dessus de lui.
+      </>
+    )
+  } else if (code.reading === 'script') {
+    text = (
+      <>
+        Script à bloc PEP 723{NBSP}: son bloc <code className="font-mono">{'# /// script'}</code> tient lieu de manifeste, comme
+        pour <code className="font-mono">uv run</code>.
+      </>
+    )
+  } else {
+    text = fr('Fichier de code sans projet autour : ses imports, sans version.')
+  }
+  return (
+    <p className="flex items-start gap-2 text-sm">
+      <FileCode className="mt-0.5 size-4 shrink-0 text-fg-muted" aria-hidden="true" />
+      <span>{text}</span>
+    </p>
+  )
+}
+
+function UnpinnedAlert({ count: total, onShow }: { count: number; onShow: () => void }) {
+  return (
+    <Alert variant="info" role="status">
+      <PinOff aria-hidden="true" />
+      <AlertTitle>{count(total, 'version non fixée', 'versions non fixées')}</AlertTitle>
+      <AlertDescription>
+        <p>
+          {fr(
+            `Rien ne fixe ${total >= 2 ? 'leur' : 'sa'} version (un import, une dépendance écrite sans version) : seule la dernière publiée est donnée, et les failles ne sont pas vérifiables. Fixer les versions dans un manifeste, un lockfile ou un bloc PEP 723 pour qu'elles le soient.`,
+          )}
+        </p>
+      </AlertDescription>
+      <AlertActions>
+        <Button size="sm" variant="ghost" onClick={onShow}>
+          Voir les versions non fixées
+        </Button>
+      </AlertActions>
+    </Alert>
   )
 }
 

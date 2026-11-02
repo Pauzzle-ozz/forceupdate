@@ -14,6 +14,8 @@ Lockfile                      Commande de base
                               dossier temporaire (Yarn 1 n'a pas de mode « lockfile seul »)
 ``yarn.lock`` (Yarn 2+)       ``yarn install --mode=update-lockfile`` (rien n'est installé)
 ``uv.lock``                   ``uv lock``
+``script.py.lock``            ``uv lock --script script.py`` (le lockfile d'un script à bloc
+                              PEP 723, E28)
 ``poetry.lock``               ``poetry lock`` (``--no-update`` avant Poetry 2)
 ``pdm.lock``                  ``pdm lock --update-reuse``
 ``Pipfile.lock``              ``pipenv lock``
@@ -128,6 +130,7 @@ from forceupdate.parsers import go, php, python, ruby
 from forceupdate.parsers.base import ParseError, ReadText
 from forceupdate.parsers.json_spans import BOM
 from forceupdate.parsers.lockfiles import Lockfile, dependents, dirname, join
+from forceupdate.parsers.python import is_script
 from forceupdate.sources.local import LocalSource
 from forceupdate.update import writers
 from forceupdate.update.writers import Changes, Choice, FileChange, Refused, Target
@@ -163,6 +166,9 @@ class LockKind(enum.StrEnum):
     YARN = "yarn"
     """Yarn 2 et plus (Berry)."""
     UV = "uv"
+    UV_SCRIPT = "uv-script"
+    """Le lockfile d'un script à bloc PEP 723 (``uv lock --script script.py`` écrit
+    ``script.py.lock``, E28)."""
     POETRY = "poetry"
     PDM = "pdm"
     PIPENV = "pipenv"
@@ -182,6 +188,7 @@ _TOOL_NAMES = {
     LockKind.YARN_1: "Yarn 1",
     LockKind.YARN: "Yarn",
     LockKind.UV: "uv",
+    LockKind.UV_SCRIPT: "uv",
     LockKind.POETRY: "Poetry",
     LockKind.PDM: "PDM",
     LockKind.PIPENV: "pipenv",
@@ -200,6 +207,7 @@ _PROGRAMS = {
     LockKind.YARN_1: "yarn",
     LockKind.YARN: "yarn",
     LockKind.UV: "uv",
+    LockKind.UV_SCRIPT: "uv",
     LockKind.POETRY: "poetry",
     LockKind.PDM: "pdm",
     LockKind.PIPENV: "pipenv",
@@ -224,6 +232,7 @@ seule plateforme la rend impossible (``sslyze`` dans Argos). Il n'est donc pas p
 
 _RUNS_CODE = {
     LockKind.UV: _UV_BUILDS,
+    LockKind.UV_SCRIPT: _UV_BUILDS,
     LockKind.UV_PIP_COMPILE: _UV_BUILDS,
     LockKind.POETRY: (
         "Poetry construit les paquets publiés sans wheel pour lire leurs dépendances : leur "
@@ -495,6 +504,8 @@ def _kind(source: LocalSource, path: str) -> LockKind:
         content = _read_quietly(source.read_text, path) or ""
         berry = re.search(r"^__metadata:", content, re.MULTILINE) is not None
         return LockKind.YARN if berry else LockKind.YARN_1
+    if name.endswith(".lock") and is_script(name.removesuffix(".lock")):
+        return LockKind.UV_SCRIPT
     kind = _KINDS.get(name)
     if kind is None:
         raise ValueError(f"forceupdate ne sait pas régénérer {path}")
@@ -1683,6 +1694,21 @@ class _Uv(_Driver):
         context.run("lock", *_upgrades(context.job))
 
 
+class _UvScript(_Driver):
+    """``uv lock --script`` : le script, dans le dossier de son lockfile (``script.py.lock``)."""
+
+    def manual(self, job: Job) -> list[str]:
+        return ["uv", "lock", "--script", _script_of(job), *_upgrades(job)]
+
+    def run(self, context: _Context) -> None:
+        context.run("lock", "--script", _script_of(context.job), *_upgrades(context.job))
+
+
+def _script_of(job: Job) -> str:
+    """Le script d'un lockfile ``script.py.lock`` : ``script.py``, dans le même dossier."""
+    return posixpath.basename(job.lockfile).removesuffix(".lock")
+
+
 class _Poetry(_Driver):
     def manual(self, job: Job) -> list[str]:
         names = _lockfile_only(job)
@@ -2014,6 +2040,7 @@ _DRIVERS: dict[LockKind, _Driver] = {
     LockKind.YARN_1: _Yarn1(),
     LockKind.YARN: _Yarn(),
     LockKind.UV: _Uv(),
+    LockKind.UV_SCRIPT: _UvScript(),
     LockKind.POETRY: _Poetry(),
     LockKind.PDM: _Pdm(),
     LockKind.PIPENV: _Pipenv(),

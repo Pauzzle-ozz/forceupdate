@@ -55,7 +55,7 @@ export function Synthesis({
         <p className="text-sm text-fg-muted">{coverage}</p>
       </div>
       <div
-        className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(150px,1fr))]"
+        className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(140px,1fr))]"
         role="group"
         aria-label="Constats par type ; choisir un type filtre le tableau"
       >
@@ -88,6 +88,7 @@ function detail(kind: FindingKind, summary: Summary): string | null {
     return parts.join(' · ') || null
   }
   if (kind === 'inconclusive') return 'registre ou OSV muet'
+  if (kind === 'unpinned') return 'failles non vérifiables'
   return null
 }
 
@@ -156,14 +157,15 @@ function Counter({
 /** La barre empilée des gravités, sa légende avec les nombres, et tout dans son `aria-label`. */
 function SeverityBar({ summary }: { summary: Summary }) {
   const total = summary.to_update
-  const label = fr(`Gravité des ${count(total, 'constat')} : ${SEVERITIES.map((severity) => {
+  const title = total === 1 ? 'Gravité du constat' : `Gravité des ${count(total, 'constat')}`
+  const label = fr(`${title} : ${SEVERITIES.map((severity) => {
     const n = summary.severities[severity] ?? 0
     return `${formatNumber(n)} ${agree(n, ...SEVERITY_WORD[severity])}`
   }).join(', ')}`)
   return (
     <Card className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-base">Gravité des {count(total, 'constat')}</h3>
+        <h3 className="text-base">{title}</h3>
         <span className="text-sm text-fg-muted">du plus grave au moins grave</span>
       </div>
       <div className="flex h-3 gap-0.5 overflow-hidden rounded-full bg-track" role="img" aria-label={label}>

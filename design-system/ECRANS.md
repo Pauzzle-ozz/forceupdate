@@ -82,8 +82,10 @@ une page, c'est le serveur qui liste.
 - Points de départ (`GET /api/fs` sans `path`) : le dossier personnel, les lecteurs, les
   **dossiers récents** (`recent`).
 - Liste d'un dossier (`GET /api/fs?path=`) : fil des dossiers parents cliquables (et
-  `parent`), puis les dossiers et les fichiers de dépendances reconnus (seuls fichiers
-  listés), icône et nom ; les cachés repliés derrière « Afficher les éléments cachés »
+  `parent`), puis les dossiers, les fichiers de dépendances reconnus (`file`, icône
+  `file-code` en couleur de lien) et les fichiers de code (`code`, E28 : `app.py`,
+  `index.ts`… ; icône `file`, atténuée), icône et nom ; le décompte les sépare (« 1 fichier
+  de dépendances, 2 fichiers de code ») ; les cachés repliés derrière « Afficher les éléments cachés »
   (`hidden`) ; filtre par nom au clavier ; « liste coupée à 5000 entrées » si `truncated`.
 - Clavier : flèches pour parcourir, Entrée pour ouvrir un dossier, Retour arrière pour
   remonter ; le chemin courant est aussi un champ éditable (coller un chemin).
@@ -91,7 +93,8 @@ une page, c'est le serveur qui liste.
   fichier » (un fichier choisi). Les options d'analyse, repliées, comme à l'accueil.
 - Zone de dépôt et « Choisir un fichier » (`<input type="file">`) : un fichier envoyé, pas
   un chemin (son lockfile voisin n'est pas lu, il ne s'applique pas : il se télécharge
-  réécrit).
+  réécrit). Un fichier de code Python, JavaScript, TypeScript ou Go s'envoie aussi (E28) : il
+  est lu seul, par ses imports ou son bloc PEP 723.
 
 | État | Ce qu'on voit |
 |---|---|
@@ -130,7 +133,10 @@ une page, c'est le serveur qui liste.
 **But** : comprendre ce qui est à mettre à jour, du plus grave au moins grave. Page à part :
 [pages/rapport.md](pages/rapport.md). Maquette : `mockups/rapport.html`.
 
-- En tête : nom et chemin de la source, date et durée, données des registres
+- En tête : nom et chemin de la source ; pour un fichier de code (`code`, E28), comment il est
+  lu, icône `file-code` : « analysé via `pyproject.toml` (dans …), le premier manifeste Python
+  au-dessus de lui », « son bloc `# /// script` tient lieu de manifeste », ou « sans projet
+  autour : ses imports, sans version » ; date et durée, données des registres
   (`oldest_data`, surtout hors ligne), options en badges ; actions « Relancer l'analyse »
   (même chemin, mêmes options ; pour un fichier envoyé : le redéposer) et, principale,
   « Mettre à jour » avec le nombre de mises à jour pré-cochées (→ écran 5 ; absente s'il
@@ -153,6 +159,11 @@ une page, c'est le serveur qui liste.
     sans `options.transitive` : « aucune faille connue, version non vérifiée » (les
     failles sont toujours cherchées) ; une dev sans `options.dev` : « non vérifiée ».
   - Non vérifiable (`unverifiable_reason`) : badge et raison.
+  - Version non fixée (`unpinned`, E28) : utilisée « non fixée » (« un import, sans
+    version »), contrainte « aucune : un import » et l'import (`import dateutil`), badge
+    info `pin-off` « non fixée · dernière 4.0.0 ». Une alerte info « N versions non fixées »
+    dit que les failles ne sont pas vérifiables sans version, avec « Voir les versions non
+    fixées » ; jamais l'alerte « Rien à mettre à jour ».
 - **Détail d'une dépendance** (panneau latéral) : versions (utilisée et d'où, contrainte et
   où, acceptée par la contrainte `wanted_version`, dernière), tous ses constats (gravité,
   identifiants, CVSS, titre de l'avis en anglais, corrigée en, lien osv.dev ; message

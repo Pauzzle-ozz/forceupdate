@@ -72,7 +72,8 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   └── e2e/                ← tests Playwright (vrai serveur, front construit, CSP, axe-core) ;
 │                             helpers.ts : copie d'un mini-projet dans un dossier temporaire ;
 │                             forges.spec.ts : écrans 6, 7 et 8, GitHub, GitLab et Bitbucket, en série
-│                             (comptes du serveur partagés)
+│                             (comptes du serveur partagés) ; code.spec.ts : un fichier de code (E28),
+│                             déposé sur la page (un vrai événement « drop »)
 ├── src/forceupdate/        ← le code de l'outil (architecture cible : PLAN.md)
 │   ├── checks/             ← les constats : outdated.py, vulns.py, deprecated.py, eol.py (fins de vie, E27 :
 │   │                         la table des frameworks, le cycle d'une version, le cycle conseillé),
@@ -100,6 +101,10 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   │                         et Directory.Packages.props, packages.lock.json, SDK de projet, TargetFramework ;
 │   │                         MSBuild jamais lancé) ; runtimes.py (la version des runtimes : manifestes,
 │   │                         .python-version, .nvmrc, global.json, Dockerfile… ; E27) ;
+│   │                         code.py (un fichier de code seul, E28 : le bloc PEP 723 d'un script, lu par
+│   │                         python.py, sinon ses imports ; la table import → paquet, les modules
+│   │                         intégrés de Node), imports.py (ast pour Python, un lexer pour JS/TS et Go :
+│   │                         jamais exécutés) ;
 │   │                         lockfiles.py (lien manifeste ↔ lockfile), *_spans.py (positions ;
 │   │                         ruby_spans.py, gradle_spans.py : des lexers ; xml_spans.py : expat, le
 │   │                         texte et les attributs) ;
@@ -112,7 +117,8 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   │                         maven-metadata.xml de Maven Central, Google Maven et du portail Gradle ;
 │   │                         nuget.py, réécrit d'après NuGet.Versioning : NuGet prend la plus basse
 │   │                         version qui convient ; nuget.py : l'API « registration » et ses pages)
-│   ├── sources/            ← d'où vient le code : local.py (dossier, fichier), forge.py (un dépôt lu par
+│   ├── sources/            ← d'où vient le code : local.py (dossier, fichier ; un fichier de code : le
+│   │                         projet trouvé en remontant les dossiers, E28), forge.py (un dépôt lu par
 │   │                         l'API : seuls les fichiers que lisent les parseurs sont téléchargés ; un
 │   │                         clone superficiel si l'arborescence est tronquée)
 │   ├── update/             ← planner, writers/, lockfiles, local.py (mise à jour d'un dossier), forge.py
@@ -135,7 +141,8 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
     ├── fake_bundler.py     ← bundle lock simulé (FakeTools.handlers["bundle"]), comme le vrai Bundler 4.0
     ├── fixtures/           ← réponses HTTP enregistrées (NuGet : compressées ; endoflife/ : endoflife.date) ;
     │                         record.py les ré-enregistre, RECORDED_ON : le jour des fins de vie des tests
-    └── projects/           ← mini-projets par outil, lockfiles produits par les vrais outils ; eol/ : E27
+    └── projects/           ← mini-projets par outil, lockfiles produits par les vrais outils ; eol/ : E27 ;
+                              scripts/ : E28 (des fichiers de code seuls ; locked.py.lock de uv lock --script)
 ```
 
 ## Commandes
@@ -279,6 +286,10 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   `~/sdk/nuget-versioning-7.9.0/lib/net472/NuGet.Versioning.dll`, chargé par PowerShell 5.1
   (`[Reflection.Assembly]::LoadFrom`) ; `[NuGet.Versioning.NuGetVersion]::TryParse` y prend la
   surcharge stricte héritée de `SemanticVersion` : `Parse` dans un `try`.
+- Un fichier de code (E28) s'analyse à travers le projet trouvé en remontant les dossiers : dans
+  le dépôt, `tests/projects/scripts/imports.py` le serait via le `pyproject.toml` de forceupdate.
+  Les tests copient ces fichiers dans leur dossier et fixent le dossier personnel, où la remontée
+  s'arrête (`monkeypatch.setattr(local, "_home", …)`) ; à la main, les copier dans le scratchpad.
 - Pour tous les tests `network` d'un coup :
   `export PATH="$HOME/sdk/dotnet-sdk-10.0.403:$HOME/sdk/ruby-4.0.9/bin:$HOME/sdk/php-8.5.12:$HOME/sdk/composer-2.11.0:$HOME/sdk/go1.27.3/bin:$HOME/.cargo/bin:$PATH"`.
 

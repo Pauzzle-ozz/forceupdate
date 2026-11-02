@@ -55,6 +55,15 @@ de chaque fichier, les lockfiles à régénérer et le garde-fou git, on appliqu
 voit les versions obtenues. Un fichier déposé ne s'écrit pas : sa version mise à
 jour se télécharge. Ctrl+C l'arrête.
 
+Un fichier de code (`app.py`, `index.ts`, `main.go`…) se choisit aussi, en ligne de
+commande comme dans l'interface. Dans un projet, c'est le projet qui est analysé : celui du
+premier manifeste de son écosystème au-dessus de lui. Un script Python à bloc PEP 723
+(`# /// script`) est son propre manifeste, comme pour `uv run` : ses contraintes se mettent à
+jour, et son `script.py.lock` se régénère par `uv lock --script`. Sans projet autour, ce sont
+ses imports qui sont lus (Python, JavaScript, TypeScript, Go), sans version : le rapport donne
+la dernière de chaque paquet (« version non fixée »), et dit que les failles ne sont pas
+vérifiables sans version.
+
 L'écran « Comptes » connecte ses comptes GitHub, GitLab (gitlab.com, ou une instance
 par son adresse et un token) et Bitbucket Cloud : par la page d'autorisation de la
 forge, ou par un token collé (GitHub : aussi par un code à taper sur github.com, ou en

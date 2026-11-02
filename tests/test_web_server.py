@@ -194,6 +194,7 @@ def test_response_fields_are_all_required_request_fields_are_not() -> None:
         "location",
         "unverifiable_reason",
         "excluded",
+        "imported",
     ]
     assert components["SummaryDocument"]["required"][-1] == "to_update"
     assert components["ScanRequest"]["required"] == ["path"]

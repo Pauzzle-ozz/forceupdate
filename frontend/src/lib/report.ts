@@ -44,6 +44,7 @@ export const KINDS: FindingKind[] = [
   'eol',
   'yanked',
   'deprecated',
+  'unpinned',
   'unverifiable',
   'inconclusive',
 ]
@@ -54,6 +55,7 @@ export const KIND_LABEL: Record<FindingKind, string> = {
   eol: 'Fins de vie',
   yanked: 'Retirées',
   deprecated: 'Dépréciées',
+  unpinned: 'Versions non fixées',
   unverifiable: 'Non vérifiables',
   inconclusive: 'Non concluants',
 }
@@ -65,6 +67,7 @@ export const KIND_WORD: Record<FindingKind, [string, string]> = {
   eol: ['fin de vie', 'fins de vie'],
   yanked: ['retirée', 'retirées'],
   deprecated: ['dépréciée', 'dépréciées'],
+  unpinned: ['version non fixée', 'versions non fixées'],
   unverifiable: ['non vérifiable', 'non vérifiables'],
   inconclusive: ['non concluant', 'non concluants'],
 }

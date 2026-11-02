@@ -74,6 +74,7 @@ from forceupdate.models import (
 )
 from forceupdate.parsers.base import ParseError, ReadText
 from forceupdate.parsers.gradle import PROPERTIES
+from forceupdate.parsers.python import is_script
 from forceupdate.update.writers import go, java, npm, nuget, php, python, ruby, rust
 from forceupdate.update.writers.base import Check, Reader, Refused, Target
 
@@ -504,6 +505,8 @@ def _reader(path: str, pattern: str | None = None) -> Reader | None:
         return nuget.read_msbuild_file
     if posixpath.basename(path) == nuget.GLOBAL_JSON:
         return nuget.read_global_json
+    if pattern is None and is_script(path):
+        return python.read_script
     return _READERS.get(_pattern(path, pattern) or "")
 
 

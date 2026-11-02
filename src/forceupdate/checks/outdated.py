@@ -78,6 +78,8 @@ def check(
     target = _target(scheme, info, current.version, dependency.excluded, refused)
     latest = _target(scheme, info, current.version, dependency.excluded) if refused else target
     blocked = latest if latest is not None and latest != target and latest in refused else None
+    if current.unpinned:
+        return [_unpinned(dependency, info, target, blocked, refused)]
     if target is None and blocked is None:
         return []
     wanted = wanted_version(dependency, info, current, refused)
@@ -123,6 +125,31 @@ def check(
             url=info.url,
         )
     ]
+
+
+def _unpinned(
+    dependency: Dependency,
+    info: PackageInfo,
+    target: str | None,
+    blocked: str | None,
+    refused: Mapping[str, Refusal],
+) -> Finding:
+    """Le constat « version non fixée » (E28) : rien ne fixe la version, on dit la dernière."""
+    imported = "" if dependency.imported is None else f" (importé : {dependency.imported})"
+    shown = target or blocked
+    if shown is None:
+        message = f"Version non fixée{imported} ; le registre n'a pas de dernière version stable."
+    else:
+        message = f"Version non fixée{imported} : la dernière est {shown}."
+    if target is None and blocked is not None:
+        message += f" Le runtime du projet ne la fait pas tourner : {refused[blocked].reason}."
+    return Finding(
+        kind=FindingKind.UNPINNED,
+        message=message,
+        dependency=dependency,
+        target_version=shown,
+        url=info.url,
+    )
 
 
 def wanted_version(

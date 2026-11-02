@@ -1,5 +1,6 @@
 """Un fichier envoyé par l'interface (glisser-déposer) : le navigateur ne donne pas son chemin,
-seulement son contenu.
+seulement son contenu. Un manifeste, un lockfile, ou un fichier de code dont forceupdate lit les
+imports (E28 : ``detect.code.READ_ALONE``), analysé seul : il n'a pas de projet autour.
 
 Il est rangé dans un dossier temporaire, puis analysé comme un fichier de l'ordinateur : même
 progression, même rapport, même plan. Mais rien ne s'écrit sur le disque de la personne et
@@ -15,6 +16,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
+from forceupdate.detect.code import read_alone
 from forceupdate.detect.manifests import match_dependency_file, max_read_size
 from forceupdate.models import ScanOptions
 from forceupdate.sources.local import LocalSource
@@ -44,14 +46,15 @@ async def upload_file(
     jobs: CurrentJobs,
     name: Annotated[str, Query(description="Le nom du fichier (package.json…).")],
 ) -> JSONResponse:
-    """Analyse un fichier envoyé : un manifeste ou un lockfile, son contenu dans le corps de la
-    requête. Rend l'analyse lancée, comme ``POST /api/scans``."""
+    """Analyse un fichier envoyé : un manifeste, un lockfile ou un fichier de code (ses imports,
+    le bloc PEP 723 d'un script), son contenu dans le corps de la requête. Rend l'analyse
+    lancée, comme ``POST /api/scans``."""
     _check_name(name)
     content = await _read_body(request, max_read_size(name))
     directory = Path(await asyncio.to_thread(tempfile.mkdtemp, prefix="forceupdate-"))
     path = directory / name
     await asyncio.to_thread(path.write_bytes, content)
-    source = LocalSource(path)
+    source = LocalSource(path, alone=True)
     scan = jobs.start_scan(
         source, ScanOptions(), kind=SourceKind.UPLOAD, label=name, upload_dir=directory
     )
@@ -59,15 +62,18 @@ async def upload_file(
 
 
 def _check_name(name: str) -> None:
-    """Un nom de fichier seul (ni dossier, ni lecteur), d'un fichier de dépendances connu."""
+    """Un nom de fichier seul (ni dossier, ni lecteur), d'un fichier de dépendances connu ou d'un
+    fichier de code dont forceupdate lit les imports."""
     if not name:
         raise HTTPException(400, "Nom de fichier manquant.")
     bare = name == PurePosixPath(name).name == PureWindowsPath(name).name
     if not bare or name in {".", ".."} or "\0" in name or len(name) > 255:
         raise HTTPException(400, f"Nom de fichier invalide : « {name} ».")
-    if match_dependency_file(name) is None:
+    if match_dependency_file(name) is None and read_alone(name) is None:
         raise HTTPException(
-            400, f"« {name} » n'est pas un manifeste ni un lockfile que forceupdate sait lire."
+            400,
+            f"« {name} » n'est pas un manifeste, un lockfile ni un fichier de code (Python, "
+            "JavaScript, TypeScript, Go) que forceupdate sait lire.",
         )
 
 

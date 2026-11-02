@@ -79,10 +79,14 @@ sans validation.
   - un manifeste ou un lockfile : analysé seul, avec son lockfile voisin s'il y
     en a un ;
   - un fichier de code (`app.py`, `index.ts`…) : l'outil remonte les dossiers
-    jusqu'au manifeste le plus proche et analyse ce projet ;
-  - un fichier de code sans projet autour : analyse de ses imports, et du bloc
-    PEP 723 pour un script Python. Sans version écrite nulle part, l'outil peut
-    seulement dire « la dernière version est X » ;
+    jusqu'au manifeste le plus proche **de son écosystème** (arrêt à la racine git, à
+    celle du disque, ou avant le dossier personnel) et analyse ce projet seul (fait à
+    E28) ;
+  - un script Python à bloc PEP 723 (`# /// script`) : son bloc est son manifeste,
+    même dans un projet, comme pour `uv run` (vérifié) ;
+  - un fichier de code sans projet autour : analyse de ses imports (Python,
+    JavaScript, TypeScript, Go). Sans version écrite nulle part, l'outil peut
+    seulement dire « la dernière version est X » (constat « version non fixée ») ;
   - un fichier glissé-déposé dans l'interface : analysé, et sa version mise à
     jour se télécharge (le navigateur ne laisse pas l'outil réécrire le fichier
     d'origine).
@@ -310,6 +314,17 @@ chaque fois) :
   avis d'OSV citent souvent chaque majeure du module : une faille peut n'être corrigée que sous
   une autre (chi v1 : seulement dans `…/chi/v5`).
 - **Windows** : `npm` s'appelle `npm.cmd`. Toujours passer par `shutil.which`.
+
+- **Un import n'est pas un nom de paquet** (E28) : `import yaml` vient de `PyYAML`,
+  `import cv2` d'`opencv-python` (une table, pour les cas courants) ; sous un espace de noms
+  partagé (`google.cloud.storage`), le paquet se cherche sur PyPI, du plus long nom au plus
+  court ; un import Go se rattache au plus long préfixe que le proxy connaît comme module
+  (`golang.org/x/text/language` → `golang.org/x/text`), comme `go mod tidy`. Un module posé à
+  côté du script (`util.py`) n'est pas un paquet.
+- **Un bloc PEP 723 se lit comme uv le lit** (vérifié avec uv 0.10) : n'importe où dans le
+  fichier, même dans une chaîne ; jusqu'au dernier `# ///` de la suite de commentaires (deux
+  blocs collés donnent une erreur TOML) ; refusé si une ligne ne commence pas par `#` ; pas vu
+  derrière un BOM.
 
 ### Interface web
 

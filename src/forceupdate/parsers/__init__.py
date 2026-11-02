@@ -4,15 +4,16 @@ Un module par écosystème : Python (E03), npm (E04), Rust (E21), Go (E22), PHP 
 Java (E25 : Maven et Gradle) et .NET (E26 : NuGet). Chacun relie les manifestes
 (dépendances directes, contraintes et leur emplacement) aux lockfiles (versions installées,
 transitives), avec ce qui est commun dans ``lockfiles.py``. ``runtimes.py`` lit la version des
-runtimes du projet (E27).
+runtimes du projet (E27). ``code.py`` lit un fichier de code seul (E28) : le bloc PEP 723 d'un
+script, sinon ses imports (``imports.py``).
 """
 
 import posixpath
 from collections.abc import Callable, Sequence
 
-from forceupdate.detect.manifests import ecosystem_for_manifest
+from forceupdate.detect.manifests import ecosystem_for_manifest, match_dependency_file
 from forceupdate.models import Ecosystem, Notice, Project
-from forceupdate.parsers import go, java, npm, nuget, php, python, ruby, runtimes, rust
+from forceupdate.parsers import code, go, java, npm, nuget, php, python, ruby, runtimes, rust
 from forceupdate.parsers.base import ParseError, ReadText
 from forceupdate.parsers.lockfiles import Lockfile
 
@@ -59,7 +60,14 @@ def parse_project(project: Project, read_text: ReadText, project_dirs: Sequence[
     workspace Yarn 1 ne liste pas ses membres dans son lockfile.
 
     Puis ``project.runtimes`` : ses runtimes et leur version (``runtimes.detect``, E27).
+
+    Un projet fait d'un fichier de code seul (ses manifestes ne sont pas des manifestes : E28)
+    est lu par ``code.parse_project``.
     """
+    if any(match_dependency_file(path) is None for path in project.manifests):
+        code.parse_project(project, read_text)
+        project.runtimes = runtimes.detect(project, read_text)
+        return
     for ecosystem in project.ecosystems:
         parser = _PARSERS.get(ecosystem)
         if parser is not None:
@@ -75,11 +83,14 @@ def parse_project(project: Project, read_text: ReadText, project_dirs: Sequence[
 def parse_lockfile(path: str, content: str) -> Lockfile:
     """Un lockfile seul, d'après son nom : ses paquets, et leur graphe s'il en a un. Un
     ``requirements*.txt`` est lu comme le ``.txt`` compilé de pip-tools ; un ``go.mod`` comme la
-    liste des versions choisies (``go.sum`` n'en est pas une). Lève ``ParseError`` pour un
+    liste des versions choisies (``go.sum`` n'en est pas une) ; ``script.py.lock`` comme un
+    ``uv.lock``. Lève ``ParseError`` pour un
     fichier invalide, ``ValueError`` pour un nom qui n'est pas celui d'un lockfile."""
     parser = _LOCKFILE_PARSERS.get(posixpath.basename(path))
     if parser is not None:
         return parser(path, content)
+    if path.endswith(".lock") and python.is_script(path.removesuffix(".lock")):
+        return python.parse_uv_lock(path, content)  # uv lock --script : script.py.lock
     if path.endswith(".txt") and ecosystem_for_manifest(path) is Ecosystem.PYPI:
         return python.parse_pinned_requirements(path, content)
     raise ValueError(f"pas un lockfile connu : {path}")

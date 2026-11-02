@@ -81,6 +81,34 @@ describe('choisir un dossier ou un fichier (écran 2)', () => {
     expect(await screen.findByRole('heading', { name: /Analyse de vulnerable/ })).toBeInTheDocument()
   })
 
+  it('un fichier de code se choisit aussi (E28), compté à part', async () => {
+    const calls = mockApi({
+      'GET /api/fs': listing({
+        path: 'C:/Projets/scripts',
+        parent: 'C:/Projets',
+        entries: [
+          { name: 'helpers.py', path: 'C:/Projets/scripts/helpers.py', kind: 'code', hidden: false },
+          { name: 'imports.py', path: 'C:/Projets/scripts/imports.py', kind: 'code', hidden: false },
+          { name: 'requirements.txt', path: 'C:/Projets/scripts/requirements.txt', kind: 'file', hidden: false },
+        ],
+      }),
+      'POST /api/scans': scanSummary({ id: 'b1', status: 'running', summary: null, finished_at: null }),
+      'GET /api/scans/b1': scanSummary({ id: 'b1', status: 'running', summary: null, finished_at: null }),
+    })
+    const user = userEvent.setup()
+    renderApp('/choisir?mode=fichier&chemin=C:/Projets/scripts')
+    await screen.findByRole('list', { name: 'Contenu de C:/Projets/scripts' })
+    expect(screen.getByText(/0 dossier, 1 fichier de dépendances/)).toHaveTextContent(
+      '0 dossier, 1 fichier de dépendances, 2 fichiers de code',
+    )
+    const script = screen.getByRole('button', { name: /imports\.py/ })
+    await user.click(script)
+    expect(script).toHaveAttribute('aria-pressed', 'true')
+    await user.click(screen.getByRole('button', { name: 'Analyser ce fichier' }))
+    const post = calls.find((call) => call.method === 'POST')!
+    expect(JSON.parse(String(post.init.body)).path).toBe('C:/Projets/scripts/imports.py')
+  })
+
   it('un chemin qui n’existe pas : l’alerte, et le chemin reste éditable', async () => {
     api()
     const user = userEvent.setup()

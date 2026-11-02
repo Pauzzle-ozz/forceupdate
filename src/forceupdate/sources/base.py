@@ -26,11 +26,27 @@ class SourceFile(NamedTuple):
     """Taille en octets."""
 
 
+class ChosenCode(NamedTuple):
+    """Le fichier de code choisi, quand ce n'est ni un manifeste ni un lockfile (E28)."""
+
+    path: str
+    """Son chemin POSIX, relatif à la racine de la source."""
+    project: str | None
+    """Le dossier du projet trouvé en remontant les dossiers (``.`` pour la racine), celui du
+    premier manifeste de son écosystème ; ``None`` sans projet autour."""
+
+
 class Source(ABC):
     """Une source de code à analyser."""
 
     origin: str
     """Ce qui a été choisi, pour le rapport : un chemin absolu, ou ``owner/repo``."""
+
+    @property
+    def code_file(self) -> ChosenCode | None:
+        """Le fichier de code choisi (E28) ; ``None`` pour un dossier, un manifeste, un lockfile
+        ou un dépôt."""
+        return None
 
     @abstractmethod
     def files(self) -> list[SourceFile]:

@@ -899,7 +899,7 @@
           "fichiers"
         ],
         "summary": "Upload File",
-        "description": "Analyse un fichier envoyé : un manifeste ou un lockfile, son contenu dans le corps de la\nrequête. Rend l'analyse lancée, comme ``POST /api/scans``.",
+        "description": "Analyse un fichier envoyé : un manifeste, un lockfile ou un fichier de code (ses imports,\nle bloc PEP 723 d'un script), son contenu dans le corps de la requête. Rend l'analyse\nlancée, comme ``POST /api/scans``.",
         "operationId": "upload_file",
         "parameters": [
           {
@@ -2764,6 +2764,55 @@
         "title": "Chosen",
         "description": "Une option de mise à jour, désignée dans le rapport de l'analyse."
       },
+      "CodeFile": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "reading": {
+            "$ref": "#/components/schemas/CodeReading"
+          },
+          "via": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Via",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "language",
+          "reading",
+          "via"
+        ],
+        "title": "CodeFile",
+        "description": "Le fichier de code choisi, quand ce n'est ni un manifeste ni un lockfile (E28)."
+      },
+      "CodeReading": {
+        "type": "string",
+        "enum": [
+          "project",
+          "script",
+          "imports"
+        ],
+        "title": "CodeReading",
+        "description": "Comment un fichier de code choisi seul est analysé (E28)."
+      },
       "ConnectMethod": {
         "type": "string",
         "enum": [
@@ -2875,6 +2924,17 @@
             "type": "array",
             "title": "Excluded",
             "default": []
+          },
+          "imported": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imported"
           }
         },
         "type": "object",
@@ -2890,7 +2950,8 @@
           "file",
           "location",
           "unverifiable_reason",
-          "excluded"
+          "excluded",
+          "imported"
         ],
         "title": "Dependency",
         "description": "Une dépendance d'un projet.\n\nUne directe vient du manifeste (``package.json``, ``pyproject.toml``…). Une\ntransitive vient seulement du lockfile : ``direct=False``, sans ``location``. Sauf pour Go :\n``go.mod`` écrit aussi les indirectes (``// indirect``), avec leur emplacement."
@@ -2962,6 +3023,16 @@
             "type": "array",
             "title": "Ignored Manifests"
           },
+          "code": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeFile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "options": {
             "anyOf": [
               {
@@ -3013,6 +3084,7 @@
           "languages",
           "projects",
           "ignored_manifests",
+          "code",
           "options",
           "scanned_at",
           "oldest_data",
@@ -3225,7 +3297,8 @@
         "enum": [
           "drive",
           "folder",
-          "file"
+          "file",
+          "code"
         ],
         "title": "EntryKind"
       },
@@ -3478,6 +3551,7 @@
           "eol",
           "yanked",
           "deprecated",
+          "unpinned",
           "unverifiable",
           "inconclusive"
         ],
@@ -3873,6 +3947,7 @@
           "yarn1",
           "yarn",
           "uv",
+          "uv-script",
           "poetry",
           "pdm",
           "pipenv",

@@ -23,6 +23,7 @@ from forceupdate.models import (
     UpdateOption,
     UpdateReason,
 )
+from forceupdate.parsers import python
 from forceupdate.sources.local import LocalSource
 from forceupdate.update import writers
 from forceupdate.update.writers import Changes, Choice, WriteError, unified_diff
@@ -33,7 +34,14 @@ New = str | Callable[[str], str]
 
 
 def inventory(root: Path) -> dict[str, Project]:
-    return {project.path: project for project in engine.inventory(LocalSource(root)).projects}
+    """Les projets de ``root`` ; et chaque script à bloc PEP 723 posé à sa racine, seul (E28 : le
+    mini-projet ``scripts``)."""
+    projects = {project.path: project for project in engine.inventory(LocalSource(root)).projects}
+    for script in sorted(root.glob("*.py")):
+        if python.has_script_block(script.read_text(encoding="utf-8")):
+            (project,) = engine.inventory(LocalSource(script, alone=True)).projects
+            projects[script.name] = project
+    return projects
 
 
 def option(*edits: Edit, version: str = "9.9.9", manual: str | None = None) -> UpdateOption:

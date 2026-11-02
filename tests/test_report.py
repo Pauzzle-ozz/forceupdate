@@ -77,6 +77,7 @@ def test_summary_counts_a_double_declaration_once(report: Report) -> None:
         FindingKind.YANKED: 1,
         FindingKind.DEPRECATED: 1,
         FindingKind.OUTDATED: 3,  # flask (une fois), requests, left-pad
+        FindingKind.UNPINNED: 0,
         FindingKind.UNVERIFIABLE: 1,
         FindingKind.INCONCLUSIVE: 0,
     }

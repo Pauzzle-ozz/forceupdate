@@ -40,7 +40,7 @@ from collections.abc import Callable, Iterator
 from typing import Any
 
 from forceupdate.models import Ecosystem, Project, Runtime
-from forceupdate.parsers import go, maven, nuget, ruby
+from forceupdate.parsers import go, maven, nuget, python, ruby
 from forceupdate.parsers.base import ParseError, ReadText
 from forceupdate.parsers.lockfiles import dirname
 from forceupdate.parsers.ruby_spans import statements
@@ -248,6 +248,13 @@ def _python(project: Project, read_text: ReadText) -> list[Runtime]:
         if match is not None:
             source = f"python_requires = {match[1]}"
             found.append(_bound(PYPI, match[1], product="python", file=path, source=source))
+    for path in project.manifests:
+        # Le bloc PEP 723 d'un script (E28) : « # requires-python = ">=3.11" ».
+        if python.is_script(path):
+            requires = python.script_requires_python(_read(read_text, path) or "")
+            if requires is not None:
+                source = f'requires-python = "{requires}"'
+                found.append(_bound(PYPI, requires, product="python", file=path, source=source))
     return [runtime for runtime in found if runtime is not None]
 
 

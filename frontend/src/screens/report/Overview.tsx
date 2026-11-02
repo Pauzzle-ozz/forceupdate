@@ -1,6 +1,6 @@
 import { Boxes, ChevronRight, FileCode } from 'lucide-react'
 import { cn } from 'cn'
-import type { Project, Report } from '@/api/types'
+import type { CodeFile, Project, Report } from '@/api/types'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardTitle } from '@/components/ui/card'
 import { count, fr } from '@/lib/format'
@@ -16,7 +16,7 @@ export function Overview({ report }: { report: Report }) {
       </h2>
       <div className="grid grid-cols-1 gap-4 nav:grid-cols-3">
         <Languages report={report} />
-        <Projects projects={report.projects} />
+        <Projects projects={report.projects} code={report.code} />
       </div>
     </Section>
   )
@@ -58,7 +58,14 @@ function Languages({ report }: { report: Report }) {
   )
 }
 
-function Projects({ projects }: { projects: Project[] }) {
+/** Comment se lit le manifeste d'un projet fait d'un fichier de code seul (E28). */
+const CODE_MANIFEST: Record<'script' | 'imports', [string, string]> = {
+  script: ['Manifeste', 'son bloc PEP 723'],
+  imports: ['Fichier de code', 'ses imports, sans version'],
+}
+
+function Projects({ projects, code }: { projects: Project[]; code: CodeFile | null }) {
+  const alone = code && code.reading !== 'project' ? CODE_MANIFEST[code.reading] : null
   const title = (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <CardTitle>
@@ -108,8 +115,11 @@ function Projects({ projects }: { projects: Project[] }) {
             <span className="font-mono break-all">{project.path}</span>
             {project.path === '.' && <span className="text-fg-muted"> (la racine)</span>}
           </dd>
-          <dt className="text-fg-muted">Manifestes</dt>
-          <dd className="font-mono break-all">{project.manifests.join(' · ') || '—'}</dd>
+          <dt className="text-fg-muted">{alone ? alone[0] : 'Manifestes'}</dt>
+          <dd className="break-all">
+            <span className="font-mono">{project.manifests.join(' · ') || '—'}</span>
+            {alone && <span className="text-fg-muted"> ({alone[1]})</span>}
+          </dd>
           <dt className="text-fg-muted">Lockfiles</dt>
           <dd className="font-mono break-all">{project.lockfiles.join(' · ') || 'aucun'}</dd>
           {project.runtimes.length > 0 && (

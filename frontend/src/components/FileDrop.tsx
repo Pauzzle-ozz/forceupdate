@@ -4,7 +4,7 @@ import { fr } from '@/lib/format'
 
 /** Les limites de `POST /api/files`, à dire avant qu'on dépose. */
 export const UPLOAD_LIMITS = fr(
-  'Un manifeste ou un lockfile, 2 Mo au plus (50 Mo pour un lockfile). Le fichier d\'origine n\'est jamais modifié : sa version mise à jour se télécharge.',
+  'Un manifeste, un lockfile ou un fichier de code (Python, JavaScript, TypeScript, Go), 2 Mo au plus (50 Mo pour un lockfile). Le fichier d\'origine n\'est jamais modifié : sa version mise à jour se télécharge.',
 )
 
 function carriesFiles(event: DragEvent): boolean {

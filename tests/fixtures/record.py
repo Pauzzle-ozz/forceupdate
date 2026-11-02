@@ -116,6 +116,7 @@ PACKAGES: dict[str, tuple[type[Registry], dict[str, str]]] = {
             "jinja2": "indirecte du mini-projet vulnerable : failles corrigées en 2.x et 3.x",
             "werkzeug": "indirecte du mini-projet vulnerable : failles corrigées en 3.x seulement",
             "django": "3.2.25 du mini-projet eol : requires-python de chaque version (5.0 : 3.10)",
+            "python-dateutil": "l'import dateutil du mini-projet scripts (table import → paquet)",
         },
     ),
     "npm": (

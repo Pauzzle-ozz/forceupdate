@@ -47,7 +47,8 @@ Ce qui a été changé, et pourquoi :
 2. **Ne jamais dire plus qu'on ne sait** : « non concluant » se voit (violet, bord en
    pointillé, icône point d'interrogation) et n'est jamais confondu avec « à jour » ; une
    version approximative (borne basse) est marquée « approximative » ; une dépendance non
-   vérifiée est dite « non vérifiée ».
+   vérifiée est dite « non vérifiée » ; une version que rien ne fixe (un import, une dépendance
+  écrite sans version : E28) est dite « non fixée », jamais « à jour ».
 3. **Rien n'est écrit sans validation** : on choisit, on voit le diff et les commandes, on
    applique. Les garde-fous (git, outil absent, majeure, faille apportée) sont visibles
    avant d'agir, pas après.
@@ -190,6 +191,7 @@ Aplats des graphiques (barre des gravités), toujours avec légende et nombres :
   | retirée | `package-x` |
   | dépréciée | `archive` |
   | plus récente | `circle-arrow-up` |
+  | version non fixée (E28) | `pin-off` |
   | non vérifiable | `link-2-off` |
   | non concluant | `circle-help` |
   | critique · élevée · moyenne · faible · info | `octagon-alert` · `triangle-alert` · `circle-alert` · `circle-dot` · `info` |

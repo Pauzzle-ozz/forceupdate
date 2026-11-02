@@ -75,7 +75,7 @@ export function Choose() {
           <h1 className="text-2xl">{title}</h1>
           <p className="text-fg-muted">
             {fr(
-              "Les dossiers de l'ordinateur, listés par le serveur local : seulement les noms des dossiers et des fichiers de dépendances, jamais leur contenu.",
+              "Les dossiers de l'ordinateur, listés par le serveur local : seulement les noms des dossiers, des fichiers de dépendances et des fichiers de code, jamais leur contenu. Un fichier de code est analysé à travers son projet, ou par ses imports.",
             )}
           </p>
         </PageHead>
@@ -265,8 +265,9 @@ function FolderList({
   }
 
   const starts = listing.path === null
-  const folders = entries.filter((entry) => entry.kind !== 'file').length
-  const files = entries.length - folders
+  const folders = entries.filter((entry) => entry.kind === 'folder' || entry.kind === 'drive').length
+  const files = entries.filter((entry) => entry.kind === 'file').length
+  const code = entries.length - folders - files
 
   return (
     <div className="flex flex-col">
@@ -295,6 +296,7 @@ function FolderList({
           )}
           <p className="w-full text-sm text-fg-muted" aria-live="polite">
             {count(folders, 'dossier')}, {count(files, 'fichier')} de dépendances
+            {code > 0 && `, ${count(code, 'fichier')} de code`}
           </p>
         </div>
       )}
@@ -316,8 +318,17 @@ function FolderList({
           </li>
         )}
         {entries.map((entry) => {
-          const isFile = entry.kind === 'file'
-          const Icon = entry.kind === 'drive' ? HardDrive : isFile ? FileCode : starts && entry.path === listing.home ? House : Folder
+          const isFile = entry.kind === 'file' || entry.kind === 'code'
+          const Icon =
+            entry.kind === 'drive'
+              ? HardDrive
+              : entry.kind === 'file'
+                ? FileCode
+                : entry.kind === 'code'
+                  ? File
+                  : starts && entry.path === listing.home
+                    ? House
+                    : Folder
           const chosen = entry.path === selected
           return (
             <li key={entry.path} className="border-t border-border">
@@ -328,7 +339,7 @@ function FolderList({
                 aria-pressed={isFile ? chosen : undefined}
                 onClick={() => (isFile ? onSelect(entry) : onOpen(entry.path))}
               >
-                <Icon className={cn('size-5 shrink-0', isFile && 'text-link')} aria-hidden="true" />
+                <Icon className={cn('size-5 shrink-0', entry.kind === 'file' && 'text-link')} aria-hidden="true" />
                 <span className={cn('min-w-0 font-mono break-all', entry.hidden && 'text-fg-muted')}>{entry.name}</span>
                 {starts && entry.path === listing.home && <span className="text-xs text-fg-muted">dossier personnel</span>}
                 {isFile && <span className="ml-auto text-xs whitespace-nowrap text-fg-muted">{chosen ? 'choisi' : 'choisir'}</span>}
@@ -343,7 +354,7 @@ function FolderList({
         )}
         {starts &&
           listing.recent.map((item) => {
-            const isFile = item.kind === 'file'
+            const isFile = item.kind === 'file' || item.kind === 'code'
             return (
               <li key={`recent:${item.path}`} className="border-t border-border">
                 <button
@@ -366,7 +377,7 @@ function FolderList({
             {query
               ? fr('Changer le filtre, ou analyser quand même ce dossier.')
               : fr(
-                  'Ni sous-dossier ni fichier de dépendances. On peut quand même analyser ce dossier : la recherche descend dans tous ses sous-dossiers.',
+                  'Ni sous-dossier, ni fichier de dépendances ou de code. On peut quand même analyser ce dossier : la recherche descend dans tous ses sous-dossiers.',
                 )}
           </p>
         </EmptyState>
@@ -395,11 +406,11 @@ function UploadZone({ onFile, pending, prominent }: { onFile: (file: File) => vo
     <div className="flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-control p-5 text-center text-fg-muted">
       <Upload className="size-5" aria-hidden="true" />
       <p className="text-sm">
-        Déposer un manifeste ou un lockfile n'importe où sur la page, ou le choisir. {UPLOAD_LIMITS}
+        Déposer un fichier n'importe où sur la page, ou le choisir. {UPLOAD_LIMITS}
       </p>
       <p className="text-sm">
         {fr(
-          "Le fichier est envoyé seul : son lockfile voisin n'est pas lu, et rien n'est écrit sur l'ordinateur.",
+          "Le fichier est envoyé seul : son lockfile voisin n'est pas lu, un fichier de code l'est par ses imports (ou son bloc PEP 723), et rien n'est écrit sur l'ordinateur.",
         )}
       </p>
       <input

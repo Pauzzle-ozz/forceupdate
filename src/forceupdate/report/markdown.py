@@ -9,11 +9,13 @@ couperait une cellule de tableau, un ``*`` ou un ``_`` mettrait en forme un mess
 import re
 
 from forceupdate.checks import GAP_LABELS
+from forceupdate.checks.priority import NOT_TO_UPDATE
 from forceupdate.models import FindingKind, Project, Report
 from forceupdate.report import (
     KIND_LABELS,
     Row,
     Summary,
+    code_reading,
     distinct_findings,
     format_date,
     format_share,
@@ -27,10 +29,16 @@ from forceupdate.report import (
 _SPECIAL = re.compile(r"([\\`*_{}\[\]<>()#+!|~])")
 
 
+_IN_TABLE = (FindingKind.OUTDATED, FindingKind.UNPINNED)
+"""Les constats que dit le tableau (la dernière version), sans détail en dessous."""
+
+
 def render(report: Report) -> str:
     """Le rapport en Markdown, terminé par un saut de ligne."""
     lines = ["# Rapport forceupdate", ""]
     lines.append(f"Source : `{code(report.source)}`")
+    if report.code is not None:
+        lines += ["", escape(code_reading(report.code))]
     if report.scanned_at is not None:
         lines += ["", f"Analyse du {format_date(report.scanned_at)}."]
         if report.options is not None and report.options.offline:
@@ -83,7 +91,7 @@ def _summary(summary: Summary) -> list[str]:
     else:
         lines.append(f"- {summary.to_update} à mettre à jour :")
         for kind, count in summary.findings.items():
-            if not count or kind in (FindingKind.UNVERIFIABLE, FindingKind.INCONCLUSIVE):
+            if not count or kind in NOT_TO_UPDATE:
                 continue
             if kind is FindingKind.OUTDATED:
                 lines += [
@@ -91,7 +99,7 @@ def _summary(summary: Summary) -> list[str]:
                 ]
             else:
                 lines.append(f"  - {plural(count, KIND_LABELS[kind])}")
-    for kind in (FindingKind.UNVERIFIABLE, FindingKind.INCONCLUSIVE):
+    for kind in (FindingKind.UNPINNED, FindingKind.UNVERIFIABLE, FindingKind.INCONCLUSIVE):
         if summary.findings[kind]:
             lines.append(f"- {plural(summary.findings[kind], KIND_LABELS[kind])}")
     return lines
@@ -117,7 +125,7 @@ def _project(project: Project, report: Report) -> list[str]:
     indirect_rows = rows(project, report, direct=False)
     if indirect_rows:
         lines += ["", "### Dépendances indirectes à signaler", "", *_table(indirect_rows)]
-    details = [f for f in distinct_findings([project]) if f.kind is not FindingKind.OUTDATED]
+    details = [f for f in distinct_findings([project]) if f.kind not in _IN_TABLE]
     if details:
         lines += ["", "### Détails", ""]
         for finding in details:

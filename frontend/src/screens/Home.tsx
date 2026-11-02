@@ -110,7 +110,8 @@ export function Home() {
             >
               <p>
                 Un manifeste ou un lockfile (<code>package.json</code>, <code>requirements.txt</code>,{' '}
-                <code>uv.lock</code>…), pris sur l'ordinateur ou déposé ici.
+                <code>uv.lock</code>…), ou un fichier de code (<code>app.py</code>, <code>index.ts</code>…), pris sur
+                l'ordinateur ou déposé ici.
               </p>
               <div
                 className="flex flex-col items-center gap-2 rounded-md border-2 border-dashed border-control p-5 text-center text-fg-muted"

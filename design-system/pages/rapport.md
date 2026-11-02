@@ -8,8 +8,8 @@
 - Largeur 1280 px au plus ; sections dans cet ordre : en-tête, alertes (hors ligne, non
   concluant, remarques importantes), synthèse, langages et projets, dépendances, fichiers
   écartés, remarques.
-- Synthèse : une rangée de compteurs (`repeat(auto-fill, minmax(150px, 1fr))`), deux par
-  ligne sur mobile. Tous les types de constats sont toujours là, même à zéro (un zéro dit
+- Synthèse : une rangée de compteurs (`repeat(auto-fill, minmax(140px, 1fr))` : les huit types
+  tiennent sur une ligne à 1440 px, E28), deux par ligne sur mobile. Tous les types de constats sont toujours là, même à zéro (un zéro dit
   « vérifié, rien trouvé » ; le chiffre est alors atténué). Les compteurs non nuls sont
   des boutons qui filtrent le tableau.
 - Langages et projets côte à côte au-delà de 900 px (projets sur deux colonnes), l'un sous

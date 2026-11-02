@@ -5,7 +5,17 @@ Dans un dépôt git, la liste des fichiers vient de git (``git ls-files``) : ce 
 comme sur une forge. Hors de git, ou sans git installé, le dossier est parcouru en
 sautant ``IGNORED_DIRS`` ; un dépôt rangé dans ce dossier garde son ``.gitignore``.
 
-Un fichier seul est analysé avec les lockfiles posés à côté de lui.
+Un manifeste ou un lockfile seul est analysé avec les lockfiles posés à côté de lui.
+
+Un fichier de code (E28 : ``app.py``, ``index.ts``…) l'est à travers son projet : on remonte les
+dossiers jusqu'au premier qui a un manifeste de son écosystème (``detect.code``), en s'arrêtant à
+la racine du dépôt git, à celle du disque, ou avant le dossier personnel (un ``package.json``
+laissé là par erreur n'est pas un projet). La source est alors le dépôt git qui contient ce
+projet (ses lockfiles de workspace, ses ``Directory.Packages.props`` et ses ``pom.xml`` parents
+sont au-dessus de lui), sinon le dossier du projet ; le moteur n'en analyse que ce projet. Sans
+projet, la source est le dossier du fichier, réduite au fichier (et au lockfile d'un script,
+``script.py.lock``) : ce sont ses imports qui sont lus. Un fichier envoyé par l'interface
+(``alone``) n'a jamais de projet autour.
 """
 
 import logging
@@ -15,6 +25,7 @@ import stat
 import subprocess
 from pathlib import Path
 
+from forceupdate.detect.code import code_ecosystem
 from forceupdate.detect.manifests import (
     is_ignored_dir,
     is_ignored_path,
@@ -23,7 +34,8 @@ from forceupdate.detect.manifests import (
     max_read_size,
     safe_read_text,
 )
-from forceupdate.sources.base import Source, SourceError, SourceFile
+from forceupdate.models import Ecosystem
+from forceupdate.sources.base import ChosenCode, Source, SourceError, SourceFile
 
 logger = logging.getLogger(__name__)
 
@@ -38,20 +50,31 @@ class LocalSource(Source):
     """
 
     root: Path
-    """Le dossier analysé ; pour un fichier seul, son dossier."""
+    """Le dossier analysé ; pour un fichier seul, son dossier ; pour un fichier de code dans un
+    projet, le dépôt git qui le contient, sinon le dossier du projet."""
 
-    def __init__(self, path: Path | str) -> None:
+    def __init__(self, path: Path | str, *, alone: bool = False) -> None:
+        """``alone`` : un fichier de code n'a pas de projet autour (un fichier envoyé, rangé
+        dans un dossier temporaire)."""
         given = Path(path)
         if not given.exists():
             raise SourceError(f"le chemin « {path} » n'existe pas")
         resolved = given.resolve()
         self.origin = resolved.as_posix()
         self._file: str | None = None
+        self._code: ChosenCode | None = None
         if resolved.is_dir():
             self.root = resolved
         elif resolved.is_file():
-            self.root = _file_root(resolved)
+            if match_dependency_file(f"{resolved.parent.name}/{resolved.name}") is not None:
+                self.root = _file_root(resolved)
+                self._file = resolved.relative_to(self.root).as_posix()
+                return
+            project = None if alone else _project_dir(resolved)
+            self.root = resolved.parent if project is None else _project_root(project)
             self._file = resolved.relative_to(self.root).as_posix()
+            where = None if project is None else project.relative_to(self.root).as_posix()
+            self._code = ChosenCode(self._file, where)
         else:
             raise SourceError(f"« {path} » n'est ni un dossier ni un fichier")
 
@@ -60,10 +83,17 @@ class LocalSource(Source):
         """Pour un fichier seul, son chemin relatif à ``root`` ; ``None`` pour un dossier."""
         return self._file
 
+    @property
+    def code_file(self) -> ChosenCode | None:
+        return self._code
+
     def files(self) -> list[SourceFile]:
-        if self._file is None:
+        if self._file is None or (self._code is not None and self._code.project is not None):
             return sorted(_list_dir(self.root))
-        paths = [self._file, *lockfile_candidates(self._file)]
+        if self._code is not None:
+            paths = [self._file, f"{self._file}.lock"]
+        else:
+            paths = [self._file, *lockfile_candidates(self._file)]
         return sorted(file for path in paths if (file := _stat_file(self.root, path)) is not None)
 
     def read_text(self, path: str) -> str | None:
@@ -89,6 +119,61 @@ def _file_root(file: Path) -> Path:
     if match is not None and match.project == "." and parent.parent != parent:
         return parent.parent
     return parent
+
+
+def _project_dir(file: Path) -> Path | None:
+    """Le dossier du projet d'un fichier de code : le premier, en remontant depuis le sien, qui
+    a un manifeste de son écosystème (de n'importe lequel pour un fichier d'un autre langage).
+    ``None`` si on atteint la racine du dépôt git, celle du disque, ou le dossier personnel
+    sans en trouver."""
+    ecosystem = code_ecosystem(file.name)
+    home = _home()
+    folder = file.parent
+    while folder != home:
+        if _has_manifest(folder, ecosystem):
+            return folder
+        if (folder / ".git").exists() or folder.parent == folder:
+            return None
+        folder = folder.parent
+    return None
+
+
+def _home() -> Path | None:
+    try:
+        return Path.home().resolve()
+    except (OSError, RuntimeError):
+        return None
+
+
+def _has_manifest(folder: Path, ecosystem: Ecosystem | None) -> bool:
+    """Vrai si ``folder`` a un manifeste de ``ecosystem`` (de n'importe lequel avec ``None``) :
+    un fichier ordinaire, ou un ``requirements/*.txt`` (le motif d'un dossier)."""
+    for directory, prefix in ((folder, ""), (folder / "requirements", "requirements/")):
+        try:
+            with os.scandir(directory) as entries:
+                names = [e.name for e in entries if e.is_file(follow_symlinks=False)]
+        except OSError:
+            continue
+        for name in names:
+            # Un nom de dossier quelconque devant : « requirements/dev.txt » appartient au dossier
+            # du dessus, sauf s'il est préfixé ici.
+            match = match_dependency_file(f"projet/{prefix}{name}")
+            if match is None or match.lockfile or match.project != "projet":
+                continue
+            if ecosystem is None or match.ecosystem is ecosystem:
+                return True
+    return False
+
+
+def _project_root(project: Path) -> Path:
+    """La racine de la source d'un fichier de code dans ``project`` : le dépôt git qui contient
+    le projet, sauf si le projet est dans un dossier jamais parcouru (``node_modules``…) ; sinon
+    le projet lui-même."""
+    for candidate in [project, *project.parents]:
+        if (candidate / ".git").exists():
+            inside = project.relative_to(candidate).as_posix()
+            return project if is_ignored_path(f"{inside}/x") else candidate
+    return project
 
 
 def _list_dir(directory: Path) -> list[SourceFile]:

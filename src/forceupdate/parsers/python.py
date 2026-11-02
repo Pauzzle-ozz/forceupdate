@@ -672,6 +672,136 @@ def _uv_source_reason(source: Any) -> str | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Script à bloc PEP 723
+# ---------------------------------------------------------------------------
+
+SCRIPT_SUFFIXES = (".py", ".pyw")
+"""Les fichiers où un bloc PEP 723 est cherché (comparés sans tenir compte de la casse)."""
+
+_SCRIPT_BLOCK = re.compile(
+    r"(?m)^# /// (?P<type>[a-zA-Z0-9-]+)$\s(?P<content>(^#(| .*)$\s)+)^# ///$"
+)
+"""L'expression de la spécification (« Inline script metadata », packaging.python.org), celle
+qu'applique uv : un bloc va jusqu'au dernier ``# ///`` de la suite de commentaires."""
+_SCRIPT_OPENING = re.compile(r"(?m)^# /// script$")
+
+
+@dataclass(frozen=True)
+class ScriptBlock:
+    """Le bloc ``# /// script`` d'un script Python (PEP 723), son contenu TOML et sa place."""
+
+    toml: str
+    """Le contenu, chaque ligne sans son ``# `` (ou son ``#``, pour une ligne vide)."""
+    first_line: int
+    """La ligne du fichier (à partir de 1) de la première ligne du contenu."""
+    prefixes: tuple[int, ...]
+    """Pour chaque ligne du contenu, la longueur du préfixe ôté : 2 (``# ``) ou 1 (``#``)."""
+
+    def shifted(self, span: StringSpan) -> StringSpan:
+        """``span``, une chaîne du contenu TOML, placée dans le fichier."""
+        index = span.line - 1
+        return dataclasses.replace(
+            span, line=self.first_line + index, column=span.column + self.prefixes[index]
+        )
+
+
+def is_script(path: str) -> bool:
+    """Vrai pour un fichier Python où chercher un bloc PEP 723 (pas ``setup.py``, un
+    manifeste)."""
+    return path.lower().endswith(SCRIPT_SUFFIXES) and match_dependency_file(path) is None
+
+
+def has_script_block(content: str) -> bool:
+    """Vrai si ``content`` ouvre un bloc ``# /// script`` (même mal fermé, que uv refuse) : le
+    script est alors son propre manifeste, comme pour ``uv run``, même dans un projet."""
+    return _SCRIPT_OPENING.search(content) is not None
+
+
+def script_block(content: str) -> ScriptBlock | None:
+    """Le bloc ``script`` de ``content`` ; ``None`` s'il n'y en a pas. Lève ``ParseError`` pour un
+    bloc ouvert sans être fermé (une ligne qui ne commence pas par ``#``), ou pour plusieurs
+    blocs ``script`` : uv les refuse (vérifié avec uv 0.10)."""
+    found = [m for m in _SCRIPT_BLOCK.finditer(content) if m.group("type") == "script"]
+    if len(found) > 1:
+        raise ParseError("plusieurs blocs « # /// script » : uv refuse ce script.")
+    if not found:
+        if has_script_block(content):
+            raise ParseError(
+                "un bloc « # /// script » s'ouvre sans se fermer par « # /// » : chaque ligne du "
+                "bloc, même vide, doit commencer par « # ». uv refuse ce script."
+            )
+        return None
+    match = found[0]
+    lines = match.group("content").splitlines(keepends=True)
+    prefixes = tuple(2 if line.startswith("# ") else 1 for line in lines)
+    toml = "".join(line[prefix:] for line, prefix in zip(lines, prefixes, strict=True))
+    first_line = content.count("\n", 0, match.start("content")) + 1
+    return ScriptBlock(toml=toml, first_line=first_line, prefixes=prefixes)
+
+
+@dataclass
+class _Script:
+    """Un script à bloc PEP 723 lu."""
+
+    declared: list[Declared]
+    notices: list[Notice]
+
+
+def parse_script(path: str, content: str) -> list[Dependency]:
+    """Les dépendances du bloc PEP 723 d'un script (``dependencies``), placées dans le fichier.
+    Lève ``ParseError`` si le bloc est invalide (voir ``script_block``) ou si son TOML l'est ;
+    sans bloc, rien."""
+    return [declared.dependency for declared in _parse_script(path, content).declared]
+
+
+def script_requires_python(content: str) -> str | None:
+    """Le ``requires-python`` du bloc PEP 723 de ``content`` ; ``None`` sans bloc, sans
+    ``requires-python``, ou pour un bloc invalide."""
+    try:
+        block = script_block(content)
+        data = _load_toml(block.toml) if block is not None else {}
+    except ParseError:
+        return None
+    value = data.get("requires-python")
+    return value if isinstance(value, str) else None
+
+
+def _parse_script(path: str, content: str) -> _Script:
+    block = script_block(content)
+    if block is None:
+        return _Script(declared=[], notices=[])
+    try:
+        data = _load_toml(block.toml)
+    except ParseError as err:
+        raise ParseError(f"bloc PEP 723 : {err}") from err
+    spans = {key: block.shifted(span) for key, span in string_spans(block.toml).items()}
+    sources = {
+        canonicalize_name(key): value
+        for key, value in _table(data, "tool", "uv", "sources").items()
+    }
+    declared: list[Declared] = []
+    notices: list[Notice] = []
+    values = data.get("dependencies")
+    for index, value in enumerate(values if isinstance(values, list) else []):
+        if not isinstance(value, str):
+            continue
+        locate = _span_locator(spans.get(("dependencies", index)))
+        item = _declare_pep508(value, file=path, scope=Scope.RUNTIME, locate=locate)
+        if item is None:
+            notices.append(
+                Notice(file=path, message=f"« {value} » n'est pas une dépendance valide.")
+            )
+            continue
+        reason = _uv_source_reason(sources.get(item.dependency.name))
+        if reason is not None:
+            item = Declared(
+                dataclasses.replace(item.dependency, unverifiable_reason=reason), item.extras
+            )
+        declared.append(item)
+    return _Script(declared=declared, notices=notices)
+
+
 _PIPFILE_RESERVED = frozenset({"source", "requires", "pipenv", "scripts"})
 
 
@@ -1170,6 +1300,9 @@ class _ProjectParser:
         self.locks = self._python_files(project.lockfiles)
 
     def run(self) -> None:
+        for path in self.project.manifests:
+            if is_script(path):
+                self._script(path)
         if "pyproject.toml" in self.manifests:
             self._pyproject(self.manifests["pyproject.toml"][0])
         if "Pipfile" in self.manifests:
@@ -1285,6 +1418,24 @@ class _ProjectParser:
         excluded = [m for m in workspace.get("exclude", []) if isinstance(m, str)]
         member = in_workspace(relative_to(self.project.path, root), members, excluded)
         return member, _table(data, "tool", "uv", "sources")
+
+    def _script(self, path: str) -> None:
+        """Un script à bloc PEP 723 (E28), et son lockfile (``uv lock --script`` écrit
+        ``script.py.lock``, au format de ``uv.lock``) s'il est dans ``project.lockfiles``."""
+        content = self._read(path)
+        if content is None:
+            return
+        try:
+            parsed = _parse_script(path, content)
+        except ParseError as err:
+            self.notices.append(Notice(file=path, message=str(err)))
+            return
+        self.notices.extend(parsed.notices)
+        lock_path = f"{path}.lock"
+        lock = None
+        if lock_path in self.project.lockfiles:
+            lock = self._lock(lock_path, parse_uv_lock)
+        self._link(parsed.declared, lock)
 
     def _pipfile(self, path: str) -> None:
         content = self._read(path)

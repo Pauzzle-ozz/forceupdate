@@ -14,6 +14,7 @@ import {
   Link2Off,
   OctagonAlert,
   PackageX,
+  PinOff,
   ShieldAlert,
   TriangleAlert,
   type LucideIcon,
@@ -26,6 +27,7 @@ export const KIND_ICON: Record<FindingKind, LucideIcon> = {
   yanked: PackageX,
   deprecated: Archive,
   outdated: CircleArrowUp,
+  unpinned: PinOff,
   unverifiable: Link2Off,
   inconclusive: CircleHelp,
 }

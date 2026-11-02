@@ -26,6 +26,7 @@ import type {
   UpdatePlan,
 } from '@/api/types'
 import eol from './fixtures/eol.json'
+import imports from './fixtures/imports.json'
 import vulnerable from './fixtures/vulnerable.json'
 
 /** Le rapport de `tests/projects/vulnerable` (`tests/e2e_server.py --report`). */
@@ -33,6 +34,9 @@ export const VULNERABLE = vulnerable as unknown as Report
 
 /** Le rapport de `tests/projects/eol` : Python 3.8, Django 3.2 et Node.js 16 en fin de vie (E27). */
 export const EOL = eol as unknown as Report
+
+/** Le rapport de `tests/projects/scripts/imports.py`, copié seul : ses imports, sans version (E28). */
+export const IMPORTS = imports as unknown as Report
 
 /** Une réponse d'erreur de l'API. */
 export class Status {

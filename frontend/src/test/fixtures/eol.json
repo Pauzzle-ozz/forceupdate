@@ -46,7 +46,8 @@
             "end_column": 19
           },
           "unverifiable_reason": null,
-          "excluded": []
+          "excluded": [],
+          "imported": null
         },
         {
           "ecosystem": "npm",
@@ -64,7 +65,8 @@
             "end_column": 22
           },
           "unverifiable_reason": null,
-          "excluded": []
+          "excluded": [],
+          "imported": null
         }
       ],
       "overrides": [],
@@ -89,7 +91,8 @@
               "end_column": 19
             },
             "unverifiable_reason": null,
-            "excluded": []
+            "excluded": [],
+            "imported": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -127,7 +130,8 @@
               "end_column": 19
             },
             "unverifiable_reason": null,
-            "excluded": []
+            "excluded": [],
+            "imported": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -165,7 +169,8 @@
               "end_column": 19
             },
             "unverifiable_reason": null,
-            "excluded": []
+            "excluded": [],
+            "imported": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -203,7 +208,8 @@
               "end_column": 19
             },
             "unverifiable_reason": null,
-            "excluded": []
+            "excluded": [],
+            "imported": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -241,7 +247,8 @@
               "end_column": 19
             },
             "unverifiable_reason": null,
-            "excluded": []
+            "excluded": [],
+            "imported": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -279,7 +286,8 @@
               "end_column": 19
             },
             "unverifiable_reason": null,
-            "excluded": []
+            "excluded": [],
+            "imported": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -317,7 +325,8 @@
               "end_column": 19
             },
             "unverifiable_reason": null,
-            "excluded": []
+            "excluded": [],
+            "imported": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -355,7 +364,8 @@
               "end_column": 19
             },
             "unverifiable_reason": null,
-            "excluded": []
+            "excluded": [],
+            "imported": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -393,7 +403,8 @@
               "end_column": 19
             },
             "unverifiable_reason": null,
-            "excluded": []
+            "excluded": [],
+            "imported": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -431,7 +442,8 @@
               "end_column": 19
             },
             "unverifiable_reason": null,
-            "excluded": []
+            "excluded": [],
+            "imported": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -469,7 +481,8 @@
               "end_column": 19
             },
             "unverifiable_reason": null,
-            "excluded": []
+            "excluded": [],
+            "imported": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -507,7 +520,8 @@
               "end_column": 19
             },
             "unverifiable_reason": null,
-            "excluded": []
+            "excluded": [],
+            "imported": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -545,7 +559,8 @@
               "end_column": 19
             },
             "unverifiable_reason": null,
-            "excluded": []
+            "excluded": [],
+            "imported": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -649,7 +664,8 @@
               "end_column": 19
             },
             "unverifiable_reason": null,
-            "excluded": []
+            "excluded": [],
+            "imported": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -693,7 +709,8 @@
               "end_column": 19
             },
             "unverifiable_reason": null,
-            "excluded": []
+            "excluded": [],
+            "imported": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -726,7 +743,8 @@
               "end_column": 22
             },
             "unverifiable_reason": null,
-            "excluded": []
+            "excluded": [],
+            "imported": null
           },
           "current_version": "3.1.0",
           "current_is_approximate": true,
@@ -763,7 +781,8 @@
                 "end_column": 19
               },
               "unverifiable_reason": null,
-              "excluded": []
+              "excluded": [],
+              "imported": null
             }
           ],
           "current_version": "3.2.25",
@@ -839,7 +858,8 @@
                 "end_column": 22
               },
               "unverifiable_reason": null,
-              "excluded": []
+              "excluded": [],
+              "imported": null
             }
           ],
           "current_version": "3.1.0",
@@ -932,6 +952,7 @@
     }
   ],
   "ignored_manifests": [],
+  "code": null,
   "options": {
     "include_tests": false,
     "dev": true,
@@ -953,6 +974,7 @@
       "yanked": 0,
       "deprecated": 0,
       "outdated": 2,
+      "unpinned": 0,
       "unverifiable": 0,
       "inconclusive": 0
     },

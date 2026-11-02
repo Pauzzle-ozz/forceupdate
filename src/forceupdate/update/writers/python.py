@@ -1,5 +1,6 @@
 """Les manifestes Python : ``requirements*.txt`` et ``.in``, ``pyproject.toml`` (PEP 621,
-PEP 735, Poetry, uv, PDM), ``Pipfile`` et ``setup.cfg``.
+PEP 735, Poetry, uv, PDM), ``Pipfile`` et ``setup.cfg`` ; et le bloc PEP 723 d'un script (E28),
+le seul endroit qu'on réécrit d'un fichier de code.
 
 La réécriture est la même pour tous (``update.writers``) ; seul le parseur qui relit le fichier
 change, celui de l'analyse (``parsers.python``).
@@ -48,6 +49,11 @@ def _pipfile(path: str, content: str) -> list[Declaration]:
 
 def _setup_cfg(path: str, content: str) -> list[Declaration]:
     return dependencies(python.parse_setup_cfg(path, content))
+
+
+def read_script(path: str, content: str) -> list[Declaration]:
+    """Le bloc PEP 723 d'un script (E28) : seul ce qu'on réécrit d'un fichier de code."""
+    return dependencies(python.parse_script(path, content))
 
 
 def _no_hashes(path: str, content: str, target: Target) -> None:

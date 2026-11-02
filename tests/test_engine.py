@@ -8,6 +8,8 @@ import pytest
 
 from forceupdate import engine
 from forceupdate.models import (
+    CodeFile,
+    CodeReading,
     Dependency,
     Ecosystem,
     Language,
@@ -16,6 +18,7 @@ from forceupdate.models import (
     Scope,
     to_dict,
 )
+from forceupdate.sources import local
 from forceupdate.sources.base import SourceError
 from forceupdate.sources.local import LocalSource
 
@@ -113,11 +116,18 @@ def test_single_manifest(make_tree: MakeTree) -> None:
     ]
 
 
-def test_single_code_file(make_tree: MakeTree) -> None:
+def test_single_code_file(make_tree: MakeTree, monkeypatch: pytest.MonkeyPatch) -> None:
+    """E28 : un fichier de code est analysé à travers le projet qui le contient."""
     root = make_tree(MONOREPO)
+    monkeypatch.setattr(local, "_home", lambda: root.parent.resolve())
     report = engine.inventory(LocalSource(root / "backend" / "api" / "main.py"))
     assert report.languages == [Language(name="Python", bytes=13, ecosystem=Ecosystem.PYPI)]
-    assert report.projects == []
+    assert report.code == CodeFile(
+        path="api/main.py", language="Python", reading=CodeReading.PROJECT, via=("pyproject.toml",)
+    )
+    assert [(p.path, p.manifests, p.lockfiles) for p in report.projects] == [
+        (".", ["pyproject.toml"], ["uv.lock"])
+    ]
 
 
 def test_empty_folder(tmp_path: Path) -> None:
