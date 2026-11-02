@@ -199,6 +199,7 @@ def test_response_fields_are_all_required_request_fields_are_not() -> None:
         "excluded",
         "imported",
         "ignored",
+        "manual",
     ]
     assert components["SummaryDocument"]["required"][-1] == "to_update"
     assert components["ScanRequest"]["required"] == ["path"]

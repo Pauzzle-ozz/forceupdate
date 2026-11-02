@@ -4,6 +4,7 @@ sélection par défaut (brief, décision n°12).
 Les constats viennent des vrais contrôles (``checks``, ``checks.vulns``), sur des versions
 publiées et des avis d'OSV écrits à la main."""
 
+import dataclasses
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 
@@ -26,6 +27,7 @@ from forceupdate.models import (
     Update,
     UpdateReason,
 )
+from forceupdate.parsers.python import HASHED
 from forceupdate.registries import PackageInfo, PackageVersion
 from forceupdate.update import planner
 from forceupdate.update.planner import (
@@ -658,12 +660,49 @@ def test_an_override_that_cannot_be_rewritten() -> None:
         indirect("lodash", "4.17.15"),
         infos=[info("lodash", LODASH)],
         advisories=LODASH_ADVISORIES,
+        overrides=[override("npm:lodash-es@4.17.15")],
+    )
+    fix = single(project).option("4.17.21")
+    assert fix is not None
+    assert fix.manual == (
+        "Version forcée « lodash » (overrides, package.json) : « npm:lodash-es@4.17.15 », à "
+        "réécrire à la main."
+    )
+
+
+def test_a_requirements_line_with_hashes_is_manual() -> None:
+    """Une ligne à ``--hash`` (``Dependency.manual``, lu à l'analyse) : ses options sont à la
+    main, jamais pré-cochées, avec la raison (E32 ; la réécriture la refuse depuis E10)."""
+    hashed = dataclasses.replace(
+        dep("flask", "==2.0.1", "2.0.1", ecosystem=PYPI, file="requirements.txt", lockfile=None),
+        manual=HASHED.format(line=3),
+    )
+    project = plan(hashed, infos=[info("flask", ["2.0.1", "2.0.3", "2.1.0"], ecosystem=PYPI)])
+    update = single(project)
+    assert update.selected is None
+    for option in update.options:
+        assert option.edits == ()
+        assert option.manual == (
+            "requirements.txt, ligne 3 à empreintes (--hash) : ce sont celles de la version "
+            "actuelle, à réécrire à la main avec celles de la nouvelle (pip refuserait "
+            "d'installer)."
+        )
+
+
+def test_an_override_that_follows_a_direct_dependency() -> None:
+    """``"lodash": "$lodash"`` renvoie à la directe de la racine (vérifié sur un vrai workspace
+    npm, E32) : c'est elle qu'il faut monter, pas l'indirecte."""
+    project = plan(
+        indirect("lodash", "4.17.15"),
+        infos=[info("lodash", LODASH)],
+        advisories=LODASH_ADVISORIES,
         overrides=[override("$lodash")],
     )
     fix = single(project).option("4.17.21")
     assert fix is not None
     assert fix.manual == (
-        "Version forcée « lodash » (overrides, package.json) : « $lodash », à réécrire à la main."
+        "Version forcée « lodash » (overrides, package.json) : « $lodash » suit la dépendance "
+        "lodash de package.json ; la mettre à jour fait monter celle-ci."
     )
 
 

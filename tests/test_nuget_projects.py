@@ -17,9 +17,10 @@ from typer.testing import CliRunner
 
 from forceupdate import engine
 from forceupdate.cli import app
-from forceupdate.models import FindingKind, Gap, Project, Report, Scope, Severity
+from forceupdate.models import EditKind, FindingKind, Gap, Project, Report, Scope, Severity
 from forceupdate.net import Cache, HttpClient
 from forceupdate.sources.local import LocalSource
+from forceupdate.update.planner import REFERENCE_WARNING
 
 NUGET = Path(__file__).parent / "projects" / "nuget"
 Routes = dict[str, respx.Route]
@@ -185,14 +186,21 @@ def test_plan_of_the_mini_project(recorded: Routes) -> None:
     assert serilog is not None and serilog.lockfile == "src/App/packages.lock.json"
     (edit,) = serilog.edits
     assert (edit.file, edit.old, edit.new) == ("Directory.Build.props", "2.10.0", "2.12.0")
-    # Une indirecte ne monte pas en régénérant : à la main.
+    # Une indirecte ne monte pas en régénérant : elle est ajoutée au projet (E32), relue, puis
+    # le lockfile est régénéré. La mineure qui corrige la faille est pré-cochée.
     encodings = updates["System.Text.Encodings.Web"]
-    assert encodings.selected is None
+    assert encodings.selected == "4.7.2"
     fix = encodings.option("4.5.1")
-    assert fix is not None and fix.lockfile is None and fix.edits == ()
-    assert fix.manual is not None and fix.manual.startswith(
-        "NuGet prend la plus basse version qui convient"
+    assert fix is not None and fix.lockfile == "src/App/packages.lock.json"
+    assert fix.manual is None
+    (edit,) = fix.edits
+    assert (edit.kind, edit.file, edit.old, edit.new) == (
+        EditKind.REFERENCE,
+        "src/App/App.csproj",
+        "",
+        "4.5.1",
     )
+    assert REFERENCE_WARNING in fix.warnings
     # Une version centrale tirée par le projet référencé : réécrite là où elle est écrite.
     tests = {u.name: u for u in projects["src/App.Tests"].updates}
     http = tests["Microsoft.AspNetCore.Http"]

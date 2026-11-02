@@ -76,7 +76,7 @@ from forceupdate.parsers.base import ParseError, ReadText
 from forceupdate.parsers.gradle import PROPERTIES
 from forceupdate.parsers.python import is_script
 from forceupdate.update.writers import go, java, npm, nuget, php, python, ruby, rust
-from forceupdate.update.writers.base import Check, Reader, Refused, Target
+from forceupdate.update.writers.base import Check, Declaration, Reader, Refused, Target
 
 __all__ = [
     "Changes",
@@ -216,10 +216,10 @@ def rewrite(root: Path, targets: Iterable[Target]) -> tuple[FileChange, ...]:
     écrire : chaque réécriture vérifiée puis relue, comme dans ``prepare``, mais toutes ou
     aucune. Deux réécritures au même endroit n'en font qu'une. Lève ``Refused``."""
     files = _Files(root)
-    by_path: dict[str, dict[Location, Target]] = {}
+    by_path: dict[str, dict[tuple[Location, str], Target]] = {}
     for target in targets:
         checked = _target(files, target)
-        by_path.setdefault(checked.path, {}).setdefault(checked.location, checked)
+        by_path.setdefault(checked.path, {}).setdefault(_key(checked), checked)
     changed = []
     for path in sorted(by_path):
         before = files.text(path)
@@ -327,6 +327,8 @@ def _locate(
     for edit in option.edits:
         if edit.kind is EditKind.CATALOG:
             targets.append(catalog_target(edit, update.dependencies, files.parsed_text))
+        elif edit.kind is EditKind.REFERENCE:
+            targets += nuget.reference_targets(edit, update.name, files.text, files.parsed_text)
         elif edit.location is None:
             raise Refused(
                 f"{edit.file} : emplacement de « {edit.old} » inconnu, à réécrire à la main en "
@@ -369,7 +371,8 @@ def _without_conflicts(
     pending: list[tuple[Choice, list[Target]]], skipped: list[Skipped]
 ) -> list[tuple[Choice, list[Target]]]:
     """Écarte une option qui réécrirait autrement une contrainte qu'une option d'avant réécrit
-    déjà ; la même réécriture n'est faite qu'une fois."""
+    déjà ; la même réécriture n'est faite qu'une fois. Deux insertions au même endroit ne se
+    gênent pas (une même insertion n'est faite qu'une fois)."""
     claimed: dict[tuple[str, Location], tuple[str, Choice]] = {}
     kept = []
     for choice, targets in pending:
@@ -377,7 +380,8 @@ def _without_conflicts(
             (
                 (target, claimed[key])
                 for target in targets
-                if (key := (target.path, target.location)) in claimed
+                if not target.insert
+                and (key := (target.path, target.location)) in claimed
                 and claimed[key][0] != target.new
             ),
             None,
@@ -391,9 +395,16 @@ def _without_conflicts(
             skipped.append(Skipped(update=choice[1], option=choice[2], reason=reason))
             continue
         for target in targets:
-            claimed.setdefault((target.path, target.location), (target.new, choice))
+            if not target.insert:
+                claimed.setdefault((target.path, target.location), (target.new, choice))
         kept.append((choice, targets))
     return kept
+
+
+def _key(target: Target) -> tuple[Location, str]:
+    """Ce qui distingue deux réécritures d'un fichier : leur emplacement ; pour une insertion, son
+    texte aussi (deux éléments ajoutés au même endroit)."""
+    return target.location, target.new if target.insert else ""
 
 
 # ---------------------------------------------------------------------------
@@ -406,10 +417,10 @@ def _rewrite_all(
 ) -> tuple[dict[str, FileChange], dict[str, str]]:
     """Réécrit chaque fichier touché par ``pending`` : ses changements, et la raison de chaque
     fichier qui n'a pas pu l'être."""
-    by_path: dict[str, dict[Location, Target]] = {}
+    by_path: dict[str, dict[tuple[Location, str], Target]] = {}
     for _, targets in pending:
         for target in targets:
-            by_path.setdefault(target.path, {})[target.location] = target
+            by_path.setdefault(target.path, {})[_key(target)] = target
     rewritten = {}
     failed = {}
     for path, targets in by_path.items():
@@ -461,6 +472,9 @@ def _verify(path: str, before: str, after: str, targets: list[Target]) -> None:
         new = reader(path, _parsed(after))
     except ParseError as err:
         raise Refused(f"{path} : une fois réécrit, il ne se lit plus ({err})") from err
+    if any(target.insert for target in targets):
+        _verify_inserted(path, old, new, targets)
+        return
     if [d.identity for d in old] != [d.identity for d in new]:
         raise Refused(f"{path} : une fois réécrit, il ne redonne pas les mêmes dépendances.")
     expected = {target.location: target for target in targets}
@@ -489,6 +503,53 @@ def _verify(path: str, before: str, after: str, targets: list[Target]) -> None:
                 f"{path} : aucune contrainte n'est lue ligne {target.location.line}, colonne "
                 f"{target.location.column + 1}."
             )
+
+
+def _verify_inserted(
+    path: str, old: list[Declaration], new: list[Declaration], targets: list[Target]
+) -> None:
+    """La relecture d'un fichier où des lignes sont insérées (E32) : hors de ces lignes, les mêmes
+    déclarations qu'avant (leur rang mis à part), la nouvelle contrainte à chaque endroit réécrit ;
+    dans ces lignes, exactement ce qu'attendent les insertions (``Target.expects``). Lève
+    ``Refused``."""
+    inserted = _inserted_lines(targets)
+    added = [d for d in new if d.location is not None and d.location.line in inserted]
+    kept = [d for d in new if d.location is None or d.location.line not in inserted]
+    rewritten = {target.location: target for target in targets if not target.insert}
+    expected = []
+    for was in old:
+        target = rewritten.get(was.location) if was.location is not None else None
+        if target is not None and was.constraint != target.old:
+            line = target.location.line
+            raise Refused(f"{path} : ligne {line}, la contrainte lue n'est pas « {target.old} ».")
+        expected.append((_unranked(was.identity), target.new if target else was.constraint))
+    if [(_unranked(d.identity), d.constraint) for d in kept] != expected:
+        raise Refused(f"{path} : une fois réécrit, il ne redonne pas les mêmes dépendances.")
+    wanted = sorted(value for target in targets if target.insert for value in target.expects)
+    if sorted(d.constraint for d in added) != wanted:
+        shown = " ; ".join(t.new.strip() for t in targets if t.insert)
+        raise Refused(f"{path} : une fois réécrit, il ne lit pas ce qui est ajouté ({shown}).")
+
+
+def _inserted_lines(targets: list[Target]) -> set[int]:
+    """Les lignes du fichier réécrit qu'occupent les insertions de ``targets`` (une réécriture
+    sur place ne change pas le nombre de lignes)."""
+    lines: set[int] = set()
+    offset = 0
+    for target in sorted(targets, key=lambda t: (t.location.line, t.location.column)):
+        if not target.insert:
+            continue
+        count = target.new.count("\n")
+        start = target.location.line + offset
+        lines.update(range(start, start + count))
+        offset += count
+    return lines
+
+
+def _unranked(identity: tuple[str | None, ...]) -> tuple[str | None, ...]:
+    """Une identité sans le rang de la déclaration dans le fichier (``parsers.nuget`` le met : une
+    insertion décale ceux d'après)."""
+    return tuple(part for part in identity if not (part is not None and part.isdigit()))
 
 
 def _moved(targets: list[Target]) -> dict[Location, Location]:

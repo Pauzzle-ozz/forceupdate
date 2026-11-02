@@ -24,6 +24,12 @@ class Target:
     pattern: str | None = None
     """Le motif de ``detect.manifests`` dont le fichier suit le format, quand son nom ne le dit
     pas : ``requirements*.txt`` pour un fichier de contraintes de pip (``-c``)."""
+    insert: bool = False
+    """Une insertion (E32) : ``new``, des lignes entières finies par une fin de ligne, va au
+    début de la ligne de ``location`` (un emplacement vide en colonne 0, ``old`` vide)."""
+    expects: tuple[str, ...] = ()
+    """Pour une insertion : les valeurs que le parseur doit lire dans les lignes ajoutées (la
+    version de la ``PackageVersion``, ``true``), et rien d'autre."""
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -49,6 +49,9 @@ class Element:
     attribute_locations: dict[str, Location] = field(default_factory=dict)
     """L'emplacement de la valeur de chaque attribut écrite telle quelle sur une ligne, par nom
     (tel qu'écrit) ; une valeur vide a un emplacement vide."""
+    end_line: int = 0
+    """La ligne du ``>`` qui le ferme (sa balise fermante, ou le ``/>`` d'un élément vide) : on
+    insère un élément après lui (E32)."""
 
     def find(self, tag: str) -> "Element | None":
         """Le premier enfant de ce nom."""
@@ -133,6 +136,10 @@ class _Builder:
         element, start, pieces = self.stack.pop()
         element.text = "".join(pieces).strip()
         end = self.parser.CurrentByteIndex
+        closing = self._tag_end(end if self.data.startswith(b"</", end) else start)
+        if closing > 0:
+            offset = self._char_offset(closing - 1)
+            element.end_line = bisect.bisect_right(self.line_starts, offset)
         if element.children or not element.text or not self.data.startswith(b"</", end):
             return
         opened = self._tag_end(start)

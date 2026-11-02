@@ -12,8 +12,9 @@ Entre ``prepare`` et ``apply``, c'est le même ``Prepared`` qui passe : ``writer
 d'écrire un fichier qui a changé depuis le diff.
 """
 
+import dataclasses
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from forceupdate.models import Event, EventKind, Report
@@ -40,10 +41,15 @@ class Prepared:
     @property
     def touched(self) -> list[str]:
         """Les fichiers que la mise à jour écrira : les manifestes réécrits, puis les lockfiles
-        régénérés."""
+        régénérés, et les dossiers que leurs outils refont (``vendor/``)."""
         return [change.path for change in self.changes.files] + [
-            job.lockfile for job in self.runnable
+            path for job in self.runnable for path in (job.lockfile, *job.refreshes)
         ]
+
+    def declining(self, paths: Iterable[str]) -> "Prepared":
+        """Le même plan, sans ce que forceupdate proposait en plus pour les lockfiles ``paths``
+        (la case décochée : ``lockfiles.decline``)."""
+        return dataclasses.replace(self, jobs=lockfiles.decline(self.jobs, paths))
 
     @property
     def empty(self) -> bool:

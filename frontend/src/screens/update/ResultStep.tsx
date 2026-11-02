@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router'
-import type { InstalledVersion, LockJob, LockResult, LockStatus, UpdatePlan } from '@/api/types'
+import type { InstalledVersion, LockJob, LockResult, LockStatus, LockVerified, UpdatePlan } from '@/api/types'
 import { Command } from '@/components/Command'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -265,6 +265,7 @@ function ResultCard({
           ) : (
             <p className="text-sm text-fg-muted">Rien d'autre n'a changé dans {where}.</p>
           )}
+          {result.verified && <Verified verified={result.verified} source={source} directory={job?.directory ?? '.'} />}
         </>
       )}
 
@@ -313,6 +314,41 @@ function ResultCard({
         </ul>
       )}
     </Card>
+  )
+}
+
+/**
+ * Le lockfile relu par le npm du projet (`npm ci --dry-run`, E32) : accepté, ou refusé avec ce
+ * qu'il reproche (les lignes de npm, en anglais) et la commande qui le reproduit.
+ */
+function Verified({ verified, source, directory }: { verified: LockVerified; source: string; directory: string }) {
+  if (verified.error === null) {
+    return (
+      <p className="flex items-start gap-2 text-sm text-success">
+        <CircleCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+        <span>
+          Relu par <span className="font-mono [overflow-wrap:anywhere]">{verified.command}</span>
+          {NBSP}: accepté.
+        </span>
+      </p>
+    )
+  }
+  return (
+    <Alert variant="danger" role="status">
+      <CircleX aria-hidden="true" />
+      <AlertTitle>Refusé par la relecture</AlertTitle>
+      <AlertDescription>
+        <p lang="en" className="font-mono text-[13px] [overflow-wrap:anywhere]">
+          {verified.error}
+        </p>
+        <p>
+          {fr('Le lockfile reste régénéré ; la CI du projet le refusera sans doute. Pour le reproduire, dans ')}
+          <span className="font-mono [overflow-wrap:anywhere]">{commandDirectory(source, directory)}</span>
+          {NBSP}:
+        </p>
+        <Command command={verified.command} label="la commande de relecture" />
+      </AlertDescription>
+    </Alert>
   )
 }
 

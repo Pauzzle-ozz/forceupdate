@@ -9,6 +9,7 @@ from forceupdate.detect.manifests import find_projects
 from forceupdate.models import Dependency, Ecosystem, Location, Notice, Project, Scope
 from forceupdate.parsers.base import ParseError
 from forceupdate.parsers.python import (
+    HASHED,
     REASON_GIT,
     REASON_LOCAL,
     REASON_URL,
@@ -213,6 +214,17 @@ class TestRequirementsLocations:
             # La contrainte est sur la ligne suivante : on ne sait pas la situer.
             ("requests", ">=2.0", None),
         ]
+        # Une ligne à empreintes ne se réécrit pas : marquée dès l'analyse (E32).
+        assert [d.manual for d in deps] == [HASHED.format(line=1), None]
+
+    def test_a_hash_in_a_comment_is_not_one(self) -> None:
+        content = "requests==2.25.0  # --hash ailleurs\nflask==2.0.1 --hash=sha256:abc\n"
+        deps = parse_requirements_txt("requirements.txt", content)
+        assert [d.manual for d in deps] == [None, HASHED.format(line=2)]
+        assert HASHED.format(line=2) == (
+            "ligne 2 à empreintes (--hash) : ce sont celles de la version actuelle, à réécrire à "
+            "la main avec celles de la nouvelle (pip refuserait d'installer)."
+        )
 
 
 def test_requirements_urls_and_paths() -> None:

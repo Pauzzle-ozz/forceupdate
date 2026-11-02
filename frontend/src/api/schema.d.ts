@@ -695,6 +695,8 @@ export interface components {
              * @default false
              */
             force: boolean;
+            /** Declined */
+            declined?: string[];
         };
         /**
          * BatchRequest
@@ -888,6 +890,8 @@ export interface components {
             imported: string | null;
             /** Ignored */
             ignored: string | null;
+            /** Manual */
+            manual: string | null;
         };
         /**
          * Disconnection
@@ -963,7 +967,7 @@ export interface components {
          * @description Ce qu'une réécriture modifie.
          * @enum {string}
          */
-        EditKind: "dependency" | "catalog" | "override";
+        EditKind: "dependency" | "catalog" | "override" | "reference";
         /**
          * EndOfLife
          * @description La fin de vie d'un cycle de version (un constat ``eol``), d'après endoflife.date.
@@ -1043,6 +1047,12 @@ export interface components {
          * @enum {string}
          */
         EventKind: "downloading" | "cloning" | "reading" | "projects_found" | "checking" | "package_checked" | "vulnerabilities_checked" | "written" | "regenerating" | "finished";
+        /**
+         * ExtraKind
+         * @description Ce que forceupdate propose de faire en plus pour un lockfile (``Extra``).
+         * @enum {string}
+         */
+        ExtraKind: "project-npm" | "go-vendor";
         /**
          * FieldError
          * @description Une valeur refusée : son champ (``ignore``, ``lock_timeout``…), son rang dans une liste,
@@ -1224,6 +1234,19 @@ export interface components {
             end_column: number;
         };
         /**
+         * LockExtra
+         * @description Ce que forceupdate propose en plus pour un lockfile (``lockfiles.Extra``).
+         */
+        LockExtra: {
+            kind: components["schemas"]["ExtraKind"];
+            /** Label */
+            label: string;
+            /** Detail */
+            detail: string;
+            /** Declined */
+            declined: string;
+        };
+        /**
          * LockJob
          * @description Un lockfile à régénérer après l'écriture, et comment (``lockfiles.Job``).
          */
@@ -1249,13 +1272,16 @@ export interface components {
             reason: string | null;
             /** Warnings */
             warnings: string[];
+            extra: components["schemas"]["LockExtra"] | null;
+            /** Accepted */
+            accepted: boolean;
         };
         /**
          * LockKind
          * @description Le format d'un lockfile, donc l'outil qui le régénère.
          * @enum {string}
          */
-        LockKind: "npm" | "pnpm" | "yarn1" | "yarn" | "uv" | "uv-script" | "poetry" | "pdm" | "pipenv" | "pip-compile" | "uv-pip-compile" | "cargo" | "go" | "composer" | "bundler" | "nuget";
+        LockKind: "npm" | "pnpm" | "yarn1" | "yarn" | "uv" | "uv-script" | "poetry" | "pdm" | "pipenv" | "pip-compile" | "uv-pip-compile" | "uv-export" | "poetry-export" | "pdm-export" | "cargo" | "go" | "composer" | "bundler" | "nuget";
         /**
          * LockResult
          * @description Ce qu'il est advenu d'un lockfile (``lockfiles.Regenerated``).
@@ -1274,6 +1300,7 @@ export interface components {
             changed: string[];
             /** Warnings */
             warnings: string[];
+            verified: components["schemas"]["LockVerified"] | null;
         };
         /**
          * LockStatus
@@ -1281,6 +1308,16 @@ export interface components {
          * @enum {string}
          */
         LockStatus: "regenerated" | "tool_missing" | "failed" | "undone";
+        /**
+         * LockVerified
+         * @description Le lockfile régénéré, relu par l'outil qu'attend le projet (``lockfiles.Verified``).
+         */
+        LockVerified: {
+            /** Command */
+            command: string;
+            /** Error */
+            error: string | null;
+        };
         /**
          * Notice
          * @description Une remarque sur un fichier d'un projet : non lu, illisible, mal formé… ; ou sur la

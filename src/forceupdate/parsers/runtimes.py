@@ -27,11 +27,21 @@ officielles ``python``, ``node``, ``ruby``, ``php``, ``golang``, ``eclipse-temur
 ``mcr.microsoft.com/dotnet/framework/…``. Les ``ARG`` d'avant le premier ``FROM`` y sont
 remplacés ; une étiquette sans version (``latest``, ``lts``, ``alpine``) ne dit rien.
 
+**Dans les fichiers de CI** (E32 : le npm qu'attend le projet se lit d'après le Node de sa CI) :
+les workflows de GitHub Actions (``.github/workflows/*.yml``) donnent la ``node-version`` de
+``actions/setup-node`` (une ``matrix`` donne chacune de ses valeurs, ``env`` est remplacé) et
+l'image d'un ``container`` ; ``.gitlab-ci.yml`` et ``bitbucket-pipelines.yml``, leurs ``image``
+(les ``variables`` de GitLab remplacées). ``lts/*``, ``latest`` ou une plage ne disent rien. Un
+fichier de CI vaut pour tous les projets de son dépôt (``detect.manifests.ci_base``) ; un workflow
+de GitHub n'est lu que pour un projet npm (il ne sert qu'à son Node, et chaque fichier lu est une
+requête de plus à la source d'une forge).
+
 Un fichier de runtime d'un autre dossier (un ``.nvmrc`` à la racine du dépôt) ne vaut que pour un
 projet de l'écosystème du runtime : la racine d'un monorepo ne donne pas Node.js au ``backend/``
 Python. Rien n'est jamais exécuté : ni le ``Gemfile``, ni un script Gradle, ni MSBuild.
 """
 
+import itertools
 import json
 import posixpath
 import re
@@ -39,6 +49,9 @@ import tomllib
 from collections.abc import Callable, Iterator
 from typing import Any
 
+import yaml
+
+from forceupdate.detect.manifests import ci_base
 from forceupdate.models import Ecosystem, Project, Runtime
 from forceupdate.parsers import go, maven, nuget, python, ruby
 from forceupdate.parsers.base import ParseError, ReadText
@@ -92,10 +105,11 @@ NODE_CODENAMES = {
     "iron": "20",
     "jod": "22",
     "krypton": "24",
+    "lithium": "26",
 }
 """Les noms des versions LTS de Node.js (``lts/gallium``, l'image ``node:hydrogen``) : la
 ``codename`` d'endoflife.date est vide (vérifié le 2026-11-01), ceux-ci viennent de
-``nodejs.org/dist/index.json``."""
+``nodejs.org/dist/index.json`` (« Lithium » pour la 26, vu le 2026-11-02)."""
 
 IMAGES = {
     "python": "python",
@@ -164,6 +178,10 @@ def detect(project: Project, read_text: ReadText) -> list[Runtime]:
         if reader is not None:
             found.extend(reader(project, read_text))
     for path in project.runtime_files:
+        if _workflow_path(path) and Ecosystem.NPM not in project.ecosystems:
+            # Un workflow de GitHub ne sert qu'au Node d'un projet npm (E32) : ne pas le lire
+            # ailleurs épargne une requête par fichier à la source d'une forge.
+            continue
         for runtime in _runtime_file(path, read_text):
             outside = dirname(path) != project.path
             if outside and ECOSYSTEMS.get(runtime.product) not in project.ecosystems:
@@ -452,6 +470,8 @@ def _runtime_file(path: str, read_text: ReadText) -> list[Runtime]:
     reader = _FILES.get(name)
     if reader is not None:
         return [runtime for runtime in reader(path, content) if runtime is not None]
+    if ci_base(path) is not None:
+        return ci(path, content)
     return dockerfile(path, content)
 
 
@@ -593,7 +613,130 @@ def _instructions(content: str) -> Iterator[str]:
         yield pending.strip()
 
 
-def _image(path: str, reference: str, arguments: dict[str, str]) -> Runtime | None:
+def _workflow_path(path: str) -> bool:
+    """Vrai pour un workflow de GitHub Actions (``.github/workflows/*.yml``)."""
+    return ci_base(path) is not None and posixpath.basename(path).lower() not in (
+        ".gitlab-ci.yml",
+        "bitbucket-pipelines.yml",
+    )
+
+
+def ci(path: str, content: str) -> list[Runtime]:
+    """Les runtimes d'un fichier de CI (voir la docstring du module) : un workflow de GitHub
+    Actions, ``.gitlab-ci.yml`` ou ``bitbucket-pipelines.yml``. Sans doublon."""
+    try:
+        # Toutes les valeurs en chaînes (« node-version: 20.10 » reste 20.10, pas 20.1), et
+        # aucun objet construit : BaseLoader ne fait que des tables, des listes et des chaînes.
+        data = yaml.load(content, Loader=yaml.BaseLoader)
+    except yaml.YAMLError:
+        return []
+    if posixpath.basename(path).lower() in (".gitlab-ci.yml", "bitbucket-pipelines.yml"):
+        variables = _strings(_get(data, "variables"))
+        found = [_image(path, image, variables, "image:") for image in _ci_images(data)]
+    else:
+        found = _workflow(path, data)
+    return list(dict.fromkeys(runtime for runtime in found if runtime is not None))
+
+
+def _workflow(path: str, data: Any) -> list[Runtime | None]:
+    """Le Node.js de ``actions/setup-node`` et l'image des ``container`` d'un workflow."""
+    jobs = _get(data, "jobs")
+    found: list[Runtime | None] = []
+    for job in jobs.values() if isinstance(jobs, dict) else []:
+        if not isinstance(job, dict):
+            continue
+        matrix = _get(job, "strategy", "matrix")
+        env = {**_strings(_get(data, "env")), **_strings(job.get("env"))}
+        container = job.get("container")
+        image = container.get("image") if isinstance(container, dict) else container
+        for reference in _expanded(image, matrix, env):
+            found.append(_image(path, reference, {}, "container:"))
+        steps = job.get("steps")
+        for step in steps if isinstance(steps, list) else []:
+            uses = step.get("uses") if isinstance(step, dict) else None
+            if not isinstance(uses, str) or not uses.lower().startswith("actions/setup-node@"):
+                continue
+            wanted = _get(step, "with", "node-version")
+            for version in _expanded(wanted, matrix, {**env, **_strings(step.get("env"))}):
+                source = f"actions/setup-node : node-version {version}"
+                found.append(_node_line(version, path, source))
+    return found
+
+
+_EXPRESSION = re.compile(r"\$\{\{\s*(\w+)\.([\w-]+)\s*\}\}")
+
+
+def _expanded(value: Any, matrix: Any, env: dict[str, str]) -> list[str]:
+    """``value`` avec ses ``${{ matrix.x }}`` (chaque valeur de la ``matrix``, ``include``
+    compris) et ses ``${{ env.x }}`` remplacés ; rien pour une autre expression, ou une valeur qui
+    n'est pas une chaîne."""
+    if not isinstance(value, str) or not value.strip():
+        return []
+    choices: dict[str, list[str]] = {}
+    for scope, name in _EXPRESSION.findall(value):
+        if scope == "env" and name in env:
+            choices[f"env.{name}"] = [env[name]]
+        elif scope == "matrix" and isinstance(matrix, dict):
+            values = matrix.get(name)
+            listed = [v for v in values if isinstance(v, str)] if isinstance(values, list) else []
+            include = matrix.get("include")
+            for entry in include if isinstance(include, list) else []:
+                if isinstance(entry, dict) and isinstance(entry.get(name), str):
+                    listed.append(entry[name])
+            choices[f"matrix.{name}"] = listed
+        else:
+            return []
+    if not choices:
+        return [] if "${{" in value else [value.strip()]
+    found = []
+    for combination in itertools.product(*choices.values()):
+        replaced = dict(zip(choices, combination, strict=True))
+        text = _EXPRESSION.sub(lambda m, r=replaced: r[f"{m[1]}.{m[2]}"], value).strip()
+        if "${{" not in text:
+            found.append(text)
+    return list(dict.fromkeys(found))
+
+
+def _node_line(text: str, path: str, source: str) -> Runtime | None:
+    """La version de Node.js d'un ``node-version`` : ``22``, ``22.x``, ``v20.10.0``,
+    ``lts/jod`` ; ``None`` pour ``lts/*``, ``latest``, ``node`` ou une plage."""
+    value = text.strip().strip("\"'").lower()
+    codename = re.fullmatch(r"lts/(\w+)", value)
+    if codename is not None:
+        version = NODE_CODENAMES.get(codename[1])
+        return None if version is None else _choice("nodejs", version, path, source)
+    value = re.sub(r"(?:\.[x*])+$", "", value)
+    match = _VERSION.fullmatch(value)
+    return None if match is None else _choice("nodejs", match[1], path, source)
+
+
+def _ci_images(data: Any) -> Iterator[str]:
+    """Les ``image`` d'un ``.gitlab-ci.yml`` ou d'un ``bitbucket-pipelines.yml``, où qu'elles
+    soient (celle de tout le fichier, de ``default``, d'un job ou d'une étape) : une chaîne, ou le
+    ``name`` d'une table."""
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if key == "image":
+                image = value.get("name") if isinstance(value, dict) else value
+                if isinstance(image, str):
+                    yield image
+            else:
+                yield from _ci_images(value)
+    elif isinstance(data, list):
+        for item in data:
+            yield from _ci_images(item)
+
+
+def _strings(data: Any) -> dict[str, str]:
+    """Les valeurs en chaînes d'une table (``env``, ``variables``) ; vide sinon."""
+    if not isinstance(data, dict):
+        return {}
+    return {key: value for key, value in data.items() if isinstance(value, str)}
+
+
+def _image(
+    path: str, reference: str, arguments: dict[str, str], label: str = "FROM"
+) -> Runtime | None:
     def substitute(match: re.Match[str]) -> str:
         name = match[1] or match[3]
         value = arguments.get(name)
@@ -615,7 +758,7 @@ def _image(path: str, reference: str, arguments: dict[str, str]) -> Runtime | No
     product = IMAGES.get(name)
     if product is None or not tag:
         return None
-    source = f"FROM {resolved}"
+    source = f"{label} {resolved}"
     if product == "nodejs":
         codename = tag.split("-")[0].lower()
         if codename in NODE_CODENAMES:

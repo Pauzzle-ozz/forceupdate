@@ -49,7 +49,7 @@ from forceupdate.detect.manifests import (
 )
 from forceupdate.forges import git
 from forceupdate.forges.base import Forge, Repository, Tree
-from forceupdate.models import Event, EventKind, Notice
+from forceupdate.models import Ecosystem, Event, EventKind, Notice
 from forceupdate.sources.base import Source, SourceFile
 from forceupdate.sources.local import LocalSource
 
@@ -99,6 +99,12 @@ class ForgeSource(Source):
 
     def files(self) -> list[SourceFile]:
         return list(self._files)
+
+    def has(self, path: str) -> bool:
+        """``path`` est dans l'arborescence, dossiers jamais parcourus compris (le
+        ``vendor/modules.txt`` d'un module Go, E32) : un fichier qu'un parseur demande s'y
+        télécharge, comme il se lirait dans un dossier."""
+        return path in self._sizes
 
     def small_enough(self, path: str) -> bool:
         """``path`` peut être lu (``max_read_size``) : à télécharger. Une taille inconnue
@@ -172,7 +178,7 @@ async def fetch(
     for _ in range(MAX_ROUNDS):
         wanted = first if first and not done else _requested(source, include_tests)
         todo = sorted(
-            path for path in wanted - done if path in listed and source.small_enough(path)
+            path for path in wanted - done if source.has(path) and source.small_enough(path)
         )
         if not todo:
             break
@@ -243,6 +249,11 @@ def _requested(source: ForgeSource, include_tests: bool) -> set[str]:
     directories = [project.path for project in projects]
     for project in projects:
         parsers.parse_project(project, read, directories)
+        # Le vendor/ d'un module Go (E32) : le plan propose de le refaire, le récapitulatif
+        # d'une PR le dit comme le fera le clone.
+        vendored = posixpath.join(project.path, "vendor/modules.txt").removeprefix("./")
+        if Ecosystem.GO in project.ecosystems and source.has(vendored):
+            asked.add(vendored)
     return asked
 
 

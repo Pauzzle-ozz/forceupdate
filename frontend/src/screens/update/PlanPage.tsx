@@ -15,7 +15,8 @@ import {
   TriangleAlert,
   WifiOff,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { cn } from 'cn'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { ApiError, api, queryKeys } from '@/api/client'
 import type { LockJob, Report, ScanDetail, UpdatePlan } from '@/api/types'
@@ -26,6 +27,7 @@ import { Alert, AlertActions, AlertDescription, AlertTitle } from '@/components/
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/choice'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { usePlan, useScan } from '@/hooks/useScan'
 import { rescanRequest, useStartScan } from '@/hooks/useScanActions'
@@ -132,11 +134,16 @@ function ReviewStep({ scan, plan, report, live, onStarted }: StepProps & { onSta
   const start = useStartScan()
   const upload = scan.kind === 'upload'
   const [confirming, setConfirming] = useState(false)
+  // Les cases « en plus » décochées (le npm du projet, go mod vendor) : cochées d'office (E32).
+  const [declined, setDeclined] = useState<ReadonlySet<string>>(
+    () => new Set(plan.lockfiles.filter((job) => job.extra && !job.accepted).map((job) => job.lockfile)),
+  )
   const failedRef = useRef<HTMLDivElement>(null)
   const byId = useMemo(() => updatesById(report), [report])
 
   const apply = useMutation({
-    mutationFn: (force: boolean) => api.applyUpdate({ plan: plan.id, force }),
+    mutationFn: (force: boolean) =>
+      api.applyUpdate({ plan: plan.id, force, ...(declined.size > 0 ? { declined: [...declined] } : {}) }),
     onSuccess: (document) => {
       onStarted()
       client.setQueryData(queryKeys.plan(plan.id), document)
@@ -297,7 +304,22 @@ function ReviewStep({ scan, plan, report, live, onStarted }: StepProps & { onSta
                 <span className="text-sm text-fg-muted">dans l'ordre, après la réécriture, sans les scripts du projet</span>
               </div>
               {plan.lockfiles.map((job) => (
-                <LockJobCard key={job.lockfile} job={job} source={scan.source} name={name} />
+                <LockJobCard
+                  key={job.lockfile}
+                  job={job}
+                  source={scan.source}
+                  name={name}
+                  accepted={!declined.has(job.lockfile)}
+                  editable={plan.applicable && !apply.isPending}
+                  onAccept={(accepted) =>
+                    setDeclined((current) => {
+                      const next = new Set(current)
+                      if (accepted) next.delete(job.lockfile)
+                      else next.add(job.lockfile)
+                      return next
+                    })
+                  }
+                />
               ))}
             </Section>
           )}
@@ -450,8 +472,27 @@ function GitGuard({ uncommitted }: { uncommitted: string[] | null }) {
   )
 }
 
-/** Un lockfile à régénérer : l'outil trouvé ou absent, la commande, ses avertissements. */
-function LockJobCard({ job, source, name }: { job: LockJob; source: string; name: (update: string) => string }) {
+/**
+ * Un lockfile à régénérer : l'outil trouvé ou absent, ce que forceupdate propose en plus (une case
+ * cochée d'office : le npm du projet, `go mod vendor`), la commande, ses avertissements.
+ */
+function LockJobCard({
+  job,
+  source,
+  name,
+  accepted,
+  editable,
+  onAccept,
+}: {
+  job: LockJob
+  source: string
+  name: (update: string) => string
+  accepted: boolean
+  editable: boolean
+  onAccept: (accepted: boolean) => void
+}) {
+  const id = useId()
+  const command = job.extra && !accepted ? job.extra.declined : job.command
   return (
     <Card className="flex flex-col gap-3 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -478,6 +519,31 @@ function LockJobCard({ job, source, name }: { job: LockJob; source: string; name
         )}
       </div>
       {job.reason && <p className="text-sm">{fr(`Régénéré sans mise à jour à lui : ${job.reason}.`)}</p>}
+      {job.extra && (
+        <div
+          className={cn(
+            'flex items-start gap-3 rounded-sm border p-3 transition-colors duration-150',
+            accepted ? 'border-primary/50 bg-primary-soft' : 'border-border',
+          )}
+        >
+          <Checkbox
+            id={`${id}-case`}
+            checked={accepted}
+            disabled={!editable}
+            onChange={(event) => onAccept(event.target.checked)}
+            aria-describedby={`${id}-detail`}
+            className="mt-0.5 shrink-0"
+          />
+          <div className="flex min-w-0 flex-col gap-1">
+            <label htmlFor={`${id}-case`} className={cn('font-medium', editable && 'cursor-pointer')}>
+              {job.extra.label}
+            </label>
+            <p id={`${id}-detail`} className="text-sm text-fg-muted">
+              {fr(job.extra.detail)}
+            </p>
+          </div>
+        </div>
+      )}
       {!job.available && (
         <p className="text-sm">
           {job.program} n'est pas installé{NBSP}: <span className="font-mono">{job.lockfile}</span> ne sera pas régénéré.
@@ -486,7 +552,7 @@ function LockJobCard({ job, source, name }: { job: LockJob; source: string; name
           {NBSP}:
         </p>
       )}
-      <Command command={job.command} label={`la commande de ${job.lockfile}`} />
+      <Command command={command} label={`la commande de ${job.lockfile}`} />
       {job.warnings.length > 0 && (
         <ul className="flex flex-col gap-1 text-sm">
           {job.warnings.map((warning) => (

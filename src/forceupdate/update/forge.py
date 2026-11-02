@@ -58,7 +58,7 @@ from forceupdate.sources.base import SourceError
 from forceupdate.sources.local import LocalSource
 from forceupdate.update import local, lockfiles, planner
 from forceupdate.update.local import Prepared
-from forceupdate.update.lockfiles import LockStatus, Reach, Regenerated
+from forceupdate.update.lockfiles import ExtraKind, LockStatus, Reach, Regenerated
 from forceupdate.update.writers import WriteError
 
 logger = logging.getLogger(__name__)
@@ -252,11 +252,15 @@ async def deliver(
 
 
 def committable(prepared: Prepared, results: tuple[Regenerated, ...]) -> list[str]:
-    """Les fichiers à commiter : les manifestes réécrits et les lockfiles régénérés, sauf ce
-    qu'un outil en échec a remis comme avant."""
+    """Les fichiers à commiter : les manifestes réécrits et les lockfiles régénérés (avec les
+    dossiers que leurs outils refont : ``vendor/``), sauf ce qu'un outil en échec a remis comme
+    avant."""
     restored = {path for result in results for path in result.restored}
     regenerated = [
-        result.job.lockfile for result in results if result.status is LockStatus.REGENERATED
+        path
+        for result in results
+        if result.status is LockStatus.REGENERATED
+        for path in (result.job.lockfile, *result.job.refreshes)
     ]
     found = [change.path for change in prepared.changes.files] + regenerated
     return [path for path in dict.fromkeys(found) if path not in restored]
@@ -408,7 +412,17 @@ def _lockfile_lines(result: Regenerated) -> list[str]:
     job = result.job
     name = f"`{code(job.lockfile)}`"
     if result.status is LockStatus.REGENERATED:
-        lines = [f"- {name} : régénéré par {job.tool}."]
+        tool = f"{job.tool}, celui du projet" if job.doing is ExtraKind.PROJECT_NPM else job.tool
+        lines = [f"- {name} : régénéré par {tool}."]
+        if job.doing is ExtraKind.GO_VENDOR:
+            lines.append(f"  `{code(job.refreshes[0])}/` refait (`go mod vendor`).")
+        verified = result.verified
+        if verified is not None and verified.error is None:
+            lines.append(f"  Relu par `{code(verified.command)}` : accepté.")
+        elif verified is not None:
+            lines.append(
+                f"  **Refusé par `{code(verified.command)}`** : {escape(verified.error or '')}"
+            )
         if result.changed:
             lines.append(f"  Aussi changé : {escape(', '.join(result.changed))}.")
         return lines

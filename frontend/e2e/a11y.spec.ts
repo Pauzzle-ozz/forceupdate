@@ -1,4 +1,5 @@
-import { resolve } from 'node:path'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
 import { TOKEN } from '../playwright.config.ts'
@@ -71,7 +72,13 @@ for (const scheme of ['light', 'dark'] as const) {
   for (const width of [1440, 375]) {
     test(`écran 5, ${scheme === 'light' ? 'clair' : 'sombre'}, ${width} px`, async ({ page }) => {
       // Une copie dans git, avec un changement pas encore commité : le garde-fou et sa confirmation.
+      // Sa CI en Node 22 (E32) : la case « npm 10 » du plan, et la relecture dans le résultat.
       const root = copyProject('vulnerable')
+      mkdirSync(join(root, '.github', 'workflows'), { recursive: true })
+      writeFileSync(
+        join(root, '.github', 'workflows', 'ci.yml'),
+        'jobs:\n  test:\n    steps:\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 22\n',
+      )
       gitWithChange(root, 'requirements.in')
       await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' })
       await page.setViewportSize({ width, height: 900 })
@@ -87,6 +94,7 @@ for (const scheme of ['light', 'dark'] as const) {
 
       await page.getByRole('button', { name: 'Vérifier le plan' }).click()
       await expect(page.getByRole('region', { name: 'Diff de package.json' })).toBeVisible()
+      await expect(page.getByRole('checkbox', { name: 'Régénérer avec npm 10, celui du projet' })).toBeChecked()
       await audit(page, 'vérifier')
 
       await page.getByRole('button', { name: 'Appliquer quand même…' }).click()
@@ -95,6 +103,7 @@ for (const scheme of ['light', 'dark'] as const) {
 
       await page.getByRole('alertdialog').getByRole('button', { name: 'Appliquer quand même' }).click()
       await expect(page.getByText('Mise à jour appliquée')).toBeVisible({ timeout: 30_000 })
+      await expect(page.getByText(/: accepté\.$/)).toBeVisible()
       await audit(page, 'résultat')
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
       expect(overflow).toBeLessThanOrEqual(0)

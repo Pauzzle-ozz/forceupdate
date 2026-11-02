@@ -149,6 +149,33 @@ def test_runtime_files_are_downloaded(github: FakeGitHubRepos, tmp_path: Path) -
     ]
 
 
+def test_ci_files_and_a_go_vendor_are_downloaded(github: FakeGitHubRepos, tmp_path: Path) -> None:
+    """E32 : le Node de la CI (le npm qu'attend le projet) et le ``vendor/modules.txt`` d'un module
+    Go (la case « refaire vendor/ ») : le récapitulatif d'une PR les voit comme le clone."""
+    repo = FakeRepo(
+        full_name="octo/ci",
+        files={
+            ".github/workflows/ci.yml": (
+                b"jobs:\n  t:\n    steps:\n      - uses: actions/setup-node@v4\n"
+                b"        with:\n          node-version: 22\n"
+            ),
+            "web/package.json": b'{"name": "web"}',
+            "svc/go.mod": b"module example.com/svc\n\ngo 1.22\n",
+            "svc/vendor/modules.txt": b"# example.com/x v1.0.0\n",
+            "svc/vendor/example.com/x/x.go": b"package x\n",
+        },
+    )
+    report = engine.inventory(fetch(github, repo, tmp_path))
+    assert sorted(github.contents()) == [
+        "octo/ci:.github/workflows/ci.yml",
+        "octo/ci:svc/go.mod",
+        "octo/ci:svc/vendor/modules.txt",
+        "octo/ci:web/package.json",
+    ]
+    web = next(project for project in report.projects if project.path == "web")
+    assert [(r.version, r.file) for r in web.runtimes] == [("22", ".github/workflows/ci.yml")]
+
+
 def test_a_missing_file_is_not_an_error(github: FakeGitHubRepos, tmp_path: Path) -> None:
     repo = FakeRepo(full_name="octo/manque", files={"requirements.txt": b"-r absent.txt\nflask\n"})
     report = engine.inventory(fetch(github, repo, tmp_path))

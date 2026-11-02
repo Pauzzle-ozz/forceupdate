@@ -159,6 +159,7 @@ deux extras) donne deux dépendances, chacune avec son emplacement.
 | `excluded` | liste de chaînes | les versions que le projet écarte, jamais proposées : des versions (`exclude` de `go.mod`) ou des contraintes (`conflict` de `composer.json`) ; vide ailleurs |
 | `imported` | chaîne ou `null` | pour une dépendance tirée des imports d'un fichier de code seul (E28), l'import tel qu'écrit : `cv2` (le paquet `opencv-python`), `google.cloud.storage`, `lodash/fp`, `golang.org/x/text/cases` (le module `golang.org/x/text`) ; sans contrainte ni emplacement ; `null` pour une dépendance déclarée |
 | `ignored` | chaîne ou `null` | la règle qui ignore le paquet et d'où elle vient (E29 : `lodash (forceupdate.toml)`, `lodash (réglages)`) : il n'est pas vérifié auprès de son registre et n'a jamais de mise à jour ; ses failles restent cherchées et dites ; `null` s'il ne l'est pas |
+| `manual` | chaîne ou `null` | pourquoi sa contrainte ne se réécrit pas, bien qu'on sache où elle est (E32 : `ligne 3 à empreintes (--hash) : …`, une ligne de `requirements` qui porte des `--hash`) ; ses options de mise à jour sont alors à faire à la main ; `null` si elle se réécrit |
 
 ### Emplacement
 
@@ -367,7 +368,7 @@ contrainte n'accepte plus de version concernée (`~=1.4` → `~=1.9,>=1.9.2`).
 
 | Champ | Type | Sens |
 |---|---|---|
-| `kind` | chaîne | `dependency` (une contrainte du manifeste), `catalog` (la plage d'un catalogue pnpm, dans `pnpm-workspace.yaml`, ou d'une dépendance reprise du workspace Cargo, dans `[workspace.dependencies]`), `override` (une version forcée) |
+| `kind` | chaîne | `dependency` (une contrainte du manifeste), `catalog` (la plage d'un catalogue pnpm, dans `pnpm-workspace.yaml`, ou d'une dépendance reprise du workspace Cargo, dans `[workspace.dependencies]`), `override` (une version forcée), `reference` (E32 : une indirecte NuGet ajoutée au projet MSBuild de `file`, en `new` ; `old` est vide) |
 | `file` | chemin | le fichier à modifier ; pour un catalogue, le `package.json` (ou le `Cargo.toml`) qui y renvoie |
 | `location` | [emplacement](#emplacement) ou `null` | où est écrite `old` ; `null` pour un catalogue |
 | `old` | chaîne | le texte actuel de la contrainte |
@@ -497,7 +498,8 @@ chaque constat, abrégée ici) :
           "unverifiable_reason": null,
           "excluded": [],
           "imported": null,
-          "ignored": null
+          "ignored": null,
+          "manual": null
         }
       ],
       "overrides": [],
@@ -681,7 +683,7 @@ curl -H "Authorization: Bearer $JETON" "http://127.0.0.1:$PORT/api/scans"
 | `GET /api/scans/{id}/events` | | `200` [progression](#progression-sse) en Server-Sent Events |
 | `DELETE /api/scans/{id}` | | `200` [analyse](#analyse) annulée ; `409` si elle est déjà finie |
 | `POST /api/updates/plan` | `{"scan": id, "selection": {…}}` | `201` [plan](#plan-de-mise-à-jour) |
-| `POST /api/updates/apply` | `{"plan": id, "force": false}` | `202` [plan](#plan-de-mise-à-jour), appliqué en tâche de fond |
+| `POST /api/updates/apply` | `{"plan": id, "force": false, "declined": []}` | `202` [plan](#plan-de-mise-à-jour), appliqué en tâche de fond ; `declined` (facultatif, E32) : les lockfiles dont la case `extra` est décochée ; `409` pour un lockfile qui n'est pas du plan |
 | `GET /api/updates/{id}` | | `200` [plan](#plan-de-mise-à-jour), avec `results` une fois appliqué |
 | `GET /api/updates/{id}/events` | | `200` [progression](#progression-sse) de l'application ; `409` si le plan n'est pas appliqué |
 | `GET /api/updates/{id}/files/{chemin}` | | `200` le fichier tel que le plan le réécrit, à télécharger |
@@ -788,7 +790,7 @@ comme avant.
 | Champ | Type | Sens |
 |---|---|---|
 | `lockfile` | chemin | |
-| `kind` | chaîne | `npm`, `pnpm`, `yarn1`, `yarn`, `uv`, `poetry`, `pdm`, `pipenv`, `pip-compile`, `uv-pip-compile`, `cargo`, `go`, `composer`, `bundler`, `nuget` |
+| `kind` | chaîne | `npm`, `pnpm`, `yarn1`, `yarn`, `uv`, `uv-script`, `poetry`, `pdm`, `pipenv`, `pip-compile`, `uv-pip-compile`, `uv-export`, `poetry-export`, `pdm-export` (un `requirements.txt` exporté, refait après son lockfile, E32), `cargo`, `go`, `composer`, `bundler`, `nuget` |
 | `tool` | chaîne | le nom de l'outil, pour le dire (`uv pip compile`) |
 | `program` | chaîne | le programme à installer (`uv`) |
 | `available` | booléen | l'outil est installé ; sinon le lockfile n'est pas régénéré, et `command` est à lancer à la main |
@@ -798,6 +800,8 @@ comme avant.
 | `workspace` | booléen | le lockfile d'un workspace |
 | `reason` | chaîne ou `null` | pourquoi il est régénéré sans mise à jour à lui (pip-tools : `requirements.txt a changé`) |
 | `warnings` | liste de chaînes | ce que l'outil exécute quand même, une option d'en-tête pas reprise… |
+| `extra` | objet ou `null` | ce que forceupdate propose en plus (E32) : une case, cochée d'office ; `{"kind", "label", "detail", "declined"}` : `kind` vaut `project-npm` (régénérer avec le npm qu'attend le projet, `npx -y npm@10`, puis le relire avec lui) ou `go-vendor` (`go mod vendor` après `go mod tidy`) ; `declined` est la commande à lancer à la main la case décochée |
+| `accepted` | booléen | la case de `extra` est cochée (`command` la suit) |
 
 ### Lockfile régénéré
 
@@ -810,6 +814,7 @@ comme avant.
 | `installed` | liste | `regenerated` : pour chaque mise à jour, `{"update", "version", "versions", "reach", "held_by"}`, les versions installées relues ; `reach` vaut `exact`, `above` (l'outil a pris la plus haute permise), `below` (retenue par `held_by`, `["debug 4.3.1"]`) ou `unknown` |
 | `changed` | liste de chaînes | les autres paquets que le lockfile a changés (`h11 0.16.0 → 0.14.0`) ; pour Go, relus dans `go.mod` |
 | `warnings` | liste de chaînes | ce qui s'est passé en route |
+| `verified` | objet ou `null` | régénéré avec le npm du projet (E32) : `{"command", "error"}`, ce qu'en dit son `npm ci --dry-run` ; `error` vaut `null` s'il l'accepte, sinon ce qu'il reproche (`Missing: zod@3.25.76 from lock file.`) ; le lockfile reste régénéré |
 
 ## Progression (SSE)
 

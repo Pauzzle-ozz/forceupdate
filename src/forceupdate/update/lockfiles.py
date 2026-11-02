@@ -20,7 +20,10 @@ Lockfile                      Commande de base
 ``pdm.lock``                  ``pdm lock --update-reuse``
 ``Pipfile.lock``              ``pipenv lock``
 ``.txt`` compilé (pip-tools)  la commande de son en-tête : ``pip-compile …`` ou
-                              ``uv pip compile …``, avec les options connues
+                              ``uv pip compile …``, avec les options connues (sa source peut
+                              être un ``pyproject.toml``, E32)
+``requirements.txt`` exporté  ``uv export …`` (son en-tête), ``pdm export …``, ``poetry export
+                              …``, après le lockfile dont il vient (E32)
 ``Cargo.lock``                ``cargo update --workspace`` (ne résout que ce qui ne colle
                               plus au manifeste ; ``build.rs`` ne tourne pas)
 ``go.sum``                    ``go mod tidy`` (``go.mod`` déjà réécrit ; rien n'est compilé)
@@ -93,6 +96,11 @@ projet sont remis comme avant, manifestes réécrits compris (``FileChange.befor
 lockfiles qui dépendent des mêmes fichiers, et l'erreur de l'outil est rapportée.
 
 **Outil absent** : les manifestes restent réécrits, et le résultat donne la commande à lancer.
+
+**En plus** (``Job.extra``, E32), une case du plan cochée d'office : régénérer un
+``package-lock.json`` avec le npm qu'attend le projet (``update.project_npm`` : ``npx -y npm@10``,
+puis sa relecture par ``npm ci --dry-run``), refaire le ``vendor/`` d'un module Go (``go mod
+vendor``, remis comme avant sur un échec). Décochée : ``decline``.
 """
 
 import dataclasses
@@ -114,7 +122,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from forceupdate import engine, parsers, processes, versions
-from forceupdate.detect.manifests import decode_text, ecosystem_for_manifest
+from forceupdate.detect.manifests import decode_text, ecosystem_for_manifest, match_dependency_file
 from forceupdate.models import (
     Dependency,
     Ecosystem,
@@ -124,6 +132,7 @@ from forceupdate.models import (
     EventKind,
     Project,
     Report,
+    Scope,
     Update,
     UpdateOption,
 )
@@ -133,7 +142,7 @@ from forceupdate.parsers.json_spans import BOM
 from forceupdate.parsers.lockfiles import Lockfile, dependents, dirname, join
 from forceupdate.parsers.python import is_script
 from forceupdate.sources.local import LocalSource
-from forceupdate.update import writers
+from forceupdate.update import project_npm, writers
 from forceupdate.update.writers import Changes, Choice, FileChange, Refused, Target
 from forceupdate.update.writers.npm import PNPM_WORKSPACE
 
@@ -142,6 +151,8 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "DEFAULT_TOOLS",
     "LOCK_TIMEOUT",
+    "Extra",
+    "ExtraKind",
     "Installed",
     "Job",
     "LockKind",
@@ -149,6 +160,8 @@ __all__ = [
     "Reach",
     "Regenerated",
     "Tools",
+    "Verified",
+    "decline",
     "plan",
     "regenerate",
 ]
@@ -192,6 +205,12 @@ class LockKind(enum.StrEnum):
     PIP_COMPILE = "pip-compile"
     UV_PIP_COMPILE = "uv-pip-compile"
     """Un ``.txt`` compilé par ``uv pip compile`` (son en-tête le dit)."""
+    UV_EXPORT = "uv-export"
+    """Un ``requirements.txt`` écrit par ``uv export`` : refait après ``uv.lock`` (E32)."""
+    POETRY_EXPORT = "poetry-export"
+    """Un ``requirements.txt`` exporté de ``poetry.lock`` (``poetry export``, sans en-tête)."""
+    PDM_EXPORT = "pdm-export"
+    """Un ``requirements.txt`` écrit par ``pdm export``."""
     CARGO = "cargo"
     GO = "go"
     COMPOSER = "composer"
@@ -211,6 +230,9 @@ _TOOL_NAMES = {
     LockKind.PIPENV: "pipenv",
     LockKind.PIP_COMPILE: "pip-compile",
     LockKind.UV_PIP_COMPILE: "uv pip compile",
+    LockKind.UV_EXPORT: "uv export",
+    LockKind.POETRY_EXPORT: "poetry export",
+    LockKind.PDM_EXPORT: "pdm export",
     LockKind.CARGO: "Cargo",
     LockKind.GO: "Go",
     LockKind.COMPOSER: "Composer",
@@ -230,6 +252,9 @@ _PROGRAMS = {
     LockKind.PIPENV: "pipenv",
     LockKind.PIP_COMPILE: "pip-compile",
     LockKind.UV_PIP_COMPILE: "uv",
+    LockKind.UV_EXPORT: "uv",
+    LockKind.POETRY_EXPORT: "poetry",
+    LockKind.PDM_EXPORT: "pdm",
     LockKind.CARGO: "cargo",
     LockKind.GO: "go",
     LockKind.COMPOSER: "composer",
@@ -279,6 +304,41 @@ _RUNS_CODE = {
 }
 """Ce que l'outil exécute quand même, faute d'option pour l'en empêcher (brief, piège
 « Régénérer un lockfile peut exécuter du code du projet »)."""
+
+
+class ExtraKind(enum.StrEnum):
+    """Ce que forceupdate propose de faire en plus pour un lockfile (``Extra``)."""
+
+    PROJECT_NPM = "project-npm"
+    """Régénérer avec le npm qu'attend le projet (``npx -y npm@10``), pas celui de la machine, puis
+    vérifier le lockfile avec lui (``npm ci --dry-run``) : ``update.project_npm``."""
+    GO_VENDOR = "go-vendor"
+    """Refaire ``vendor/`` après ``go mod tidy`` (``go mod vendor``) : sinon ``go build`` refuse un
+    ``vendor/modules.txt`` périmé. ``vendor/`` est remis comme avant si une commande échoue."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class Extra:
+    """Ce que forceupdate propose de faire en plus pour un lockfile : une case du plan, cochée
+    d'office (décidé avec l'utilisateur, session 29) ; décochée, ``decline``."""
+
+    kind: ExtraKind
+    label: str
+    """La case, en quelques mots : « Régénérer avec npm 10, celui du projet »."""
+    detail: str
+    """Pourquoi, et ce que ça fait."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class Verified:
+    """Le lockfile régénéré, relu par l'outil qu'attend le projet (``ExtraKind.PROJECT_NPM`` :
+    ``npm ci --dry-run`` de son npm, qui n'installe rien)."""
+
+    command: str
+    """La commande, à lancer dans le dossier du lockfile pour reproduire."""
+    error: str | None = None
+    """``None`` : accepté ; sinon, ce que l'outil reproche (« Missing: zod@3.25.76 from lock
+    file »). Le lockfile reste régénéré."""
 
 
 class LockStatus(enum.StrEnum):
@@ -342,10 +402,33 @@ class Job:
     toolchain: str | None = None
     """Cargo : la chaîne d'outils par défaut de la personne, passée par ``RUSTUP_TOOLCHAIN``
     (``Tools.rust_default_toolchain``) ; ``None`` : celle que choisit rustup."""
+    extra: Extra | None = None
+    """Ce que forceupdate propose en plus (le npm du projet, ``go mod vendor``) : fait si
+    ``accepted``."""
+    accepted: bool = True
+    """La case de ``extra`` est cochée (d'office ; ``decline`` la décoche)."""
+    launcher: tuple[str, ...] = ()
+    """Ce qui lance l'outil à la place de ``program`` : ``npx -y npm@10`` (le npm du projet,
+    ``ExtraKind.PROJECT_NPM`` accepté) ; vide, ``program``."""
+
+    @property
+    def doing(self) -> ExtraKind | None:
+        """Ce que forceupdate fait en plus : ``extra``, s'il est accepté."""
+        return self.extra.kind if self.extra is not None and self.accepted else None
+
+    @property
+    def refreshes(self) -> tuple[str, ...]:
+        """Les dossiers que l'outil refait en plus du lockfile (``vendor/`` de ``go mod vendor``),
+        relatifs à la racine de la source : à remettre s'il échoue, à commiter sinon."""
+        if self.doing is ExtraKind.GO_VENDOR:
+            return (join(self.directory, "vendor"),)
+        return ()
 
     @property
     def tool(self) -> str:
-        """Le nom de l'outil, pour le dire."""
+        """Le nom de l'outil, pour le dire ; ``npm 10`` lancé par ``launcher``."""
+        if self.launcher:
+            return f"{_TOOL_NAMES[self.kind]} {self.launcher[-1].rpartition('@')[2]}"
         return _TOOL_NAMES[self.kind]
 
     @property
@@ -389,6 +472,8 @@ class Regenerated:
     """``REGENERATED`` : les autres paquets que le lockfile a changés (``h11 0.16.0 → 0.14.0``)."""
     warnings: tuple[str, ...] = ()
     """Ce qui s'est passé en route (versions exactes refusées…)."""
+    verified: Verified | None = None
+    """``REGENERATED`` avec le npm du projet : ce qu'en dit ``npm ci --dry-run`` de ce npm."""
 
 
 # ---------------------------------------------------------------------------
@@ -416,11 +501,14 @@ def plan(
     compiled = _compiled_files(source, report)
     cargo = any(PurePosixPath(path).name == "Cargo.lock" for path in by_lockfile)
     rust = _rustup_default() if tools.rust_default_toolchain and cargo else None
+    probes = _Probes()
 
     def job(
         path: str, choices: Sequence[Choice], compiled_file: "_Compiled | None", reason: str | None
     ) -> Job:
-        return _job(source, report, path, choices, changed, compiled_file, reason, tools, rust)
+        return _job(
+            source, report, path, choices, changed, compiled_file, reason, tools, rust, probes
+        )
 
     jobs = [
         job(path, choices, None, None)
@@ -437,6 +525,10 @@ def plan(
             reason = f"{', '.join(cited)} {'a' if len(cited) == 1 else 'ont'} changé"
         jobs.append(job(path, by_lockfile.get(path, []), compiled[path], reason))
         regenerated.add(path)
+    planned = {job.lockfile for job in jobs}
+    for path, export in sorted(_exports(source, report, compiled).items()):
+        if export.base in planned and path not in planned:
+            jobs.append(_export_job(path, export, tools))
     return tuple(jobs)
 
 
@@ -450,11 +542,14 @@ def _job(
     reason: str | None,
     tools: "Tools",
     rust_toolchain: str | None,
+    probes: "_Probes",
 ) -> Job:
     projects = _projects_of(report, path)
     warnings: list[str] = []
     options: tuple[str, ...] = ()
     sources: tuple[str, ...] = ()
+    extra: Extra | None = None
+    launcher: tuple[str, ...] = ()
     if compiled is not None:
         kind, options, sources = compiled.kind, compiled.options, compiled.sources
         warnings += compiled.warnings
@@ -478,8 +573,16 @@ def _job(
         warnings += _cargo_runs_code(source.read_text, dirname(path), tools, rust_toolchain)
     elif kind is LockKind.GO:
         warnings += _go_warnings(source.read_text, dirname(path))
+        extra = _go_vendor(source.read_text, dirname(path))
     elif kind is LockKind.COMPOSER:
-        warnings += _composer_warnings(source.read_text, dirname(path))
+        version = probes.version(program, _COMPOSER_VERSION) if program is not None else None
+        warnings += _composer_warnings(source.read_text, dirname(path), version)
+    elif kind is LockKind.NPM and program is not None:
+        found = _project_npm(source.read_text, path, projects, program, probes)
+        if isinstance(found, str):
+            warnings.append(found)
+        elif found is not None:
+            extra, launcher = found
     if kind is LockKind.BUNDLER:
         warnings += _bundler_warnings(source.read_text, path)
     if kind is LockKind.NUGET:
@@ -501,8 +604,137 @@ def _job(
         warnings=tuple(warnings),
         timeout=tools.timeout,
         toolchain=rust_toolchain if kind is LockKind.CARGO else None,
+        extra=extra,
+        launcher=launcher,
     )
     return dataclasses.replace(job, command=shlex.join(_DRIVERS[kind].manual(job)))
+
+
+def decline(jobs: Sequence[Job], lockfiles: Iterable[str]) -> tuple[Job, ...]:
+    """``jobs``, la case de ``Job.extra`` décochée pour les lockfiles ``lockfiles`` : le npm de
+    la machine plutôt que celui du projet, pas de ``go mod vendor``. La commande à lancer à la main
+    suit."""
+    refused = set(lockfiles)
+    found = []
+    for job in jobs:
+        if job.lockfile in refused and job.extra is not None and job.accepted:
+            job = dataclasses.replace(job, accepted=False, launcher=())
+            job = dataclasses.replace(job, command=shlex.join(_DRIVERS[job.kind].manual(job)))
+        found.append(job)
+    return tuple(found)
+
+
+class _Probes:
+    """La version des outils de la machine, demandée une fois par plan (``npm --version``…) : un
+    outil ne change pas pendant qu'on prépare un plan."""
+
+    def __init__(self) -> None:
+        self._found: dict[tuple[str, ...], str | None] = {}
+
+    def version(self, program: str | None, pattern: re.Pattern[str]) -> str | None:
+        """La version que ``program --version`` écrit (le premier groupe de ``pattern``) ;
+        ``None`` sans programme, ou si on ne la lit pas."""
+        if program is None:
+            return None
+        key = (program, pattern.pattern)
+        if key not in self._found:
+            self._found[key] = _tool_version(program, pattern)
+        return self._found[key]
+
+
+def _tool_version(program: str, pattern: re.Pattern[str]) -> str | None:
+    try:
+        result = _spawn(
+            [program, "--version"],
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            env=_environment(),
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    found = pattern.search(_decode(result.stdout))
+    return found.group(1) if found else None
+
+
+_PLAIN_VERSION = re.compile(r"^\s*v?(\d+\.\d+\.\d+\S*)\s*$", re.MULTILINE)
+"""``npm --version`` : « 11.6.2 » ; ``node --version`` : « v24.12.0 »."""
+_COMPOSER_VERSION = re.compile(r"Composer (?:version )?(\d+\.\d+\.\d+)")
+"""``composer --version`` : « Composer version 2.9.8 2026-05-13 09:28:38 »."""
+
+
+def _project_npm(
+    read_text: ReadText,
+    lockfile: str,
+    projects: Sequence[Project],
+    program: str,
+    probes: _Probes,
+) -> tuple[Extra, tuple[str, ...]] | str | None:
+    """Le npm qu'attend le projet du lockfile, s'il n'est pas celui de la machine
+    (``update.project_npm``) : la case du plan et ce qui lance ce npm (``npx -y npm@10``) ; un
+    avertissement seul quand forceupdate ne peut pas le lancer ; ``None`` si rien n'est attendu,
+    ou si le npm de la machine convient. ``npm --version`` (et ``node --version`` pour
+    ``engines.node``) n'est demandé que si le projet dit quelque chose."""
+    directory = dirname(lockfile)
+    content = _read_quietly(read_text, join(directory, "package.json"))
+    try:
+        manifest = json.loads((content or "").removeprefix(BOM))
+    except ValueError:
+        manifest = None
+    runtimes = [runtime for project in projects for runtime in project.runtimes]
+    if not project_npm.declared(manifest, runtimes):
+        return None
+    installed = probes.version(program, _PLAIN_VERSION)
+    if installed is None:
+        return None
+
+    def node() -> str | None:
+        return probes.version(_which("node"), _PLAIN_VERSION)
+
+    expected = project_npm.expected(manifest, runtimes, installed, node)
+    if expected is None:
+        return None
+    major = expected.major
+    risk = (
+        f"npm {installed} ici ; le projet attend npm {major} : {expected.source}. Un lockfile "
+        "écrit par un autre npm risque d'être refusé par « npm ci » de sa CI"
+    )
+    if major < project_npm.MIN_NPM:
+        return (
+            f"{risk}. forceupdate ne lance pas un npm si ancien : il réécrirait le lockfile dans "
+            "un format plus ancien."
+        )
+    npx = _which("npx")
+    if npx is None:
+        return f"{risk}, et npx n'est pas là pour lancer npm {major}."
+    detail = (
+        f"{risk} : forceupdate le régénère avec npm {major}, par npx, sans toucher au npm de cet "
+        f"ordinateur, puis le fait relire par npm {major} (npm ci, à blanc)."
+    )
+    extra = Extra(
+        kind=ExtraKind.PROJECT_NPM,
+        label=f"Régénérer avec npm {major}, celui du projet",
+        detail=detail,
+    )
+    return extra, (npx, "-y", f"npm@{major}")
+
+
+def _go_vendor(read_text: ReadText, directory: str) -> Extra | None:
+    """La case « refaire vendor/ » d'un module qui en a un (``vendor/modules.txt``)."""
+    if _read_quietly(read_text, join(directory, "vendor/modules.txt")) is None:
+        return None
+    return Extra(
+        kind=ExtraKind.GO_VENDOR,
+        label="Refaire vendor/ (go mod vendor)",
+        detail=(
+            "Le module a un dossier vendor/ : après go mod tidy, go build refuse un "
+            "vendor/modules.txt périmé. forceupdate lance go mod vendor, et remet vendor/ comme "
+            "avant si une commande échoue."
+        ),
+    )
 
 
 def _readers(report: Report, changes: Changes, known: set[str]) -> list[tuple[str, str]]:
@@ -515,6 +747,16 @@ def _readers(report: Report, changes: Changes, known: set[str]) -> list[tuple[st
         for edit in option.edits
         if edit.location is not None
     }
+    # Une version centrale ajoutée (E32 : EditKind.REFERENCE), et l'épinglage des indirectes avec
+    # elle : tout projet qui lit ce Directory.Packages.props peut en changer.
+    referenced = any(
+        edit.kind is EditKind.REFERENCE for _, _, option in changes.applied for edit in option.edits
+    )
+    centrals = {
+        change.path
+        for change in changes.files
+        if referenced and posixpath.basename(change.path) == "Directory.Packages.props"
+    }
     found: dict[str, set[str]] = {}
     for project in report.projects:
         for dependency in project.dependencies:
@@ -523,7 +765,10 @@ def _readers(report: Report, changes: Changes, known: set[str]) -> list[tuple[st
                 lockfile is not None
                 and lockfile not in known
                 and dependency.ecosystem is Ecosystem.NUGET
-                and (dependency.file, dependency.location) in rewritten
+                and (
+                    (dependency.file, dependency.location) in rewritten
+                    or dependency.file in centrals
+                )
             ):
                 found.setdefault(lockfile, set()).add(dependency.file)
     return [
@@ -621,8 +866,8 @@ def _cargo_runs_code(
 
 def _go_warnings(read_text: ReadText, directory: str) -> list[str]:
     """Ce que ``go mod tidy`` ne fera pas, ou fera autrement que ne le demande le module : la
-    chaîne d'outils de la directive ``toolchain`` (``GOTOOLCHAIN=local``), le dossier ``vendor/``
-    (refait à la main : ``go build`` refuse un ``vendor/modules.txt`` périmé)."""
+    chaîne d'outils de la directive ``toolchain`` (``GOTOOLCHAIN=local``). Le dossier ``vendor/``
+    est une case du plan (``_go_vendor``)."""
     warnings = []
     content = _read_quietly(read_text, join(directory, go.MANIFEST))
     try:
@@ -635,21 +880,33 @@ def _go_warnings(read_text: ReadText, directory: str) -> list[str]:
             "télécharger un autre (GOTOOLCHAIN=local) ; plus ancien que la directive go, il "
             "échoue, et rien ne change."
         )
-    if _read_quietly(read_text, join(directory, "vendor/modules.txt")) is not None:
-        warnings.append(
-            "vendor/ n'est pas refait : lancer go mod vendor après la mise à jour (go build "
-            "refuse un vendor/modules.txt périmé)."
-        )
     return warnings
 
 
-def _composer_warnings(read_text: ReadText, directory: str) -> list[str]:
+_VENDOR_LEFT = (
+    "vendor/ n'est pas refait : lancer go mod vendor après la mise à jour (go build refuse un "
+    "vendor/modules.txt périmé)."
+)
+
+
+def _composer_warnings(read_text: ReadText, directory: str, version: str | None) -> list[str]:
     """Ce que fera ``composer update`` autrement que ne le demande le projet, ou ce qu'il ne fera
-    pas : le blocage des versions à faille levé, le PHP de la machine pris faute de
-    ``config.platform.php``, ``vendor/`` laissé tel quel (``--no-install``)."""
+    pas : le blocage des versions à faille levé (Composer 2.10 et plus ; ``version`` est celle du
+    Composer installé, ``None`` si on ne la connaît pas) ou pas (Composer 2.9), le PHP de la
+    machine pris faute de ``config.platform.php``, ``vendor/`` laissé tel quel
+    (``--no-install``)."""
     warnings = []
     config = _composer_config(read_text, directory)
-    if _composer_unblocks(config):
+    release = _numbers(version)
+    if _composer_unblocks(config) and release[:2] == (2, 9):
+        warnings.append(
+            f"Composer {version} refuse toute version qui garde une faille connue, et ce blocage "
+            "ne se lève que dans composer.json (config.audit.block-insecure à false) : "
+            "forceupdate n'y touche pas. Une version visée qui en garde une fait échouer la "
+            "régénération (tout est remis) ; Composer 2.10 et plus le lève de lui-même le temps "
+            "du passage."
+        )
+    elif _composer_unblocks(config) and not (release and release < (2, 9)):
         warnings.append(
             "Composer ne refuse pas, le temps de la régénération, une version qui a encore une "
             "faille connue (COMPOSER_POLICY_ADVISORIES_BLOCK=0, Composer 2.10 et plus) : "
@@ -666,6 +923,11 @@ def _composer_warnings(read_text: ReadText, directory: str) -> list[str]:
             "vendor/ n'est pas mis à jour : lancer composer install après la mise à jour."
         )
     return warnings
+
+
+def _numbers(version: str | None) -> tuple[int, ...]:
+    """Les nombres d'une version (``2.9.8`` → ``(2, 9, 8)``) ; vide pour ``None``."""
+    return tuple(int(part) for part in re.findall(r"\d+", version or ""))
 
 
 def _composer_config(read_text: ReadText, directory: str) -> dict[str, Any]:
@@ -977,13 +1239,16 @@ reprise, et le plan le dit."""
 
 def _compiled_files(source: LocalSource, report: Report) -> dict[str, _Compiled]:
     """Les ``.txt`` compilés par pip-tools de la source : un lockfile d'un projet, avec un ``.in``
-    du même nom parmi ses manifestes."""
+    du même nom parmi ses manifestes, ou dont l'en-tête compile un manifeste (``pip-compile
+    pyproject.toml``, E32)."""
     found = {}
     for project in report.projects:
         sources = {m.lower(): m for m in project.manifests if m.endswith(".in")}
         for path in project.lockfiles:
+            if not path.endswith(".txt") or path in found:
+                continue
             source_in = sources.get(path[: -len(".txt")].lower() + ".in")
-            if path.endswith(".txt") and source_in is not None and path not in found:
+            if source_in is not None or _compiles_a_manifest(source, path):
                 found[path] = _compiled(source, path, source_in)
     return {
         path: dataclasses.replace(item, lockfiles=frozenset(item.closure & (found.keys() - {path})))
@@ -991,7 +1256,17 @@ def _compiled_files(source: LocalSource, report: Report) -> dict[str, _Compiled]
     }
 
 
-def _compiled(source: LocalSource, path: str, source_in: str) -> _Compiled:
+def _compiles_a_manifest(source: LocalSource, path: str) -> bool:
+    """Vrai pour un ``.txt`` dont l'en-tête compile un manifeste (``pip-compile pyproject.toml``,
+    ``uv pip compile setup.cfg``) : le lockfile de ce manifeste (``parsers.python``)."""
+    found = python.generated(_read_quietly(source.read_text, path) or "")
+    if found is None or found.tool not in ("pip-compile", "uv pip compile"):
+        return False
+    names = [posixpath.basename(s) for s in found.sources]
+    return any(name in python.MANIFEST_SOURCES for name in names)
+
+
+def _compiled(source: LocalSource, path: str, source_in: str | None) -> _Compiled:
     """Lit l'en-tête du ``.txt`` ``path`` : l'outil qui l'a écrit, ses options, ses sources."""
     directory = dirname(path)
     header = None
@@ -1022,7 +1297,7 @@ def _compiled(source: LocalSource, path: str, source_in: str) -> _Compiled:
             )
         if others:
             warnings.append(f"Pas repris de l'en-tête de {path} : {' '.join(others)}.")
-    if not sources:
+    if not sources and source_in is not None:
         sources = [posixpath.basename(source_in)]
     closure = _closure(source.read_text, [join(directory, s) for s in sources])
     return _Compiled(
@@ -1080,6 +1355,181 @@ def _closure(read_text: ReadText, paths: Iterable[str]) -> set[str]:
         if content is not None:
             stack.extend(python.requirements_references(path, content))
     return found
+
+
+@dataclass(frozen=True, kw_only=True)
+class _Export:
+    """Un ``requirements.txt`` exporté d'un lockfile du projet (E32 : ``uv export``, ``poetry
+    export``, ``pdm export``) : refait après lui, par la commande de l'outil."""
+
+    kind: LockKind
+    base: str
+    """Le lockfile dont il est l'export (``uv.lock``…)."""
+    options: tuple[str, ...]
+    warnings: tuple[str, ...] = ()
+
+
+_EXPORT_BASES = {
+    "uv.lock": LockKind.UV_EXPORT,
+    "poetry.lock": LockKind.POETRY_EXPORT,
+    "pdm.lock": LockKind.PDM_EXPORT,
+}
+
+_UV_EXPORT_FLAGS = frozenset(
+    {
+        "--no-hashes",
+        "--no-dev",
+        "--only-dev",
+        "--dev",
+        "--all-groups",
+        "--no-default-groups",
+        "--all-extras",
+        "--no-emit-project",
+        "--no-emit-workspace",
+        "--no-emit-local",
+        "--no-header",
+        "--no-annotate",
+        "--all-packages",
+        "--no-editable",
+    }
+)
+_UV_EXPORT_VALUED = frozenset(
+    {
+        "--format",
+        "--group",
+        "--no-group",
+        "--only-group",
+        "--extra",
+        "--no-extra",
+        "--no-emit-package",
+        "--package",
+        "--prune",
+    }
+)
+"""Les options de ``uv export`` reprises de l'en-tête : ce qui est exporté, et la forme du
+fichier. Une autre n'est pas reprise, et le plan le dit."""
+
+
+def _exports(
+    source: LocalSource, report: Report, compiled: Mapping[str, _Compiled]
+) -> dict[str, _Export]:
+    """Les exports de la source : les ``requirements*.txt`` qu'un projet range parmi ses
+    lockfiles (``parsers.python``) sans qu'ils soient compilés par pip-tools, avec le lockfile
+    dont ils viennent (``uv.lock``, ``poetry.lock``, ``pdm.lock``)."""
+    found: dict[str, _Export] = {}
+    for project in report.projects:
+        base = next((p for p in project.lockfiles if posixpath.basename(p) in _EXPORT_BASES), None)
+        if base is None:
+            continue
+        for path in project.lockfiles:
+            match = match_dependency_file(path)
+            if path in compiled or path in found or match is None:
+                continue
+            if match.pattern not in ("requirements*.txt", "requirements/*.txt"):
+                continue
+            content = _read_quietly(source.read_text, path) or ""
+            found[path] = _export(source, project, path, content, base)
+    return found
+
+
+def _export(source: LocalSource, project: Project, path: str, content: str, base: str) -> _Export:
+    """Comment refaire l'export ``path`` (son contenu, ``content``) du lockfile ``base`` : la
+    commande de son en-tête (``uv export``), sinon d'après ce qu'il contient (empreintes,
+    paquets de dev)."""
+    header = python.generated(content)
+    kind = _EXPORT_BASES[posixpath.basename(base)]
+    if header is not None and header.tool == "pdm export":
+        kind = LockKind.PDM_EXPORT
+    elif header is not None and header.tool == "uv export":
+        kind = LockKind.UV_EXPORT
+    hashed = re.search(r"(?:^|\s)--hash\b", content) is not None
+    name = posixpath.basename(path)
+    warnings: list[str] = []
+    if kind is LockKind.UV_EXPORT and header is not None and header.command is not None:
+        options, dropped = _uv_export_options(header.command, name)
+        if dropped:
+            warnings.append(f"Pas repris de l'en-tête de {path} : {' '.join(dropped)}.")
+    elif kind is LockKind.UV_EXPORT:
+        options = ["--format", "requirements-txt", "--no-header", "-o", name]
+        options += [] if hashed else ["--no-hashes"]
+        options += [] if "# via" in content else ["--no-annotate"]
+    else:
+        dev = _exported_dev(source, project, base, content)
+        if kind is LockKind.PDM_EXPORT:
+            options = ["-o", name, *([] if hashed else ["--no-hashes"])]
+            options += [] if dev else ["--prod"]
+        else:
+            options = ["-f", "requirements.txt", "-o", name]
+            options += [] if hashed else ["--without-hashes"]
+            options += ["--with", "dev"] if dev else []
+            warnings.append(
+                "poetry export demande le plugin poetry-plugin-export (Poetry 2) : sans lui, la "
+                "commande échoue, et le lockfile est remis comme avant avec ses manifestes."
+            )
+    return _Export(kind=kind, base=base, options=tuple(options), warnings=tuple(warnings))
+
+
+def _uv_export_options(command: str, name: str) -> tuple[list[str], list[str]]:
+    """Les options de l'en-tête ``uv export …`` reprises telles quelles, dans leur ordre (uv recopie
+    sa commande dans l'en-tête : il ne change pas), le fichier écrit donné par ``-o name`` ; et ce
+    qui n'est pas repris."""
+    try:
+        words = shlex.split(command)[2:]
+    except ValueError:
+        words = []
+    options: list[str] = []
+    dropped: list[str] = []
+    output = False
+    items = iter(words)
+    for word in items:
+        option, has_value, _ = word.partition("=")
+        if option in ("-o", "--output-file"):
+            if not has_value:
+                next(items, None)
+            options += [f"{option}={name}"] if has_value else [option, name]
+            output = True
+        elif option in _UV_EXPORT_FLAGS and not has_value:
+            options.append(word)
+        elif option in _UV_EXPORT_VALUED:
+            options += [word] if has_value else [option, next(items, "")]
+        elif option not in ("--frozen", "--locked", "-q", "--quiet"):
+            dropped.append(word)
+    if not output:
+        options += ["-o", name]
+    return options, dropped
+
+
+def _exported_dev(source: LocalSource, project: Project, base: str, content: str) -> bool:
+    """Vrai si l'export a des paquets de dev seulement (une directe de dev du projet, ou ce que le
+    lockfile ``base`` dit de dev ; un ``poetry.lock`` de Poetry 1.8 ne le dit pas) : il a été fait
+    avec les dépendances de dev (``pdm export`` les met par défaut, ``poetry export`` non)."""
+    dev = {d.name for d in project.dependencies if d.direct and d.scope is Scope.DEV} - {
+        d.name for d in project.dependencies if d.direct and d.scope is not Scope.DEV
+    }
+    lock = _lockfile(base, _read_quietly(source.read_text, base))
+    if lock is not None:
+        dev |= {p.name for p in lock.packages if p.scope is Scope.DEV}
+    exported = {
+        d.name for d in python.parse_pinned_requirements("requirements.txt", content).packages
+    }
+    return bool(dev & exported)
+
+
+def _export_job(path: str, export: _Export, tools: "Tools") -> Job:
+    """Le travail qui refait l'export ``path`` après son lockfile (il en dépend : un échec de
+    l'un remet l'autre)."""
+    job = Job(
+        lockfile=path,
+        kind=export.kind,
+        program=_which(_PROGRAMS[export.kind]),
+        command="",
+        inputs=(export.base,),
+        options=export.options,
+        reason=f"{export.base} a changé",
+        warnings=export.warnings,
+        timeout=tools.timeout,
+    )
+    return dataclasses.replace(job, command=shlex.join(_DRIVERS[export.kind].manual(job)))
 
 
 def _pip_tools_order(
@@ -1155,17 +1605,23 @@ def regenerate(
         saved = _snapshot(source.root, report, group)
         for job in group:
             locks_before[job.lockfile] = _read_quietly(source.read_text, _versions_path(job))
+        folders = _SavedFolders(source.root, [p for job in group for p in job.refreshes])
         try:
             if cancel is not None and cancel.is_set():
                 raise processes.Interrupted("mise à jour arrêtée")
             failure = _run_group(source, group, current, outcome, announce, cancel)
         except BaseException:  # Ctrl+C, arrêt : rien ne doit rester à moitié fait
             _restore(source.root, saved, written, group)
+            folders.restore()
+            folders.discard()
             _undo_written(source.root, written, groups[index + 1 :])
             raise
-        if failure is not None:
+        if failure is None:
+            folders.discard()
+        else:
             failed, message = failure
-            restored = _restore(source.root, saved, written, group)
+            restored = _restore(source.root, saved, written, group) + folders.restore()
+            folders.discard()
             for job in group:
                 if job is failed:
                     status, error = LockStatus.FAILED, message
@@ -1203,7 +1659,10 @@ def _run_group(
         except _Failed as failed:
             return job, str(failed)
         outcome[job.lockfile] = Regenerated(
-            job=job, status=LockStatus.REGENERATED, warnings=tuple(context.warnings)
+            job=job,
+            status=LockStatus.REGENERATED,
+            warnings=tuple(context.warnings),
+            verified=context.verified,
         )
     return None
 
@@ -1274,6 +1733,50 @@ def _restore(
     return tuple(sorted(restored))
 
 
+class _SavedFolders:
+    """Les dossiers que refont les outils d'un groupe (``Job.refreshes`` : le ``vendor/`` de ``go
+    mod vendor``), copiés avant de les lancer, pour les remettre tels quels si l'un échoue. La
+    copie va dans un dossier temporaire, effacé ensuite (``discard``)."""
+
+    def __init__(self, root: Path, paths: Sequence[str]) -> None:
+        self.root = root
+        self.copies: dict[str, Path | None] = {}
+        """Chaque dossier, et sa copie ; ``None`` pour un dossier qui n'existait pas."""
+        self.temporary: Path | None = None
+        if not paths:
+            return
+        self.temporary = Path(tempfile.mkdtemp(prefix="forceupdate-"))
+        for index, path in enumerate(dict.fromkeys(paths)):
+            folder = root / path
+            if not folder.is_dir():
+                self.copies[path] = None
+                continue
+            copy = self.temporary / str(index)
+            shutil.copytree(folder, copy, symlinks=True)
+            self.copies[path] = copy
+
+    def restore(self) -> tuple[str, ...]:
+        """Remet chaque dossier comme il était ; rend ceux qui l'ont été."""
+        restored = []
+        for path, copy in self.copies.items():
+            folder = self.root / path
+            try:
+                if folder.exists():
+                    shutil.rmtree(folder)
+                if copy is not None:
+                    shutil.copytree(copy, folder, symlinks=True)
+            except OSError as err:
+                logger.warning("%s n'a pas pu être remis comme avant : %s", path, err)
+                continue
+            restored.append(path)
+        return tuple(restored)
+
+    def discard(self) -> None:
+        if self.temporary is not None:
+            shutil.rmtree(self.temporary, ignore_errors=True)
+            self.temporary = None
+
+
 def _undo_written(
     root: Path, written: Mapping[str, FileChange], groups: Sequence[Sequence[Job]]
 ) -> None:
@@ -1336,11 +1839,13 @@ def _installed(choice: Choice, after: Mapping[str, Project], lock: Lockfile | No
     project, update, option = choice
     fresh = after.get(project.path)
     files = {d.file for d in update.dependencies}
+    # Une indirecte NuGet ajoutée au projet (E32) en devient une directe.
+    added = any(edit.kind is EditKind.REFERENCE for edit in option.edits)
     found = {
         d.installed
         for d in (fresh.dependencies if fresh is not None else [])
         if d.name == update.name
-        and d.direct == update.direct
+        and (d.direct == update.direct or added)
         and d.installed
         and (not update.direct or d.file in files)
     }
@@ -1475,6 +1980,28 @@ def _decode(data: bytes) -> str:
     return _ANSI.sub("", data.decode("utf-8", errors="replace"))
 
 
+def _output_lines(result: subprocess.CompletedProcess[bytes]) -> list[str]:
+    """Les lignes non vides de ce qu'a écrit l'outil : sa sortie d'erreur, sinon sa sortie."""
+    output = _decode(result.stderr).strip() or _decode(result.stdout).strip()
+    return [line for line in output.splitlines() if line.strip()]
+
+
+_NPM_PREFIX = re.compile(r"^npm (?:error|ERR!)\s?")
+_NPM_MISMATCH = re.compile(r"^(?:Missing|Invalid): ")
+
+
+def _npm_complaint(lines: Sequence[str]) -> str:
+    """Ce que ``npm ci`` reproche au lockfile, en une phrase : ses lignes « Missing: … from lock
+    file » et « Invalid: … » (suivies de l'aide de la commande, qu'on laisse) ; sinon ses dernières
+    lignes."""
+    said = [_NPM_PREFIX.sub("", line).strip() for line in lines]
+    found = [line for line in said if _NPM_MISMATCH.match(line)]
+    if not found:
+        found = [line for line in said if line and not line.startswith("A complete log")][-3:]
+    text = " ; ".join(found) or "(rien)"
+    return text if text.endswith(".") else f"{text}."
+
+
 class _Context:
     """Ce dont un outil a besoin pour régénérer un lockfile."""
 
@@ -1495,21 +2022,51 @@ class _Context:
         self.warnings: list[str] = []
         self.env: dict[str, str] = {}
         """Ce que l'outil reçoit en plus de ``_environment()`` (Cargo : ``_cargo_environment``)."""
+        self.verified: Verified | None = None
+
+    def shown(self, *arguments: str) -> str:
+        """La commande telle qu'on la taperait : ``npm install …``, ``npx -y npm@10 install …``."""
+        if self.job.launcher:
+            return shlex.join(["npx", *self.job.launcher[1:], *arguments])
+        return shlex.join([_PROGRAMS[self.job.kind], *arguments])
 
     def run(self, *arguments: str) -> None:
-        """Lance le programme de l'outil avec ``arguments``, dans le dossier du lockfile. Lève
-        ``_Failed``."""
+        """Lance le programme de l'outil avec ``arguments`` (par ``Job.launcher`` s'il y en a un),
+        dans le dossier du lockfile. Lève ``_Failed``."""
+        result = self._execute(arguments)
+        if result.returncode != 0:
+            lines = _output_lines(result)[-_OUTPUT_LINES:]
+            said = "\n".join(lines) or "(rien)"
+            shown = self.shown(*arguments)
+            raise _Failed(f"« {shown} » a échoué (code {result.returncode}) :\n{said}")
+
+    def verify(self, *arguments: str) -> None:
+        """Relit le lockfile régénéré avec ``arguments`` (``ci --dry-run``) : ce qu'en dit
+        l'outil va dans ``verified``, sans faire échouer la régénération. Un arrêt (Ctrl+C)
+        remonte."""
+        command = self.shown(*arguments)
+        try:
+            result = self._execute(arguments)
+        except _Failed as failed:
+            self.verified = Verified(command=command, error=str(failed))
+        else:
+            error = _npm_complaint(_output_lines(result)) if result.returncode != 0 else None
+            self.verified = Verified(command=command, error=error)
+
+    def _execute(self, arguments: Sequence[str]) -> subprocess.CompletedProcess[bytes]:
+        """Lance la commande ; lève ``_Failed`` si elle ne se lance pas ou ne finit pas à temps."""
         program = self.job.program
         assert program is not None
-        shown = shlex.join([_PROGRAMS[self.job.kind], *arguments])
-        if program.lower().endswith((".cmd", ".bat")):
-            unsafe = next((a for a in arguments if _BATCH_UNSAFE.search(a)), None)
+        command = [*self.job.launcher, *arguments] if self.job.launcher else [program, *arguments]
+        shown = self.shown(*arguments)
+        if command[0].lower().endswith((".cmd", ".bat")):
+            unsafe = next((a for a in command[1:] if _BATCH_UNSAFE.search(a)), None)
             if unsafe is not None:
                 raise _Failed(f"« {shown} » : argument refusé ({unsafe}).")
         logger.debug("%s (dans %s)", shown, self.job.directory)
         try:
-            result = _spawn(
-                [program, *arguments],
+            return _spawn(
+                command,
                 cwd=self.root / self.job.directory,
                 env={**_environment(), **self.env},
                 stdin=subprocess.DEVNULL,
@@ -1522,11 +2079,6 @@ class _Context:
             raise _Failed(f"« {shown} » n'a pas fini en {self.job.timeout:.0f} s.") from err
         except OSError as err:
             raise _Failed(f"« {shown} » n'a pas pu être lancé ({err.strerror or err}).") from err
-        if result.returncode != 0:
-            output = _decode(result.stderr).strip() or _decode(result.stdout).strip()
-            lines = [line for line in output.splitlines() if line.strip()][-_OUTPUT_LINES:]
-            said = "\n".join(lines) or "(rien)"
-            raise _Failed(f"« {shown} » a échoué (code {result.returncode}) :\n{said}")
 
     def names(self, *, direct: bool | None = None) -> list[str]:
         """Les paquets des mises à jour, sans doublon ; seulement les directes, ou seulement les
@@ -1681,12 +2233,16 @@ class _Driver:
 
 class _Npm(_Driver):
     _ARGS = ("--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund")
+    _VERIFY = ("ci", "--dry-run", "--ignore-scripts", "--no-audit", "--no-fund")
+    """``npm ci`` relit le lockfile et refuse s'il ne colle pas au ``package.json`` (« Missing: …
+    from lock file ») ; ``--dry-run`` n'installe rien (vérifié avec npm 10 et 11)."""
 
     def manual(self, job: Job) -> list[str]:
+        npm = ["npx", *job.launcher[1:]] if job.launcher else ["npm"]
         names = _lockfile_only(job)
         if names:
-            return ["npm", "update", *names, "--package-lock-only", "--ignore-scripts"]
-        return ["npm", "install", "--package-lock-only", "--ignore-scripts"]
+            return [*npm, "update", *names, "--package-lock-only", "--ignore-scripts"]
+        return [*npm, "install", "--package-lock-only", "--ignore-scripts"]
 
     def run(self, context: _Context) -> None:
         base = ("install", *self._ARGS)
@@ -1699,6 +2255,8 @@ class _Npm(_Driver):
             )
             context.run("update", *names, *everywhere, *self._ARGS)
         context.run(*base)
+        if context.job.doing is ExtraKind.PROJECT_NPM:
+            context.verify(*self._VERIFY)
 
 
 class _Pnpm(_Driver):
@@ -1896,6 +2454,34 @@ class _UvPipCompile(_Driver):
         return [*job.sources, "-o", posixpath.basename(job.lockfile), *job.options]
 
 
+class _UvExport(_Driver):
+    """``uv export`` avec les options de son en-tête : relu dans ``uv.lock``, sans résoudre
+    (``UV_FROZEN`` : ``--frozen`` passerait dans l'en-tête, vérifié avec uv 0.10)."""
+
+    def manual(self, job: Job) -> list[str]:
+        return ["uv", "export", *job.options]
+
+    def run(self, context: _Context) -> None:
+        context.env["UV_FROZEN"] = "1"
+        context.run("export", *context.job.options)
+
+
+class _PoetryExport(_Driver):
+    def manual(self, job: Job) -> list[str]:
+        return ["poetry", "export", *job.options]
+
+    def run(self, context: _Context) -> None:
+        context.run("export", *context.job.options, "--no-interaction")
+
+
+class _PdmExport(_Driver):
+    def manual(self, job: Job) -> list[str]:
+        return ["pdm", "export", *job.options]
+
+    def run(self, context: _Context) -> None:
+        context.run("export", *context.job.options)
+
+
 class _Cargo(_Driver):
     def manual(self, job: Job) -> list[str]:
         """Une mise à jour dont la contrainte n'a pas changé : ``--precise V``. Sinon, les
@@ -1965,6 +2551,7 @@ def _cargo_environment() -> dict[str, str]:
 
 class _Go(_Driver):
     def manual(self, job: Job) -> list[str]:
+        """``go mod tidy`` ; puis ``go mod vendor`` avec ``vendor/`` (la case le dit)."""
         return ["go", "mod", "tidy"]
 
     def run(self, context: _Context) -> None:
@@ -1979,6 +2566,12 @@ class _Go(_Driver):
                     f"go mod tidy a changé la directive {label} : {was or 'absente'} → {now}"
                     + (" (le go installé)." if was is None and label == "go" else ".")
                 )
+        if context.job.doing is ExtraKind.GO_VENDOR:
+            # Refait vendor/ d'après go.mod et go.sum, sans rien compiler (vérifié avec Go 1.27) ;
+            # s'il échoue, vendor/ est remis comme avant (``_SavedFolders``).
+            context.run("mod", "vendor")
+        elif context.job.extra is not None and context.job.extra.kind is ExtraKind.GO_VENDOR:
+            context.warnings.append(_VENDOR_LEFT)
 
 
 def _go_lines(path: Path) -> list[tuple[str, str | None]]:
@@ -2164,6 +2757,9 @@ _DRIVERS: dict[LockKind, _Driver] = {
     LockKind.PIPENV: _Pipenv(),
     LockKind.PIP_COMPILE: _PipCompile(),
     LockKind.UV_PIP_COMPILE: _UvPipCompile(),
+    LockKind.UV_EXPORT: _UvExport(),
+    LockKind.POETRY_EXPORT: _PoetryExport(),
+    LockKind.PDM_EXPORT: _PdmExport(),
     LockKind.CARGO: _Cargo(),
     LockKind.GO: _Go(),
     LockKind.COMPOSER: _Composer(),

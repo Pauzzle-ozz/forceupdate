@@ -199,6 +199,10 @@ class Dependency:
     """La règle qui ignore le paquet et d'où elle vient (E29 : ``lodash (forceupdate.toml)``) :
     il n'est pas vérifié auprès de son registre, et n'a jamais de mise à jour ; ses failles
     restent cherchées. ``None`` s'il ne l'est pas (voir ``config``)."""
+    manual: str | None = None
+    """Pourquoi sa contrainte ne se réécrit pas, bien qu'on sache où elle est (E32 : une ligne
+    de ``requirements`` à empreintes, ``--hash``) : ses options sont à faire à la main, jamais
+    pré-cochées. ``None`` si elle se réécrit."""
 
     @property
     def verifiable(self) -> bool:
@@ -371,6 +375,11 @@ class EditKind(enum.StrEnum):
     (``update.writers``)."""
     OVERRIDE = "override"
     """Une version forcée (``overrides``, ``resolutions``, ``pnpm.overrides``)."""
+    REFERENCE = "reference"
+    """Une référence à ajouter au projet (E32 : une indirecte NuGet, que NuGet ne fait pas monter
+    seul) : ``file`` est le projet MSBuild, ``new`` la version ; la réécriture insère la
+    ``PackageReference``, ou, avec la gestion centrale, la ``PackageVersion`` (et
+    ``CentralPackageTransitivePinningEnabled``), là où il faut (``update.writers.nuget``)."""
 
 
 @dataclass(frozen=True, kw_only=True)

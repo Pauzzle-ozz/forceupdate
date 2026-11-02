@@ -313,6 +313,16 @@ def update(
             help="Écrit même si les fichiers visés ont des changements que git n'a pas en commit.",
         ),
     ] = False,
+    no_extras: Annotated[
+        bool,
+        typer.Option(
+            "--no-extras",
+            help=(
+                "Ne fait pas ce que forceupdate propose en plus pour un lockfile : régénérer "
+                "avec le npm qu'attend le projet (npx -y npm@10), refaire vendor/ (go mod vendor)."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Met à jour les dépendances d'un dossier ou d'un fichier.
 
@@ -356,6 +366,8 @@ def update(
         timeout=settings.lock_timeout, rust_default_toolchain=settings.rust_default_toolchain
     )
     prepared = local.prepare(source, report, selection, tools=tools)
+    if no_extras:
+        prepared = prepared.declining(job.lockfile for job in prepared.jobs)
     terminal.render_changes(prepared.changes, console, prepared.jobs)
     if prepared.empty or dry_run:
         if not prepared.empty:

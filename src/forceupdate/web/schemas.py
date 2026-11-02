@@ -26,7 +26,16 @@ from forceupdate.net import CacheStats
 from forceupdate.preferences import DEFAULTS, Preferences
 from forceupdate.report.json import Document, SummaryDocument
 from forceupdate.update.forge import Step
-from forceupdate.update.lockfiles import Installed, Job, LockKind, LockStatus, Reach, Regenerated
+from forceupdate.update.lockfiles import (
+    ExtraKind,
+    Installed,
+    Job,
+    LockKind,
+    LockStatus,
+    Reach,
+    Regenerated,
+    decline,
+)
 from forceupdate.update.writers import Choice, Skipped
 
 # -- Requêtes ---------------------------------------------------------------------
@@ -78,6 +87,9 @@ class ApplyRequest:
     """L'identifiant du plan (``POST /api/updates/plan``)."""
     force: bool = False
     """Écrire même si des fichiers à toucher ont des changements que git n'a pas en commit."""
+    declined: list[str] = field(default_factory=list)
+    """Les lockfiles dont la case ``extra`` est décochée (``LockJob.extra``, E32) : régénérés par
+    le npm de cet ordinateur, sans ``go mod vendor``."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -310,6 +322,30 @@ class FileDiff:
 
 
 @dataclass(frozen=True, kw_only=True)
+class LockExtra:
+    """Ce que forceupdate propose en plus pour un lockfile (``lockfiles.Extra``)."""
+
+    kind: ExtraKind
+    label: str
+    """La case, en quelques mots : « Régénérer avec npm 10, celui du projet »."""
+    detail: str
+    """Pourquoi, et ce que ça fait."""
+    declined: str
+    """La commande à lancer à la main, la case décochée (``LockJob.command`` est celle de la
+    case cochée)."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class LockVerified:
+    """Le lockfile régénéré, relu par l'outil qu'attend le projet (``lockfiles.Verified``)."""
+
+    command: str
+    """La commande, à lancer dans le dossier du lockfile pour reproduire."""
+    error: str | None
+    """``null`` : accepté ; sinon ce que l'outil reproche (« Missing: … from lock file »)."""
+
+
+@dataclass(frozen=True, kw_only=True)
 class LockJob:
     """Un lockfile à régénérer après l'écriture, et comment (``lockfiles.Job``)."""
 
@@ -331,6 +367,11 @@ class LockJob:
     """Pourquoi il est régénéré sans mise à jour à lui (pip-tools)."""
     warnings: tuple[str, ...]
     """Ce que l'outil exécute, une option d'en-tête pas reprise…"""
+    extra: LockExtra | None
+    """Ce que forceupdate propose en plus (E32) : une case, cochée d'office, qu'on décoche par
+    ``ApplyRequest.declined`` ; ``null`` sans rien à proposer."""
+    accepted: bool
+    """La case de ``extra`` est cochée."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -357,6 +398,8 @@ class LockResult:
     installed: tuple[InstalledVersion, ...]
     changed: tuple[str, ...]
     warnings: tuple[str, ...]
+    verified: LockVerified | None
+    """Régénéré avec le npm du projet : ce qu'en dit son ``npm ci --dry-run``."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -940,6 +983,19 @@ def lock_job(job: Job) -> LockJob:
         workspace=job.workspace,
         reason=job.reason,
         warnings=job.warnings,
+        extra=lock_extra(job) if job.extra is not None else None,
+        accepted=job.accepted,
+    )
+
+
+def lock_extra(job: Job) -> LockExtra:
+    assert job.extra is not None
+    (declined,) = decline([job], [job.lockfile]) if job.accepted else (job,)
+    return LockExtra(
+        kind=job.extra.kind,
+        label=job.extra.label,
+        detail=job.extra.detail,
+        declined=declined.command,
     )
 
 
@@ -962,6 +1018,11 @@ def lock_result(result: Regenerated) -> LockResult:
         installed=tuple(installed_version(item) for item in result.installed),
         changed=result.changed,
         warnings=result.warnings,
+        verified=(
+            LockVerified(command=result.verified.command, error=result.verified.error)
+            if result.verified is not None
+            else None
+        ),
     )
 
 

@@ -109,7 +109,8 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   │                         nuget.py (packages.config, .csproj/.fsproj/.vbproj, Directory.Build.props
 │   │                         et Directory.Packages.props, packages.lock.json, SDK de projet, TargetFramework ;
 │   │                         MSBuild jamais lancé) ; runtimes.py (la version des runtimes : manifestes,
-│   │                         .python-version, .nvmrc, global.json, Dockerfile… ; E27) ;
+│   │                         .python-version, .nvmrc, global.json, Dockerfile… ; E27 ; la CI : workflows de
+│   │                         GitHub, .gitlab-ci.yml, bitbucket-pipelines.yml, E32) ;
 │   │                         code.py (un fichier de code seul, E28 : le bloc PEP 723 d'un script, lu par
 │   │                         python.py, sinon ses imports ; la table import → paquet, les modules
 │   │                         intégrés de Node), imports.py (ast pour Python, un lexer pour JS/TS et Go :
@@ -131,7 +132,8 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   │                         l'API : seuls les fichiers que lisent les parseurs sont téléchargés ; un
 │   │                         clone superficiel si l'arborescence est tronquée)
 │   ├── update/             ← planner, writers/, lockfiles, local.py (mise à jour d'un dossier), forge.py
-│   │                         (une PR par dépôt : clone, mise à jour, commit, push, PR)
+│   │                         (une PR par dépôt : clone, mise à jour, commit, push, PR), project_npm.py (le
+│   │                         npm qu'attend le projet, E32 : régénéré par npx -y npm@10, relu par npm ci)
 │   └── web/                ← le serveur de ui (FastAPI) ; repositories.py : les dépôts des comptes et leurs
 │                             analyses groupées ; proposals.py : le récapitulatif des PR et leur envoi ;
 │                             preferences.py : les réglages côté serveur (routes/settings.py : écran 9) ;
@@ -155,7 +157,9 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
     │                         tls/ : une autorité de test, son certificat public seul) ;
     │                         record.py les ré-enregistre, RECORDED_ON : le jour des fins de vie des tests
     └── projects/           ← mini-projets par outil, lockfiles produits par les vrais outils ; eol/ : E27 ;
-                              scripts/ : E28 (des fichiers de code seuls ; locked.py.lock de uv lock --script)
+                              scripts/ : E28 (des fichiers de code seuls ; locked.py.lock de uv lock --script) ;
+                              exports/ : E32 (requirements.txt de uv export, poetry export, pdm export,
+                              pip-compile pyproject.toml)
 ```
 
 ## Commandes
@@ -263,7 +267,11 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   `corepack yarn@4.18.1`, `uvx poetry`, `uvx pdm`, `uvx pipenv`,
   `uvx --from pip-tools pip-compile`. pipenv crée un virtualenv dans `~/.virtualenvs`
   (le retirer avec `uvx pipenv --rm`), et prend le `.venv` activé si `VIRTUAL_ENV` est
-  défini.
+  défini. Pour qu'un `forceupdate update` les trouve, un lanceur dans un dossier du scratchpad mis
+  en tête du `PATH` (`pdm.cmd` : `@echo off` puis `uvx pdm %*` ; de même `uvx --with
+  poetry-plugin-export poetry %*`, E32). Un outil qui range ses fichiers sous le scratchpad peut
+  dépasser les 260 caractères de chemin de Windows (pnpm, E32) : un lecteur `subst` vers le
+  scratchpad, retiré ensuite (`subst Q: /d`).
 - cargo est installé par rustup (E21, toolchain stable MSVC) dans `~/.cargo/bin`, qui n'est pas
   dans le `PATH` des outils Bash et PowerShell : `export PATH="$HOME/.cargo/bin:$PATH"` avant
   `forceupdate update`, `ui` ou `pytest --run-network`. rustup installe tout seul la chaîne

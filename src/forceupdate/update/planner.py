@@ -69,6 +69,7 @@ pour un seul. Un paquet ignoré (``Dependency.ignored``) n'a pas de mise à jour
 """
 
 import dataclasses
+import posixpath
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
@@ -106,6 +107,10 @@ MAJOR_WARNING = "Majeure : peut demander d'adapter le code."
 DOWNGRADE_WARNING = "Revient à une version plus ancienne."
 INDIRECT_MAJOR_WARNING = (
     "Dépendance indirecte : le paquet qui la tire devra peut-être monter aussi."
+)
+REFERENCE_WARNING = (
+    "NuGet ne fait pas monter une indirecte seul (il prend la plus basse version qui convient) : "
+    "elle est ajoutée au projet, par une référence ou une version centrale."
 )
 
 Selection = dict[str, str]
@@ -616,6 +621,8 @@ class _Group:
         published = self.info.get(version)
         if published is not None and published.deprecated:
             warnings.append(f"Version dépréciée : {published.deprecated}")
+        if any(edit.kind is EditKind.REFERENCE for edit in edits):
+            warnings.append(REFERENCE_WARNING)
         warnings.extend(self._shared_warnings(edits))
         return UpdateOption(
             version=version,
@@ -672,6 +679,9 @@ class _Group:
                 continue
             if new == text:
                 continue
+            if dependency.manual is not None:
+                manual = f"{dependency.file}, {dependency.manual}"
+                continue
             catalog = dependency.resolved_constraint is not None
             if dependency.location is None and not catalog:
                 manual = (
@@ -693,14 +703,29 @@ class _Group:
 
     def _indirect_edits(self, version: str, *, floor: bool) -> _Operations:
         """Une indirecte monte par son lockfile ; une version forcée qui ne l'accepte pas est
-        réécrite. Pas avec NuGet, qui prend la plus basse version qui convient : à la main."""
+        réécrite. Pas avec NuGet, qui prend la plus basse version qui convient : une référence
+        ajoutée au projet (E32, ``EditKind.REFERENCE``), sinon à la main."""
         if self.scheme.lowest:
-            return [], None, _lowest_manual(self.lead.name, version)
+            project = _msbuild_project(self.project, self.lead)
+            if project is None:
+                return [], None, _lowest_manual(self.lead.name, version)
+            edit = Edit(kind=EditKind.REFERENCE, file=project, location=None, old="", new=version)
+            return [edit], self.lead.lockfile, None
         lockfile = self.lead.lockfile or self.lead.file
         override = _override(self.lead.name, self.overrides)
         if override is None:
             return [], lockfile, None
         described = f"Version forcée « {override.key} » ({override.section}, {override.file})"
+        if override.constraint.startswith("$"):
+            # npm : « $minimist » renvoie à la dépendance directe de ce nom à la racine (vérifié
+            # sur un vrai workspace, npm 11) ; c'est elle qui fait monter l'indirecte.
+            followed = override.constraint[1:]
+            return (
+                [],
+                lockfile,
+                f"{described} : « {override.constraint} » suit la dépendance {followed} de "
+                f"{override.file} ; la mettre à jour fait monter celle-ci.",
+            )
         try:
             inside = self.scheme.satisfies(override.constraint, version)
         except (InvalidConstraint, InvalidVersion):
@@ -744,6 +769,20 @@ def _in_manifest(dependency: Dependency) -> bool:
     ``// indirect`` dans ``go.mod`` (ou la fige par un ``replace`` de ``go.work``). Celle d'un
     lockfile (un ``.txt`` compilé a aussi des emplacements) se met à jour par son outil."""
     return dependency.file != dependency.lockfile
+
+
+def _msbuild_project(project: Project, dependency: Dependency) -> str | None:
+    """Le projet MSBuild (``.csproj``…) dont ``dependency`` est une indirecte : celui du dossier
+    de son lockfile ; ``None`` s'il n'y en a pas un seul."""
+    if dependency.lockfile is None:
+        return None
+    found = [
+        manifest
+        for manifest in project.manifests
+        if dirname(manifest) == dirname(dependency.lockfile)
+        and posixpath.splitext(manifest)[1].lower() in (".csproj", ".fsproj", ".vbproj")
+    ]
+    return found[0] if len(found) == 1 else None
 
 
 def _lowest_manual(name: str, version: str) -> str:

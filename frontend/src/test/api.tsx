@@ -173,6 +173,8 @@ export function planDocument(overrides: Partial<UpdatePlan> = {}): UpdatePlan {
         workspace: false,
         reason: null,
         warnings: [],
+        extra: null,
+        accepted: true,
       },
       {
         lockfile: 'requirements.txt',
@@ -192,6 +194,8 @@ export function planDocument(overrides: Partial<UpdatePlan> = {}): UpdatePlan {
         warnings: [
           "Pas repris de l'en-tête de requirements.txt : --exclude-newer 2019-01-01, qui écarterait les versions choisies.",
         ],
+        extra: null,
+        accepted: true,
       },
     ],
     uncommitted: [],
@@ -215,6 +219,7 @@ export function regenerated(): UpdatePlan['results'] {
       installed: [exact('.|npm|lodash', '4.18.1')],
       changed: [],
       warnings: [],
+      verified: null,
     },
     {
       lockfile: 'requirements.txt',
@@ -224,6 +229,7 @@ export function regenerated(): UpdatePlan['results'] {
       installed: [exact('.|PyPI|flask', '0.12.5'), exact('.|PyPI|jinja2|2.10', '2.11.3')],
       changed: [],
       warnings: [],
+      verified: null,
     },
   ]
 }

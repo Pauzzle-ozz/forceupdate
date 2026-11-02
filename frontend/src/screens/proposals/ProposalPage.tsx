@@ -5,6 +5,7 @@ import {
   CircleMinus,
   CircleX,
   FolderGit2,
+  Info,
   GitPullRequest,
   LoaderCircle,
   Lock,
@@ -533,6 +534,16 @@ function LockLine({ job, word }: { job: LockJob; word: string }) {
           </Badge>
         )}
       </div>
+      {job.extra && job.accepted && (
+        // Fait d'office pour une PR : c'est la CI du dépôt qui reçoit le lockfile (E32).
+        <p className="flex items-start gap-2 text-sm">
+          <Info className="mt-0.5 size-4 shrink-0 text-link" aria-hidden="true" />
+          <span>
+            <b className="font-medium">{job.extra.label}</b>
+            {NBSP}: {fr(job.extra.detail)}
+          </span>
+        </p>
+      )}
       {!job.available && (
         <>
           <p className="text-sm">
@@ -700,7 +711,8 @@ function SentCard({ item, showForge }: { item: ProposedRepository; showForge: bo
   const look = STATE_ICON[item.state] ?? STATE_ICON.waiting
   const Icon = look.icon
   const word = requestWord(item.forge)
-  const pending = item.results.filter((result) => result.status !== 'regenerated')
+  // À reprendre : ce qui n'est pas régénéré, et un lockfile que le npm du projet refuse (E32).
+  const pending = item.results.filter((result) => result.status !== 'regenerated' || result.verified?.error)
   return (
     <Card className="flex flex-col gap-3" aria-labelledby={`${id}-nom`}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -762,6 +774,21 @@ function SentCard({ item, showForge }: { item: ProposedRepository; showForge: bo
 
 /** Un lockfile qui n'a pas été régénéré sur le clone : la commande à lancer, ou l'erreur. */
 function ResultLine({ result, job, word }: { result: LockResult; job: LockJob | undefined; word: string }) {
+  if (result.status === 'regenerated' && result.verified?.error) {
+    return (
+      <li className="flex flex-col gap-2 rounded-md border border-border px-3 py-2 text-sm">
+        <span className="flex flex-wrap items-center gap-2">
+          <CircleX className="size-4 shrink-0 text-danger" aria-hidden="true" />
+          <span className="font-mono">{result.lockfile}</span>
+          {fr(`régénéré, mais refusé par la relecture (la description de la ${word} le dit) :`)}
+        </span>
+        <span lang="en" className="font-mono text-xs [overflow-wrap:anywhere]">
+          {result.verified.error}
+        </span>
+        <Command command={result.verified.command} label={`la relecture de ${result.lockfile}`} />
+      </li>
+    )
+  }
   if (result.status === 'tool_missing') {
     return (
       <li className="flex flex-col gap-2 rounded-md border border-border px-3 py-2 text-sm">

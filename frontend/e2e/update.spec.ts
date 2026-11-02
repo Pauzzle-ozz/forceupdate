@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 import { TOKEN } from '../playwright.config.ts'
@@ -63,6 +63,36 @@ test('appliquer la sélection proposée sur une copie de vulnerable, sous la CSP
   await expect(rows.filter({ hasText: 'flask' })).toContainText('0.12.5')
   await expect(page.getByRole('group', { name: /Constats par type/ }).getByRole('button', { name: /Failles/ })).not.toContainText('28')
 
+  expect(errors).toEqual([])
+})
+
+test('une CI en Node 22 : régénérer avec npm 10, la case cochée d’office, et la relecture (E32)', async ({ page }) => {
+  const errors = watchConsole(page)
+  const root = copyProject('vulnerable')
+  mkdirSync(join(root, '.github', 'workflows'), { recursive: true })
+  writeFileSync(
+    join(root, '.github', 'workflows', 'ci.yml'),
+    'jobs:\n  test:\n    steps:\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 22\n',
+  )
+  await analyze(page, root)
+  await page.getByRole('link', { name: /Mettre à jour/ }).click()
+  await page.getByRole('button', { name: 'Vérifier le plan' }).click()
+  await expect(page).toHaveURL(/\/plans\/[0-9a-f]+$/)
+
+  // Le serveur de test simule npm 11 : la case « npm 10 », cochée, et la commande avec npx.
+  const box = page.getByRole('checkbox', { name: 'Régénérer avec npm 10, celui du projet' })
+  await expect(box).toBeChecked()
+  await expect(page.getByText(/npm 11\.6\.2 ici\s; le projet attend npm 10/)).toBeVisible()
+  await expect(page.getByText('npx -y npm@10 install --package-lock-only --ignore-scripts')).toBeVisible()
+  await box.uncheck()
+  await expect(page.getByText('npm install --package-lock-only --ignore-scripts')).toBeVisible()
+  await box.check()
+
+  await page.getByRole('button', { name: 'Appliquer', exact: true }).click()
+  await expect(page.getByText('Mise à jour appliquée')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('npm 10', { exact: true })).toBeVisible()
+  await expect(page.getByText(/Relu par npx -y npm@10 ci --dry-run --ignore-scripts --no-audit --no-fund\s: accepté\./)).toBeVisible()
+  expect(readFileSync(join(root, 'package-lock.json'), 'utf-8')).toContain('"version": "4.18.1"')
   expect(errors).toEqual([])
 })
 

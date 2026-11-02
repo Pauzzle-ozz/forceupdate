@@ -347,6 +347,13 @@ def render_changes(changes: Changes, console: Console, jobs: Sequence[Job] = ())
             if job.reason is not None:
                 detail.append(f" ({job.reason})", style="dim")
             grid.add_row("", Text(job.lockfile, style="bold"), detail)
+            if job.extra is not None:
+                mark = "[x]" if job.accepted else "[ ]"
+                extra = Text(f"{mark} {job.extra.label} : ", style="bold")
+                extra.append(job.extra.detail, style="cyan")
+                if job.accepted:
+                    extra.append(" (--no-extras pour ne pas le faire)", style="dim")
+                grid.add_row("", "", extra)
             for warning in job.warnings:
                 grid.add_row("", "", Text(warning, style="yellow"))
         console.print(grid)
@@ -410,6 +417,14 @@ def _print_result(result: Regenerated, console: Console) -> None:
     console.print(line)
     for warning in result.warnings:
         notes.add_row("", Text(warning, style="yellow"))
+    verified = result.verified
+    if verified is not None and verified.error is None:
+        notes.add_row("", Text(f"Relu par {verified.command} : accepté.", style="green"))
+    elif verified is not None:
+        refused = Text(f"{verified.command} refuse le lockfile : ", style="bold red")
+        refused.append(f"{verified.error} Pour le reproduire : {verified.command}", style="red")
+        refused.append(f", dans {job.directory}.", style="red")
+        notes.add_row("", refused)
     for table in (grid, notes):
         if table.row_count:
             console.print(table)

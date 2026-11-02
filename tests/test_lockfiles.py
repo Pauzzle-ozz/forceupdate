@@ -35,9 +35,10 @@ from forceupdate.parsers import parse_lockfile, ruby
 from forceupdate.parsers.go import parse_go_mod
 from forceupdate.parsers.lockfiles import dependents
 from forceupdate.sources.local import LocalSource
-from forceupdate.update import lockfiles, writers
+from forceupdate.update import forge, local, lockfiles, writers
 from forceupdate.update.lockfiles import (
     LOCK_TIMEOUT,
+    ExtraKind,
     Job,
     LockKind,
     LockStatus,
@@ -1493,11 +1494,18 @@ def test_go_without_go_sum(tmp_path: Path, fake_tools: Tools) -> None:
     assert (root / "go.sum").exists()
 
 
-def test_go_says_what_it_does_not_do(tmp_path: Path, fake_tools: Tools) -> None:
-    """``toolchain`` : le go installé est lancé ; ``vendor/`` : à refaire à la main."""
+def go_vendored(tmp_path: Path) -> Path:
+    """Le module ``tools`` de ``go-workspace``, avec un ``vendor/``."""
     root = go_copy(tmp_path, "go-workspace")
-    (root / "tools" / "vendor").mkdir()
+    (root / "tools" / "vendor" / "github.com" / "google" / "uuid").mkdir(parents=True)
     (root / "tools" / "vendor" / "modules.txt").write_text("# github.com/google/uuid v1.2.0\n")
+    (root / "tools" / "vendor" / "github.com" / "google" / "uuid" / "uuid.go").write_text("v1.2.0")
+    return root
+
+
+def test_go_says_what_it_does_not_do(tmp_path: Path, fake_tools: Tools) -> None:
+    """``toolchain`` : le go installé est lancé ; ``vendor/`` : une case du plan, cochée."""
+    root = go_vendored(tmp_path)
     fake_tools("go")
     source, report = analyse(root)
     choice = wanted(project_of(report, "tools"), "github.com/google/uuid", "v1.6.0", new="v1.6.0")
@@ -1507,8 +1515,88 @@ def test_go_says_what_it_does_not_do(tmp_path: Path, fake_tools: Tools) -> None:
         "go.mod demande go1.21.13 : forceupdate lance le go installé, sans en télécharger un "
         "autre (GOTOOLCHAIN=local) ; plus ancien que la directive go, il échoue, et rien ne "
         "change.",
-        "vendor/ n'est pas refait : lancer go mod vendor après la mise à jour (go build refuse "
-        "un vendor/modules.txt périmé).",
+    )
+    assert job.extra is not None and job.accepted
+    assert (job.extra.kind, job.extra.label) == (
+        ExtraKind.GO_VENDOR,
+        "Refaire vendor/ (go mod vendor)",
+    )
+    assert job.refreshes == ("tools/vendor",)
+    assert job.command == "go mod tidy"
+
+
+def test_go_mod_vendor_after_tidy(tmp_path: Path, fake_tools: Tools) -> None:
+    """La case cochée : ``go mod vendor`` après tidy, et ``vendor/`` est à commiter. Si une
+    commande échoue, ``vendor/`` est remis tel qu'il était (fichiers ajoutés retirés)."""
+    root = go_vendored(tmp_path)
+    vendor = root / "tools" / "vendor"
+    tools = fake_tools("go")
+    tidy = FakeGoTidy(root / "tools")
+
+    def go(call: ToolCall) -> tuple[int, str, str] | None:
+        if call.arguments == ["mod", "vendor"]:
+            (vendor / "modules.txt").write_text("# github.com/google/uuid v1.6.0\n")
+            (vendor / "nouveau.go").write_text("ajouté")
+            return None
+        return tidy(call)
+
+    tools.handlers["go"] = go
+    source, report = analyse(root)
+    choice = wanted(project_of(report, "tools"), "github.com/google/uuid", "v1.6.0", new="v1.6.0")
+
+    _, (job,), (result,) = apply(root, [choice], report, source)
+
+    assert tools.commands() == ["go mod tidy", "go mod vendor"]
+    assert result.status is LockStatus.REGENERATED, result.error
+    assert (vendor / "nouveau.go").exists()
+    assert forge.committable(local.Prepared(changes=Changes(), jobs=(job,)), (result,)) == [
+        "tools/go.sum",
+        "tools/vendor",
+    ]
+
+    # go mod vendor qui échoue après avoir écrit : vendor/ remis, go.mod aussi.
+    (vendor / "nouveau.go").unlink()
+    (vendor / "modules.txt").write_text("# github.com/google/uuid v1.2.0\n")
+    git_reset = (root / "tools" / "go.mod").read_text(encoding="utf-8")
+    before = {
+        p.relative_to(vendor).as_posix(): p.read_bytes() for p in vendor.rglob("*") if p.is_file()
+    }
+
+    def failing(call: ToolCall) -> tuple[int, str, str] | None:
+        if call.arguments == ["mod", "vendor"]:
+            (vendor / "modules.txt").write_text("à moitié")
+            (vendor / "nouveau.go").write_text("ajouté")
+            return 1, "", "go: écriture impossible"
+        return tidy(call)
+
+    tools.handlers["go"] = failing
+    source, report = analyse(root)
+    choice = wanted(project_of(report, "tools"), "github.com/google/uuid", "v1.6.0", new="v1.6.0")
+    _, _, (result,) = apply(root, [choice], report, source)
+    assert result.status is LockStatus.FAILED
+    assert "tools/vendor" in result.restored
+    after = {
+        p.relative_to(vendor).as_posix(): p.read_bytes() for p in vendor.rglob("*") if p.is_file()
+    }
+    assert after == before
+    assert (root / "tools" / "go.mod").read_text(encoding="utf-8") == git_reset
+
+
+def test_go_vendor_declined(tmp_path: Path, fake_tools: Tools) -> None:
+    """La case décochée : tidy seul, et le résultat dit de refaire ``vendor/``."""
+    root = go_vendored(tmp_path)
+    tools = fake_tools("go")
+    tools.handlers["go"] = FakeGoTidy(root / "tools")
+    source, report = analyse(root)
+    choice = wanted(project_of(report, "tools"), "github.com/google/uuid", "v1.6.0", new="v1.6.0")
+    changes = writers.prepare(root, [choice])
+    jobs = lockfiles.decline(lockfiles.plan(source, report, changes), ["tools/go.sum"])
+    assert not jobs[0].accepted and jobs[0].refreshes == ()
+    writers.write(root, changes)
+    (result,) = lockfiles.regenerate(source, report, changes, jobs)
+    assert tools.commands() == ["go mod tidy"]
+    assert "vendor/ n'est pas refait : lancer go mod vendor après la mise à jour" in " ".join(
+        result.warnings
     )
 
 
@@ -1539,10 +1627,13 @@ class FakeComposerUpdate:
     """``composer update x:V…`` : chaque paquet nommé passe à sa version dans ``composer.lock``
     (``also`` en fait bouger d'autres, comme ``-W``)."""
 
-    def __init__(self, also: dict[str, str] | None = None) -> None:
+    def __init__(self, also: dict[str, str] | None = None, version: str = "2.11.0") -> None:
         self.also = also or {}
+        self.version = version
 
     def __call__(self, call: ToolCall) -> tuple[int, str, str] | None:
+        if call.arguments == ["--version"]:
+            return 0, f"Composer version {self.version} 2026-10-01 12:00:00\n", ""
         assert call.arguments[0] == "update"
         lock = call.cwd / "composer.lock"
         data = json.loads(lock.read_text(encoding="utf-8"))
@@ -1609,11 +1700,12 @@ def test_composer_targets_each_version(
     _, _, (result,) = apply(root, choices, report, source)
 
     assert tools.commands() == [
+        "composer --version",
         "composer update guzzlehttp/guzzle:7.16.1 twig/twig:v3.4.3 guzzlehttp/psr7:2.13.2 "
         "--with-all-dependencies --no-install --no-scripts --no-plugins --no-interaction "
-        "--no-progress --no-ansi --ignore-platform-req=ext-* --ignore-platform-req=lib-*"
+        "--no-progress --no-ansi --ignore-platform-req=ext-* --ignore-platform-req=lib-*",
     ]
-    (call,) = tools.calls
+    call = tools.calls[-1]
     assert call.cwd == root
     assert {key: call.env.get(key) for key in ("COMPOSER", "COMPOSER_PREFER_LOWEST")} == {
         "COMPOSER": None,
@@ -1662,9 +1754,41 @@ def test_the_advisory_blocking_of_the_project_or_the_person_is_kept(
     choice = wanted(project_of(report), "twig/twig", "v3.4.3")
     _, (job,), (result,) = apply(root, [choice], report, source)
     assert result.status is LockStatus.REGENERATED, result.error
-    (call,) = tools.calls
+    call = tools.calls[-1]
     assert call.env.get("COMPOSER_POLICY_ADVISORIES_BLOCK") == environment
     assert UNBLOCKED not in job.warnings
+    assert not any("Composer 2.9" in warning for warning in job.warnings)
+
+
+@pytest.mark.parametrize(
+    ("version", "said"),
+    [
+        (
+            "2.9.8",
+            "Composer 2.9.8 refuse toute version qui garde une faille connue, et ce blocage ne se "
+            "lève que dans composer.json (config.audit.block-insecure à false) : forceupdate n'y "
+            "touche pas. Une version visée qui en garde une fait échouer la régénération (tout est "
+            "remis) ; Composer 2.10 et plus le lève de lui-même le temps du passage.",
+        ),
+        ("2.8.12", None),
+        ("2.11.0", UNBLOCKED),
+    ],
+)
+def test_the_blocking_of_composer_2_9_is_said(
+    tmp_path: Path, fake_tools: Tools, version: str, said: str | None
+) -> None:
+    """Composer 2.9 refuse les versions à faille, sans variable pour le lever (vérifié avec
+    Composer 2.9.8 : ``COMPOSER_POLICY_ADVISORIES_BLOCK=0`` ignoré, seul
+    ``config.audit.block-insecure`` le lève) : le plan le dit. Avant 2.9, rien ne bloque."""
+    root = composer_copy(tmp_path)
+    tools = fake_tools("composer")
+    tools.handlers["composer"] = FakeComposerUpdate(version=version)
+    source, report = analyse(root)
+    choice = wanted(project_of(report), "twig/twig", "v3.4.3")
+    (job,) = lockfiles.plan(source, report, writers.prepare(root, [choice]))
+    assert tools.commands() == ["composer --version"]
+    blocking = [w for w in job.warnings if "faille connue" in w]
+    assert blocking == ([said] if said is not None else [])
 
 
 def test_composer_says_what_it_does_not_do(tmp_path: Path, fake_tools: Tools) -> None:

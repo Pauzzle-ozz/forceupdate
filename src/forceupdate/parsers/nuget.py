@@ -122,6 +122,9 @@ class Property:
     """Définie sous une condition (la sienne, celle de son groupe, ou un ``<Choose>``)."""
     default: bool = False
     """Sa condition est « si elle n'a pas de valeur » (``'$(X)' == ''``)."""
+    line: int = 0
+    end_line: int = 0
+    """La ligne de son ``<``, et celle du ``>`` qui la ferme (E32 : on insère après elle)."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -142,6 +145,8 @@ class Item:
     """``PrivateAssets`` contient ``all`` : un outil de construction."""
     conditional: bool = False
     line: int = 0
+    end_line: int = 0
+    """La ligne du ``>`` qui le ferme (E32 : on insère un élément après lui)."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -172,6 +177,8 @@ class MsBuildFile:
     """Les ``PackageReference Update="…"`` : pas lues."""
     sdks: tuple[SdkReference, ...] = ()
     """Ses SDK de projet (E27)."""
+    end_line: int = 0
+    """La ligne de ``</Project>`` (E32 : un ``<ItemGroup>`` s'insère avant)."""
 
 
 def read_msbuild(path: str, content: str) -> MsBuildFile:
@@ -194,6 +201,7 @@ def _read_once(path: str, content: str) -> MsBuildFile:
         imports=tuple(found.imports),
         updates=tuple(found.updates),
         sdks=tuple(_sdks(root)),
+        end_line=root.end_line,
     )
 
 
@@ -301,6 +309,8 @@ class _Found:
                 location=None if element.children else element.location,
                 conditional=(conditional or condition is not None) and not default,
                 default=default,
+                line=element.line,
+                end_line=element.end_line,
             )
         )
 
@@ -333,6 +343,7 @@ class _Found:
                     or "all" in (p.strip().lower() for p in (private or "").split(";")),
                     conditional=conditional or _condition(element) is not None,
                     line=element.line,
+                    end_line=element.end_line,
                 )
             )
 
@@ -795,6 +806,53 @@ def target_frameworks(project: Project, read_text: ReadText) -> list[TargetFrame
                     )
             break
     return found
+
+
+@dataclass(frozen=True, kw_only=True)
+class Central:
+    """La gestion centrale des versions d'un projet MSBuild (E32 : où ajouter une indirecte)."""
+
+    managed: bool
+    """``ManagePackageVersionsCentrally`` est à ``true``."""
+    file: str | None
+    """Le ``Directory.Packages.props`` le plus proche, où vont les ``PackageVersion``."""
+    switch: Property | None
+    """La propriété ``ManagePackageVersionsCentrally`` (son fichier, sa ligne)."""
+    pinning: str | None
+    """La valeur de ``CentralPackageTransitivePinningEnabled`` (``true``, ``false``) ; ``None``
+    si le projet ne la donne pas."""
+    project: MsBuildFile
+    """Le projet lui-même, lu seul."""
+    central: MsBuildFile | None
+    """``file``, lu seul."""
+
+
+def central_management(path: str, read_text: ReadText) -> Central:
+    """La gestion centrale du projet MSBuild ``path``, avec ce que MSBuild lit avant lui
+    (``Directory.Build.props``, ``Directory.Packages.props``). Lève ``ParseError`` si le projet ne
+    se lit pas."""
+    loader = _Loader(read_text, [])
+    own = loader.load(path)
+    if own is None:
+        raise ParseError(f"{path} : introuvable ou illisible.")
+    evaluation = _Evaluation(loader, path, own)
+    chain = loader.chain(dirname(path), CENTRAL)
+    central = chain[-1] if chain else None
+    switches = [
+        p
+        for f in evaluation.files
+        for p in f.properties
+        if p.name.lower() == "managepackageversionscentrally" and not p.conditional
+    ]
+    pinning = evaluation.properties.value("CentralPackageTransitivePinningEnabled")
+    return Central(
+        managed=evaluation.centrally_managed,
+        file=central.path if central is not None else None,
+        switch=switches[-1] if switches else None,
+        pinning=pinning.strip().lower() if pinning is not None else None,
+        project=own,
+        central=central,
+    )
 
 
 def parse_project(project: Project, read_text: ReadText) -> None:

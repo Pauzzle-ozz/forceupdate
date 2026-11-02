@@ -441,3 +441,77 @@ def test_the_eol_mini_project() -> None:
         ("nodejs", "16", False, "Dockerfile"),
         ("python", "3.8", False, "Dockerfile"),
     ]
+
+
+# ---------------------------------------------------------------------------
+# La CI (E32)
+# ---------------------------------------------------------------------------
+
+WORKFLOW = """\
+env:
+  NODE: "20.10"
+jobs:
+  test:
+    strategy:
+      matrix:
+        node: [18, 22.x]
+        include:
+          - node: lts/jod
+    container: node:24-alpine
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+"""
+
+
+class TestCi:
+    def test_a_github_workflow_gives_its_node(self) -> None:
+        """``actions/setup-node`` (chaque valeur de la ``matrix``, ``include`` compris, ``env``
+        remplacé), l'image d'un ``container`` ; ``lts/*`` ne dit rien. Il vaut pour les projets de
+        tout le dépôt, comme ``.gitlab-ci.yml``."""
+        files = {
+            "web/package.json": '{"name": "web"}',
+            ".github/workflows/ci.yml": WORKFLOW,
+            ".gitlab-ci.yml": 'variables:\n  NODE_VERSION: "22"\nimage: node:$NODE_VERSION\n',
+        }
+        assert is_runtime_file(".github/workflows/ci.yml")
+        assert not is_runtime_file("docs/workflows/ci.yml")
+        workflow = ".github/workflows/ci.yml"
+        setup = "actions/setup-node : node-version"
+        assert runtimes(files, "web") == [
+            ("nodejs", "24", False, workflow, "container: node:24-alpine"),
+            ("nodejs", "18", False, workflow, f"{setup} 18"),
+            ("nodejs", "22", False, workflow, f"{setup} 22.x"),
+            ("nodejs", "22", False, workflow, f"{setup} lts/jod"),
+            ("nodejs", "20.10", False, workflow, f"{setup} 20.10"),
+            ("nodejs", "22", False, ".gitlab-ci.yml", "image: node:22"),
+        ]
+
+    def test_a_workflow_is_read_for_an_npm_project_only(self) -> None:
+        """Un projet Python ne lit pas les workflows de GitHub (une requête de moins par fichier à
+        la source d'une forge) ; les ``image`` de GitLab et Bitbucket valent pour tous."""
+        read: list[str] = []
+        files = {
+            "pyproject.toml": '[project]\nname = "x"\nversion = "1"\n',
+            ".github/workflows/ci.yml": "jobs:\n  t:\n    container: python:3.9\n",
+            "bitbucket-pipelines.yml": "image: python:3.10\n",
+        }
+        found, _ = find_projects(list(files))
+        (project,) = found
+
+        def read_text(path: str) -> str | None:
+            read.append(path)
+            return files.get(path)
+
+        parsers.parse_project(project, read_text)
+        assert ".github/workflows/ci.yml" not in read
+        assert [(r.version, r.file) for r in project.runtimes] == [
+            ("3.10", "bitbucket-pipelines.yml")
+        ]

@@ -332,6 +332,15 @@ DOCKERFILES = ("Dockerfile", "Dockerfile.*", "*.Dockerfile", "Containerfile")
 au-dessus, à ceux qu'il a en dessous (le ``Dockerfile`` de la racine d'un dépôt dont le code est
 dans ``app/``)."""
 
+CI_FILES = (".github/workflows/*.yml", ".github/workflows/*.yaml")
+"""Les workflows de GitHub Actions (E32) : le Node.js de ``actions/setup-node``, l'image d'un
+``container``. Ils décrivent la CI de tout le dossier qui a le ``.github/`` : ils valent pour
+chacun de ses projets, comme les deux fichiers de ``CI_NAMES``."""
+
+CI_NAMES = (".gitlab-ci.yml", "bitbucket-pipelines.yml")
+"""Les fichiers de CI de GitLab et de Bitbucket Pipelines (E32) : leurs ``image``. Ils valent pour
+chaque projet de leur dossier et d'en dessous."""
+
 PIP_TOOLS_SOURCES = ("requirements*.in", "requirements/*.in")
 """Motifs des fichiers sources de pip-tools. ``pip-compile requirements.in`` écrit
 ``requirements.txt`` : ce ``.txt`` compilé, posé à côté de son ``.in``, est le
@@ -507,8 +516,8 @@ def find_projects(
     d'exemples ne fait pas un projet : ce sont des mini-projets de démonstration,
     souvent figés exprès sur de vieilles versions. Ils sont rendus à part. Chaque projet
     reçoit ses fichiers de runtime (``Project.runtime_files`` : ``VERSION_FILES``,
-    ``DOCKERFILES``). Au-delà de ``max_files`` fichiers de dépendances, une remarque va dans
-    ``notices``.
+    ``DOCKERFILES``, les fichiers de CI). Au-delà de ``max_files`` fichiers de dépendances, une
+    remarque va dans ``notices``.
     """
     paths = list(paths)
     found = discover_dependency_manifests(paths, max_files=max_files, notices=notices)
@@ -527,24 +536,43 @@ def find_projects(
 
 
 def is_runtime_file(path: str) -> bool:
-    """Vrai pour un fichier de ``VERSION_FILES`` ou de ``DOCKERFILES`` (chemin POSIX)."""
+    """Vrai pour un fichier de ``VERSION_FILES``, de ``DOCKERFILES``, ou un fichier de CI
+    (``CI_FILES``, ``CI_NAMES`` ; chemin POSIX)."""
     name = path.rsplit("/", 1)[-1].lower()
-    if name in (n.lower() for n in VERSION_FILES):
+    if name in (n.lower() for n in VERSION_FILES) or ci_base(path) is not None:
         return True
     if name.endswith(".dockerignore"):
         return False
     return any(fnmatch.fnmatchcase(name, pattern.lower()) for pattern in DOCKERFILES)
 
 
+def ci_base(path: str) -> str | None:
+    """Le dossier dont ``path`` est un fichier de CI (``CI_FILES``, ``CI_NAMES``) : celui qui a le
+    ``.github/`` d'un workflow, celui d'un ``.gitlab-ci.yml`` ; ``None`` si ce n'en est pas un."""
+    parts = path.split("/")
+    if parts[-1].lower() in CI_NAMES:
+        return "/".join(parts[:-1]) or "."
+    tail = "/".join(parts[-3:]).lower()
+    if len(parts) >= 3 and any(fnmatch.fnmatchcase(tail, pattern) for pattern in CI_FILES):
+        return "/".join(parts[:-3]) or "."
+    return None
+
+
 def _attach_runtime_files(projects: list[Project], paths: list[str]) -> None:
-    """Range chaque fichier de runtime dans ``Project.runtime_files`` (voir ``VERSION_FILES`` et
-    ``DOCKERFILES``)."""
+    """Range chaque fichier de runtime dans ``Project.runtime_files`` (voir ``VERSION_FILES``,
+    ``DOCKERFILES``, ``CI_FILES`` et ``CI_NAMES``)."""
     by_dir = {project.path: project for project in projects}
     attached: dict[str, set[str]] = {project.path: set() for project in projects}
     versions: dict[tuple[str, str], str] = {}
     for path in paths:
         name = path.rsplit("/", 1)[-1].lower()
         directory = path.rsplit("/", 1)[0] if "/" in path else "."
+        base = ci_base(path)
+        if base is not None:
+            for project in projects:
+                if base == "." or project.path == base or project.path.startswith(base + "/"):
+                    attached[project.path].add(path)
+            continue
         if name in (n.lower() for n in VERSION_FILES):
             versions[directory, name] = path
             continue

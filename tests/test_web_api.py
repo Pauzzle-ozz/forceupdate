@@ -539,6 +539,83 @@ def test_apply_writes_then_regenerates(
     assert again.json() == {"detail": "Ce plan est déjà appliqué, ou en cours d'application."}
 
 
+def test_the_npm_of_the_project_is_a_case_of_the_plan(
+    api: TestClient,
+    finished: Finished,
+    tmp_path: Path,
+    recorded: dict[str, respx.Route],
+    fake_tools: Callable[..., FakeTools],
+) -> None:
+    """E32 : npm 11 ici, une CI en Node 22 ; le plan propose npm 10, case cochée d'office. Décochée
+    à l'application (``declined``), c'est le npm de la machine ; cochée, ``npx -y npm@10``, puis
+    sa relecture du lockfile."""
+
+    def ci_copy(folder: str) -> tuple[Path, FakeTools]:
+        root = vulnerable_copy(tmp_path / folder)
+        workflow = root / ".github" / "workflows" / "ci.yml"
+        workflow.parent.mkdir(parents=True)
+        workflow.write_text(
+            "jobs:\n  test:\n    steps:\n      - uses: actions/setup-node@v4\n"
+            "        with:\n          node-version: 22\n",
+            encoding="utf-8",
+        )
+        tools = fake_npm_and_uv(fake_tools, root)
+        npm = tools.handlers["npm"]
+        tools.programs.add("npx")
+
+        def versioned(call: ToolCall) -> tuple[int, str, str] | None:
+            if call.arguments == ["--version"]:
+                return 0, "11.6.2\n", ""
+            if call.arguments[2:3] == ["ci"]:
+                return None
+            npm(call)
+            return None
+
+        tools.handlers["npm"] = tools.handlers["npx"] = versioned
+        return root, tools
+
+    root, tools = ci_copy("a")
+    state = scan(api, finished, root)
+    planned = plan(api, state).json()
+    job = planned["lockfiles"][0]
+    assert job["lockfile"] == "package-lock.json"
+    assert job["accepted"] is True
+    assert job["extra"]["kind"] == "project-npm"
+    assert job["extra"]["label"] == "Régénérer avec npm 10, celui du projet"
+    assert job["command"].startswith("npx -y npm@10 ")
+    assert planned["lockfiles"][1]["extra"] is None
+
+    unknown = api.post("/api/updates/apply", json={"plan": planned["id"], "declined": ["x"]})
+    assert unknown.status_code == 409
+    assert unknown.json() == {"detail": "x : pas un lockfile de ce plan."}
+
+    declined = {"plan": planned["id"], "declined": ["package-lock.json"]}
+    response = api.post("/api/updates/apply", json=declined)
+    assert response.status_code == 202
+    assert response.json()["lockfiles"][0]["accepted"] is False
+    document = finished(f"/api/updates/{planned['id']}")
+    assert document["results"][0]["status"] == "regenerated"
+    assert document["results"][0]["verified"] is None
+    assert [call.program for call in tools.calls[1:]] == ["npm", "uv"]
+
+    # Une autre copie, la case laissée cochée : tout par npx, puis npm ci --dry-run de npm 10.
+    root, tools = ci_copy("b")
+    planned = plan(api, scan(api, finished, root)).json()
+    tools.calls.clear()
+    api.post("/api/updates/apply", json={"plan": planned["id"]})
+    document = finished(f"/api/updates/{planned['id']}")
+    npm_result = document["results"][0]
+    assert npm_result["status"] == "regenerated", npm_result["error"]
+    assert npm_result["verified"] == {
+        "command": "npx -y npm@10 ci --dry-run --ignore-scripts --no-audit --no-fund",
+        "error": None,
+    }
+    assert {call.program for call in tools.calls if call.arguments != ["--version"]} == {
+        "npx",
+        "uv",
+    }
+
+
 def test_a_failing_tool_restores_the_files(
     api: TestClient,
     finished: Finished,

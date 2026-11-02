@@ -56,7 +56,12 @@ def uncommitted(root: Path, paths: Iterable[str]) -> list[str] | None:
         path = entry[3:]
         if path.startswith(start):
             changed.add(path[len(start) :])
-    return [path for path in wanted if path in changed]
+    # Un dossier (le vendor/ que refait « go mod vendor ») : un changement d'un de ses fichiers.
+    return [
+        path
+        for path in wanted
+        if path in changed or any(found.startswith(f"{path}/") for found in changed)
+    ]
 
 
 def _git(root: Path, *args: str) -> str | None:

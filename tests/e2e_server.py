@@ -82,7 +82,7 @@ from forceupdate.sources.local import LocalSource
 from forceupdate.update import lockfiles
 from forceupdate.web import app, security
 
-FAKE_TOOLS = ("npm", "uv")
+FAKE_TOOLS = ("npm", "npx", "uv")
 
 
 def fake_which(program: str) -> str | None:
@@ -90,12 +90,18 @@ def fake_which(program: str) -> str | None:
 
 
 def fake_spawn(command: list[str], **options: Any) -> subprocess.CompletedProcess[bytes]:
-    """npm : chaque version exacte de ``package.json`` (épinglée le temps du passage) passe
-    dans ``package-lock.json``. uv : chaque ``-P nom==version`` passe dans le fichier ``-o``.
-    Le reste des commandes ne fait rien."""
-    cwd = Path(options["cwd"])
+    """npm (npm 11.6.2 à ``--version``, et ``npx -y npm@N`` de même, E32) : chaque version exacte
+    de ``package.json`` (épinglée le temps du passage) passe dans ``package-lock.json`` ; ``ci``
+    ne fait rien (accepté). uv : chaque ``-P nom==version`` passe dans le fichier ``-o``. Le reste
+    des commandes ne fait rien."""
     program, *arguments = command
-    if PurePath(program).name == "npm":
+    name = PurePath(program).name
+    if name == "npx" and arguments[:1] == ["-y"]:
+        name, arguments = "npm", arguments[2:]
+    if name == "npm" and arguments == ["--version"]:
+        return subprocess.CompletedProcess(command, 0, b"11.6.2\n", b"")
+    cwd = Path(options["cwd"])
+    if name == "npm" and arguments[:1] != ["ci"]:
         _npm(cwd)
     elif PurePath(program).name == "uv" and "-o" in arguments:
         _uv(cwd / arguments[arguments.index("-o") + 1], arguments)

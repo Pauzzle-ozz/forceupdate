@@ -78,6 +78,11 @@ async def apply_update(body: ApplyRequest, jobs: CurrentJobs) -> JSONResponse:
     ``force``. La progression se suit sur ``/api/updates/{id}/events``."""
     plan = find_plan(jobs, body.plan)
     _check_applicable(plan)
+    unknown = sorted(set(body.declined) - {job.lockfile for job in plan.prepared.jobs})
+    if unknown:
+        raise HTTPException(409, f"{', '.join(unknown)} : pas un lockfile de ce plan.")
+    # Les cases décochées de l'écran 5 : le npm de cet ordinateur, pas de go mod vendor.
+    plan.decline(body.declined)
     if not body.force:
         assert plan.scan.local is not None  # un dépôt n'a pas de plan
         dirty = await asyncio.to_thread(local.uncommitted, plan.scan.local, plan.prepared)

@@ -157,6 +157,22 @@ describe('la mise à jour (écran 5), étape Choisir', () => {
     expect(recapLine('Mises à jour cochées')).toHaveTextContent('3 sur 3')
   })
 
+  it('une indirecte NuGet ajoutée au projet : « ajoutée en » (E32)', async () => {
+    const report = structuredClone(VULNERABLE)
+    const jinja = report.projects[0].updates.find((update) => update.name === 'jinja2')
+    if (!jinja) throw new Error('jinja2')
+    jinja.options[0].edits = [
+      { kind: 'reference', file: 'src/App/App.csproj', location: null, old: '', new: jinja.options[0].version, override: null },
+    ]
+    mockApi({ 'GET /api/scans/a1': scanDetail({ report }) })
+    renderApp(CHOOSE)
+    const card = await screen.findByRole('article', { name: 'jinja2' })
+    // L'espace après « : » est l'écart de la ligne (flex), comme pour une flèche de versions.
+    expect(within(card).getAllByText(/^ajoutée en/)[0].parentElement).toHaveTextContent(
+      `src/App/App.csproj :ajoutée en ${jinja.options[0].version}`,
+    )
+  })
+
   it('le lien du panneau de détail donne le focus à la carte du paquet', async () => {
     mockApi({ 'GET /api/scans/a1': scanDetail() })
     renderApp(`${CHOOSE}?paquet=${encodeURIComponent('.|PyPI|jinja2|2.10')}`)
@@ -300,6 +316,38 @@ describe('la mise à jour (écran 5), étape Vérifier', () => {
     expect(await screen.findByRole('heading', { name: 'Application en cours' })).toBeInTheDocument()
     const post = calls.find((call) => call.method === 'POST')
     expect(JSON.parse(String(post?.init.body))).toEqual({ plan: 'p1', force: true })
+  })
+
+  it('la case du npm du projet : cochée d’office, décochée, envoyée avec le plan (E32)', async () => {
+    const plan = planDocument()
+    plan.lockfiles[0] = {
+      ...plan.lockfiles[0],
+      tool: 'npm 10',
+      command: 'npx -y npm@10 install --package-lock-only --ignore-scripts',
+      extra: {
+        kind: 'project-npm',
+        label: 'Régénérer avec npm 10, celui du projet',
+        detail: 'npm 11.6.2 ici ; le projet attend npm 10 : Node.js 22, lu dans .github/workflows/ci.yml (actions/setup-node : node-version 22).',
+        declined: 'npm install --package-lock-only --ignore-scripts',
+      },
+    }
+    const calls = mockApi({
+      'GET /api/scans/a1': scanDetail(),
+      'GET /api/updates/p1': plan,
+      'POST /api/updates/apply': planDocument({ status: 'running', applicable: false }),
+    })
+    const user = userEvent.setup()
+    renderApp('/plans/p1')
+    const box = await screen.findByRole('checkbox', { name: 'Régénérer avec npm 10, celui du projet' })
+    expect(box).toBeChecked()
+    expect(box).toHaveAccessibleDescription(/le projet attend npm 10/)
+    expect(screen.getByText('npx -y npm@10 install --package-lock-only --ignore-scripts')).toBeInTheDocument()
+    await user.click(box)
+    expect(box).not.toBeChecked()
+    expect(screen.getByText('npm install --package-lock-only --ignore-scripts')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Appliquer' }))
+    const post = calls.find((call) => call.method === 'POST')
+    expect(JSON.parse(String(post?.init.body))).toEqual({ plan: 'p1', force: false, declined: ['package-lock.json'] })
   })
 
   it('un 409 en appliquant : le message, et le plan relu montre le garde-fou', async () => {
@@ -481,5 +529,24 @@ describe('la mise à jour (écran 5), étapes Appliquer et Résultat', () => {
     expect(screen.getByText('plus haute que choisie (0.12.5)')).toBeInTheDocument()
     expect(screen.getByText('retenue par flask 0.12.6')).toBeInTheDocument()
     expect(screen.getByText('markupsafe 1.1.0 → 1.1.1')).toBeInTheDocument()
+  })
+
+  it('le lockfile relu par le npm du projet : accepté, ou refusé avec la commande (E32)', async () => {
+    const command = 'npx -y npm@10 ci --dry-run --ignore-scripts --no-audit --no-fund'
+    const results = regenerated()
+    results[0].verified = { command, error: null }
+    const plan = planDocument({ status: 'done', applicable: false, results })
+    mockApi({ 'GET /api/scans/a1': scanDetail(), 'GET /api/updates/p1': plan })
+    const { unmount } = renderApp('/plans/p1')
+    expect((await screen.findByText(command)).closest('p')).toHaveTextContent(`Relu par ${command} : accepté.`)
+    unmount()
+
+    results[0].verified = { command, error: 'Missing: zod@3.25.76 from lock file.' }
+    mockApi({ 'GET /api/scans/a1': scanDetail(), 'GET /api/updates/p1': planDocument({ ...plan, results }) })
+    renderApp('/plans/p1')
+    const refused = (await screen.findByText('Refusé par la relecture')).closest('[role="status"]')
+    expect(refused).toHaveTextContent('Missing: zod@3.25.76 from lock file.')
+    expect(refused).toHaveTextContent('Pour le reproduire, dans C:/Projets/vulnerable')
+    expect(within(refused as HTMLElement).getByText(command)).toBeInTheDocument()
   })
 })

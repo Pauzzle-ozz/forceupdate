@@ -195,7 +195,14 @@ function OptionRow({
           <span key={index} className="flex flex-wrap items-center gap-x-1 font-mono">
             {editFile(edit)}
             {NBSP}:
-            <VersionArrow from={edit.old} to={edit.new} />
+            {edit.kind === 'reference' ? (
+              // Une indirecte NuGet ajoutée au projet (E32) : rien n'est remplacé.
+              <span className="font-sans">
+                ajoutée en <Version>{edit.new}</Version>
+              </span>
+            ) : (
+              <VersionArrow from={edit.old} to={edit.new} />
+            )}
           </span>
         ))}
         {option.edits.length === 0 && option.lockfile && (

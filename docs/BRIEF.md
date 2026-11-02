@@ -253,7 +253,9 @@ chaque fois) :
     (`config.policy.advisories.block`, vrai par défaut : twig 3.4.3 et guzzle 7.4.5 refusées sur le
     mini-projet) ; forceupdate le lève le temps du passage (`COMPOSER_POLICY_ADVISORIES_BLOCK=0`,
     Composer 2.10+, décision de l'utilisateur), sauf si le projet ou la personne le règle ; les
-    logiciels malveillants restent bloqués. Un environnement hérité trompe Composer : `COMPOSER`
+    logiciels malveillants restent bloqués. **Composer 2.9 ignore cette variable** (vérifié avec
+    2.9.8 : seul `config.audit.block-insecure` du `composer.json` lève le blocage) : le plan le dit
+    (E32). Un environnement hérité trompe Composer : `COMPOSER`
     (un autre fichier), `COMPOSER_PREFER_LOWEST` (il fait descendre) ; une extension PHP absente de la
     machine fait échouer la résolution (`--ignore-platform-req=ext-*`). Composer ne touche jamais au
     `composer.json` pendant `update`.
@@ -274,7 +276,26 @@ chaque fois) :
     référence. `RestoreLockedMode` (du projet ou de l'environnement) refuserait de changer le
     lockfile (NU1004) : levé par `-p:RestoreLockedMode=false`. Une version centrale vaut pour
     plusieurs projets : les lockfiles de tous ceux qui la lisent sont régénérés. `dotnet` sans SDK
-    (les runtimes seuls) ne sait pas restaurer : traité comme un outil absent.
+    (les runtimes seuls) ne sait pas restaurer : traité comme un outil absent. Une indirecte ne
+    monte que si le projet la référence (E32) : une `PackageReference`, ou, avec la gestion centrale,
+    une `PackageVersion` et `CentralPackageTransitivePinningEnabled` (qui vaut alors pour toutes les
+    versions centrales, dans tous les projets du `Directory.Packages.props`).
+  - **Le npm de la machine n'est pas celui de la CI** (E32, après une PR refusée chez
+    l'utilisateur) : npm 11 et npm 10 ne gardent pas les mêmes entrées (des pairs facultatifs
+    imbriqués que npm 11 retire et que `npm ci` de npm 10 exige : « Missing: … from lock file » ; des
+    `"peer": true` que npm 11 ajoute et que npm 10 retire), et même deux npm 11 diffèrent (11.6.2
+    élague ce qu'exige 11.16). D'où le npm qu'attend le projet (`packageManager`, `engines`, le Node
+    de sa CI), lancé par `npx -y npm@10`, et la relecture par son `npm ci --dry-run` (qui relit
+    vraiment, sans rien installer). npm 7 réécrit un lockfile v3 au format 2, npm 6 au format 1 ;
+    pnpm 9.7+ et corepack suivent `packageManager` d'eux-mêmes.
+  - **Un `requirements.txt` peut être un lockfile sans `.in`** (E32) : `uv export`, `pdm export`,
+    `pip-compile pyproject.toml` le disent dans leur en-tête (pas `poetry export`, qui n'en écrit
+    pas : seules ses versions, toutes celles du `poetry.lock`, le trahissent). Un export se refait
+    après son lockfile, par la commande de son outil (`UV_FROZEN`, pas `--frozen`, qui passerait
+    dans l'en-tête) ; `poetry export` demande un plugin à Poetry 2.
+  - **`vendor/` de Go** (E32) : `go mod vendor` après `go mod tidy`, sinon `go build` refuse un
+    `vendor/modules.txt` périmé ; il récrit tout le dossier : forceupdate le copie avant, et le remet
+    si une commande échoue.
 - **Régénérer un lockfile peut exécuter du code du projet** : scripts npm,
   `Gemfile` (c'est du Ruby), `build.gradle`, `setup.py`. Toujours passer
   `--ignore-scripts` / `--no-scripts` quand l'outil le permet, et le dire quand il

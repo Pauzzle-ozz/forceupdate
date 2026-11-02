@@ -169,7 +169,10 @@ def option_changes(option: UpdateOption, project: str = ".") -> list[str]:
             where = f"{_within(edit.file, project)} ({override.section} « {override.key} »)"
         else:
             where = _relative(edit.file, project)
-        lines.append(f"{where} : {edit.old} → {edit.new}")
+        if edit.kind is EditKind.REFERENCE:
+            lines.append(f"{where} : ajoutée en {edit.new}")
+        else:
+            lines.append(f"{where} : {edit.old} → {edit.new}")
     if option.lockfile is not None:
         lockfile = _within(option.lockfile, project)
         lines.append(f"puis {lockfile}" if lines else f"{lockfile} (lockfile seul)")

@@ -210,6 +210,8 @@ class FakeComposer:
         self.vulnerable = set(vulnerable)
 
     def __call__(self, call: ToolCall) -> tuple[int, str, str] | None:
+        if call.arguments == ["--version"]:
+            return 0, "Composer version 2.11.0 2026-10-01 12:00:00\n", ""
         if call.arguments[:1] != ["update"]:
             return 2, "", f"commande inattendue : {call.arguments}"
         flags = {a for a in call.arguments if a.startswith("-")}
@@ -265,7 +267,8 @@ def test_update_of_the_composer_mini_project(
         [TWIG, "v3.30.0"],
         [MONOLOG, "2.10.0"],
     ]
-    (call,) = tools.calls
+    (version, call) = tools.calls
+    assert version.arguments == ["--version"]
     assert call.cwd == root
     assert call.arguments[:3] == ["update", f"{TWIG}:v3.30.0", f"{MONOLOG}:2.10.0"]
     assert {"--ignore-platform-req=ext-*", "--no-interaction"} <= set(call.arguments)
@@ -302,7 +305,8 @@ def test_the_blocking_set_by_the_project_is_kept(
         env={"COLUMNS": "200"},
     )
     assert result.exit_code == 2, result.output
-    (call,) = tools.calls
+    (version, call) = tools.calls
+    assert version.arguments == ["--version"]
     assert "COMPOSER_POLICY_ADVISORIES_BLOCK" not in call.env
     output = " ".join(result.stdout.split())
     assert "Composer ne refuse pas" not in output  # le plan ne dit pas le blocage levé

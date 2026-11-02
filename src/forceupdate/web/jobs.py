@@ -38,7 +38,7 @@ import json
 import logging
 import secrets
 import threading
-from collections.abc import AsyncIterator, Callable, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -231,6 +231,8 @@ class Plan:
     selection: dict[str, str]
     prepared: Prepared
     uncommitted: list[str] | None
+    planned: Prepared | None = None
+    """Le plan tel que préparé, toutes ses cases cochées : ``decline`` en part chaque fois."""
     created_at: datetime = field(default_factory=_now)
     status: TaskStatus = TaskStatus.PLANNED
     finished_at: datetime | None = None
@@ -245,6 +247,13 @@ class Plan:
             and self.scan.kind is not SourceKind.UPLOAD
             and not self.prepared.empty
         )
+
+    def decline(self, lockfiles: Iterable[str]) -> None:
+        """Décoche les cases ``extra`` de ``lockfiles`` (et seulement elles : une case décochée à
+        un essai d'avant est recochée)."""
+        if self.planned is None:
+            self.planned = self.prepared
+        self.prepared = self.planned.declining(lockfiles)
 
     def document(self) -> schemas.UpdatePlan:
         changes = self.prepared.changes
