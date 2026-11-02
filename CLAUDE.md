@@ -66,15 +66,21 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   ├── src/styles/         ← tokens.css (ceux de MASTER), app.css (Tailwind, polices)
 │   ├── src/components/ui/  ← les composants shadcn/ui, habillés par les tokens ; sheet.tsx, dialog.tsx : <dialog> natif
 │   ├── src/screens/        ← les écrans (Home, Choose, ScanProgress, report/…, update/ : l'écran 5,
-│   │                         accounts/ : l'écran 6, repositories/ : l'écran 7, proposals/ : l'écran 8) ;
+│   │                         accounts/ : l'écran 6, repositories/ : l'écran 7, proposals/ : l'écran 8,
+│   │                         settings/ : l'écran 9, Réglages) ;
 │   │                         tests *.test.tsx à côté
 │   ├── src/test/           ← mise en place de Vitest, fetch et EventSource simulés, rapport d'exemple
 │   └── e2e/                ← tests Playwright (vrai serveur, front construit, CSP, axe-core) ;
 │                             helpers.ts : copie d'un mini-projet dans un dossier temporaire ;
 │                             forges.spec.ts : écrans 6, 7 et 8, GitHub, GitLab et Bitbucket, en série
 │                             (comptes du serveur partagés) ; code.spec.ts : un fichier de code (E28),
-│                             déposé sur la page (un vrai événement « drop »)
+│                             déposé sur la page (un vrai événement « drop ») ; settings.spec.ts : l'écran 9
+│                             (les réglages du serveur sont partagés : rien qui change les autres rapports)
 ├── src/forceupdate/        ← le code de l'outil (architecture cible : PLAN.md)
+│   ├── config.py           ← la configuration d'un projet (E29) : forceupdate.toml ou [tool.forceupdate]
+│   │                         (ignore, exclude, include-tests, [selection]) ; les règles ignore
+│   ├── preferences.py      ← les réglages de la personne (E29) : forceupdate.toml de son dossier de
+│   │                         configuration (platformdirs), mêmes clés + dépôts exclus, délais, Rust
 │   ├── checks/             ← les constats : outdated.py, vulns.py, deprecated.py, eol.py (fins de vie, E27 :
 │   │                         la table des frameworks, le cycle d'une version, le cycle conseillé),
 │   │                         runtimes.py (les versions que le runtime du projet ne fait pas tourner)
@@ -125,6 +131,7 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   │                         (une PR par dépôt : clone, mise à jour, commit, push, PR)
 │   └── web/                ← le serveur de ui (FastAPI) ; repositories.py : les dépôts des comptes et leurs
 │                             analyses groupées ; proposals.py : le récapitulatif des PR et leur envoi ;
+│                             preferences.py : les réglages côté serveur (routes/settings.py : écran 9) ;
 │                             openapi.json, exporté, donne les types du front ;
 │                             static/ : le front construit (npm run build), ignoré par git, livré dans le paquet
 └── tests/                  ← les tests ; conftest.py gère le marqueur network
@@ -189,7 +196,8 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
 - Les tests ne touchent jamais le réseau sans le marqueur `network` (donc jamais le vrai
   GitHub), ni le cache de l'utilisateur, ni un vrai outil de lockfile (npm, uv…), ni le
   trousseau du système ni `gh`, ne lancent git que vers des dépôts locaux, et n'ouvrent jamais
-  le navigateur : six garde-fous automatiques de `tests/conftest.py` y veillent. Les tests des
+  le navigateur, ni les réglages de la personne (`user_settings` : un fichier propre au test) :
+  sept garde-fous automatiques de `tests/conftest.py` y veillent. Les tests des
   PR clonent et poussent pour de vrai, vers des dépôts « bare » du dossier du test
   (`fake_forge.make_remote`, `github.GIT_URL` vers `remotes_url(…)`). Dans un test, jamais
   `monkeypatch.undo()` : il défait aussi ces garde-fous (`monkeypatch.context()`). GitLab se simule avec
@@ -213,7 +221,10 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   `/oauth/bitbucket/callback`) sont les seules adresses que le garde du serveur laisse passer
   sans jeton : ne pas en ajouter d'autre sans la même protection (`state`).
   L'essayer pour de vrai : `forceupdate ui`, par l'adresse `127.0.0.1` (pas `localhost`) ;
-  le compte connecté va dans le vrai trousseau (Gestionnaire d'identification de Windows).
+  le compte connecté va dans le vrai trousseau (Gestionnaire d'identification de Windows), et
+  l'écran Réglages écrit le vrai fichier `%LOCALAPPDATA%\forceupdate\forceupdate.toml` (le même que
+  la ligne de commande : l'effacer après un essai s'il n'existait pas) ; « Vider le cache » vide
+  le vrai cache de l'utilisateur (dans un essai, annuler le dialogue).
 - Un test qui lance une vraie commande `ui` (sans `serve` simulé) bloque la suite :
   le serveur attend Ctrl+C.
 - Le front construit (`src/forceupdate/web/static/`) n'est pas versionné : sans lui, `ui`
@@ -234,7 +245,7 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
 - Pour essayer les PR en vrai : le dépôt de test `Pauzzle-ozz/forceupdate-demo` (privé, créé à
   E18, copie de `tests/projects/vulnerable`) sur GitHub, le projet du même nom sur gitlab.com
   (privé, créé à E19) pour les MR, et `pauzzle/forceupdate-demo` sur Bitbucket (privé, créé à
-  E20 par l'utilisateur, workspace `pauzzle`) ; gardés pour la recette (E31) ; jamais un autre
+  E20 par l'utilisateur, workspace `pauzzle`) ; gardés pour la recette (E35) ; jamais un autre
   dépôt sans l'accord de l'utilisateur.
 - Un script qui prend un chemin d'API en argument (`/user/…`) sous Git Bash : `MSYS_NO_PATHCONV=1`,
   sinon Git Bash le réécrit en chemin Windows (`C:/Program Files/Git/user/…`).

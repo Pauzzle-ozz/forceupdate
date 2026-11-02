@@ -237,6 +237,8 @@ def test_a_scan_runs_in_the_background_and_gives_the_report(
         "transitive": False,
         "offline": False,
         "cache": True,
+        "ignore": [],
+        "selection": [],
     }
     state = finished(f"/api/scans/{started['id']}")
     assert state["status"] == "done"
@@ -266,6 +268,8 @@ def test_scan_options(
         "transitive": True,
         "offline": True,
         "cache": False,
+        "ignore": [],
+        "selection": [],
     }
     assert state["report"]["options"] == state["options"]
     # Hors ligne et sans cache : rien n'est demandé, tout est « non concluant ».

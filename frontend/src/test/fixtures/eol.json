@@ -47,7 +47,8 @@
           },
           "unverifiable_reason": null,
           "excluded": [],
-          "imported": null
+          "imported": null,
+          "ignored": null
         },
         {
           "ecosystem": "npm",
@@ -66,7 +67,8 @@
           },
           "unverifiable_reason": null,
           "excluded": [],
-          "imported": null
+          "imported": null,
+          "ignored": null
         }
       ],
       "overrides": [],
@@ -92,7 +94,8 @@
             },
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": null
+            "imported": null,
+            "ignored": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -131,7 +134,8 @@
             },
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": null
+            "imported": null,
+            "ignored": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -170,7 +174,8 @@
             },
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": null
+            "imported": null,
+            "ignored": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -209,7 +214,8 @@
             },
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": null
+            "imported": null,
+            "ignored": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -248,7 +254,8 @@
             },
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": null
+            "imported": null,
+            "ignored": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -287,7 +294,8 @@
             },
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": null
+            "imported": null,
+            "ignored": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -326,7 +334,8 @@
             },
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": null
+            "imported": null,
+            "ignored": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -365,7 +374,8 @@
             },
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": null
+            "imported": null,
+            "ignored": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -404,7 +414,8 @@
             },
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": null
+            "imported": null,
+            "ignored": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -443,7 +454,8 @@
             },
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": null
+            "imported": null,
+            "ignored": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -482,7 +494,8 @@
             },
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": null
+            "imported": null,
+            "ignored": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -521,7 +534,8 @@
             },
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": null
+            "imported": null,
+            "ignored": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -560,7 +574,8 @@
             },
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": null
+            "imported": null,
+            "ignored": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -665,7 +680,8 @@
             },
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": null
+            "imported": null,
+            "ignored": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -710,7 +726,8 @@
             },
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": null
+            "imported": null,
+            "ignored": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -744,7 +761,8 @@
             },
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": null
+            "imported": null,
+            "ignored": null
           },
           "current_version": "3.1.0",
           "current_is_approximate": true,
@@ -782,7 +800,8 @@
               },
               "unverifiable_reason": null,
               "excluded": [],
-              "imported": null
+              "imported": null,
+              "ignored": null
             }
           ],
           "current_version": "3.2.25",
@@ -859,7 +878,8 @@
               },
               "unverifiable_reason": null,
               "excluded": [],
-              "imported": null
+              "imported": null,
+              "ignored": null
             }
           ],
           "current_version": "3.1.0",
@@ -953,12 +973,15 @@
   ],
   "ignored_manifests": [],
   "code": null,
+  "config": null,
   "options": {
     "include_tests": false,
     "dev": true,
     "transitive": false,
     "offline": false,
-    "cache": true
+    "cache": true,
+    "ignore": [],
+    "selection": []
   },
   "scanned_at": "2026-10-28T17:30:00+00:00",
   "oldest_data": "2026-10-28T17:30:00+00:00",

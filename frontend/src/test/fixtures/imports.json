@@ -36,7 +36,8 @@
           "location": null,
           "unverifiable_reason": null,
           "excluded": [],
-          "imported": "requests"
+          "imported": "requests",
+          "ignored": null
         },
         {
           "ecosystem": "PyPI",
@@ -51,7 +52,8 @@
           "location": null,
           "unverifiable_reason": null,
           "excluded": [],
-          "imported": "dateutil"
+          "imported": "dateutil",
+          "ignored": null
         },
         {
           "ecosystem": "PyPI",
@@ -66,7 +68,8 @@
           "location": null,
           "unverifiable_reason": null,
           "excluded": [],
-          "imported": "flask"
+          "imported": "flask",
+          "ignored": null
         },
         {
           "ecosystem": "PyPI",
@@ -81,7 +84,8 @@
           "location": null,
           "unverifiable_reason": null,
           "excluded": [],
-          "imported": "jinja2"
+          "imported": "jinja2",
+          "ignored": null
         }
       ],
       "overrides": [],
@@ -103,7 +107,8 @@
             "location": null,
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": "flask"
+            "imported": "flask",
+            "ignored": null
           },
           "current_version": null,
           "current_is_approximate": false,
@@ -133,7 +138,8 @@
             "location": null,
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": "jinja2"
+            "imported": "jinja2",
+            "ignored": null
           },
           "current_version": null,
           "current_is_approximate": false,
@@ -163,7 +169,8 @@
             "location": null,
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": "dateutil"
+            "imported": "dateutil",
+            "ignored": null
           },
           "current_version": null,
           "current_is_approximate": false,
@@ -193,7 +200,8 @@
             "location": null,
             "unverifiable_reason": null,
             "excluded": [],
-            "imported": "requests"
+            "imported": "requests",
+            "ignored": null
           },
           "current_version": null,
           "current_is_approximate": false,
@@ -225,12 +233,15 @@
     "reading": "imports",
     "via": []
   },
+  "config": null,
   "options": {
     "include_tests": false,
     "dev": true,
     "transitive": false,
     "offline": false,
-    "cache": true
+    "cache": true,
+    "ignore": [],
+    "selection": []
   },
   "scanned_at": "2026-10-28T17:30:00+00:00",
   "oldest_data": "2026-10-28T17:30:00+00:00",

@@ -5,7 +5,7 @@ Tout ce qui interroge le réseau (registres, OSV, endoflife.date, forges) passe 
 concluant », jamais faux.
 """
 
-from forceupdate.net.cache import Cache, CacheEntry, CacheKind, default_cache_path
+from forceupdate.net.cache import Cache, CacheEntry, CacheKind, CacheStats, default_cache_path
 from forceupdate.net.http import USER_AGENT, HttpClient, NetworkError, Response
 
 __all__ = [
@@ -13,6 +13,7 @@ __all__ = [
     "Cache",
     "CacheEntry",
     "CacheKind",
+    "CacheStats",
     "HttpClient",
     "NetworkError",
     "Response",

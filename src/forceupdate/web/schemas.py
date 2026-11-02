@@ -22,6 +22,8 @@ from datetime import datetime
 from forceupdate.forges.accounts import Account, ConnectMethod
 from forceupdate.forges.base import Access, ChangeRequest, ForgeKind, RateLimit, Restriction
 from forceupdate.models import Ecosystem, Event, FindingKind, Gap, ScanOptions, Severity
+from forceupdate.net import CacheStats
+from forceupdate.preferences import DEFAULTS, Preferences
 from forceupdate.report.json import Document, SummaryDocument
 from forceupdate.update.forge import Step
 from forceupdate.update.lockfiles import Installed, Job, LockKind, LockStatus, Reach, Regenerated
@@ -43,13 +45,17 @@ class ScanRequest:
     offline: bool = False
     cache: bool = True
 
-    def options(self) -> ScanOptions:
+    def options(self, settings: Preferences = DEFAULTS) -> ScanOptions:
+        """Les options de l'analyse, avec les paquets ignorés et la sélection par défaut des
+        réglages de la personne (``settings``)."""
         return ScanOptions(
             include_tests=self.include_tests,
             dev=self.dev,
             transitive=self.transitive,
             offline=self.offline,
             cache=self.cache,
+            ignore=settings.ignore,
+            selection=settings.selection,
         )
 
 
@@ -84,13 +90,16 @@ class RepositoryOptions:
     include_tests: bool = False
     cache: bool = True
 
-    def options(self) -> ScanOptions:
+    def options(self, settings: Preferences = DEFAULTS) -> ScanOptions:
+        """Les options de l'analyse, avec les réglages de la personne (``settings``)."""
         return ScanOptions(
             include_tests=self.include_tests,
             dev=self.dev,
             transitive=self.transitive,
             offline=False,
             cache=self.cache,
+            ignore=settings.ignore,
+            selection=settings.selection,
         )
 
 
@@ -157,6 +166,34 @@ class TokenRequest:
     url: str | None = None
     """L'adresse d'une instance auto-hébergée (GitLab : ``https://gitlab.example.com``) ;
     ``null`` : le service en ligne de la forge."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class SelectionInput:
+    """La sélection par défaut, pour un écosystème ou pour tous (comme ``models.SelectionRule``,
+    qui ne sert qu'en sortie)."""
+
+    ecosystem: Ecosystem | None = None
+    """``null`` : tous les écosystèmes."""
+    level: Gap | None = None
+    security_only: bool | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class SettingsRequest:
+    """Les réglages de la personne à enregistrer, tous (``preferences.Preferences``)."""
+
+    ignore: list[str] = field(default_factory=list)
+    """Paquets (``lodash``, ``@types/*``) et versions (``django@>=5``) ignorés."""
+    include_tests: bool = False
+    selection: list[SelectionInput] = field(default_factory=list)
+    """La sélection par défaut : une règle sans écosystème, puis une par écosystème réglé à part."""
+    excluded_repositories: list[str] = field(default_factory=list)
+    """``github.com/owner/repo``, ``*`` permis."""
+    lock_timeout: int = 600
+    """Secondes, de 10 à 86 400."""
+    clone_timeout: int = 600
+    rust_default_toolchain: bool = False
 
 
 # -- Analyses ---------------------------------------------------------------------
@@ -816,6 +853,56 @@ class Proposal:
     voit ses dépôts en échec, avec la raison ; les autres partent."""
 
 
+# -- Réglages ---------------------------------------------------------------------
+
+
+@dataclass(frozen=True, kw_only=True)
+class CacheState:
+    """Le cache disque : où il est, ce qu'il contient (``net.cache.Cache.stats``)."""
+
+    path: str | None
+    enabled: bool
+    """Faux s'il est désactivé (un disque où l'on ne peut pas écrire)."""
+    entries: int
+    size: int
+    """En octets."""
+    oldest: datetime | None
+    """La plus ancienne entrée ; ``null`` pour un cache vide."""
+    newest: datetime | None
+
+
+@dataclass(frozen=True, kw_only=True)
+class SettingsDocument:
+    """Les réglages de la personne, et le cache."""
+
+    values: Preferences
+    defaults: Preferences
+    """Les valeurs par défaut de forceupdate, pour les dire comme telles."""
+    file: str
+    """Le fichier des réglages, qui vaut aussi pour la ligne de commande."""
+    problems: tuple[str, ...]
+    """Ce qui n'a pas pu être lu dans le fichier (une valeur par défaut à la place)."""
+    cache: CacheState
+
+
+@dataclass(frozen=True, kw_only=True)
+class FieldError:
+    """Une valeur refusée : son champ (``ignore``, ``lock_timeout``…), son rang dans une liste,
+    et pourquoi."""
+
+    field: str
+    index: int | None
+    message: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class SettingsRejected:
+    """Des réglages refusés : rien n'est enregistré."""
+
+    detail: str
+    fields: tuple[FieldError, ...]
+
+
 @dataclass(frozen=True, kw_only=True)
 class Error:
     """Une erreur : ``detail`` dit ce qui ne va pas, en français."""
@@ -896,4 +983,15 @@ def proposed_skip(skipped: Skipped) -> ProposedSkip:
         name=skipped.update.name,
         version=skipped.option.version,
         reason=skipped.reason,
+    )
+
+
+def cache_state(stats: CacheStats) -> CacheState:
+    return CacheState(
+        path=stats.path.as_posix() if stats.path is not None else None,
+        enabled=stats.enabled,
+        entries=stats.entries,
+        size=stats.size,
+        oldest=stats.oldest,
+        newest=stats.newest,
     )

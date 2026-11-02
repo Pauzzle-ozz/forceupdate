@@ -176,6 +176,9 @@ def test_the_schema_describes_every_route() -> None:
         ("POST", "/api/proposals"): "create_proposal",
         ("GET", "/api/proposals/{proposal_id}"): "get_proposal",
         ("POST", "/api/proposals/{proposal_id}/send"): "send_proposal",
+        ("GET", "/api/settings"): "get_settings",
+        ("PUT", "/api/settings"): "save_settings",
+        ("DELETE", "/api/cache"): "clear_cache",
     }
 
 
@@ -195,6 +198,7 @@ def test_response_fields_are_all_required_request_fields_are_not() -> None:
         "unverifiable_reason",
         "excluded",
         "imported",
+        "ignored",
     ]
     assert components["SummaryDocument"]["required"][-1] == "to_update"
     assert components["ScanRequest"]["required"] == ["path"]

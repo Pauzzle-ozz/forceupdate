@@ -186,6 +186,27 @@ def test_test_folders_follow_the_option(github: FakeGitHubRepos, tmp_path: Path)
     ]
 
 
+def test_the_configuration_of_the_repository(github: FakeGitHubRepos, tmp_path: Path) -> None:
+    repo = FakeRepo(
+        full_name="octo/configure",
+        files={
+            "forceupdate.toml": b'exclude = ["legacy"]\ninclude-tests = true\nignore = ["flask"]\n',
+            "requirements.txt": b"flask\n",
+            "legacy/requirements.txt": b"django\n",
+            "tests/fixtures/requirements.txt": b"pytest\n",
+        },
+    )
+    source = fetch(github, repo, tmp_path)
+    assert sorted(github.contents()) == [
+        "octo/configure:forceupdate.toml",
+        "octo/configure:requirements.txt",
+        "octo/configure:tests/fixtures/requirements.txt",
+    ]
+    report = engine.inventory(source)
+    assert [p.path for p in report.projects] == [".", "tests/fixtures"]
+    assert report.config is not None and report.config.ignore == ("flask",)
+
+
 def test_downloads_are_announced(github: FakeGitHubRepos, tmp_path: Path) -> None:
     events: list[Event] = []
     fetch(github, from_directory("octo/pip", PROJECTS / "pip"), tmp_path, on_event=events.append)

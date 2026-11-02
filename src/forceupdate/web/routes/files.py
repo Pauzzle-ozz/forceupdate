@@ -21,6 +21,7 @@ from forceupdate.detect.manifests import match_dependency_file, max_read_size
 from forceupdate.models import ScanOptions
 from forceupdate.sources.local import LocalSource
 from forceupdate.web.routes import CurrentJobs, errors, respond
+from forceupdate.web.routes.settings import CurrentPreferences
 from forceupdate.web.schemas import ScanSummary, SourceKind
 
 router = APIRouter(prefix="/api/files", tags=["fichiers"])
@@ -44,6 +45,7 @@ _BODY = {
 async def upload_file(
     request: Request,
     jobs: CurrentJobs,
+    store: CurrentPreferences,
     name: Annotated[str, Query(description="Le nom du fichier (package.json…).")],
 ) -> JSONResponse:
     """Analyse un fichier envoyé : un manifeste, un lockfile ou un fichier de code (ses imports,
@@ -55,8 +57,10 @@ async def upload_file(
     path = directory / name
     await asyncio.to_thread(path.write_bytes, content)
     source = LocalSource(path, alone=True)
+    settings = store.current
+    options = ScanOptions(ignore=settings.ignore, selection=settings.selection)
     scan = jobs.start_scan(
-        source, ScanOptions(), kind=SourceKind.UPLOAD, label=name, upload_dir=directory
+        source, options, kind=SourceKind.UPLOAD, label=name, upload_dir=directory
     )
     return respond(scan.summary(), 202, location=f"/api/scans/{scan.id}")
 

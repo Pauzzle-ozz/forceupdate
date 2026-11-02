@@ -9,13 +9,14 @@ import {
   ListChecks,
   PinOff,
   RefreshCw,
+  SlidersHorizontal,
   TriangleAlert,
   Upload,
   WifiOff,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import type { CodeFile, FindingKind, ForgeKind, Report, ScanDetail } from '@/api/types'
+import type { CodeFile, Configuration, FindingKind, ForgeKind, Report, ReportOptions, ScanDetail } from '@/api/types'
 import { EmptyState } from '@/components/EmptyState'
 import { OptionBadges } from '@/components/OptionBadges'
 import { Alert, AlertActions, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -187,6 +188,7 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
           <p className="font-mono text-sm break-all text-fg-muted">{upload ? 'fichier envoyé' : report.source}</p>
         )}
         {report.code && <CodeReading code={report.code} source={upload ? null : report.source} />}
+        <Configured config={report.config} options={report.options} />
         <p className="text-sm text-fg-muted">
           {offline
             ? fr(
@@ -385,6 +387,90 @@ function CodeReading({ code, source }: { code: CodeFile; source: string | null }
       <FileCode className="mt-0.5 size-4 shrink-0 text-fg-muted" aria-hidden="true" />
       <span>{text}</span>
     </p>
+  )
+}
+
+/**
+ * Ce que la configuration du projet (`forceupdate.toml`, `[tool.forceupdate]`) et les réglages de
+ * la personne ont changé à l'analyse (E29) ; ce que le fichier du projet a d'illisible.
+ */
+function Configured({ config, options }: { config: Configuration | null; options: ReportOptions | null }) {
+  const mine = options !== null && (options.ignore.length > 0 || options.selection.length > 0)
+  if (config === null && !mine) return null
+  return (
+    <>
+      {config && (
+        <p className="flex items-start gap-2 text-sm">
+          <SlidersHorizontal className="mt-0.5 size-4 shrink-0 text-fg-muted" aria-hidden="true" />
+          <span>
+            {fr('Configuration du projet : ')}
+            <code className="font-mono">{config.file}</code>
+            {configured(config.ignore, config.selection.length > 0, config.exclude, config.include_tests)}
+          </span>
+        </p>
+      )}
+      {config && config.problems.length > 0 && (
+        <Alert variant="warning" role="status">
+          <TriangleAlert aria-hidden="true" />
+          <AlertTitle>{fr(`${config.file} : des valeurs écartées`)}</AlertTitle>
+          <AlertDescription>
+            <ul className="list-disc pl-5">
+              {config.problems.map((problem) => (
+                <li key={problem}>{problem}</li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
+      {mine && options && (
+        <p className="flex items-start gap-2 text-sm">
+          <SlidersHorizontal className="mt-0.5 size-4 shrink-0 text-fg-muted" aria-hidden="true" />
+          <span>
+            {/* Un lien dans une phrase se distingue autrement que par sa couleur : souligné. */}
+            <Link to="/reglages" className="underline">
+              Réglages
+            </Link>
+            {configured(options.ignore, options.selection.length > 0, [], false)}
+          </span>
+        </p>
+      )}
+    </>
+  )
+}
+
+/** « : ignorés : lodash, django@>=5 ; dossiers exclus : legacy ; sélection par défaut réglée. » */
+function configured(ignore: string[], selection: boolean, exclude: string[], tests: boolean): React.ReactNode {
+  const parts: React.ReactNode[] = []
+  if (ignore.length) parts.push(<Listed key="ignore" label="ignorés" values={ignore} />)
+  if (exclude.length) parts.push(<Listed key="exclude" label="dossiers exclus" values={exclude} />)
+  if (tests) parts.push('dossiers de tests analysés')
+  if (selection) parts.push('sélection par défaut réglée')
+  if (!parts.length) return '.'
+  return (
+    <>
+      {`${NBSP}: `}
+      {parts.map((part, index) => (
+        <span key={index}>
+          {index > 0 && `${NBSP}; `}
+          {part}
+        </span>
+      ))}
+      .
+    </>
+  )
+}
+
+function Listed({ label, values }: { label: string; values: string[] }) {
+  return (
+    <>
+      {`${label}${NBSP}: `}
+      {values.map((value, index) => (
+        <span key={value}>
+          {index > 0 && ', '}
+          <code className="font-mono break-all">{value}</code>
+        </span>
+      ))}
+    </>
   )
 }
 

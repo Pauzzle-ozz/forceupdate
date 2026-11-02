@@ -57,10 +57,4 @@ describe('la coquille', () => {
     expect(screen.getByRole('heading', { level: 1, name: "Ce n'est pas la page que vous cherchez." })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: "Retour à l'accueil" })).toHaveAttribute('href', '/')
   })
-
-  it('les écrans des étapes suivantes le disent, au lieu d’une page vide', () => {
-    renderApp('/reglages')
-    expect(screen.getByRole('heading', { level: 1, name: 'Réglages' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: "Retour à l'accueil" })).toHaveAttribute('href', '/')
-  })
 })

@@ -162,7 +162,10 @@ def test_json(report: Report) -> None:
         "transitive": False,
         "offline": False,
         "cache": True,
+        "ignore": [],
+        "selection": [],
     }
+    assert data["config"] is None
     assert datetime.fromisoformat(data["scanned_at"]).tzinfo is not None
     assert data["ignored_manifests"] == ["tests/demo/package.json"]
     assert data["summary"]["findings"]["yanked"] == 1

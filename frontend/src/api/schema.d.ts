@@ -554,6 +554,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Settings
+         * @description Les réglages de la personne, leurs valeurs par défaut, et l'état du cache.
+         */
+        get: operations["get_settings"];
+        /**
+         * Save Settings
+         * @description Enregistre les réglages, tous à la fois : ils valent pour les analyses, les plans et les
+         *     PR qui suivent, et pour la ligne de commande. Une valeur refusée : rien n'est enregistré, et
+         *     la réponse dit lesquelles (``fields``).
+         */
+        put: operations["save_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cache": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Clear Cache
+         * @description Vide le cache disque (versions des paquets, failles, fins de vie) : la prochaine analyse
+         *     redemande tout au réseau.
+         */
+        delete: operations["clear_cache"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -684,6 +731,24 @@ export interface components {
          */
         BatchStatus: "running" | "done" | "cancelled";
         /**
+         * CacheState
+         * @description Le cache disque : où il est, ce qu'il contient (``net.cache.Cache.stats``).
+         */
+        CacheState: {
+            /** Path */
+            path: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Entries */
+            entries: number;
+            /** Size */
+            size: number;
+            /** Oldest */
+            oldest: string | null;
+            /** Newest */
+            newest: string | null;
+        };
+        /**
          * ChangeRequest
          * @description Une pull request (merge request sur GitLab).
          */
@@ -731,6 +796,40 @@ export interface components {
          * @enum {string}
          */
         CodeReading: "project" | "script" | "imports";
+        /**
+         * Configuration
+         * @description La configuration du projet analysé (E29) : un ``forceupdate.toml`` à la racine de la
+         *     source, ou la table ``[tool.forceupdate]`` de son ``pyproject.toml`` (voir ``config``).
+         */
+        Configuration: {
+            /** File */
+            file: string;
+            /**
+             * Ignore
+             * @default []
+             */
+            ignore: string[];
+            /**
+             * Exclude
+             * @default []
+             */
+            exclude: string[];
+            /**
+             * Include Tests
+             * @default false
+             */
+            include_tests: boolean;
+            /**
+             * Selection
+             * @default []
+             */
+            selection: components["schemas"]["SelectionRule"][];
+            /**
+             * Problems
+             * @default []
+             */
+            problems: string[];
+        };
         /**
          * ConnectMethod
          * @description Comment un compte a été connecté.
@@ -785,6 +884,8 @@ export interface components {
             excluded: string[];
             /** Imported */
             imported: string | null;
+            /** Ignored */
+            ignored: string | null;
         };
         /**
          * Disconnection
@@ -816,6 +917,7 @@ export interface components {
             /** Ignored Manifests */
             ignored_manifests: string[];
             code: components["schemas"]["CodeFile"] | null;
+            config: components["schemas"]["Configuration"] | null;
             options: components["schemas"]["ScanOptions"] | null;
             /** Scanned At */
             scanned_at: string | null;
@@ -937,6 +1039,19 @@ export interface components {
          * @enum {string}
          */
         EventKind: "downloading" | "cloning" | "reading" | "projects_found" | "checking" | "package_checked" | "vulnerabilities_checked" | "written" | "regenerating" | "finished";
+        /**
+         * FieldError
+         * @description Une valeur refusée : son champ (``ignore``, ``lock_timeout``…), son rang dans une liste,
+         *     et pourquoi.
+         */
+        FieldError: {
+            /** Field */
+            field: string;
+            /** Index */
+            index: number | null;
+            /** Message */
+            message: string;
+        };
         /**
          * FileDiff
          * @description Un fichier à réécrire, et son diff unifié.
@@ -1209,6 +1324,47 @@ export interface components {
             selection: {
                 [key: string]: string;
             };
+        };
+        /**
+         * Preferences
+         * @description Les réglages de la personne ; les valeurs par défaut sont celles de forceupdate.
+         */
+        Preferences: {
+            /**
+             * Ignore
+             * @default []
+             */
+            ignore: string[];
+            /**
+             * Include Tests
+             * @default false
+             */
+            include_tests: boolean;
+            /**
+             * Selection
+             * @default []
+             */
+            selection: components["schemas"]["SelectionRule"][];
+            /**
+             * Excluded Repositories
+             * @default []
+             */
+            excluded_repositories: string[];
+            /**
+             * Lock Timeout
+             * @default 600
+             */
+            lock_timeout: number;
+            /**
+             * Clone Timeout
+             * @default 600
+             */
+            clone_timeout: number;
+            /**
+             * Rust Default Toolchain
+             * @default false
+             */
+            rust_default_toolchain: boolean;
         };
         /**
          * Project
@@ -1760,6 +1916,16 @@ export interface components {
              * @default true
              */
             cache: boolean;
+            /**
+             * Ignore
+             * @default []
+             */
+            ignore: string[];
+            /**
+             * Selection
+             * @default []
+             */
+            selection: components["schemas"]["SelectionRule"][];
         };
         /**
          * ScanRequest
@@ -1829,12 +1995,90 @@ export interface components {
          */
         Scope: "runtime" | "dev" | "optional" | "peer" | "build";
         /**
+         * SelectionInput
+         * @description La sélection par défaut, pour un écosystème ou pour tous (comme ``models.SelectionRule``,
+         *     qui ne sert qu'en sortie).
+         */
+        SelectionInput: {
+            ecosystem?: components["schemas"]["Ecosystem"] | null;
+            level?: components["schemas"]["Gap"] | null;
+            /** Security Only */
+            security_only?: boolean | null;
+        };
+        /**
+         * SelectionRule
+         * @description La sélection par défaut, ce que le plan pré-coche (brief, décision n°12), pour un
+         *     écosystème ou pour tous (E29 : ``[selection]`` de la configuration, ``update.planner.
+         *     Rules``). Un champ à ``None`` n'est pas dit : il vient d'ailleurs (``planner.rules``).
+         */
+        SelectionRule: {
+            ecosystem: components["schemas"]["Ecosystem"] | null;
+            level: components["schemas"]["Gap"] | null;
+            /** Security Only */
+            security_only: boolean | null;
+        };
+        /**
          * SendRequest
          * @description Les dépôts d'un récapitulatif à envoyer : rien ne part sans cette validation.
          */
         SendRequest: {
             /** Repositories */
             repositories: components["schemas"]["RepositoryKey"][];
+        };
+        /**
+         * SettingsDocument
+         * @description Les réglages de la personne, et le cache.
+         */
+        SettingsDocument: {
+            values: components["schemas"]["Preferences"];
+            defaults: components["schemas"]["Preferences"];
+            /** File */
+            file: string;
+            /** Problems */
+            problems: string[];
+            cache: components["schemas"]["CacheState"];
+        };
+        /**
+         * SettingsRejected
+         * @description Des réglages refusés : rien n'est enregistré.
+         */
+        SettingsRejected: {
+            /** Detail */
+            detail: string;
+            /** Fields */
+            fields: components["schemas"]["FieldError"][];
+        };
+        /**
+         * SettingsRequest
+         * @description Les réglages de la personne à enregistrer, tous (``preferences.Preferences``).
+         */
+        SettingsRequest: {
+            /** Ignore */
+            ignore?: string[];
+            /**
+             * Include Tests
+             * @default false
+             */
+            include_tests: boolean;
+            /** Selection */
+            selection?: components["schemas"]["SelectionInput"][];
+            /** Excluded Repositories */
+            excluded_repositories?: string[];
+            /**
+             * Lock Timeout
+             * @default 600
+             */
+            lock_timeout: number;
+            /**
+             * Clone Timeout
+             * @default 600
+             */
+            clone_timeout: number;
+            /**
+             * Rust Default Toolchain
+             * @default false
+             */
+            rust_default_toolchain: boolean;
         };
         /**
          * Severity
@@ -3967,6 +4211,151 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsDocument"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    save_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsDocument"];
+                };
+            };
+            /** @description Des valeurs refusées, champ par champ */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsRejected"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Impossible dans l'état actuel */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_cache: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CacheState"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };

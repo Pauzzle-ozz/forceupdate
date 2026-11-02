@@ -23,6 +23,7 @@ import type {
   RepositorySynthesis,
   ScanDetail,
   ScanSummary,
+  SettingsDocument,
   UpdatePlan,
 } from '@/api/types'
 import eol from './fixtures/eol.json'
@@ -58,10 +59,15 @@ type Reply = Handler | Status | typeof DOWN | object
 /**
  * Remplace `fetch` : `routes` donne, par « MÉTHODE /chemin » (sans la requête), la réponse
  * (un objet, une `Status`, `DOWN`, ou une fonction de la requête). Rend la liste des appels.
- * Par défaut, `GET /api/accounts` rend les forges sans compte connecté (l'accueil les demande).
+ * Par défaut, `GET /api/accounts` rend les forges sans compte connecté (l'accueil les demande),
+ * et `GET /api/settings` les réglages par défaut (les options d'analyse les suivent).
  */
 export function mockApi(given: Record<string, Reply>) {
-  const routes: Record<string, Reply> = { 'GET /api/accounts': accountList(), ...given }
+  const routes: Record<string, Reply> = {
+    'GET /api/accounts': accountList(),
+    'GET /api/settings': settingsDocument(),
+    ...given,
+  }
   const calls: { method: string; url: URL; init: RequestInit }[] = []
   const fetch = vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = new URL(String(input), 'http://127.0.0.1:8765')
@@ -96,7 +102,7 @@ export function renderApp(path: string) {
   )
 }
 
-const OPTIONS = { include_tests: false, dev: true, transitive: false, offline: false, cache: true }
+const OPTIONS = { include_tests: false, dev: true, transitive: false, offline: false, cache: true, ignore: [], selection: [] }
 
 /** Une analyse, finie avec son rapport (par défaut celui de `vulnerable`). */
 export function scanDetail(overrides: Partial<ScanDetail> = {}): ScanDetail {
@@ -537,6 +543,34 @@ export function proposal(overrides: Partial<Proposal> = {}): Proposal {
     ready: ready.length,
     existing: ready.filter((item) => item.request !== null).length,
     error: null,
+    ...overrides,
+  }
+}
+
+/** Les réglages de la personne (`GET /api/settings`) : par défaut, ceux de forceupdate. */
+export function settingsDocument(overrides: Partial<SettingsDocument> = {}): SettingsDocument {
+  const defaults = {
+    ignore: [],
+    include_tests: false,
+    selection: [],
+    excluded_repositories: [],
+    lock_timeout: 600,
+    clone_timeout: 600,
+    rust_default_toolchain: false,
+  }
+  return {
+    values: defaults,
+    defaults,
+    file: 'C:/Users/moi/AppData/Local/forceupdate/forceupdate.toml',
+    problems: [],
+    cache: {
+      path: 'C:/Users/moi/AppData/Local/forceupdate/Cache/cache.sqlite3',
+      enabled: true,
+      entries: 412,
+      size: 3_456_789,
+      oldest: '2026-10-30T08:00:00+00:00',
+      newest: '2026-11-02T09:15:00+00:00',
+    },
     ...overrides,
   }
 }

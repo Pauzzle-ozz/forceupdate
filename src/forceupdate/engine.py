@@ -25,7 +25,7 @@ import dataclasses
 from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime
 
-from forceupdate import checks, parsers, registries
+from forceupdate import checks, config, parsers, registries
 from forceupdate.advisories import Osv, OsvError, Query, Vulnerabilities
 from forceupdate.checks import eol, runtimes, vulns
 from forceupdate.checks.base import Current
@@ -71,15 +71,25 @@ def inventory(source: Source, *, include_tests: bool = False) -> Report:
     ``include_tests`` garde aussi les projets rangés dans des dossiers de tests, de
     fixtures ou d'exemples ; sinon ils sont listés dans ``Report.ignored_manifests``.
 
+    La configuration du projet (``forceupdate.toml``, ``[tool.forceupdate]``, E29) est lue à la
+    racine de la source (``Report.config``) : ses dossiers exclus ne sont pas lus, et son
+    ``include-tests`` vaut ``include_tests``.
+
     Un fichier de code choisi seul (``Source.code_file``, E28) donne un seul projet : celui du
     bloc PEP 723 d'un script Python (son propre manifeste, comme pour ``uv run``) ; sinon celui
     trouvé en remontant les dossiers, même rangé dans un dossier de tests (il a été choisi) ;
     sinon le fichier lui-même, lu par ses imports (``parsers.code``).
     """
+    configuration = config.read(source.read_text)
     code = source.code_file
     if code is not None:
-        return _code_inventory(source, code)
+        report = _code_inventory(source, code)
+        report.config = configuration
+        return report
     files = source.files()
+    if configuration is not None:
+        include_tests = include_tests or configuration.include_tests
+        files = [f for f in files if not config.is_excluded_path(f.path, configuration.exclude)]
     projects, ignored = find_projects((file.path for file in files), include_tests=include_tests)
     project_dirs = [project.path for project in projects]
     for project in projects:
@@ -89,6 +99,7 @@ def inventory(source: Source, *, include_tests: bool = False) -> Report:
         languages=detect_languages(files),
         projects=projects,
         ignored_manifests=ignored,
+        config=configuration,
     )
 
 
@@ -243,6 +254,9 @@ async def _check(
         return clients.get(ecosystem)
 
     await _resolve_imports(report, client)
+    ignore = config.ignore_rules(report, options)
+    for project in report.projects:
+        config.mark_ignored(project, ignore)
     selected = [
         (project, dependency)
         for project in report.projects
@@ -306,10 +320,12 @@ async def _check(
         (dependency.ecosystem, clients[dependency.ecosystem].normalize(dependency.name))
         for _, dependency, current in audited
         if dependency.ecosystem in clients
+        and dependency.ignored is None  # pas de mise à jour pour un paquet ignoré
         and isinstance(result := found[_query(dependency, current)], Vulnerabilities)
         and result.advisories
     }
     outcomes |= await _lookup_all(clients, sorted(vulnerable - set(outcomes)), None)
+    outcomes = _without_ignored(report, clients, outcomes, ignore)
 
     def refused(project: Project, dependency: Dependency) -> Mapping[str, Refusal]:
         registry = clients.get(dependency.ecosystem)
@@ -335,11 +351,12 @@ async def _check(
         )
     }
     known = {q: v for q, v in found.items() if isinstance(v, Vulnerabilities)}
-    planner.plan(report, infos, known)
+    rules = planner.rules(report.config.selection if report.config else (), options.selection)
+    planner.plan(report, infos, known, rules)
     # Les versions proposées ont-elles elles-mêmes des failles ? Une requête pour toutes.
     proposed = [q for q in planner.proposed_versions(report) if q not in found]
     found |= await osv.vulnerabilities(proposed) if proposed else {}
-    planner.audit(report, found)
+    planner.audit(report, found, rules)
 
     dates = [o.fetched_at for o in outcomes.values() if isinstance(o, PackageInfo)]
     dates += [f.fetched_at for f in found.values() if isinstance(f, Vulnerabilities)]
@@ -394,6 +411,51 @@ async def _resolve_imports(report: Report, client: Callable[[Ecosystem], Registr
             seen.add(key)
             kept.append(dependency)
         project.dependencies = kept
+
+
+def _without_ignored(
+    report: Report,
+    clients: Mapping[Ecosystem, Registry],
+    outcomes: dict[tuple[Ecosystem, str], _Outcome],
+    rules: list[config.IgnoreRule],
+) -> dict[tuple[Ecosystem, str], _Outcome]:
+    """``outcomes``, sans les versions qu'ignorent les règles de versions (``config.
+    without_ignored`` : forceupdate fait comme si elles n'étaient pas publiées), sauf celles
+    qu'utilisent les projets. Chaque projet qui déclare le paquet le dit dans une remarque :
+    combien de versions la règle écarte, ou qu'elle ne se lit pas pour son écosystème."""
+    if all(rule.whole for rule in rules):
+        return outcomes
+    declared: dict[tuple[Ecosystem, str], list[tuple[Project, Dependency]]] = {}
+    for project in report.projects:
+        for dependency in project.dependencies:
+            registry = clients.get(dependency.ecosystem)
+            if registry is not None:
+                key = (dependency.ecosystem, registry.normalize(dependency.name))
+                declared.setdefault(key, []).append((project, dependency))
+    filtered = dict(outcomes)
+    for key, info in outcomes.items():
+        users = declared.get(key)
+        if not isinstance(info, PackageInfo) or not users:
+            continue
+        used = {v for _, d in users if (v := checks.current_version(d).version) is not None}
+        result = config.without_ignored(info, users[0][1], rules, used)
+        filtered[key] = result.info
+        label = clients[key[0]].label
+        said: set[tuple[int, str]] = set()
+        for project, dependency in users:
+            for rule, count in result.removed.items():
+                if (id(project), rule) not in said:
+                    said.add((id(project), rule))
+                    what = "version publiée" if count == 1 else "versions publiées"
+                    message = f"{rule} : {count} {what} de {dependency.name} jamais proposée"
+                    message += "." if count == 1 else "s."
+                    project.notices.append(Notice(file=dependency.file, message=message))
+            for rule in result.unreadable:
+                if (id(project), rule) not in said:
+                    said.add((id(project), rule))
+                    message = f"{rule} : version illisible pour {label}, rien n'est écarté."
+                    project.notices.append(Notice(file=dependency.file, message=message))
+    return filtered
 
 
 def _record_lifecycles(

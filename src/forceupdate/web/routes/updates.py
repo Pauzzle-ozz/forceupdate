@@ -18,6 +18,7 @@ from forceupdate.update import local
 from forceupdate.web import sse
 from forceupdate.web.jobs import Plan
 from forceupdate.web.routes import CurrentJobs, errors, find_plan, find_scan, respond, sentence
+from forceupdate.web.routes.settings import CurrentPreferences
 from forceupdate.web.schemas import (
     ApplyRequest,
     PlanRequest,
@@ -37,7 +38,9 @@ REPOSITORY = (
 @router.post(
     "/plan", status_code=201, response_model=UpdatePlan, responses=errors(400, 401, 403, 404, 409)
 )
-async def plan_update(body: PlanRequest, jobs: CurrentJobs) -> JSONResponse:
+async def plan_update(
+    body: PlanRequest, jobs: CurrentJobs, store: CurrentPreferences
+) -> JSONResponse:
     """Prépare une sélection sur le rapport d'une analyse finie, sans rien écrire : les diffs,
     ce qui ne sera pas appliqué, les lockfiles à régénérer, et le garde-fou git."""
     scan = find_scan(jobs, body.scan)
@@ -50,7 +53,12 @@ async def plan_update(body: PlanRequest, jobs: CurrentJobs) -> JSONResponse:
     upload = scan.kind is SourceKind.UPLOAD
     try:
         prepared = await asyncio.to_thread(
-            local.prepare, source, scan.report, body.selection, regenerate=not upload
+            local.prepare,
+            source,
+            scan.report,
+            body.selection,
+            regenerate=not upload,
+            tools=store.tools,
         )
     except ValueError as err:
         raise HTTPException(400, sentence(str(err))) from err

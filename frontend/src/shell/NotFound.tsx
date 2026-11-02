@@ -1,4 +1,4 @@
-import { Construction, MapPinOff, type LucideIcon } from 'lucide-react'
+import { MapPinOff } from 'lucide-react'
 import { Link } from 'react-router'
 import { EmptyState } from '@/components/EmptyState'
 import { buttonVariants } from '@/components/ui/button'
@@ -20,37 +20,6 @@ export function NotFound() {
         }
       >
         <p>Cette adresse ne correspond à aucun écran de forceupdate.</p>
-      </EmptyState>
-    </Container>
-  )
-}
-
-/** Un écran prévu, pas encore construit (forges, réglages, mise à jour). */
-export function ComingSoon({
-  title,
-  icon = Construction,
-  children,
-  back = { to: '/', label: "Retour à l'accueil" },
-}: {
-  title: string
-  icon?: LucideIcon
-  children: React.ReactNode
-  back?: { to: string; label: string }
-}) {
-  useDocumentTitle(title)
-  return (
-    <Container narrow>
-      <EmptyState
-        icon={icon}
-        level="h1"
-        title={title}
-        actions={
-          <Link to={back.to} className={buttonVariants({ variant: 'secondary' })}>
-            {back.label}
-          </Link>
-        }
-      >
-        {children}
       </EmptyState>
     </Container>
   )

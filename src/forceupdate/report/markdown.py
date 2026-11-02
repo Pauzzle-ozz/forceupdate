@@ -16,6 +16,7 @@ from forceupdate.report import (
     Row,
     Summary,
     code_reading,
+    configuration,
     distinct_findings,
     format_date,
     format_share,
@@ -39,6 +40,10 @@ def render(report: Report) -> str:
     lines.append(f"Source : `{code(report.source)}`")
     if report.code is not None:
         lines += ["", escape(code_reading(report.code))]
+    if report.config is not None:
+        lines += ["", escape(configuration(report.config))]
+        if report.config.problems:
+            lines += ["", *(f"- {escape(problem)}" for problem in report.config.problems)]
     if report.scanned_at is not None:
         lines += ["", f"Analyse du {format_date(report.scanned_at)}."]
         if report.options is not None and report.options.offline:

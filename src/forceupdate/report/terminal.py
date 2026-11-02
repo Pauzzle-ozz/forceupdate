@@ -37,6 +37,7 @@ from forceupdate.report import (
     Row,
     Summary,
     code_reading,
+    configuration,
     distinct_findings,
     format_date,
     format_share,
@@ -82,6 +83,10 @@ def render(report: Report, console: Console) -> None:
     console.print(Text.assemble(("Source : ", "bold"), report.source))
     if report.code is not None:
         console.print(Text(code_reading(report.code)))
+    if report.config is not None:
+        console.print(Text(configuration(report.config)))
+        for problem in report.config.problems:
+            console.print(Text(f"  {problem}", style="yellow"))
     _print_dates(report, console)
     _print_languages(report, console)
     console.print()
@@ -524,11 +529,15 @@ def _gap_text(option: UpdateOption) -> Text:
 
 
 def _rules(rules: Rules) -> str:
-    """Les règles de la sélection, comme on les écrirait sur la ligne de commande."""
+    """Les règles de la sélection, comme on les écrirait sur la ligne de commande ; puis celles
+    d'un écosystème réglé à part (``[selection.npm]`` : « npm : --level patch »)."""
     parts = [f"--level {rules.level}"]
     if rules.security_only:
         parts.append("--security-only")
     parts += [f"--include {pattern}" for pattern in rules.include]
     parts += [f"--exclude {pattern}" for pattern in rules.exclude]
     parts += [f"--ecosystem {ecosystem}" for ecosystem in sorted(rules.ecosystems)]
-    return " ".join(parts)
+    text = " ".join(parts)
+    for ecosystem, (level, security_only) in sorted(rules.by_ecosystem.items()):
+        text += f" ; {ecosystem} : --level {level}" + (" --security-only" if security_only else "")
+    return text

@@ -72,7 +72,7 @@ from fake_forge import FakeGitHubRepos, FakeRepo, from_directory, make_remote, r
 from fake_gitlab import FakeGitLab, FakeToken
 from fixtures.record import RECORDED_ON
 
-from forceupdate import engine
+from forceupdate import engine, preferences
 from forceupdate.checks import eol
 from forceupdate.forges import bitbucket, github, gitlab
 from forceupdate.models import ScanOptions
@@ -345,6 +345,7 @@ def main() -> None:
     eol.today = lambda: RECORDED_ON
     with tempfile.TemporaryDirectory(prefix="forceupdate-e2e-") as tmp:
         cache_module.default_cache_path = lambda: Path(tmp) / "cache.sqlite3"
+        preferences.default_path = lambda: Path(tmp) / "réglages" / "forceupdate.toml"
         if options.report is None:
             remotes = Path(tmp) / "distants"
             for repo in [*REPOSITORIES, *GITLAB_PROJECTS, *BITBUCKET_REPOSITORIES]:

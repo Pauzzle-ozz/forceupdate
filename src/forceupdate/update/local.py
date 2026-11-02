@@ -56,15 +56,18 @@ def prepare(
     selection: planner.Selection,
     *,
     regenerate: bool = True,
+    tools: lockfiles.Tools = lockfiles.DEFAULT_TOOLS,
 ) -> Prepared:
     """Ce que fera la mise à jour de ``selection``, dans ``source`` analysée par ``report``.
+    Ses outils de lockfile seront lancés selon ``tools`` (les réglages de la personne : délai,
+    chaîne d'outils Rust).
 
     ``regenerate=False`` : aucun lockfile n'est prévu (un fichier envoyé par l'interface, dont
     on ne rend que la version réécrite). Lève ``ValueError`` pour une sélection qui ne
     correspond pas au rapport (``planner.chosen``), ou un lockfile que forceupdate ne sait pas
     régénérer (``lockfiles.plan``)."""
     changes = writers.prepare(source.root, planner.chosen(report, selection))
-    jobs = lockfiles.plan(source, report, changes) if regenerate else ()
+    jobs = lockfiles.plan(source, report, changes, tools) if regenerate else ()
     return Prepared(changes=changes, jobs=jobs)
 
 
@@ -86,7 +89,7 @@ def apply(
     ``prepare``.
 
     ``on_event`` reçoit les ``Event`` de la mise à jour : ``WRITTEN``, un ``REGENERATING`` par
-    outil lancé, puis ``FINISHED``. Peut durer plusieurs minutes (``lockfiles.LOCK_TIMEOUT`` par
+    outil lancé, puis ``FINISHED``. Peut durer plusieurs minutes (``lockfiles.Tools.timeout`` par
     commande) : l'interface l'appelle hors de la boucle de son serveur."""
     emit = on_event or _ignore
     writers.write(source.root, prepared.changes)

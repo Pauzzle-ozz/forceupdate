@@ -19,9 +19,12 @@ export type EntryKind = Schemas['EntryKind']
 export type RecentPath = Schemas['RecentPath']
 
 export type ScanRequest = Schemas['ScanRequest']
+/** Les options d'une analyse, comme les choisit l'interface (celles de `ScanRequest`). */
+export type ScanOptions = Pick<Schemas['ScanOptions'], 'dev' | 'transitive' | 'include_tests' | 'offline' | 'cache'>
+/** Les options d'une analyse faite, avec les réglages de la personne (`Report.options`). */
+export type ReportOptions = Schemas['ScanOptions']
 export type ScanSummary = Response<'start_scan', 202>
 export type ScanDetail = Response<'get_scan'>
-export type ScanOptions = Schemas['ScanOptions']
 export type SourceKind = Schemas['SourceKind']
 export type TaskStatus = Schemas['TaskStatus']
 export type ScanEvent = Schemas['Event']
@@ -98,3 +101,12 @@ export type ProposedState = Schemas['ProposedState']
 export type ProposalStatus = Schemas['ProposalStatus']
 export type ChangeRequest = Schemas['ChangeRequest']
 export type Step = Schemas['Step']
+
+export type SettingsDocument = Response<'get_settings'>
+export type SettingsRequest = Schemas['SettingsRequest']
+export type SelectionInput = Schemas['SelectionInput']
+export type Preferences = Schemas['Preferences']
+export type SelectionRule = Schemas['SelectionRule']
+export type CacheState = Schemas['CacheState']
+export type FieldError = Schemas['FieldError']
+export type Configuration = Schemas['Configuration']

@@ -166,6 +166,21 @@ def test_the_repositories_of_the_account_and_their_flags(
     assert len(github.requests) > sent
 
 
+def test_excluded_repositories_are_hidden(api: TestClient, github: FakeGitHubRepos) -> None:
+    """Les dépôts exclus des réglages (E29) : masqués comme un archivé, avec la raison."""
+    connect(api)
+    body = {"excluded_repositories": ["github.com/octo/vulnerable", "github.com/atelier/*"]}
+    assert api.put("/api/settings", json=body).status_code == 200
+    found = rows(api.get("/api/repositories").json())
+    for name in ("octo/vulnerable", "atelier/site"):
+        assert (found[name]["hidden"], found[name]["state"], found[name]["reason"]) == (
+            True,
+            "skipped",
+            "exclu dans les réglages",
+        )
+    assert found["octo/a-jour"]["hidden"] is False
+
+
 def test_a_refused_token_is_said_on_the_account(api: TestClient, github: FakeGitHubRepos) -> None:
     accounts = connect(api, token="gho_revoque")
     document = api.get("/api/repositories").json()

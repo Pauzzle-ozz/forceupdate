@@ -55,7 +55,7 @@ from forceupdate.report import markdown
 from forceupdate.report.markdown import code, escape
 from forceupdate.sources.base import SourceError
 from forceupdate.sources.local import LocalSource
-from forceupdate.update import local, planner
+from forceupdate.update import local, lockfiles, planner
 from forceupdate.update.local import Prepared
 from forceupdate.update.lockfiles import LockStatus, Reach, Regenerated
 from forceupdate.update.writers import WriteError
@@ -146,10 +146,11 @@ async def deliver(
     run: Runner = _in_thread,
     on_step: Callable[[Step], None] | None = None,
     on_event: Callable[[Event], None] | None = None,
+    tools: lockfiles.Tools = lockfiles.DEFAULT_TOOLS,
 ) -> Delivered:
     """Met à jour ``repo`` par une PR : ``selection`` sur l'analyse ``report``, dans un clone
-    rangé dans ``workdir`` (que l'appelant efface). Ne lève pas : un échec est rendu
-    (``Outcome.FAILED``, avec l'erreur en français).
+    rangé dans ``workdir`` (que l'appelant efface), ses outils de lockfile lancés selon ``tools``.
+    Ne lève pas : un échec est rendu (``Outcome.FAILED``, avec l'erreur en français).
 
     ``on_step`` reçoit chaque étape, ``on_event`` les ``Event`` de la mise à jour (un
     ``regenerating`` par outil lancé)."""
@@ -182,7 +183,7 @@ async def deliver(
         base = await run(lambda: git.head(checkout))
         step(Step.UPDATING)
         source = await run(lambda: LocalSource(checkout))
-        prepared = await run(lambda: local.prepare(source, report, selection))
+        prepared = await run(lambda: local.prepare(source, report, selection, tools=tools))
         if prepared.empty:
             return Delivered(outcome=Outcome.NOTHING, base=base, prepared=prepared)
         ready = prepared

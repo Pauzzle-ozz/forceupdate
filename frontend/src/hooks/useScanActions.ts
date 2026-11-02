@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { api, queryKeys } from '@/api/client'
 import type { RepositoryRequest, ScanOptions, ScanRequest, ScanSummary } from '@/api/types'
+import { useSettings } from '@/hooks/useSettings'
 import { useOnline } from '@/hooks/useStatus'
 
 /** Les options d'une analyse, celles de `forceupdate scan` par défaut. */
@@ -17,14 +18,20 @@ export const DEFAULT_OPTIONS: ScanOptions = {
 /** Les options de l'analyse d'un dépôt : jamais hors ligne (tout vient de la forge). */
 export const REPOSITORY_OPTIONS = { dev: true, transitive: false, include_tests: false, cache: true }
 
-/** Les options choisies ; « hors ligne » est coché d'office tant qu'il n'y a pas de réseau. */
+/**
+ * Les options choisies ; « hors ligne » est coché d'office tant qu'il n'y a pas de réseau, et
+ * « dossiers de tests » d'après les réglages de la personne tant qu'on n'y a pas touché.
+ */
 export function useScanOptions(): [ScanOptions, (options: ScanOptions) => void] {
   const online = useOnline()
-  const [options, setOptions] = useState<ScanOptions>(DEFAULT_OPTIONS)
+  const settings = useSettings()
+  const [options, setOptions] = useState<ScanOptions | null>(null)
+  const initial = { ...DEFAULT_OPTIONS, include_tests: settings.data?.values.include_tests ?? false }
+  const shown = options ?? initial
   const change = (next: ScanOptions) =>
     // Sans réseau, « hors ligne » est imposé : le choix d'avant revient avec le réseau.
-    setOptions((current) => ({ ...next, offline: online ? next.offline : current.offline }))
-  return [{ ...options, offline: options.offline || !online }, change]
+    setOptions((current) => ({ ...next, offline: online ? next.offline : (current ?? initial).offline }))
+  return [{ ...shown, offline: shown.offline || !online }, change]
 }
 
 /** Lance une analyse, puis ouvre son écran (`/analyses/{id}`). */
@@ -90,9 +97,13 @@ function opened(
   void navigate(`/analyses/${scan.id}`)
 }
 
-/** Relance une analyse : même chemin, mêmes options (`overrides` en plus). */
+/**
+ * Relance une analyse : même chemin, mêmes options (`overrides` en plus). Les réglages de la
+ * personne (paquets ignorés, sélection) sont ceux du moment : le serveur les ajoute.
+ */
 export function rescanRequest(scan: ScanSummary, overrides: Partial<ScanOptions> = {}): ScanRequest {
-  return { path: scan.source, ...scan.options, ...overrides }
+  const { dev, transitive, include_tests, offline, cache } = { ...scan.options, ...overrides }
+  return { path: scan.source, dev, transitive, include_tests, offline, cache }
 }
 
 /** Relance l'analyse d'un dépôt : jamais hors ligne (tout vient de la forge). */

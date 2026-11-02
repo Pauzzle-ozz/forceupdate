@@ -28,6 +28,7 @@ from forceupdate.forges.accounts import Accounts
 from forceupdate.web import security
 from forceupdate.web.connections import Connections
 from forceupdate.web.jobs import Jobs, Recent
+from forceupdate.web.preferences import UserPreferences
 from forceupdate.web.proposals import Proposals
 from forceupdate.web.repositories import Repositories
 from forceupdate.web.routes import (
@@ -38,6 +39,7 @@ from forceupdate.web.routes import (
     proposals,
     repositories,
     scans,
+    settings,
     updates,
 )
 
@@ -67,24 +69,28 @@ class Settings:
     static_dir: Path = STATIC_DIR
 
 
-def create_app(settings: Settings) -> FastAPI:
+def create_app(server: Settings) -> FastAPI:
     """L'application, prête à servir."""
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        jobs = Jobs(recent=Recent(settings.state_dir / "recent.json"))
+        jobs = Jobs(recent=Recent(server.state_dir / "recent.json"))
         jobs.start()
         app.state.jobs = jobs
+        app.state.preferences = preferences = UserPreferences()
         app.state.connections = Connections(
-            accounts=Accounts(settings.state_dir / "accounts.json"), port=settings.port
+            accounts=Accounts(server.state_dir / "accounts.json"), port=server.port
         )
-        app.state.repositories = Repositories(jobs=jobs, connections=app.state.connections)
+        app.state.repositories = Repositories(
+            jobs=jobs, connections=app.state.connections, preferences=preferences
+        )
         app.state.proposals = Proposals(jobs=jobs, repositories=app.state.repositories)
         try:
             yield
         finally:
             await app.state.connections.close()
             await jobs.close()
+            preferences.close()
 
     app = FastAPI(
         title="forceupdate",
@@ -97,10 +103,10 @@ def create_app(settings: Settings) -> FastAPI:
         # operationId : le nom de la fonction (start_scan…), pour le client généré du front.
         generate_unique_id_function=lambda route: route.name,
     )
-    for module in (fs, scans, updates, files, accounts, repositories, proposals, oauth):
+    for module in (fs, scans, updates, files, accounts, repositories, proposals, settings, oauth):
         app.include_router(module.router)
     app.add_middleware(
-        security.Guard, token=settings.token, port=settings.port, returns=oauth.RETURN_PATHS
+        security.Guard, token=server.token, port=server.port, returns=oauth.RETURN_PATHS
     )
 
     @app.get("/{path:path}", include_in_schema=False)
@@ -109,13 +115,13 @@ def create_app(settings: Settings) -> FastAPI:
         adresses). Sans front construit, une ligne de texte."""
         if path == "api" or path.startswith("api/"):
             raise HTTPException(404, "Route inconnue.")
-        index = settings.static_dir / "index.html"
+        index = server.static_dir / "index.html"
         if not index.is_file():
             return PlainTextResponse(
                 f"forceupdate {__version__} : l'interface n'est pas encore construite. "
                 "L'API répond sous /api/.\n"
             )
-        found = _static_file(settings.static_dir, path)
+        found = _static_file(server.static_dir, path)
         return FileResponse(found or index)
 
     return app

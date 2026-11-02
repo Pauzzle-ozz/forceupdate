@@ -2399,6 +2399,170 @@
           }
         }
       }
+    },
+    "/api/settings": {
+      "get": {
+        "tags": [
+          "réglages"
+        ],
+        "summary": "Get Settings",
+        "description": "Les réglages de la personne, leurs valeurs par défaut, et l'état du cache.",
+        "operationId": "get_settings",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsDocument"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "réglages"
+        ],
+        "summary": "Save Settings",
+        "description": "Enregistre les réglages, tous à la fois : ils valent pour les analyses, les plans et les\nPR qui suivent, et pour la ligne de commande. Une valeur refusée : rien n'est enregistré, et\nla réponse dit lesquelles (``fields``).",
+        "operationId": "save_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsDocument"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Des valeurs refusées, champ par champ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsRejected"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Impossible dans l'état actuel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cache": {
+      "delete": {
+        "tags": [
+          "réglages"
+        ],
+        "summary": "Clear Cache",
+        "description": "Vide le cache disque (versions des paquets, failles, fins de vie) : la prochaine analyse\nredemande tout au réseau.",
+        "operationId": "clear_cache",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CacheState"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2711,6 +2875,68 @@
         ],
         "title": "BatchStatus"
       },
+      "CacheState": {
+        "properties": {
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "entries": {
+            "type": "integer",
+            "title": "Entries"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "oldest": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest"
+          },
+          "newest": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Newest"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "enabled",
+          "entries",
+          "size",
+          "oldest",
+          "newest"
+        ],
+        "title": "CacheState",
+        "description": "Le cache disque : où il est, ce qu'il contient (``net.cache.Cache.stats``)."
+      },
       "ChangeRequest": {
         "properties": {
           "number": {
@@ -2812,6 +3038,62 @@
         ],
         "title": "CodeReading",
         "description": "Comment un fichier de code choisi seul est analysé (E28)."
+      },
+      "Configuration": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "ignore": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ignore",
+            "default": []
+          },
+          "exclude": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Exclude",
+            "default": []
+          },
+          "include_tests": {
+            "type": "boolean",
+            "title": "Include Tests",
+            "default": false
+          },
+          "selection": {
+            "items": {
+              "$ref": "#/components/schemas/SelectionRule"
+            },
+            "type": "array",
+            "title": "Selection",
+            "default": []
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Problems",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "ignore",
+          "exclude",
+          "include_tests",
+          "selection",
+          "problems"
+        ],
+        "title": "Configuration",
+        "description": "La configuration du projet analysé (E29) : un ``forceupdate.toml`` à la racine de la\nsource, ou la table ``[tool.forceupdate]`` de son ``pyproject.toml`` (voir ``config``)."
       },
       "ConnectMethod": {
         "type": "string",
@@ -2935,6 +3217,17 @@
               }
             ],
             "title": "Imported"
+          },
+          "ignored": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ignored"
           }
         },
         "type": "object",
@@ -2951,7 +3244,8 @@
           "location",
           "unverifiable_reason",
           "excluded",
-          "imported"
+          "imported",
+          "ignored"
         ],
         "title": "Dependency",
         "description": "Une dépendance d'un projet.\n\nUne directe vient du manifeste (``package.json``, ``pyproject.toml``…). Une\ntransitive vient seulement du lockfile : ``direct=False``, sans ``location``. Sauf pour Go :\n``go.mod`` écrit aussi les indirectes (``// indirect``), avec leur emplacement."
@@ -3033,6 +3327,16 @@
               }
             ]
           },
+          "config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Configuration"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "options": {
             "anyOf": [
               {
@@ -3085,6 +3389,7 @@
           "projects",
           "ignored_manifests",
           "code",
+          "config",
           "options",
           "scanned_at",
           "oldest_data",
@@ -3380,6 +3685,37 @@
         ],
         "title": "EventKind",
         "description": "Les étapes d'une analyse, puis celles d'une mise à jour, dans l'ordre où elles\narrivent."
+      },
+      "FieldError": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "index",
+          "message"
+        ],
+        "title": "FieldError",
+        "description": "Une valeur refusée : son champ (``ignore``, ``lock_timeout``…), son rang dans une liste,\net pourquoi."
       },
       "FileDiff": {
         "properties": {
@@ -4124,6 +4460,66 @@
         ],
         "title": "PlanRequest",
         "description": "Une sélection à préparer, sur le rapport d'une analyse finie."
+      },
+      "Preferences": {
+        "properties": {
+          "ignore": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ignore",
+            "default": []
+          },
+          "include_tests": {
+            "type": "boolean",
+            "title": "Include Tests",
+            "default": false
+          },
+          "selection": {
+            "items": {
+              "$ref": "#/components/schemas/SelectionRule"
+            },
+            "type": "array",
+            "title": "Selection",
+            "default": []
+          },
+          "excluded_repositories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Excluded Repositories",
+            "default": []
+          },
+          "lock_timeout": {
+            "type": "integer",
+            "title": "Lock Timeout",
+            "default": 600
+          },
+          "clone_timeout": {
+            "type": "integer",
+            "title": "Clone Timeout",
+            "default": 600
+          },
+          "rust_default_toolchain": {
+            "type": "boolean",
+            "title": "Rust Default Toolchain",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "Preferences",
+        "description": "Les réglages de la personne ; les valeurs par défaut sont celles de forceupdate.",
+        "required": [
+          "ignore",
+          "include_tests",
+          "selection",
+          "excluded_repositories",
+          "lock_timeout",
+          "clone_timeout",
+          "rust_default_toolchain"
+        ]
       },
       "Project": {
         "properties": {
@@ -5599,6 +5995,22 @@
             "type": "boolean",
             "title": "Cache",
             "default": true
+          },
+          "ignore": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ignore",
+            "default": []
+          },
+          "selection": {
+            "items": {
+              "$ref": "#/components/schemas/SelectionRule"
+            },
+            "type": "array",
+            "title": "Selection",
+            "default": []
           }
         },
         "type": "object",
@@ -5609,7 +6021,9 @@
           "dev",
           "transitive",
           "offline",
-          "cache"
+          "cache",
+          "ignore",
+          "selection"
         ]
       },
       "ScanRequest": {
@@ -5770,6 +6184,87 @@
         "title": "Scope",
         "description": "À quoi sert une dépendance dans son projet."
       },
+      "SelectionInput": {
+        "properties": {
+          "ecosystem": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Ecosystem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Gap"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "security_only": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Security Only"
+          }
+        },
+        "type": "object",
+        "title": "SelectionInput",
+        "description": "La sélection par défaut, pour un écosystème ou pour tous (comme ``models.SelectionRule``,\nqui ne sert qu'en sortie)."
+      },
+      "SelectionRule": {
+        "properties": {
+          "ecosystem": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Ecosystem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Gap"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "security_only": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Security Only"
+          }
+        },
+        "type": "object",
+        "title": "SelectionRule",
+        "description": "La sélection par défaut, ce que le plan pré-coche (brief, décision n°12), pour un\nécosystème ou pour tous (E29 : ``[selection]`` de la configuration, ``update.planner.\nRules``). Un champ à ``None`` n'est pas dit : il vient d'ailleurs (``planner.rules``).",
+        "required": [
+          "ecosystem",
+          "level",
+          "security_only"
+        ]
+      },
       "SendRequest": {
         "properties": {
           "repositories": {
@@ -5786,6 +6281,110 @@
         ],
         "title": "SendRequest",
         "description": "Les dépôts d'un récapitulatif à envoyer : rien ne part sans cette validation."
+      },
+      "SettingsDocument": {
+        "properties": {
+          "values": {
+            "$ref": "#/components/schemas/Preferences"
+          },
+          "defaults": {
+            "$ref": "#/components/schemas/Preferences"
+          },
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Problems"
+          },
+          "cache": {
+            "$ref": "#/components/schemas/CacheState"
+          }
+        },
+        "type": "object",
+        "required": [
+          "values",
+          "defaults",
+          "file",
+          "problems",
+          "cache"
+        ],
+        "title": "SettingsDocument",
+        "description": "Les réglages de la personne, et le cache."
+      },
+      "SettingsRejected": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail",
+          "fields"
+        ],
+        "title": "SettingsRejected",
+        "description": "Des réglages refusés : rien n'est enregistré."
+      },
+      "SettingsRequest": {
+        "properties": {
+          "ignore": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ignore"
+          },
+          "include_tests": {
+            "type": "boolean",
+            "title": "Include Tests",
+            "default": false
+          },
+          "selection": {
+            "items": {
+              "$ref": "#/components/schemas/SelectionInput"
+            },
+            "type": "array",
+            "title": "Selection"
+          },
+          "excluded_repositories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Excluded Repositories"
+          },
+          "lock_timeout": {
+            "type": "integer",
+            "title": "Lock Timeout",
+            "default": 600
+          },
+          "clone_timeout": {
+            "type": "integer",
+            "title": "Clone Timeout",
+            "default": 600
+          },
+          "rust_default_toolchain": {
+            "type": "boolean",
+            "title": "Rust Default Toolchain",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "SettingsRequest",
+        "description": "Les réglages de la personne à enregistrer, tous (``preferences.Preferences``)."
       },
       "Severity": {
         "type": "string",

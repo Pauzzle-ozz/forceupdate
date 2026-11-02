@@ -853,6 +853,27 @@ def test_a_tool_that_does_not_finish(make_tree: MakeTree, fake_tools: Tools) -> 
     assert (root / "package.json").read_text(encoding="utf-8") == PACKAGE_JSON
 
 
+def test_the_delay_of_the_tools_comes_from_the_settings(
+    make_tree: MakeTree, fake_tools: Tools
+) -> None:
+    root = npm_project(make_tree)
+    tools = fake_tools("npm")
+
+    def npm(call: ToolCall) -> None:
+        raise subprocess.TimeoutExpired(call.program, call.options["timeout"])
+
+    tools.handlers["npm"] = npm
+    source, report = analyse(root)
+    choice = wanted(project_of(report), "debug", "4.3.7", new="4.3.7")
+    changes = writers.prepare(root, [choice])
+    (job,) = lockfiles.plan(source, report, changes, lockfiles.Tools(timeout=45))
+    assert job.timeout == 45
+    writers.write(root, changes)
+    (result,) = lockfiles.regenerate(source, report, changes, [job])
+    assert tools.calls[0].options["timeout"] == 45
+    assert result.error is not None and result.error.endswith("n'a pas fini en 45 s.")
+
+
 def test_an_interruption_puts_every_file_back(make_tree: MakeTree, fake_tools: Tools) -> None:
     root = npm_project(make_tree)
     tools = fake_tools("npm")
@@ -1242,6 +1263,54 @@ def test_cargo_says_what_it_takes_from_the_project(tmp_path: Path, fake_tools: T
         "cargo lit .cargo/config.toml : les registres et les sources qu'il désigne, et les "
         "programmes d'identification (credential-provider) qu'il lance pour un registre privé.",
     )
+
+
+def test_cargo_with_the_default_toolchain_of_the_person(tmp_path: Path, fake_tools: Tools) -> None:
+    """Le réglage « chaîne d'outils Rust » : ``RUSTUP_TOOLCHAIN`` passe devant le
+    ``rust-toolchain.toml`` du projet (vérifié avec rustup 1.29), sans rien installer."""
+    root = cargo_copy(tmp_path)
+    (root / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.70"\n', encoding="utf-8")
+    tools = fake_tools("cargo", "rustup")
+    tools.handlers["cargo"] = FakeCargo(root)
+    tools.handlers["rustup"] = lambda call: (0, "stable-x86_64-pc-windows-msvc (default)\n", "")
+    source, report = analyse(root)
+    choice = wanted(project_of(report), "anyhow", "1.0.104")
+    changes = writers.prepare(root, [choice])
+    asked = lockfiles.Tools(rust_default_toolchain=True)
+    (job,) = lockfiles.plan(source, report, changes, asked)
+    assert job.toolchain == "stable-x86_64-pc-windows-msvc"
+    assert job.warnings == (
+        "rust-toolchain.toml n'est pas suivi : cargo tourne avec la chaîne d'outils par défaut, "
+        "stable-x86_64-pc-windows-msvc (réglage « chaîne d'outils Rust ») ; plus ancienne que ce "
+        "que demande le projet, la régénération peut échouer.",
+    )
+    writers.write(root, changes)
+    (result,) = lockfiles.regenerate(source, report, changes, [job])
+    assert result.status is LockStatus.REGENERATED, result.error
+    cargo = [call for call in tools.calls if call.program == "cargo"]
+    assert cargo and all(
+        c.env["RUSTUP_TOOLCHAIN"] == "stable-x86_64-pc-windows-msvc" for c in cargo
+    )
+    assert [c.arguments for c in tools.calls if c.program == "rustup"] == [["default"]]
+
+
+def test_without_a_default_toolchain_rustup_chooses(tmp_path: Path, fake_tools: Tools) -> None:
+    root = cargo_copy(tmp_path)
+    (root / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.70"\n', encoding="utf-8")
+    tools = fake_tools("cargo", "rustup")
+    tools.handlers["rustup"] = lambda call: (1, "", "error: no default toolchain configured\n")
+    source, report = analyse(root)
+    changes = writers.prepare(root, [wanted(project_of(report), "anyhow", "1.0.104")])
+    (job,) = lockfiles.plan(source, report, changes, lockfiles.Tools(rust_default_toolchain=True))
+    assert job.toolchain is None
+    assert job.warnings[0].endswith(
+        "même un dossier du projet (réglage « chaîne d'outils Rust » : rustup n'en a pas par "
+        "défaut)."
+    )
+    # Sans le réglage, rustup n'est même pas lancé.
+    tools.calls.clear()
+    (job,) = lockfiles.plan(source, report, changes)
+    assert job.toolchain is None and tools.calls == []
 
 
 def test_a_cargo_failure_puts_every_file_back(tmp_path: Path, fake_tools: Tools) -> None:

@@ -46,13 +46,18 @@ from forceupdate.sources.base import SourceError
 from forceupdate.sources.forge import ClonedSource, ForgeSource
 from forceupdate.sources.local import LocalSource
 from forceupdate.update import forge as forge_update
-from forceupdate.update import local, planner
+from forceupdate.update import local, lockfiles, planner
 from forceupdate.update.forge import BRANCH, Delivered, Outcome, Step
 from forceupdate.update.local import Prepared
 from forceupdate.web import schemas
 from forceupdate.web.connections import failure
 from forceupdate.web.jobs import Jobs, Scan
-from forceupdate.web.repositories import Repositories, RepositoryError, refused_callback
+from forceupdate.web.repositories import (
+    EXCLUDED,
+    Repositories,
+    RepositoryError,
+    refused_callback,
+)
 from forceupdate.web.routes import sentence
 from forceupdate.web.schemas import (
     ProposalStatus,
@@ -236,6 +241,8 @@ class Proposals:
         scan = self.repositories.jobs.latest(repo)
         item = Proposed(account=account, repo=repo, scan=scan)
         item.reason = _skipped(repo, scan)
+        if item.reason is None and self.repositories.hidden_reason(repo) == EXCLUDED:
+            item.reason = f"{EXCLUDED} : pas de PR"
         if item.reason is not None:
             return item
         assert scan is not None and scan.report is not None
@@ -246,7 +253,9 @@ class Proposals:
             return item
         item.selection = dict(planner.select(report) if selection is None else selection)
         try:
-            prepared = await asyncio.to_thread(_prepare, source, report, item.selection)
+            prepared = await asyncio.to_thread(
+                _prepare, source, report, item.selection, self._tools()
+            )
         except ValueError as err:
             raise RepositoryError(400, f"{repo.full_name} : {sentence(str(err))}") from None
         except SourceError:
@@ -347,6 +356,7 @@ class Proposals:
                 run=self.jobs.in_updates,
                 on_step=lambda step: post(setattr, item, "step", step),
                 on_event=lambda event: post(setattr, item, "progress", event),
+                tools=self._tools(),
             )
         except Exception as err:  # jamais un dépôt n'arrête les autres
             logger.error("envoi de %s en échec", item.repo.full_name, exc_info=err)
@@ -379,6 +389,10 @@ class Proposals:
                     item.state, item.error = ProposedState.FAILED, proposal.error
         proposal.status, proposal.finished_at = ProposalStatus.DONE, _now()
 
+    def _tools(self) -> lockfiles.Tools:
+        store = self.repositories.preferences
+        return store.tools if store is not None else lockfiles.DEFAULT_TOOLS
+
     def _forget_old(self) -> None:
         finished = sorted(
             (p for p in self.proposals.values() if p.status is not ProposalStatus.RUNNING),
@@ -389,10 +403,13 @@ class Proposals:
 
 
 def _prepare(
-    source: ForgeSource | ClonedSource, report: Report, selection: dict[str, str]
+    source: ForgeSource | ClonedSource,
+    report: Report,
+    selection: dict[str, str],
+    tools: lockfiles.Tools,
 ) -> Prepared:
     """La sélection préparée sur les fichiers de l'analyse (dans un thread)."""
-    return local.prepare(LocalSource(source.root), report, selection)
+    return local.prepare(LocalSource(source.root), report, selection, tools=tools)
 
 
 def _skipped(repo: Repository, scan: Scan | None) -> str | None:

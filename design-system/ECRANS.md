@@ -473,6 +473,32 @@ récapitulatif, et retrouver les liens.
 | Hors ligne | Rien ne change (réglages locaux) |
 | Non concluant | Sans objet |
 
+- **Fait à E29** (`frontend/src/screens/settings/`, `GET` et `PUT /api/settings`,
+  `DELETE /api/cache`) : un formulaire, six sections titrées (`h2`) :
+  - *Sélection par défaut* : trois boutons radio (« Correctifs », « Correctifs et mineures
+    (par défaut) », « Correctifs, mineures et majeures », chacun avec son exemple en chasse fixe),
+    l'interrupteur « Seulement les corrections de failles » ; replié, « Régler un écosystème à
+    part » : une ligne par écosystème (« Python (PyPI) »…), deux listes déroulantes (« Comme les
+    autres » par défaut), dépliée d'office s'il y en a un de réglé ;
+  - *Paquets et versions ignorés*, *Dépôts exclus* : une zone de texte en chasse fixe, une valeur
+    par ligne, l'aide avec des exemples ; une valeur refusée par le serveur se dit sous le champ
+    avec sa ligne (« Ligne 3 : … »), le focus va au premier champ refusé ;
+  - *Analyse* : « dossiers de tests et d'exemples » (l'option d'analyse de l'accueil et de
+    l'écran 2 la suit tant qu'on n'y a pas touché) ;
+  - *Outils* : les deux délais (champs numériques, en secondes), l'interrupteur Rust ;
+  - en bas, « Enregistrer » (l'action principale), « Valeurs par défaut » (discret : remplit le
+    formulaire, sans enregistrer), l'état (« Modifications non enregistrées. », puis
+    « Enregistré : … », `role="status"`), le chemin du fichier ; un refus : une alerte au-dessus
+    du bouton.
+  Hors du formulaire : *Cache* (une carte : contenu, dates, fichier ; « Vider le cache… »,
+  contour rouge, confirmé par un `<dialog>` natif, désactivé pour un cache vide) et *Thème*
+  (trois boutons radio, appliqué tout de suite, gardé dans le navigateur comme le bouton de
+  l'en-tête). Des réglages en partie illisibles : un avertissement en tête.
+- **Le rapport (écran 4) le dit aussi** : sous la source, « Configuration du projet :
+  `forceupdate.toml` : ignorés : … ; dossiers exclus : … ; sélection par défaut réglée. », un
+  avertissement pour ses valeurs écartées, et « Réglages : ignorés : … » (lien vers l'écran 9)
+  quand les réglages de la personne ont joué. Un paquet ignoré a sa remarque dans « Remarques ».
+
 ---
 
 ## Ce que l'API n'a pas encore
@@ -487,7 +513,7 @@ Relevé en concevant les écrans ; ajouté au plan (E13 ne touche pas à l'API) 
 | Comptes : lister, connecter (OAuth, device flow, token, `gh`), déconnecter, droits | 6 | fait (E16) |
 | Dépôts : drapeaux (archivé, fork, vide, privé, droit de push), organisations qui restreignent l'accès, requêtes restantes ; analyses groupées avec progression par dépôt et annulation ; **synthèse multi-dépôts calculée par le serveur** | 7 | fait (E17) ; les PR ouvertes : fait (E18) |
 | PR : récapitulatif avant envoi (par dépôt : PR existante, sélection, lockfiles), envoi suivi, liens | 8 | fait (E18) |
-| Réglages et vidage du cache | 9 | E29 (déjà prévu) |
+| Réglages et vidage du cache | 9 | fait (E29) |
 
 Rien d'autre ne manque pour les écrans 1 à 5 : la progression par projet n'existe pas
 dans l'API et n'est pas nécessaire (écran 3) ; hors ligne, durées et temps écoulé se

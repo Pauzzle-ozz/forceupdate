@@ -477,7 +477,7 @@ son ou nom de personnage repris.
 - Majeure pré-cochée ; « Appliquer » sans diff ni récapitulatif.
 - Tableau qui déborde de l'écran sur mobile.
 
-## Checklist avant livraison (E14, E15, E31)
+## Checklist avant livraison (E14, E15, E35)
 
 - [ ] Aucun emoji ; icônes Lucide seulement, tailles des tokens.
 - [ ] `cursor: pointer` sur tout ce qui se clique ; survols de 150–300 ms.

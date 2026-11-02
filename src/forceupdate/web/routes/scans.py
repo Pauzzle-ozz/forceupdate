@@ -11,13 +11,16 @@ from forceupdate.sources.base import SourceError
 from forceupdate.sources.local import LocalSource
 from forceupdate.web import sse
 from forceupdate.web.routes import CurrentJobs, errors, find_scan, respond, sentence
+from forceupdate.web.routes.settings import CurrentPreferences
 from forceupdate.web.schemas import ScanDetail, ScanRequest, ScanSummary, SourceKind
 
 router = APIRouter(prefix="/api/scans", tags=["analyses"])
 
 
 @router.post("", status_code=202, response_model=ScanSummary, responses=errors(400, 401, 403, 404))
-async def start_scan(body: ScanRequest, jobs: CurrentJobs) -> JSONResponse:
+async def start_scan(
+    body: ScanRequest, jobs: CurrentJobs, store: CurrentPreferences
+) -> JSONResponse:
     """Lance l'analyse d'un dossier ou d'un fichier de l'ordinateur, en tâche de fond. La
     progression se suit sur ``…/events``, le rapport se lit sur ``GET /api/scans/{id}``."""
     path = Path(body.path)
@@ -28,7 +31,8 @@ async def start_scan(body: ScanRequest, jobs: CurrentJobs) -> JSONResponse:
     except SourceError as err:
         raise HTTPException(404, sentence(str(err))) from err
     kind = SourceKind.FOLDER if source.file is None else SourceKind.FILE
-    scan = jobs.start_scan(source, body.options(), kind=kind, label=source.origin)
+    options = body.options(store.current)
+    scan = jobs.start_scan(source, options, kind=kind, label=source.origin)
     await asyncio.to_thread(jobs.recent.add, source.origin)
     return respond(scan.summary(), 202, location=f"/api/scans/{scan.id}")
 

@@ -37,10 +37,14 @@ __all__ = [
 
 
 def selected(dependency: Dependency, options: ScanOptions) -> bool:
-    """Vrai si l'analyse vérifie ``dependency`` : une directe, ou une indirecte avec
-    ``options.transitive`` ; de développement seulement avec ``options.dev``."""
-    return (dependency.direct or options.transitive) and (
-        options.dev or dependency.scope is not Scope.DEV
+    """Vrai si l'analyse vérifie ``dependency`` auprès de son registre : une directe, ou une
+    indirecte avec ``options.transitive`` ; de développement seulement avec ``options.dev`` ;
+    jamais un paquet ignoré (``Dependency.ignored``, E29), dont seules les failles sont
+    cherchées."""
+    return (
+        dependency.ignored is None
+        and (dependency.direct or options.transitive)
+        and (options.dev or dependency.scope is not Scope.DEV)
     )
 
 

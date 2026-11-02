@@ -20,6 +20,7 @@ from forceupdate.checks.priority import NOT_TO_UPDATE
 from forceupdate.models import (
     CodeFile,
     CodeReading,
+    Configuration,
     Dependency,
     EditKind,
     Finding,
@@ -100,6 +101,22 @@ def code_reading(code: CodeFile) -> str:
         f"Fichier de code {code.path}, sans projet autour : ses imports, sans version. Les "
         "failles ne sont pas vérifiables sans version."
     )
+
+
+def configuration(config: Configuration) -> str:
+    """Ce que fait la configuration du projet (E29), en une phrase : « Configuration du projet :
+    forceupdate.toml (2 règles ignore, 1 dossier exclu). »"""
+    parts = []
+    if config.ignore:
+        parts.append(plural(len(config.ignore), "règle ignore"))
+    if config.exclude:
+        parts.append(plural(len(config.exclude), "dossier exclu"))
+    if config.include_tests:
+        parts.append("dossiers de tests analysés")
+    if config.selection:
+        parts.append("sélection par défaut réglée")
+    detail = f" ({', '.join(parts)})" if parts else ""
+    return f"Configuration du projet : {config.file}{detail}."
 
 
 def runtimes(project: Project) -> list[str]:
@@ -183,7 +200,12 @@ def plural(count: int, word: str) -> str:
     return f"{count} {word}"
 
 
-_PLURALS = {"fin de vie": "fins de vie", "version non fixée": "versions non fixées"}
+_PLURALS = {
+    "fin de vie": "fins de vie",
+    "version non fixée": "versions non fixées",
+    "règle ignore": "règles ignore",
+    "dossier exclu": "dossiers exclus",
+}
 
 
 def format_date(when: datetime) -> str:
@@ -340,6 +362,7 @@ def rows(project: Project, report: Report, *, direct: bool = True) -> list[Row]:
         if (
             direct
             and report.options is not None
+            and dependency.ignored is None
             and not checks.selected(dependency, report.options)
         ):
             continue
@@ -350,7 +373,10 @@ def rows(project: Project, report: Report, *, direct: bool = True) -> list[Row]:
     found = []
     for group in groups.values():
         row = _row(group, project.findings, several_files, checked=report.options is not None)
-        if direct or row.findings:
+        # Un paquet ignoré (E29) n'est montré que pour ses failles : sans constat, il n'est pas
+        # « à jour », il n'est pas vérifié.
+        ignored = all(dependency.ignored is not None for dependency in group)
+        if (direct and not ignored) or row.findings:
             found.append(row)
     return sorted(found, key=_row_order)
 

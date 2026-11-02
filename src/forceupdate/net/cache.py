@@ -16,6 +16,7 @@ s'en servir en même temps.
   fait jamais échouer une analyse.
 """
 
+import contextlib
 import enum
 import json
 import logging
@@ -76,6 +77,22 @@ class CacheEntry:
     """Quand elle a été rangée (UTC) : la date des données."""
     fresh: bool
     """Faux pour une entrée périmée, rendue seulement parce que ``stale_ok`` le permettait."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class CacheStats:
+    """Ce que contient le cache (``Cache.stats``)."""
+
+    path: Path | None
+    """Le fichier ; ``None`` pour un cache désactivé dès le départ."""
+    enabled: bool
+    """Faux si le cache est désactivé (au départ, ou après une erreur du disque)."""
+    entries: int
+    size: int
+    """La place prise sur le disque, en octets (la base et son journal)."""
+    oldest: datetime | None
+    """La plus ancienne entrée (UTC) ; ``None`` pour un cache vide."""
+    newest: datetime | None
 
 
 def default_cache_path() -> Path:
@@ -149,9 +166,33 @@ class Cache:
             )
 
     def clear(self) -> None:
-        """Vide le cache."""
+        """Vide le cache, et rend la place sur le disque (``VACUUM``, puis le journal WAL
+        ramené à zéro)."""
         with self._lock:
             self._execute("DELETE FROM entries", (), commit=True)
+            self._execute("VACUUM", ())
+            self._execute("PRAGMA wal_checkpoint(TRUNCATE)", ())
+
+    def stats(self) -> CacheStats:
+        """Ce que contient le cache : nombre d'entrées, dates, taille des fichiers (écran
+        Réglages, E29)."""
+        with self._lock:
+            row = self._execute("SELECT COUNT(*), MIN(stored_at), MAX(stored_at) FROM entries", ())
+            enabled = self._db is not None
+        entries, oldest, newest = row if row is not None else (0, None, None)
+        size = 0
+        if self.path is not None:
+            for suffix in ("", "-wal", "-shm"):
+                with contextlib.suppress(OSError):
+                    size += self.path.with_name(self.path.name + suffix).stat().st_size
+        return CacheStats(
+            path=self.path,
+            enabled=enabled,
+            entries=entries or 0,
+            size=size,
+            oldest=datetime.fromtimestamp(oldest, UTC) if oldest is not None else None,
+            newest=datetime.fromtimestamp(newest, UTC) if newest is not None else None,
+        )
 
     def close(self) -> None:
         with self._lock:

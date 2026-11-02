@@ -195,6 +195,10 @@ class Dependency:
     qu'écrit : ``cv2`` (le paquet ``opencv-python``), ``google.cloud.storage``, ``lodash``,
     ``golang.org/x/text/language`` (le module ``golang.org/x/text``) ; ``None`` pour une
     dépendance déclarée. Sans contrainte ni emplacement : rien à réécrire."""
+    ignored: str | None = None
+    """La règle qui ignore le paquet et d'où elle vient (E29 : ``lodash (forceupdate.toml)``) :
+    il n'est pas vérifié auprès de son registre, et n'a jamais de mise à jour ; ses failles
+    restent cherchées. ``None`` s'il ne l'est pas (voir ``config``)."""
 
     @property
     def verifiable(self) -> bool:
@@ -543,6 +547,40 @@ class CodeFile:
 
 
 @dataclass(frozen=True, kw_only=True)
+class SelectionRule:
+    """La sélection par défaut, ce que le plan pré-coche (brief, décision n°12), pour un
+    écosystème ou pour tous (E29 : ``[selection]`` de la configuration, ``update.planner.
+    Rules``). Un champ à ``None`` n'est pas dit : il vient d'ailleurs (``planner.rules``)."""
+
+    ecosystem: Ecosystem | None = None
+    """L'écosystème visé ; ``None`` pour tous."""
+    level: Gap | None = None
+    """L'écart le plus grand pré-coché : ``patch``, ``minor`` (par défaut) ou ``major``."""
+    security_only: bool | None = None
+    """Seulement les corrections de failles."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class Configuration:
+    """La configuration du projet analysé (E29) : un ``forceupdate.toml`` à la racine de la
+    source, ou la table ``[tool.forceupdate]`` de son ``pyproject.toml`` (voir ``config``)."""
+
+    file: str
+    """Le fichier lu, relatif à la source (``forceupdate.toml``, ``pyproject.toml``)."""
+    ignore: tuple[str, ...] = ()
+    """Paquets (``lodash``, ``@types/*``) et versions (``django@>=5``) ignorés."""
+    exclude: tuple[str, ...] = ()
+    """Dossiers jamais lus (``legacy``, ``packages/*/examples``)."""
+    include_tests: bool = False
+    """Analyser aussi les projets des dossiers de tests et d'exemples."""
+    selection: tuple[SelectionRule, ...] = ()
+    """La sélection par défaut ; elle prime sur celle des réglages de la personne."""
+    problems: tuple[str, ...] = ()
+    """Ce qui n'a pas pu être lu (une phrase chacun) : la valeur est écartée, l'analyse
+    continue."""
+
+
+@dataclass(frozen=True, kw_only=True)
 class ScanOptions:
     """Ce que vérifie une analyse."""
 
@@ -558,6 +596,11 @@ class ScanOptions:
     """Hors ligne : seulement le cache, même périmé ; le reste est « non concluant »."""
     cache: bool = True
     """Lire et écrire le cache disque ; faux pour « sans cache »."""
+    ignore: tuple[str, ...] = ()
+    """Paquets et versions ignorés par la personne (ses réglages, E29), en plus de ceux de la
+    configuration du projet (``Report.config``)."""
+    selection: tuple[SelectionRule, ...] = ()
+    """La sélection par défaut de la personne (ses réglages) ; celle du projet prime."""
 
 
 @dataclass(kw_only=True)
@@ -575,6 +618,9 @@ class Report:
     code: CodeFile | None = None
     """Le fichier de code choisi, et comment il est analysé (E28) ; ``None`` pour un dossier,
     un manifeste, un lockfile ou un dépôt."""
+    config: Configuration | None = None
+    """La configuration du projet (``forceupdate.toml``, ``[tool.forceupdate]``) ; ``None`` s'il
+    n'en a pas."""
     options: ScanOptions | None = None
     """Ce qui a été vérifié ; ``None`` si les dépendances n'ont pas été vérifiées auprès des
     registres (``engine.inventory``)."""

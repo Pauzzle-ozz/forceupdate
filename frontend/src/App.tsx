@@ -1,5 +1,4 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Settings } from 'lucide-react'
 import { useState } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import { Choose } from '@/screens/Choose'
@@ -8,10 +7,11 @@ import { Home } from '@/screens/Home'
 import { NewProposalPage, ProposalPage } from '@/screens/proposals/ProposalPage'
 import { ScanPage } from '@/screens/ScanPage'
 import { RepositoriesPage } from '@/screens/repositories/RepositoriesPage'
+import { SettingsPage } from '@/screens/settings/SettingsPage'
 import { PlanPage } from '@/screens/update/PlanPage'
 import { UpdatePage } from '@/screens/update/UpdatePage'
 import { AppShell } from '@/shell/AppShell'
-import { ComingSoon, NotFound } from '@/shell/NotFound'
+import { NotFound } from '@/shell/NotFound'
 
 export function createQueryClient() {
   return new QueryClient({
@@ -38,14 +38,7 @@ export function AppRoutes() {
         <Route path="comptes" element={<AccountsPage />} />
         <Route path="pr" element={<NewProposalPage />} />
         <Route path="pr/:id" element={<ProposalPage />} />
-        <Route
-          path="reglages"
-          element={
-            <ComingSoon title="Réglages" icon={Settings}>
-              <p>Les réglages ne sont pas encore disponibles : les options se choisissent à chaque analyse.</p>
-            </ComingSoon>
-          }
-        />
+        <Route path="reglages" element={<SettingsPage />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

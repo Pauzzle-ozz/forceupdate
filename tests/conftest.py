@@ -4,7 +4,7 @@ Les tests qui touchent le vrai réseau sont marqués ``network`` : ils sont saut
 par défaut, et lancés avec ``--run-network``. Les autres tournent hors ligne, sur
 des réponses HTTP enregistrées dans ``tests/fixtures/``.
 
-Six garde-fous valent pour tous les tests : le cache de l'utilisateur n'est jamais
+Sept garde-fous valent pour tous les tests : le cache de l'utilisateur n'est jamais
 touché (``Cache.default()`` en ouvre un dans le dossier du test), un test qui n'est pas
 marqué ``network`` ne peut pas ouvrir de connexion (une requête non simulée par ``respx``
 échoue au lieu de partir sur le réseau : jamais le vrai GitHub), ni lancer un vrai outil de
@@ -13,8 +13,9 @@ lockfile (npm, uv… : ``update.lockfiles`` les croit absents ; un test les simu
 ``https://`` est refusée ; les tests clonent et poussent vers des dépôts « bare » de leur
 dossier, ``fake_forge.make_remote``), aucun test n'ouvre le navigateur (``webbrowser.open``
 échoue), et aucun ne touche le trousseau du système ni ``gh`` (``keychain`` : un trousseau en
-mémoire, propre au test ; ``gh`` est absent, et le lancer échoue). Et la date du jour, qui
-décide d'une fin de vie, est celle de l'enregistrement des réponses d'endoflife.date
+mémoire, propre au test ; ``gh`` est absent, et le lancer échoue), ni les réglages de la
+personne (``user_settings`` : un fichier propre au test, E29). Et la date du jour, qui décide
+d'une fin de vie, est celle de l'enregistrement des réponses d'endoflife.date
 (``_fixed_today``).
 
 Le serveur de l'interface se teste avec ``api``, le client de test de FastAPI.
@@ -43,6 +44,7 @@ import respx
 from fastapi.testclient import TestClient
 from fixtures.record import RECORDED_ON
 
+from forceupdate import preferences
 from forceupdate.checks import eol
 from forceupdate.endoflife import BASE_URL as ENDOFLIFE
 from forceupdate.forges import git as forge_git
@@ -71,6 +73,18 @@ def _no_user_cache(
     """``Cache.default()`` ouvre un cache neuf, propre au test, jamais celui de l'utilisateur."""
     path = tmp_path_factory.mktemp("user-cache") / "cache.sqlite3"
     monkeypatch.setattr(cache_module, "default_cache_path", lambda: path)
+
+
+@pytest.fixture(autouse=True)
+def user_settings(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """Le fichier des réglages de la personne (``preferences.default_path``) : un fichier propre
+    au test, absent au départ, jamais celui de l'utilisateur. Un test y écrit ses réglages."""
+    path = tmp_path_factory.mktemp("user-settings") / "forceupdate.toml"
+    monkeypatch.setattr(preferences, "default_path", lambda: path)
+    monkeypatch.setattr(forge_git, "CLONE_TIMEOUT", forge_git.CLONE_TIMEOUT)
+    return path
 
 
 @pytest.fixture(autouse=True)

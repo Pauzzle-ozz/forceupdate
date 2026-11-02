@@ -10,12 +10,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from forceupdate.models import ScanOptions
 from forceupdate.web.repositories import Batch, Repositories, RepositoryError
 from forceupdate.web.routes import errors, respond
 from forceupdate.web.schemas import (
     BatchRequest,
     RepositoryBatch,
     RepositoryList,
+    RepositoryOptions,
     RepositoryRequest,
     ScanSummary,
 )
@@ -52,7 +54,7 @@ async def start_batch(body: BatchRequest, repositories: CurrentRepositories) -> 
     les cloner : quelques dépôts à la fois, une analyse par dépôt (``scans``), qui se suit comme
     les autres. Les dépôts vides sont sautés."""
     try:
-        batch = await repositories.start_batch(body.repositories, body.options())
+        batch = await repositories.start_batch(body.repositories, _options(body, repositories))
     except RepositoryError as err:
         raise HTTPException(err.status, str(err)) from err
     return respond(batch.document(), 202, location=f"/api/repositories/batches/{batch.id}")
@@ -88,10 +90,16 @@ async def scan_repository(
     du compte connecté à sa forge, sans token sinon (GitHub : 60 requêtes par heure). Se suit
     comme une autre analyse."""
     try:
-        scan = await repositories.start_scan(body.repository, body.options())
+        scan = await repositories.start_scan(body.repository, _options(body, repositories))
     except RepositoryError as err:
         raise HTTPException(err.status, str(err)) from err
     return respond(scan.summary(), 202, location=f"/api/scans/{scan.id}")
+
+
+def _options(body: RepositoryOptions, repositories: Repositories) -> ScanOptions:
+    """Les options de l'analyse, avec les réglages de la personne."""
+    store = repositories.preferences
+    return body.options(store.current) if store is not None else body.options()
 
 
 def _find(repositories: Repositories, batch_id: str) -> Batch:

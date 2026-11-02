@@ -21,9 +21,9 @@ from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
 from rich.text import Text
 
-from forceupdate import __version__, checks, engine
+from forceupdate import __version__, checks, engine, preferences
 from forceupdate.checks import FailOn
-from forceupdate.models import Ecosystem, Event, EventKind, Gap, ScanOptions
+from forceupdate.models import Ecosystem, Event, EventKind, Gap, ScanOptions, SelectionRule
 from forceupdate.report import json as json_report
 from forceupdate.report import markdown, plural, terminal
 from forceupdate.sources.base import SourceError
@@ -150,6 +150,16 @@ def scan(
             ),
         ),
     ] = False,
+    include_tests: Annotated[
+        bool,
+        typer.Option(
+            "--include-tests",
+            help=(
+                "Analyse aussi les projets des dossiers de tests et d'exemples (par défaut : "
+                "les réglages, ou include-tests du forceupdate.toml du projet)."
+            ),
+        ),
+    ] = False,
     offline: Annotated[
         bool,
         typer.Option(
@@ -178,7 +188,16 @@ def scan(
         source = LocalSource(path)
     except SourceError as err:
         _fail("scan", f"{err}.")
-    options = ScanOptions(dev=dev, transitive=transitive, offline=offline, cache=not no_cache)
+    settings = _preferences()
+    options = ScanOptions(
+        dev=dev,
+        transitive=transitive,
+        include_tests=include_tests or settings.include_tests,
+        offline=offline,
+        cache=not no_cache,
+        ignore=settings.ignore,
+        selection=settings.selection,
+    )
     with _ProgressBar(Console(stderr=True)) as progress:
         report = engine.scan(source, options, on_event=progress)
 
@@ -214,16 +233,17 @@ def scan(
 def update(
     path: PathArgument = Path("."),
     level: Annotated[
-        Gap,
+        Gap | None,
         typer.Option(
             "--level",
             case_sensitive=False,
             help=(
                 "Écart le plus grand choisi : patch (correctifs), minor (et mineures, par "
-                "défaut), major (et majeures, qui peuvent demander d'adapter le code)."
+                "défaut), major (et majeures, qui peuvent demander d'adapter le code). Sans "
+                "lui : la sélection du forceupdate.toml du projet, puis celle des réglages."
             ),
         ),
-    ] = Gap.MINOR,
+    ] = None,
     security_only: Annotated[
         bool,
         typer.Option("--security-only", help="Choisit seulement les corrections de failles."),
@@ -257,6 +277,16 @@ def update(
             help="Met à jour aussi les dépendances de développement (par défaut).",
         ),
     ] = True,
+    include_tests: Annotated[
+        bool,
+        typer.Option(
+            "--include-tests",
+            help=(
+                "Analyse aussi les projets des dossiers de tests et d'exemples (par défaut : "
+                "les réglages, ou include-tests du forceupdate.toml du projet)."
+            ),
+        ),
+    ] = False,
     offline: Annotated[
         bool,
         typer.Option(
@@ -295,12 +325,23 @@ def update(
         source = LocalSource(path)
     except SourceError as err:
         _fail("update", f"{err}.")
-    options = ScanOptions(dev=dev, offline=offline, cache=not no_cache)
+    settings = _preferences()
+    options = ScanOptions(
+        dev=dev,
+        include_tests=include_tests or settings.include_tests,
+        offline=offline,
+        cache=not no_cache,
+        ignore=settings.ignore,
+        selection=settings.selection,
+    )
     with _ProgressBar(Console(stderr=True)) as progress:
         report = engine.scan(source, options, on_event=progress)
-    rules = planner.Rules(
-        level=level,
-        security_only=security_only,
+    # La ligne de commande, puis la configuration du projet, puis les réglages.
+    asked = SelectionRule(level=level, security_only=True if security_only else None)
+    rules = planner.rules(
+        [asked],
+        report.config.selection if report.config is not None else (),
+        settings.selection,
         include=tuple(include or ()),
         exclude=tuple(exclude or ()),
         ecosystems=frozenset(ecosystem or ()),
@@ -311,7 +352,10 @@ def update(
     terminal.render_plan(report, selection, console, rules)
     if not selection:
         return
-    prepared = local.prepare(source, report, selection)
+    tools = lockfiles.Tools(
+        timeout=settings.lock_timeout, rust_default_toolchain=settings.rust_default_toolchain
+    )
+    prepared = local.prepare(source, report, selection, tools=tools)
     terminal.render_changes(prepared.changes, console, prepared.jobs)
     if prepared.empty or dry_run:
         if not prepared.empty:
@@ -341,6 +385,15 @@ def update(
     terminal.render_outcome(prepared.changes, results, console)
     if any(result.status is lockfiles.LockStatus.FAILED for result in results):
         raise typer.Exit(code=EXIT_ERROR)
+
+
+def _preferences() -> preferences.Preferences:
+    """Les réglages de la personne (``preferences``) ; ce qui ne s'y lit pas est dit sur la
+    sortie d'erreur, et remplacé par la valeur par défaut."""
+    settings, problems = preferences.load()
+    for problem in problems:
+        typer.echo(f"forceupdate : réglages : {problem}", err=True)
+    return settings
 
 
 def _question(files: int, locks: int) -> str:

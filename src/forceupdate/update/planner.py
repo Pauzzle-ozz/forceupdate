@@ -61,12 +61,18 @@ avertissement le dit.
 **La sélection est une donnée** (``Selection``) : l'identifiant de chaque ``Update`` choisie et
 sa version. ``select`` la calcule selon des règles (``Rules`` : les options de ``forceupdate
 update``) ; l'interface la modifiera case par case.
+
+**La sélection par défaut se règle** (E29, ``rules``) : la configuration du projet
+(``[selection]`` de ``forceupdate.toml``) puis les réglages de la personne peuvent changer le
+niveau pré-coché, ou ne pré-cocher que les corrections de failles, pour tous les écosystèmes ou
+pour un seul. Un paquet ignoré (``Dependency.ignored``) n'a pas de mise à jour.
 """
 
 import dataclasses
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
+from typing import Any
 
 from forceupdate import versions
 from forceupdate.advisories import Advisory, OsvError, Query, Vulnerabilities
@@ -86,6 +92,7 @@ from forceupdate.models import (
     Project,
     Report,
     Scope,
+    SelectionRule,
     Update,
     UpdateOption,
     UpdateReason,
@@ -123,7 +130,8 @@ _ACTIONABLE = frozenset(
 
 @dataclass(frozen=True, kw_only=True)
 class Rules:
-    """Ce que garde une sélection : les options de ``forceupdate update``."""
+    """Ce que garde une sélection : les options de ``forceupdate update``, et la sélection par
+    défaut de la configuration du projet et des réglages de la personne (``rules``, E29)."""
 
     level: Gap = Gap.MINOR
     """L'écart le plus grand accepté (``--level``) : ``minor`` par défaut, la décision n°12."""
@@ -137,19 +145,51 @@ class Rules:
     """Motifs de noms de paquets à écarter (``--exclude``)."""
     ecosystems: frozenset[Ecosystem] = frozenset()
     """Les écosystèmes à garder (``--ecosystem``) ; tous si vide."""
+    by_ecosystem: Mapping[Ecosystem, tuple[Gap, bool]] = dataclasses.field(default_factory=dict)
+    """Pour un écosystème, ``level`` et ``security_only`` à sa place (``[selection.npm]``)."""
+
+    def for_ecosystem(self, ecosystem: Ecosystem) -> tuple[Gap, bool]:
+        """``level`` et ``security_only`` pour les paquets de ``ecosystem``."""
+        return self.by_ecosystem.get(ecosystem, (self.level, self.security_only))
 
 
 DEFAULT_RULES = Rules()
+
+
+def rules(*layers: Sequence[SelectionRule], **options: Any) -> Rules:
+    """Les règles d'après des sélections par défaut (``SelectionRule``), de la plus forte à la
+    plus faible : la ligne de commande, puis la configuration du projet (``Report.config``),
+    puis les réglages de la personne (``ScanOptions.selection``). Dans chacune, une règle d'un
+    écosystème passe devant la règle générale ; un champ non dit vient de la suivante, puis des
+    valeurs par défaut (``minor``, pas seulement les failles). ``options`` : les autres champs
+    de ``Rules`` (``include``…)."""
+
+    def pick(ecosystem: Ecosystem | None, name: str, default: Any) -> Any:
+        for layer in layers:
+            for rule in sorted(layer, key=lambda r: r.ecosystem is None):
+                if rule.ecosystem in (ecosystem, None) and getattr(rule, name) is not None:
+                    return getattr(rule, name)
+        return default
+
+    level, security_only = pick(None, "level", Gap.MINOR), pick(None, "security_only", False)
+    by_ecosystem = {}
+    for ecosystem in Ecosystem:
+        own = (pick(ecosystem, "level", Gap.MINOR), pick(ecosystem, "security_only", False))
+        if own != (level, security_only):
+            by_ecosystem[ecosystem] = own
+    return Rules(level=level, security_only=security_only, by_ecosystem=by_ecosystem, **options)
 
 
 def plan(
     report: Report,
     infos: Mapping[tuple[Ecosystem, str], PackageInfo],
     vulnerabilities: Mapping[Query, Vulnerabilities],
+    rules: Rules = DEFAULT_RULES,
 ) -> None:
     """Remplit ``updates`` de chaque projet de ``report``, d'après ses constats (déjà triés),
     ce que les registres disent des paquets (``infos``, par écosystème et nom de dépendance) et
-    les failles qu'OSV connaît de chaque version (``vulnerabilities``)."""
+    les failles qu'OSV connaît de chaque version (``vulnerabilities``). ``rules`` : la sélection
+    par défaut (``Update.selected``). Un paquet ignoré (``Dependency.ignored``) n'en a pas."""
     overrides = {project.path: project.overrides for project in report.projects}
     shared: dict[tuple[str, Location], set[str]] = {}
     for project in report.projects:
@@ -159,7 +199,7 @@ def plan(
                     dependency.name
                 )
     for project in report.projects:
-        project.updates = _plan_project(project, infos, vulnerabilities, overrides, shared)
+        project.updates = _plan_project(project, infos, vulnerabilities, overrides, shared, rules)
 
 
 def proposed_versions(report: Report) -> list[Query]:
@@ -177,11 +217,15 @@ def proposed_versions(report: Report) -> list[Query]:
     )
 
 
-def audit(report: Report, found: Mapping[Query, Vulnerabilities | OsvError]) -> None:
+def audit(
+    report: Report,
+    found: Mapping[Query, Vulnerabilities | OsvError],
+    rules: Rules = DEFAULT_RULES,
+) -> None:
     """Range dans chaque option les failles connues de sa version que la version utilisée n'a
     pas (``UpdateOption.introduced``, avec un avertissement), d'après ce qu'OSV dit des versions
-    de ``proposed_versions`` (``found``), puis refait la pré-sélection : une telle option n'est
-    jamais pré-cochée.
+    de ``proposed_versions`` (``found``), puis refait la pré-sélection selon ``rules`` : une telle
+    option n'est jamais pré-cochée.
 
     Une version qu'OSV n'a pas pu examiner ne change rien à son option : une remarque du projet
     le dit, une seule par erreur.
@@ -207,7 +251,7 @@ def audit(report: Report, found: Mapping[Query, Vulnerabilities | OsvError]) -> 
                     option = _with_introduced(update, option, result, known)
                 options.append(option)
             update = dataclasses.replace(update, options=tuple(options))
-            updates.append(dataclasses.replace(update, selected=choose(update)))
+            updates.append(dataclasses.replace(update, selected=choose(update, rules)))
         project.updates = updates
         for error, (file, count) in errors.items():
             versions_text = "version proposée" if count == 1 else "versions proposées"
@@ -270,15 +314,16 @@ def choose(update: Update, rules: Rules = DEFAULT_RULES) -> str | None:
     if not _kept(update, rules):
         return None
     scheme = versions.for_ecosystem(update.ecosystem)
+    level, security_only = rules.for_ecosystem(update.ecosystem)
     eligible = [
         option
         for option in update.options
         if option.gap is not None
-        and option.gap.rank <= rules.level.rank
+        and option.gap.rank <= level.rank
         and option.manual is None
         and not option.introduced
     ]
-    if rules.security_only:
+    if security_only:
         eligible = [option for option in eligible if option.fixes]
         if not eligible:
             return None
@@ -310,10 +355,11 @@ def _plan_project(
     vulnerabilities: Mapping[Query, Vulnerabilities],
     overrides: Mapping[str, list[Override]],
     shared: Mapping[tuple[str, Location], set[str]],
+    rules: Rules,
 ) -> list[Update]:
     groups: dict[tuple[str, ...], list[Dependency]] = {}
     for dependency in project.dependencies:
-        if dependency.verifiable:
+        if dependency.verifiable and dependency.ignored is None:
             groups.setdefault(_group_key(dependency), []).append(dependency)
     planned: dict[tuple[str, ...], Update | None] = {}
     for finding in project.findings:  # du plus grave au moins grave
@@ -332,6 +378,7 @@ def _plan_project(
             vulnerabilities=vulnerabilities,
             overrides=overrides.get(dirname(dependency.file), []) if not dependency.direct else [],
             shared=shared,
+            rules=rules,
         ).plan()
     return [update for update in planned.values() if update is not None]
 
@@ -355,8 +402,10 @@ class _Group:
         vulnerabilities: Mapping[Query, Vulnerabilities],
         overrides: Sequence[Override],
         shared: Mapping[tuple[str, Location], set[str]],
+        rules: Rules = DEFAULT_RULES,
     ) -> None:
         self.project = project
+        self.rules = rules
         self.shared = shared
         """Les paquets de chaque emplacement de version, dans tout le rapport."""
         self.dependencies = dependencies
@@ -404,7 +453,7 @@ class _Group:
         if not options and note is None:
             return None
         update = Update(**base, options=tuple(options), note=note)
-        return dataclasses.replace(update, selected=choose(update))
+        return dataclasses.replace(update, selected=choose(update, self.rules))
 
     def _current(self) -> Current | None:
         """La version utilisée du paquet : la plus basse de ses déclarations (elles ont la même

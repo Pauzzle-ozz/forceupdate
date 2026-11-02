@@ -12,7 +12,9 @@ import type {
   AccountList,
   ApplyRequest,
   BatchRequest,
+  CacheState,
   Disconnection,
+  FieldError,
   ForgeKind,
   Listing,
   PlanRequest,
@@ -25,6 +27,8 @@ import type {
   ScanDetail,
   ScanRequest,
   ScanSummary,
+  SettingsDocument,
+  SettingsRequest,
   UpdatePlan,
 } from './types'
 
@@ -46,14 +50,19 @@ export const connectionStore = {
   },
 }
 
-/** Une réponse d'erreur de l'API : `detail` est la phrase en français qu'elle donne. */
+/**
+ * Une réponse d'erreur de l'API : `detail` est la phrase en français qu'elle donne ; `body`, le
+ * corps entier (des réglages refusés y disent leurs champs : `SettingsRejected`).
+ */
 export class ApiError extends Error {
   readonly status: number
+  readonly body: unknown
 
-  constructor(status: number, detail: string) {
+  constructor(status: number, detail: string, body: unknown = null) {
     super(detail)
     this.name = 'ApiError'
     this.status = status
+    this.body = body
   }
 }
 
@@ -79,20 +88,21 @@ async function request<T>(method: string, url: string, init: RequestInit = {}): 
     throw new ApiError(401, 'Session terminée : le serveur a redémarré.')
   }
   connectionStore.set('ok')
-  if (!response.ok) throw new ApiError(response.status, await detail(response))
+  if (!response.ok) throw await failure(response)
   return (await response.json()) as T
 }
 
-async function detail(response: globalThis.Response): Promise<string> {
+async function failure(response: globalThis.Response): Promise<ApiError> {
+  let body: unknown = null
   try {
-    const body: unknown = await response.json()
-    if (body && typeof body === 'object' && 'detail' in body && typeof body.detail === 'string') {
-      return body.detail
-    }
+    body = await response.json()
   } catch {
     // pas du JSON
   }
-  return `Le serveur a répondu ${response.status}.`
+  if (body && typeof body === 'object' && 'detail' in body && typeof body.detail === 'string') {
+    return new ApiError(response.status, body.detail, body)
+  }
+  return new ApiError(response.status, `Le serveur a répondu ${response.status}.`, body)
 }
 
 /** `?host=…` pour un compte d'une instance auto-hébergée ; rien pour le service en ligne. */
@@ -196,6 +206,25 @@ export const api = {
   /** Envoie les dépôts cochés du récapitulatif, en tâche de fond. */
   sendProposal: (id: string, repositories: RepositoryKey[]) =>
     request<Proposal>('POST', `/api/proposals/${encodeURIComponent(id)}/send`, json({ repositories })),
+
+  /** Les réglages de la personne, leurs valeurs par défaut, et l'état du cache. */
+  getSettings: () => request<SettingsDocument>('GET', '/api/settings'),
+
+  /** Enregistre tous les réglages ; refusés (400), l'erreur dit lesquels (`fieldErrors`). */
+  saveSettings: (body: SettingsRequest) => request<SettingsDocument>('PUT', '/api/settings', json(body)),
+
+  /** Vide le cache disque. */
+  clearCache: () => request<CacheState>('DELETE', '/api/cache'),
+}
+
+/** Les champs refusés d'un enregistrement des réglages (400 : `SettingsRejected`) ; vide sinon. */
+export function fieldErrors(error: unknown): FieldError[] {
+  if (!(error instanceof ApiError) || error.status !== 400) return []
+  const body = error.body
+  if (body && typeof body === 'object' && 'fields' in body && Array.isArray(body.fields)) {
+    return body.fields as FieldError[]
+  }
+  return []
 }
 
 export const queryKeys = {
@@ -207,4 +236,5 @@ export const queryKeys = {
   repositories: ['repositories'] as const,
   connection: (id: string) => ['connection', id] as const,
   proposal: (id: string) => ['proposal', id] as const,
+  settings: ['settings'] as const,
 }

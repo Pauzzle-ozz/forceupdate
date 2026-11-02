@@ -49,6 +49,7 @@ from forceupdate.sources.forge import ForgeSource
 from forceupdate.web import schemas
 from forceupdate.web.connections import Connections, failure
 from forceupdate.web.jobs import Jobs, RepositoryTarget, Scan, same
+from forceupdate.web.preferences import UserPreferences
 from forceupdate.web.schemas import BatchStatus, RepositoryKey, RepositoryState, TaskStatus
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,7 @@ CONCURRENCY = 4
 sont en plus limitées par le client (8 à la fois)."""
 MAX_BATCHES = 10
 """Analyses groupées gardées en mémoire."""
+EXCLUDED = "exclu dans les réglages"
 
 _VERDICT_STATE = {
     Verdict.TO_UPDATE: RepositoryState.TO_UPDATE,
@@ -139,9 +141,13 @@ class Repositories:
     """Les dépôts des comptes connectés, et leurs analyses groupées. À créer dans la boucle du
     serveur."""
 
-    def __init__(self, *, jobs: Jobs, connections: Connections) -> None:
+    def __init__(
+        self, *, jobs: Jobs, connections: Connections, preferences: UserPreferences | None = None
+    ) -> None:
         self.jobs = jobs
         self.connections = connections
+        self.preferences = preferences
+        """Les réglages de la personne : ses dépôts exclus (E29)."""
         self.batches: dict[str, Batch] = {}
         self._listings: dict[tuple[ForgeKind, str], Listing] = {}
         self._loading: dict[tuple[ForgeKind, str], asyncio.Lock] = {}
@@ -301,7 +307,7 @@ class Repositories:
 
     def _row(self, repo: Repository) -> schemas.RepositoryRow:
         scan = self.jobs.latest(repo)
-        hidden = _hidden_reason(repo)
+        hidden = self.hidden_reason(repo)
         state, reason, counts, languages = RepositoryState.NOT_SCANNED, None, None, None
         if scan is None or scan.status is TaskStatus.CANCELLED:
             if hidden is not None:
@@ -356,6 +362,15 @@ class Repositories:
             scan=scan.summary() if scan is not None else None,
             request=self.request(repo, scan),
         )
+
+    def hidden_reason(self, repo: Repository) -> str | None:
+        """Pourquoi un dépôt est masqué par défaut, et pas analysé avec les autres : vide,
+        archivé, fork, ou exclu dans les réglages de la personne (E29)."""
+        if self.preferences is not None and self.preferences.current.excludes(
+            repo.host, repo.full_name
+        ):
+            return EXCLUDED
+        return _hidden_reason(repo)
 
     def _summary(self, scan: Scan) -> Summary:
         """Le résumé du rapport d'une analyse finie, calculé une fois (il ne change plus)."""

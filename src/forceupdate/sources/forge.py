@@ -35,7 +35,7 @@ import posixpath
 from collections.abc import Callable
 from pathlib import Path
 
-from forceupdate import parsers
+from forceupdate import config, parsers
 from forceupdate.detect.manifests import (
     find_projects,
     is_ignored_path,
@@ -149,11 +149,12 @@ async def fetch(
     source = ForgeSource(repo, tree, destination)
     listed = {file.path for file in source.files()}
     done: set[str] = set()
+    # La configuration du projet d'abord (E29) : ses dossiers exclus ne sont pas téléchargés.
+    first = {config.CONFIG_FILE, config.PYPROJECT} & listed
     for _ in range(MAX_ROUNDS):
+        wanted = first if first and not done else _requested(source, include_tests)
         todo = sorted(
-            path
-            for path in _requested(source, include_tests) - done
-            if path in listed and source.small_enough(path)
+            path for path in wanted - done if path in listed and source.small_enough(path)
         )
         if not todo:
             break
@@ -201,7 +202,8 @@ def _write(destination: Path, path: str, content: bytes) -> None:
 
 
 def _requested(source: ForgeSource, include_tests: bool) -> set[str]:
-    """Les fichiers que les parseurs demandent, sur ce qui est déjà téléchargé. Les lockfiles
+    """Les fichiers que les parseurs demandent, sur ce qui est déjà téléchargé, et la
+    configuration du projet (``forceupdate.toml``, ``pyproject.toml``, E29). Les lockfiles
     ne sont pas lus (rien ne les suit, et ils sont gros)."""
     asked: set[str] = set()
 
@@ -213,7 +215,13 @@ def _requested(source: ForgeSource, include_tests: bool) -> set[str]:
             return None
         return source.read_text(normalized)
 
-    projects, _ = find_projects((file.path for file in source.files()), include_tests=include_tests)
+    # La configuration du projet (E29) : demandée au premier tour, suivie aux suivants.
+    configuration = config.read(read)
+    paths = [file.path for file in source.files()]
+    if configuration is not None:
+        include_tests = include_tests or configuration.include_tests
+        paths = [path for path in paths if not config.is_excluded_path(path, configuration.exclude)]
+    projects, _ = find_projects(paths, include_tests=include_tests)
     directories = [project.path for project in projects]
     for project in projects:
         parsers.parse_project(project, read, directories)

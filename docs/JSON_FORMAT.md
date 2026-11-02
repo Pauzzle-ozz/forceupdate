@@ -31,7 +31,8 @@ proposées (E09 : `updates` et `overrides` des projets, `lockfile` des
 dépendances), puis les failles des versions proposées (E10 : `introduced` des
 options), puis les répartitions par gravité du résumé (E14 : `severities`,
 `vulnerabilities`), puis les fins de vie (E27 : `runtime_files` et `runtimes` des
-projets, `eol` des constats, la raison `supported_cycle`).
+projets, `eol` des constats, la raison `supported_cycle`), puis la configuration (E29 : `config`
+du rapport, `ignored` des dépendances, `ignore` et `selection` des options).
 
 ## Le rapport
 
@@ -44,10 +45,38 @@ projets, `eol` des constats, la raison `supported_cycle`).
 | `projects` | liste de [projets](#projet) | dans l'ordre des chemins |
 | `ignored_manifests` | liste de chemins | manifestes et lockfiles écartés, parce que rangés dans un dossier de tests, de fixtures ou d'exemples |
 | `code` | [fichier de code](#fichier-de-code) ou `null` | le fichier de code choisi, et comment il est analysé (E28) ; `null` pour un dossier, un manifeste, un lockfile ou un dépôt |
+| `config` | [configuration](#configuration) ou `null` | la configuration du projet (`forceupdate.toml`, `[tool.forceupdate]`, E29) ; `null` s'il n'en a pas |
 | `options` | [options](#options) ou `null` | ce qui a été vérifié ; `null` si les dépendances n'ont pas été vérifiées auprès des registres |
 | `scanned_at` | date ou `null` | début de l'analyse |
 | `oldest_data` | date ou `null` | date des plus anciennes données des registres et d'OSV utilisées. Hors ligne (`options.offline`), elles viennent du cache et peuvent dater de plusieurs jours : à afficher |
 | `summary` | [résumé](#résumé) | les chiffres |
+
+## Configuration
+
+La configuration du projet, lue à la racine de la source : `forceupdate.toml`, sinon la table
+`[tool.forceupdate]` de son `pyproject.toml` (E29). Une valeur qui ne se lit pas est écartée, et
+dite dans `problems` : l'analyse continue.
+
+| Champ | Type | Sens |
+|---|---|---|
+| `file` | chemin | `forceupdate.toml` ou `pyproject.toml` |
+| `ignore` | liste de chaînes | paquets (`lodash`, `@types/*`) et versions (`django@>=5`) ignorés |
+| `exclude` | liste de chaînes | dossiers jamais lus (`legacy`, `packages/*/examples`) |
+| `include_tests` | booléen | les projets des dossiers de tests et d'exemples analysés aussi |
+| `selection` | liste de [sélections](#sélection-par-défaut) | la sélection par défaut du projet ; elle prime sur celle des réglages de la personne |
+| `problems` | liste de chaînes | ce qui a été écarté, une phrase chacun (`forceupdate.toml : selection.level : « mineur » n'est pas patch, minor, major.`) |
+
+### Sélection par défaut
+
+Ce que le plan pré-coche (`Update.selected`), pour un écosystème ou pour tous. Un champ `null`
+n'est pas dit : il vient de la règle générale, puis des réglages de la personne, puis de la
+valeur par défaut (`minor`, pas seulement les failles).
+
+| Champ | Type | Sens |
+|---|---|---|
+| `ecosystem` | [écosystème](#écosystèmes) ou `null` | `null` : tous |
+| `level` | [écart](#écarts) ou `null` | l'écart le plus grand pré-coché |
+| `security_only` | booléen ou `null` | seulement les corrections de failles |
 
 ## Langage
 
@@ -128,6 +157,7 @@ deux extras) donne deux dépendances, chacune avec son emplacement.
 | `unverifiable_reason` | chaîne ou `null` | pourquoi on ne peut pas la vérifier : `dépendance git`, `chemin local`, `téléchargée depuis une URL`, `membre du workspace`… |
 | `excluded` | liste de chaînes | les versions que le projet écarte, jamais proposées : des versions (`exclude` de `go.mod`) ou des contraintes (`conflict` de `composer.json`) ; vide ailleurs |
 | `imported` | chaîne ou `null` | pour une dépendance tirée des imports d'un fichier de code seul (E28), l'import tel qu'écrit : `cv2` (le paquet `opencv-python`), `google.cloud.storage`, `lodash/fp`, `golang.org/x/text/cases` (le module `golang.org/x/text`) ; sans contrainte ni emplacement ; `null` pour une dépendance déclarée |
+| `ignored` | chaîne ou `null` | la règle qui ignore le paquet et d'où elle vient (E29 : `lodash (forceupdate.toml)`, `lodash (réglages)`) : il n'est pas vérifié auprès de son registre et n'a jamais de mise à jour ; ses failles restent cherchées et dites ; `null` s'il ne l'est pas |
 
 ### Emplacement
 
@@ -359,6 +389,11 @@ contrainte n'accepte plus de version concernée (`~=1.4` → `~=1.9,>=1.9.2`).
 | `transitive` | booléen | dépendances indirectes vérifiées (`scan --transitive`) |
 | `offline` | booléen | hors ligne : cache seul (`scan --offline`) |
 | `cache` | booléen | cache disque utilisé (`scan --no-cache` : `false`) |
+| `ignore` | liste de chaînes | paquets et versions ignorés par les réglages de la personne (E29), en plus de ceux de `config` |
+| `selection` | liste de [sélections](#sélection-par-défaut) | la sélection par défaut des réglages de la personne ; celle de `config` prime |
+
+Une version ignorée n'est jamais proposée : forceupdate fait comme si elle n'était pas publiée
+(sauf la version utilisée) ; une remarque du projet dit combien de versions une règle écarte.
 
 Une dépendance non vérifiée (de développement avec `dev: false`, indirecte sans
 `transitive`) n'a pas de constat : son absence ne veut pas dire qu'elle est à jour.
@@ -459,7 +494,9 @@ chaque constat, abrégée ici) :
           "file": "api/requirements.txt",
           "location": {"line": 1, "column": 8, "end_column": 16},
           "unverifiable_reason": null,
-          "excluded": []
+          "excluded": [],
+          "imported": null,
+          "ignored": null
         }
       ],
       "overrides": [],
@@ -574,7 +611,9 @@ chaque constat, abrégée ici) :
     }
   ],
   "ignored_manifests": [],
-  "options": {"include_tests": false, "dev": true, "transitive": false, "offline": false, "cache": true},
+  "code": null,
+  "config": null,
+  "options": {"include_tests": false, "dev": true, "transitive": false, "offline": false, "cache": true, "ignore": [], "selection": []},
   "scanned_at": "2026-10-27T19:52:06.684328+00:00",
   "oldest_data": "2026-10-27T19:35:15.956959+00:00",
   "summary": {
@@ -662,6 +701,9 @@ curl -H "Authorization: Bearer $JETON" "http://127.0.0.1:$PORT/api/scans"
 | `POST /api/proposals` | [demande de récapitulatif](#demande-de-récapitulatif) | `201` [récapitulatif](#récapitulatif-de-pr) des PR de quelques dépôts : rien n'est poussé |
 | `GET /api/proposals/{id}` | | `200` [récapitulatif](#récapitulatif-de-pr) ; pendant et après l'envoi, où en est chaque dépôt |
 | `POST /api/proposals/{id}/send` | `{"repositories": [{"forge", "host", "full_name"}, …]}` | `202` [récapitulatif](#récapitulatif-de-pr), envoyé en tâche de fond |
+| `GET /api/settings` | | `200` [réglages](#réglages) de la personne et état du cache |
+| `PUT /api/settings` | [réglages](#réglages), tous | `200` [réglages](#réglages) enregistrés ; `400` des valeurs refusées, champ par champ ; `409` le fichier ne s'écrit pas |
+| `DELETE /api/cache` | | `200` [état du cache](#réglages), vidé |
 
 `{forge}` : `github`, `gitlab` ou `bitbucket` (sinon `422`). `?host=` désigne le compte d'une instance
 auto-hébergée (GitLab) ; sans lui, le compte du service en ligne de la forge. Un plan
@@ -1208,3 +1250,38 @@ clone après l'envoi.
 | `title` | chaîne | |
 | `branch` | chaîne | la branche proposée (`forceupdate/dependencies`) |
 | `base` | chaîne | la branche visée (celle par défaut) |
+
+## Réglages
+
+Les réglages de la personne (E29, écran 9) : le fichier `forceupdate.toml` de son dossier de
+configuration (`%LOCALAPPDATA%\forceupdate` sous Windows, `~/.config/forceupdate` sous Linux),
+le même pour l'interface et la ligne de commande. Ils valent pour les analyses, les plans et les PR
+qui suivent ; la configuration d'un projet prime sur eux.
+
+`GET /api/settings` et `PUT /api/settings` rendent :
+
+| Champ | Type | Sens |
+|---|---|---|
+| `values` | réglages | les réglages enregistrés (ci-dessous) |
+| `defaults` | réglages | les valeurs par défaut de forceupdate |
+| `file` | chaîne | le fichier des réglages |
+| `problems` | liste de chaînes | ce qui n'a pas pu y être lu (la valeur par défaut à sa place) |
+| `cache` | objet | le cache disque : `path`, `enabled` (faux s'il ne s'ouvre pas), `entries`, `size` (en octets), `oldest` et `newest` (dates, `null` pour un cache vide) ; `DELETE /api/cache` rend cet objet |
+
+Les réglages (`values`, `defaults`, et le corps de `PUT`, tous les champs) :
+
+| Champ | Type | Sens |
+|---|---|---|
+| `ignore` | liste de chaînes | paquets et versions ignorés, comme dans `config` |
+| `include_tests` | booléen | l'option d'analyse « dossiers de tests » cochée d'office |
+| `selection` | liste de [sélections](#sélection-par-défaut) | une règle générale (`ecosystem: null`), puis une par écosystème réglé à part |
+| `excluded_repositories` | liste de chaînes | dépôts des forges exclus (`github.com/owner/repo`, `*` permis) : masqués comme un archivé (« exclu dans les réglages »), jamais de PR |
+| `lock_timeout` | entier | délai de chaque commande d'un outil de lockfile, en secondes (600 ; de 10 à 86 400) |
+| `clone_timeout` | entier | délai d'un clone, d'un fetch ou d'un push, en secondes (600) |
+| `rust_default_toolchain` | booléen | cargo lancé avec la chaîne d'outils par défaut de la personne (`RUSTUP_TOOLCHAIN`), pas celle du `rust-toolchain.toml` du projet |
+
+Des valeurs refusées rendent `400` `{"detail": "2 valeurs sont refusées : rien n'est enregistré.",
+"fields": [{"field": "ignore", "index": 1, "message": "…"}, …]}` : `field` est le nom du champ
+(`ignore`, `excluded_repositories`, `lock_timeout`, `clone_timeout`, `selection`), `index` le
+rang de la valeur dans une liste (`null` sinon).
+

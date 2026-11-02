@@ -109,7 +109,7 @@ import subprocess
 import tempfile
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from forceupdate import engine, parsers, versions
@@ -139,6 +139,7 @@ from forceupdate.update.writers.npm import PNPM_WORKSPACE
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "DEFAULT_TOOLS",
     "LOCK_TIMEOUT",
     "Installed",
     "Job",
@@ -146,12 +147,27 @@ __all__ = [
     "LockStatus",
     "Reach",
     "Regenerated",
+    "Tools",
     "plan",
     "regenerate",
 ]
 
 LOCK_TIMEOUT = 600.0
-"""Délai maximal de chaque commande, en secondes."""
+"""Délai maximal de chaque commande, en secondes, par défaut (``Tools.timeout``)."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class Tools:
+    """Comment lancer les outils : les réglages de la personne (E29, ``preferences``)."""
+
+    timeout: float = LOCK_TIMEOUT
+    """Le délai maximal de chaque commande, en secondes."""
+    rust_default_toolchain: bool = False
+    """Lancer cargo avec la chaîne d'outils par défaut de la personne (``rustup default``),
+    pas celle d'un ``rust-toolchain.toml`` du projet, que rustup installerait."""
+
+
+DEFAULT_TOOLS = Tools()
 
 _OUTPUT_LINES = 12
 """Lignes de la sortie de l'outil gardées dans le message d'erreur."""
@@ -320,6 +336,11 @@ class Job:
     """Pourquoi il est régénéré sans mise à jour à lui (pip-tools)."""
     warnings: tuple[str, ...] = ()
     """Ce qu'il faut savoir avant : ce que l'outil exécute, une option d'en-tête pas reprise."""
+    timeout: float = LOCK_TIMEOUT
+    """Le délai maximal de chaque commande, en secondes (``Tools.timeout``)."""
+    toolchain: str | None = None
+    """Cargo : la chaîne d'outils par défaut de la personne, passée par ``RUSTUP_TOOLCHAIN``
+    (``Tools.rust_default_toolchain``) ; ``None`` : celle que choisit rustup."""
 
     @property
     def tool(self) -> str:
@@ -374,11 +395,14 @@ class Regenerated:
 # ---------------------------------------------------------------------------
 
 
-def plan(source: LocalSource, report: Report, changes: Changes) -> tuple[Job, ...]:
+def plan(
+    source: LocalSource, report: Report, changes: Changes, tools: Tools = DEFAULT_TOOLS
+) -> tuple[Job, ...]:
     """Les lockfiles à régénérer après ``changes`` (``writers.prepare``), sans rien lancer :
     ceux des options appliquées, ceux de NuGet qui lisent une version réécrite ailleurs
     (``_readers``), puis les ``.txt`` de pip-tools, dont ceux qui citent un fichier réécrit ou un
-    autre ``.txt`` régénéré. Dans l'ordre où les régénérer.
+    autre ``.txt`` régénéré. Dans l'ordre où les régénérer, lancés selon ``tools`` (les réglages
+    de la personne).
 
     ``report`` est l'analyse qui a donné ``changes``. Lève ``ValueError`` pour un lockfile que
     forceupdate ne sait pas régénérer."""
@@ -389,22 +413,28 @@ def plan(source: LocalSource, report: Report, changes: Changes) -> tuple[Job, ..
             by_lockfile.setdefault(option.lockfile, []).append(choice)
     changed = {change.path for change in changes.files}
     compiled = _compiled_files(source, report)
+    cargo = any(PurePosixPath(path).name == "Cargo.lock" for path in by_lockfile)
+    rust = _rustup_default() if tools.rust_default_toolchain and cargo else None
+
+    def job(
+        path: str, choices: Sequence[Choice], compiled_file: "_Compiled | None", reason: str | None
+    ) -> Job:
+        return _job(source, report, path, choices, changed, compiled_file, reason, tools, rust)
+
     jobs = [
-        _job(source, report, path, choices, changed, None, None)
+        job(path, choices, None, None)
         for path, choices in sorted(by_lockfile.items())
         if path not in compiled
     ]
     for path, reason in _readers(report, changes, set(by_lockfile)):
-        jobs.append(_job(source, report, path, [], changed, None, reason))
+        jobs.append(job(path, [], None, reason))
     regenerated: set[str] = set()
     for path in _pip_tools_order(compiled, set(by_lockfile), changed):
         reason = None
         if path not in by_lockfile:
             cited = sorted(compiled[path].closure & (changed | regenerated))
             reason = f"{', '.join(cited)} {'a' if len(cited) == 1 else 'ont'} changé"
-        jobs.append(
-            _job(source, report, path, by_lockfile.get(path, []), changed, compiled[path], reason)
-        )
+        jobs.append(job(path, by_lockfile.get(path, []), compiled[path], reason))
         regenerated.add(path)
     return tuple(jobs)
 
@@ -417,6 +447,8 @@ def _job(
     changed: set[str],
     compiled: "_Compiled | None",
     reason: str | None,
+    tools: "Tools",
+    rust_toolchain: str | None,
 ) -> Job:
     projects = _projects_of(report, path)
     warnings: list[str] = []
@@ -442,7 +474,7 @@ def _job(
     elif kind in (LockKind.YARN, LockKind.YARN_1):
         warnings += _yarn_runs_code(source.read_text, dirname(path))
     elif kind is LockKind.CARGO:
-        warnings += _cargo_runs_code(source.read_text, dirname(path))
+        warnings += _cargo_runs_code(source.read_text, dirname(path), tools, rust_toolchain)
     elif kind is LockKind.GO:
         warnings += _go_warnings(source.read_text, dirname(path))
     elif kind is LockKind.COMPOSER:
@@ -466,6 +498,8 @@ def _job(
         workspace=workspace,
         reason=reason,
         warnings=tuple(warnings),
+        timeout=tools.timeout,
+        toolchain=rust_toolchain if kind is LockKind.CARGO else None,
     )
     return dataclasses.replace(job, command=shlex.join(_DRIVERS[kind].manual(job)))
 
@@ -545,11 +579,15 @@ _CARGO_TOOLCHAIN = ("rust-toolchain.toml", "rust-toolchain")
 _CARGO_CONFIG = (".cargo/config.toml", ".cargo/config")
 
 
-def _cargo_runs_code(read_text: ReadText, directory: str) -> list[str]:
+def _cargo_runs_code(
+    read_text: ReadText, directory: str, tools: "Tools", default: str | None
+) -> list[str]:
     """Ce que cargo, et rustup derrière lui, prennent du projet : la chaîne d'outils de
     ``rust-toolchain.toml``, la configuration de ``.cargo/config.toml``. Cherchés dans le
     dossier du lockfile et ses parents, comme les lisent rustup et cargo. Le ``rustc`` et les
-    « wrappers » qu'y désignerait la configuration, eux, sont écartés (``_cargo_environment``)."""
+    « wrappers » qu'y désignerait la configuration, eux, sont écartés (``_cargo_environment``).
+    Avec ``tools.rust_default_toolchain``, la chaîne d'outils par défaut de la personne
+    (``default``, ``_rustup_default``) passe devant celle du projet (``RUSTUP_TOOLCHAIN``)."""
     found: dict[str, str] = {}
     for folder in [directory, *_parents(directory)]:
         for name in (*_CARGO_TOOLCHAIN, *_CARGO_CONFIG):
@@ -557,10 +595,19 @@ def _cargo_runs_code(read_text: ReadText, directory: str) -> list[str]:
                 found[name] = join(folder, name)
     warnings = []
     toolchain = next((found[name] for name in _CARGO_TOOLCHAIN if name in found), None)
-    if toolchain is not None:
+    if toolchain is not None and default is not None:
+        warnings.append(
+            f"{toolchain} n'est pas suivi : cargo tourne avec la chaîne d'outils par défaut, "
+            f"{default} (réglage « chaîne d'outils Rust ») ; plus ancienne que ce que demande le "
+            "projet, la régénération peut échouer."
+        )
+    elif toolchain is not None:
+        absent = " (réglage « chaîne d'outils Rust » : rustup n'en a pas par défaut)"
         warnings.append(
             f"rustup lit {toolchain} : il installe s'il le faut, puis lance, la chaîne d'outils "
-            "qu'il désigne, même un dossier du projet."
+            "qu'il désigne, même un dossier du projet"
+            + (absent if tools.rust_default_toolchain else "")
+            + "."
         )
     config = next((found[name] for name in _CARGO_CONFIG if name in found), None)
     if config is not None:
@@ -788,6 +835,30 @@ def _read_quietly(read_text: ReadText, path: str) -> str | None:
         return read_text(path)
     except ValueError:
         return None
+
+
+def _rustup_default() -> str | None:
+    """La chaîne d'outils par défaut de rustup (« stable-x86_64-pc-windows-msvc (default) »,
+    vérifié avec rustup 1.29) ; ``None`` sans rustup, ou sans chaîne d'outils par défaut.
+    ``rustup default`` ne lit pas le ``rust-toolchain.toml`` du dossier."""
+    program = _which("rustup")
+    if program is None:
+        return None
+    try:
+        result = _spawn(
+            [program, "default"],
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            env=_environment(),
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    words = _decode(result.stdout).split()
+    if result.returncode != 0 or not words or words[0].startswith(("error", "no")):
+        return None
+    return words[0]
 
 
 def _poetry_major(program: str) -> int | None:
@@ -1400,11 +1471,11 @@ class _Context:
                 env={**_environment(), **self.env},
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
-                timeout=LOCK_TIMEOUT,
+                timeout=self.job.timeout,
                 check=False,
             )
         except subprocess.TimeoutExpired as err:
-            raise _Failed(f"« {shown} » n'a pas fini en {LOCK_TIMEOUT:.0f} s.") from err
+            raise _Failed(f"« {shown} » n'a pas fini en {self.job.timeout:.0f} s.") from err
         except OSError as err:
             raise _Failed(f"« {shown} » n'a pas pu être lancé ({err.strerror or err}).") from err
         if result.returncode != 0:
@@ -1796,6 +1867,9 @@ class _Cargo(_Driver):
 
     def run(self, context: _Context) -> None:
         context.env.update(_cargo_environment())
+        if context.job.toolchain is not None:
+            # Devant le rust-toolchain.toml du projet, sans rien installer (rustup 1.29).
+            context.env["RUSTUP_TOOLCHAIN"] = context.job.toolchain
         pinned = context.run_pinned(lambda version: f"={version}", "update", "--workspace")
         for _, update, option in context.job.choices:
             if update.direct and pinned:

@@ -164,6 +164,20 @@ def test_the_proposal_says_what_each_request_will_do(
     assert npm_uv.calls == []
 
 
+def test_an_excluded_repository_never_gets_a_request(
+    api: TestClient, github: FakeGitHubRepos, analyzed: None, npm_uv: FakeTools
+) -> None:
+    """Les dépôts exclus des réglages (E29) : sautés, jamais prêts à envoyer."""
+    response = api.put("/api/settings", json={"excluded_repositories": ["github.com/octo/vul*"]})
+    assert response.status_code == 200, response.text
+    found = items(propose(api, "octo/vulnerable", "octo/muet"))
+    assert (found["octo/vulnerable"]["state"], found["octo/vulnerable"]["reason"]) == (
+        "skipped",
+        "exclu dans les réglages : pas de PR",
+    )
+    assert found["octo/muet"]["state"] == "ready"
+
+
 def test_send_opens_then_relaunching_updates_the_same_request(
     api: TestClient, github: FakeGitHubRepos, analyzed: None, npm_uv: FakeTools
 ) -> None:
