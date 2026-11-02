@@ -3,7 +3,9 @@ rapports qui servent d'exemples à ses tests de composants.
 
 Comme les tests Python : jamais le réseau (PyPI, npm, OSV et endoflife.date répondent par les
 réponses enregistrées de ``tests/fixtures/``, ``conftest.recorded_responses``), jamais le cache
-ni les chemins récents de l'utilisateur (un dossier temporaire), jamais le navigateur ; les fins
+ni les chemins récents de l'utilisateur (un dossier temporaire), ni ses fichiers de configuration
+et son environnement (``userfiles`` : un dossier personnel vide, un environnement vide, E33),
+jamais le navigateur ; les fins
 de vie se jugent au jour de l'enregistrement (``record.RECORDED_ON``). Le jeton est fixe, pour
 que les tests ouvrent l'adresse d'entrée ::
 
@@ -72,7 +74,7 @@ from fake_forge import FakeGitHubRepos, FakeRepo, from_directory, make_remote, r
 from fake_gitlab import FakeGitLab, FakeToken
 from fixtures.record import RECORDED_ON
 
-from forceupdate import engine, preferences
+from forceupdate import engine, preferences, userfiles
 from forceupdate.checks import eol
 from forceupdate.forges import bitbucket, github, gitlab
 from forceupdate.models import ScanOptions
@@ -352,6 +354,9 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="forceupdate-e2e-") as tmp:
         cache_module.default_cache_path = lambda: Path(tmp) / "cache.sqlite3"
         preferences.default_path = lambda: Path(tmp) / "réglages" / "forceupdate.toml"
+        (Path(tmp) / "personnel").mkdir()
+        userfiles._home = lambda: Path(tmp) / "personnel"
+        userfiles._environ = lambda: {}
         if options.report is None:
             remotes = Path(tmp) / "distants"
             for repo in [*REPOSITORIES, *GITLAB_PROJECTS, *BITBUCKET_REPOSITORIES]:

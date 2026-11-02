@@ -81,13 +81,13 @@ def _php(require: Any) -> str | None:
     return php.strip() or None
 
 
-def abandoned_message(value: Any) -> str | None:
-    """Le message d'un paquet abandonné (``abandoned`` : ``true`` ou son remplaçant) ; ``None`` s'il
-    ne l'est pas."""
+def abandoned_message(value: Any, where: str = "Packagist") -> str | None:
+    """Le message d'un paquet abandonné (``abandoned`` : ``true`` ou son remplaçant) sur le dépôt
+    ``where`` ; ``None`` s'il ne l'est pas."""
     if isinstance(value, str) and value.strip():
-        return f"abandonné sur Packagist, remplacé par {value.strip()}."
+        return f"abandonné sur {where}, remplacé par {value.strip()}."
     if value is True:
-        return "abandonné sur Packagist, sans remplaçant indiqué."
+        return f"abandonné sur {where}, sans remplaçant indiqué."
     return None
 
 
@@ -116,6 +116,11 @@ class Packagist(Registry):
             raise ValueError(f"« packages » sans {name}")
         if data.get("minified") is not None:
             entries = expand(entries)
+        return self.info(name, entries, fetched_at)
+
+    def info(self, name: str, entries: list[dict[str, Any]], fetched_at: datetime) -> PackageInfo:
+        """Ce que disent du paquet les versions ``entries`` (complètes, de la plus récente à la
+        plus ancienne)."""
         found = [
             PackageVersion(
                 version=entry["version"],
@@ -126,7 +131,7 @@ class Packagist(Registry):
             if isinstance(entry, dict) and isinstance(entry.get("version"), str)
         ]
         versions = sorted_versions(self.ecosystem, found)
-        deprecated = abandoned_message(entries[0].get("abandoned")) if entries else None
+        deprecated = abandoned_message(entries[0].get("abandoned"), self.label) if entries else None
         return PackageInfo(
             ecosystem=self.ecosystem,
             name=name,

@@ -15,7 +15,7 @@ from fake_bitbucket import FakeBitbucket
 from fake_forge import FakeGitHubRepos, FakeRepo, from_directory
 from fake_gitlab import FakeGitLab, FakeToken
 
-from forceupdate import engine
+from forceupdate import engine, routing
 from forceupdate.forges.bitbucket import Bitbucket
 from forceupdate.forges.github import GitHub
 from forceupdate.forges.gitlab import GitLab
@@ -174,6 +174,39 @@ def test_ci_files_and_a_go_vendor_are_downloaded(github: FakeGitHubRepos, tmp_pa
     ]
     web = next(project for project in report.projects if project.path == "web")
     assert [(r.version, r.file) for r in web.runtimes] == [("22", ".github/workflows/ci.yml")]
+
+
+def test_registry_configuration_files_are_downloaded(
+    github: FakeGitHubRepos, tmp_path: Path
+) -> None:
+    """E33 : la configuration des registres d'un projet (``.npmrc`` de la racine d'un workspace,
+    ``nuget.config``, ``uv.toml``) est téléchargée comme ses manifestes ; rien d'autre."""
+    repo = FakeRepo(
+        full_name="octo/registres",
+        files={
+            ".npmrc": b"@acme:registry=https://npm.acme.example/\n",
+            "web/package.json": b'{"name": "web", "dependencies": {"@acme/ui": "1.0.0"}}',
+            "nuget.config": b"<configuration><packageSources/></configuration>",
+            "svc/App.csproj": b'<Project Sdk="Microsoft.NET.Sdk"></Project>',
+            "py/pyproject.toml": b'[project]\nname = "p"\nversion = "1"\n',
+            "py/uv.toml": b'[[index]]\nurl = "https://pkgs.example/simple"\n',
+            "README.md": b"# r\n",
+        },
+    )
+    source = fetch(github, repo, tmp_path)
+    assert sorted(github.contents()) == [
+        "octo/registres:.npmrc",
+        "octo/registres:nuget.config",
+        "octo/registres:py/pyproject.toml",
+        "octo/registres:py/uv.toml",
+        "octo/registres:svc/App.csproj",
+        "octo/registres:web/package.json",
+    ]
+    report = engine.inventory(source)
+    routes = routing.read(report, source.read_text)
+    web = next(project for project in report.projects if project.path == "web")
+    (dependency,) = web.dependencies
+    assert routes.route(web, dependency).private
 
 
 def test_a_missing_file_is_not_an_error(github: FakeGitHubRepos, tmp_path: Path) -> None:

@@ -17,7 +17,10 @@ Tout ce qui parle au réseau passe par ``HttpClient`` :
 - les certificats du système (``truststore``, comme pip), plus ceux de ``SSL_CERT_FILE`` et
   ``SSL_CERT_DIR`` (``ssl_context``) ; un certificat refusé n'est pas réessayé ;
 - un proxy : celui de ``HTTPS_PROXY`` (``ALL_PROXY``, ``NO_PROXY``), suivi par httpx. Celui des
-  réglages de Windows (WinINet, PAC) n'est pas lu, comme par uv.
+  réglages de Windows (WinINet, PAC) n'est pas lu, comme par uv ;
+- les identifiants d'un registre privé (``auth``, E33) : chaque requête prend celui qui est lié à
+  son adresse (``net.auth``) ; les redirections sont alors suivies ici, et une redirection vers
+  une autre origine part sans identifiant.
 
 Réseau d'entreprise (E30, vérifié le 2026-11-02 avec httpx 0.28.1 et truststore 0.10.5, sous
 Windows) : un proxy qui déchiffre le trafic présente ses propres certificats, signés par une
@@ -50,6 +53,7 @@ import httpx
 import truststore
 
 from forceupdate import __version__
+from forceupdate.net.auth import Credentials, origin
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +75,13 @@ DOWN_FOR = 60.0
 """Durée, en secondes, pendant laquelle un hôte abandonné n'est plus interrogé (plus, si
 ``Retry-After`` demande plus)."""
 
+MAX_REDIRECTS = 10
+"""Redirections suivies au plus pour une requête qui porte un identifiant (httpx en suit 20)."""
+
 _BACKOFF = 0.5
 """Première attente entre deux essais sans ``Retry-After`` ; elle double à chaque reprise."""
 _IDEMPOTENT = frozenset({"GET", "HEAD", "OPTIONS"})
+_REDIRECTS = frozenset({301, 302, 303, 307, 308})
 _RETRYABLE = (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError, TimeoutError)
 """Les échecs qui peuvent passer en réessayant : délai dépassé, connexion refusée ou coupée."""
 _DIGITS = re.compile(r"[0-9]+")
@@ -170,9 +178,15 @@ class HttpClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    async def get(self, url: str, *, headers: Mapping[str, str] | None = None) -> Response:
+    async def get(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str] | None = None,
+        auth: Credentials | None = None,
+    ) -> Response:
         """``GET url`` ; voir ``request``."""
-        return await self.request("GET", url, headers=headers)
+        return await self.request("GET", url, headers=headers, auth=auth)
 
     async def request(
         self,
@@ -183,6 +197,7 @@ class HttpClient:
         json: Any = None,
         form: Mapping[str, str] | None = None,
         retry: bool | None = None,
+        auth: Credentials | None = None,
     ) -> Response:
         """Envoie la requête et rend la réponse, quel que soit son statut final.
 
@@ -190,6 +205,8 @@ class HttpClient:
         par défaut ``GET``, ``HEAD`` et ``OPTIONS`` ; ``retry=True`` pour une autre qui ne
         change rien (une recherche en ``POST``). ``json`` est envoyé en corps JSON, ``form`` en
         formulaire (``application/x-www-form-urlencoded`` : le point des tokens de Bitbucket).
+        ``auth`` : les identifiants des registres privés ; celui qui est lié à l'adresse part avec
+        la requête (voir la docstring du module).
 
         Lève ``NetworkError`` quand la requête n'aboutit pas, ou que le statut reste 429 ou
         5xx après les reprises.
@@ -209,7 +226,7 @@ class HttpClient:
         for attempt in range(attempts):
             final = attempt == attempts - 1
             try:
-                response = await self._send(host, method, url, headers, json, form)
+                response = await self._send(host, method, url, headers, json, form, auth)
             except _TooLarge:
                 limit = self._max_body // 2**20
                 raise NetworkError(f"réponse de {host} trop grosse (plus de {limit} Mo).") from None
@@ -250,14 +267,45 @@ class HttpClient:
         headers: Mapping[str, str] | None,
         body: Any,
         form: Mapping[str, str] | None,
+        auth: Credentials | None = None,
     ) -> Response:
-        async with (
-            self._slot(host),
-            asyncio.timeout(self._deadline),
-            self._client.stream(
-                method, url, headers=headers, json=body, data=dict(form) if form else None
-            ) as response,
-        ):
+        async with self._slot(host), asyncio.timeout(self._deadline):
+            if auth is None:
+                return await self._read(method, url, headers, body, form, follow=True)
+            # Les redirections suivies ici : l'identifiant ne part que vers l'origine demandée.
+            first = origin(url)
+            for _ in range(MAX_REDIRECTS + 1):
+                credential = auth.for_url(url) if origin(url) == first else None
+                sent = {**(headers or {}), **(credential.headers() if credential else {})}
+                response = await self._read(method, url, sent, body, form, follow=False)
+                location = response.headers.get("location")
+                if response.status_code not in _REDIRECTS or not location:
+                    return response
+                url = str(httpx.URL(response.url).join(location))
+                if response.status_code == 303 or (
+                    response.status_code in (301, 302) and method.upper() == "POST"
+                ):
+                    method, body, form = "GET", None, None
+            raise httpx.TooManyRedirects(f"plus de {MAX_REDIRECTS} redirections")
+
+    async def _read(
+        self,
+        method: str,
+        url: str,
+        headers: Mapping[str, str] | None,
+        body: Any,
+        form: Mapping[str, str] | None,
+        *,
+        follow: bool,
+    ) -> Response:
+        async with self._client.stream(
+            method,
+            url,
+            headers=headers,
+            json=body,
+            data=dict(form) if form else None,
+            follow_redirects=follow,
+        ) as response:
             declared = response.headers.get("content-length", "")
             if _DIGITS.fullmatch(declared) and int(declared) > self._max_body:
                 raise _TooLarge

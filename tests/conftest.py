@@ -4,7 +4,7 @@ Les tests qui touchent le vrai réseau sont marqués ``network`` : ils sont saut
 par défaut, et lancés avec ``--run-network``. Les autres tournent hors ligne, sur
 des réponses HTTP enregistrées dans ``tests/fixtures/``.
 
-Huit garde-fous valent pour tous les tests : le cache de l'utilisateur n'est jamais
+Neuf garde-fous valent pour tous les tests : le cache de l'utilisateur n'est jamais
 touché (``Cache.default()`` en ouvre un dans le dossier du test), ni son dossier temporaire
 par le serveur (``server_temp`` : le dossier de travail et son balayage, E31), un test qui
 n'est pas marqué ``network`` ne peut pas ouvrir de connexion (une requête non simulée par ``respx``
@@ -15,7 +15,9 @@ lockfile (npm, uv… : ``update.lockfiles`` les croit absents ; un test les simu
 dossier, ``fake_forge.make_remote``), aucun test n'ouvre le navigateur (``webbrowser.open``
 échoue), et aucun ne touche le trousseau du système ni ``gh`` (``keychain`` : un trousseau en
 mémoire, propre au test ; ``gh`` est absent, et le lancer échoue), ni les réglages de la
-personne (``user_settings`` : un fichier propre au test, E29). Et la date du jour, qui décide
+personne (``user_settings`` : un fichier propre au test, E29), ni ses fichiers de configuration
+et son environnement (``user_files`` : ``~/.npmrc``, ``GOPRIVATE``… : un dossier personnel propre au
+test et un environnement vide, E33). Et la date du jour, qui décide
 d'une fin de vie, est celle de l'enregistrement des réponses d'endoflife.date
 (``_fixed_today``).
 
@@ -45,7 +47,7 @@ import respx
 from fastapi.testclient import TestClient
 from fixtures.record import RECORDED_ON
 
-from forceupdate import preferences
+from forceupdate import preferences, userfiles
 from forceupdate.checks import eol
 from forceupdate.endoflife import BASE_URL as ENDOFLIFE
 from forceupdate.forges import git as forge_git
@@ -95,6 +97,45 @@ def user_settings(
     monkeypatch.setattr(preferences, "default_path", lambda: path)
     monkeypatch.setattr(forge_git, "CLONE_TIMEOUT", forge_git.CLONE_TIMEOUT)
     return path
+
+
+@dataclass
+class UserFiles:
+    """Le dossier personnel et l'environnement que voit ``userfiles`` dans un test : ``home`` (un
+    dossier du test, vide au départ) et ``env`` (vide au départ). ``write`` y range un fichier."""
+
+    home: Path
+    env: dict[str, str]
+
+    def write(self, relative: str, content: str) -> Path:
+        path = self.home / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        return path
+
+
+@pytest.fixture(autouse=True)
+def user_files(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> UserFiles:
+    """Les fichiers de configuration de la personne (``~/.npmrc``, le fichier ``GOENV``,
+    ``auth.json`` de Composer, ``~/.m2/settings.xml``, ``NuGet.Config``, ``.netrc``…) et son
+    environnement (``GOPRIVATE``, ``COMPOSER_AUTH``…), tels que ``userfiles`` les voit : un dossier
+    personnel propre au test et un environnement vide. Lire un fichier hors des dossiers des tests
+    est une erreur du test."""
+    files = UserFiles(home=tmp_path_factory.mktemp("user-home"), env={})
+    base = tmp_path_factory.getbasetemp().resolve()
+    read = userfiles.read
+
+    def guarded(path: Path) -> str | None:
+        if not Path(path).resolve().is_relative_to(base):
+            raise RuntimeError(f"test : fichier de la personne refusé ({path})")
+        return read(path)
+
+    monkeypatch.setattr(userfiles, "_home", lambda: files.home)
+    monkeypatch.setattr(userfiles, "_environ", lambda: files.env)
+    monkeypatch.setattr(userfiles, "read", guarded)
+    return files
 
 
 @pytest.fixture(autouse=True)

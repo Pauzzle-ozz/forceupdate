@@ -36,7 +36,7 @@ from datetime import datetime
 from urllib.parse import quote
 
 from forceupdate.models import Ecosystem
-from forceupdate.net.http import NetworkError, Response
+from forceupdate.net.http import Response
 from forceupdate.parsers.base import ParseError
 from forceupdate.parsers.go import GoMod, Retraction, parse_go_mod_file
 from forceupdate.registries.base import (
@@ -44,7 +44,6 @@ from forceupdate.registries.base import (
     PackageNotFound,
     PackageVersion,
     Registry,
-    RegistryError,
     sorted_versions,
 )
 from forceupdate.versions import InvalidVersion
@@ -92,7 +91,7 @@ class GoProxy(Registry):
         return name
 
     def url_for(self, name: str) -> str:
-        return self._url(name, "@v/list")
+        return self._path(name, "@v/list")
 
     def page_url(self, name: str) -> str | None:
         if self.base_url != GoProxy.base_url:
@@ -100,9 +99,11 @@ class GoProxy(Registry):
         return f"https://pkg.go.dev/{name}"
 
     def _not_found(self, name: str) -> str:
+        if self.declared:
+            return f"{name} est introuvable sur {self.label}."
         return f"{name} est introuvable sur {self.label} : module privé, ou chemin mal écrit ?"
 
-    def _url(self, name: str, suffix: str) -> str:
+    def _path(self, name: str, suffix: str) -> str:
         return f"{self.base_url}/{quote(escape(name), safe='/!~+')}/{suffix}"
 
     def parse(self, name: str, response: Response, fetched_at: datetime) -> PackageInfo:
@@ -158,23 +159,9 @@ class GoProxy(Registry):
             fetched_at=info.fetched_at,
         )
 
-    async def _get(self, url: str, name: str) -> Response | None:
-        """La réponse du proxy ; ``None`` pour 404 ou 410. Lève ``RegistryError``."""
-        try:
-            response = await self._http.get(url, headers=self.headers)
-        except NetworkError as error:
-            raise RegistryError(f"{self.label} : {error}") from error
-        if response.status_code in self.not_found_statuses:
-            return None
-        if response.status_code != 200:
-            raise RegistryError(
-                f"{self.label} : réponse inattendue pour {name} (HTTP {response.status_code})."
-            )
-        return response
-
     async def _latest(self, name: str) -> str | None:
         """La version de ``@latest`` (une pseudo-version pour un module sans étiquette)."""
-        response = await self._get(self._url(name, "@latest"), name)
+        response = await self._get(self._path(name, "@latest"), name, found=True)
         if response is None:
             return None
         version = response.json().get("Version")
@@ -184,7 +171,7 @@ class GoProxy(Registry):
 
     async def _go_mod(self, name: str, version: str) -> tuple[GoMod, str] | None:
         """Le ``go.mod`` de ``version``, lu, et son texte ; ``None`` si le proxy ne l'a pas."""
-        response = await self._get(self._url(name, f"@v/{escape(version)}.mod"), name)
+        response = await self._get(self._path(name, f"@v/{escape(version)}.mod"), name, found=True)
         if response is None:
             return None
         content = response.content.decode("utf-8", errors="replace")
@@ -207,7 +194,7 @@ class GoProxy(Registry):
         found = None
         for _ in range(MAX_MAJOR_PROBES):
             path = module_path(name, major)
-            response = await self._get(self._url(path, "@v/list"), path)
+            response = await self._get(self._path(path, "@v/list"), path, found=True)
             if response is None:
                 break
             versions = [line.strip() for line in response.content.decode().splitlines()]

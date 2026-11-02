@@ -39,7 +39,7 @@ import posixpath
 from collections.abc import Callable
 from pathlib import Path
 
-from forceupdate import config, parsers
+from forceupdate import config, parsers, routing
 from forceupdate.detect.manifests import (
     find_projects,
     is_ignored_path,
@@ -49,7 +49,7 @@ from forceupdate.detect.manifests import (
 )
 from forceupdate.forges import git
 from forceupdate.forges.base import Forge, Repository, Tree
-from forceupdate.models import Ecosystem, Event, EventKind, Notice
+from forceupdate.models import Ecosystem, Event, EventKind, Notice, Report
 from forceupdate.sources.base import Source, SourceFile
 from forceupdate.sources.local import LocalSource
 
@@ -226,9 +226,10 @@ def _write(destination: Path, path: str, content: bytes) -> None:
 
 
 def _requested(source: ForgeSource, include_tests: bool) -> set[str]:
-    """Les fichiers que les parseurs demandent, sur ce qui est déjà téléchargé, et la
-    configuration du projet (``forceupdate.toml``, ``pyproject.toml``, E29). Les lockfiles
-    ne sont pas lus (rien ne les suit, et ils sont gros)."""
+    """Les fichiers que les parseurs demandent, sur ce qui est déjà téléchargé, la
+    configuration du projet (``forceupdate.toml``, ``pyproject.toml``, E29) et celle de ses
+    registres (``routing``, E33 : ``.npmrc``, ``nuget.config``…). Les lockfiles ne sont pas lus
+    (rien ne les suit, et ils sont gros)."""
     asked: set[str] = set()
 
     def read(path: str) -> str | None:
@@ -254,6 +255,7 @@ def _requested(source: ForgeSource, include_tests: bool) -> set[str]:
         vendored = posixpath.join(project.path, "vendor/modules.txt").removeprefix("./")
         if Ecosystem.GO in project.ecosystems and source.has(vendored):
             asked.add(vendored)
+    routing.read(Report(source=source.origin, projects=projects), read)
     return asked
 
 

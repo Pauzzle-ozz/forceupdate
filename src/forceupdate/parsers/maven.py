@@ -552,6 +552,16 @@ def _load(path: str, read_text: ReadText, notices: list[Notice] | None) -> Pom |
         return None
 
 
+def pom_chain(path: str, read_text: ReadText) -> list[Pom]:
+    """Le ``pom.xml`` ``path`` et ses parents du dépôt, du plus proche au plus loin ; vide s'il ne
+    se lit pas. L'aiguillage des registres (``routing.maven``, E33) y lit ``<repositories>``."""
+    pom = _load(path, read_text, None)
+    if pom is None:
+        return []
+    parents, _ = _parents(pom, read_text, [])
+    return [pom, *parents]
+
+
 def _parents(pom: Pom, read_text: ReadText, notices: list[Notice]) -> tuple[list[Pom], str | None]:
     """Les parents du dépôt, du plus proche au plus loin, et le ``groupId:artifactId`` du premier
     parent hors du dépôt (``None`` s'il n'y en a pas)."""

@@ -127,8 +127,19 @@ def _url_reason(url: str) -> str:
     return REASON_URL
 
 
+_INDEX_REASON = re.compile(r"^vient de l'index « (?P<index>.+) », pas de PyPI$")
+
+
 def _index_reason(index: str) -> str:
     return f"vient de l'index « {index} », pas de PyPI"
+
+
+def attached_index(reason: str | None) -> str | None:
+    """Le nom de l'index auquel le manifeste rattache une dépendance (``index =`` de uv, ``source
+    =`` de Poetry, ``index =`` de Pipfile), d'après sa raison « non vérifiable » ; ``None`` sinon.
+    L'aiguillage (``routing.python``, E33) la demande alors à cet index."""
+    match = _INDEX_REASON.match(reason or "")
+    return match.group("index") if match else None
 
 
 # ---------------------------------------------------------------------------
@@ -1269,6 +1280,24 @@ def parse_pinned_requirements(path: str, content: str) -> Lockfile:
     sans graphe : ses ``==X``. Les ``-r`` et ``-c`` ne sont pas suivis."""
     scope = _file_scope(path)
     return _requirements_lock(_parse_requirements(path, content, scope), scope)
+
+
+def requirements_options(content: str) -> list[tuple[str, str]]:
+    """Les options d'un ``requirements*.txt`` ou d'un ``.in``, dans l'ordre : (nom, argument),
+    ``("--index-url", "https://…")`` ; ``-i`` s'écrit ``--index-url``, ``-f`` ``--find-links``.
+    Un argument absent est vide."""
+    aliases = {"-i": "--index-url", "-f": "--find-links"}
+    found = []
+    for _, text, _ in _logical_lines(content):
+        comment = _COMMENT.search(text)
+        body = (text[: comment.start()] if comment is not None else text).strip()
+        match = _OPTION.match(body) if body.startswith("-") else None
+        if match is not None:
+            words = match.group("argument").split()
+            found.append(
+                (aliases.get(match.group("name"), match.group("name")), words[0] if words else "")
+            )
+    return found
 
 
 def requirements_references(path: str, content: str) -> list[str]:

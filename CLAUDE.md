@@ -83,6 +83,15 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   │                         (ignore, exclude, include-tests, [selection]) ; les règles ignore
 │   ├── preferences.py      ← les réglages de la personne (E29) : forceupdate.toml de son dossier de
 │   │                         configuration (platformdirs), mêmes clés + dépôts exclus, délais, Rust
+│   ├── userfiles.py        ← les fichiers de configuration de la personne et son environnement (E33) :
+│   │                         ~/.npmrc, GOENV, auth.json, settings.xml, NuGet.Config, pip.ini, uv.toml,
+│   │                         .netrc ; tout passe par lui (home, config_home, environ, read, expand)
+│   ├── net/                ← le client HTTP (http.py), le cache (cache.py), les identifiants des
+│   │                         registres privés (auth.py, E33 : chacun lié à son adresse, jamais ailleurs)
+│   ├── routing/            ← à quel registre demander chaque paquet (E33) : le public, un miroir, des
+│   │                         registres en plus, ou celui d'un paquet privé par son nom (jamais le public
+│   │                         ni OSV) ; un module par écosystème (npm et .yarnrc.yml, go, netrc, composer,
+│   │                         nuget, python, maven pour Maven et Gradle, ruby) ; Clients : la chaîne
 │   ├── checks/             ← les constats : outdated.py, vulns.py, deprecated.py, eol.py (fins de vie, E27 :
 │   │                         la table des frameworks, le cycle d'une version, le cycle conseillé),
 │   │                         runtimes.py (les versions que le runtime du projet ne fait pas tourner)
@@ -126,7 +135,10 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   │                         maven.py, réécrit d'après ComparableVersion et VersionRange, maven.py :
 │   │                         maven-metadata.xml de Maven Central, Google Maven et du portail Gradle ;
 │   │                         nuget.py, réécrit d'après NuGet.Versioning : NuGet prend la plus basse
-│   │                         version qui convient ; nuget.py : l'API « registration » et ses pages)
+│   │                         version qui convient ; nuget.py : l'API « registration » et ses pages) ;
+│   │                         un registre déclaré (E33) : registries.declared, la même classe à une autre
+│   │                         adresse, ou composer.py (ComposerRepository : packages.json), NuGetFeed
+│   │                         (l'index de services), SimpleIndex de pypi.py (l'API « simple » en HTML)
 │   ├── sources/            ← d'où vient le code : local.py (dossier, fichier ; un fichier de code : le
 │   │                         projet trouvé en remontant les dossiers, E28), forge.py (un dépôt lu par
 │   │                         l'API : seuls les fichiers que lisent les parseurs sont téléchargés ; un
@@ -208,7 +220,10 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   trousseau du système ni `gh`, ne lancent git que vers des dépôts locaux, et n'ouvrent jamais
   le navigateur, ni les réglages de la personne (`user_settings` : un fichier propre au test),
   ni le dossier temporaire de la personne par le serveur (`server_temp` : son dossier de travail
-  et son balayage au démarrage) : huit garde-fous automatiques de `tests/conftest.py` y veillent
+  et son balayage au démarrage), ni ses fichiers de configuration et son environnement
+  (`user_files` : `~/.npmrc`, `GOPRIVATE`… ; un dossier personnel et un environnement vides, propres
+  au test, que le test remplit ; lire hors des dossiers des tests échoue) : neuf garde-fous
+  automatiques de `tests/conftest.py` y veillent
   (celui de git ignore les valeurs de `-c`, où est la règle `insteadOf` de l'adresse). Les tests des
   PR clonent et poussent pour de vrai, vers des dépôts « bare » du dossier du test
   (`fake_forge.make_remote`, `github.GIT_URL` vers `remotes_url(…)`). Dans un test, jamais
@@ -237,6 +252,12 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   l'écran Réglages écrit le vrai fichier `%LOCALAPPDATA%\forceupdate\forceupdate.toml` (le même que
   la ligne de commande : l'effacer après un essai s'il n'existait pas) ; « Vider le cache » vide
   le vrai cache de l'utilisateur (dans un essai, annuler le dialogue).
+- Un registre privé se simule avec respx, dans `recorded_responses(ajout)` de `conftest.py` (ses
+  routes passent avant celles qui répondent 404) : voir `tests/test_routing_*.py`. Pour l'essayer
+  en vrai sans toucher aux fichiers de la personne : un dossier personnel factice dans le
+  scratchpad (`USERPROFILE`, `HOME` et `APPDATA` pour la commande : `Path.home()` suit
+  `USERPROFILE` sous Windows) et des registres servis sur `127.0.0.1` (un identifiant peut y partir
+  en http : rien ne quitte la machine).
 - Un test qui lance une vraie commande `ui` (sans `serve` simulé) bloque la suite :
   le serveur attend Ctrl+C.
 - Le front construit (`src/forceupdate/web/static/`) n'est pas versionné : sans lui, `ui`

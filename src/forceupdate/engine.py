@@ -6,7 +6,9 @@ L'interface web et la ligne de commande l'appellent, et n'ont pas de logique mé
 - ``check`` : demande aux registres ce qu'ils savent de chaque paquet, et à OSV les failles
   de chaque version, et en tire les constats (``checks/``). Asynchrone : tous les paquets
   sont demandés en même temps ;
-- ``analyze`` : les deux à la suite. C'est la coroutine que lancera le serveur (E12) ;
+- ``analyze`` : les deux à la suite, avec l'aiguillage des registres (``routing``, E33 : les
+  registres privés que déclarent le projet et la personne). C'est la coroutine que lance le
+  serveur ;
 - ``scan`` : ``analyze`` pour qui n'a pas de boucle ``asyncio`` (la ligne de commande).
 
 **Synchrone et asynchrone (tranché à E07)** : la lecture des fichiers reste synchrone (elle
@@ -25,7 +27,7 @@ import dataclasses
 from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime
 
-from forceupdate import checks, config, parsers, registries
+from forceupdate import checks, config, parsers, routing
 from forceupdate.advisories import Osv, OsvError, Query, Vulnerabilities
 from forceupdate.checks import eol, runtimes, vulns
 from forceupdate.checks.base import Current
@@ -54,13 +56,16 @@ from forceupdate.parsers import code as code_parser
 from forceupdate.parsers import python
 from forceupdate.parsers.base import REASON_WORKSPACE
 from forceupdate.parsers.lockfiles import dirname
-from forceupdate.registries import PackageInfo, PackageNotFound, Registry, RegistryError
+from forceupdate.registries import AccessRefused, PackageInfo, PackageNotFound, RegistryError
+from forceupdate.routing import Clients, Route, Routing
 from forceupdate.sources.base import ChosenCode, Source
 from forceupdate.update import planner
 
 EventCallback = Callable[[Event], None]
 
 _Outcome = PackageInfo | PackageNotFound | RegistryError
+_Key = tuple[Ecosystem, tuple[tuple[tuple[str, str], ...], bool], str]
+"""Un paquet à demander : son écosystème, sa route (``Route.key``) et son nom normalisé."""
 _Found = Vulnerabilities | OsvError
 _Lifecycle = Product | ProductNotFound | EndOfLifeError
 
@@ -171,16 +176,18 @@ async def analyze(
     http: HttpClient | None = None,
     cache: Cache | None = None,
 ) -> Report:
-    """Analyse une source : ``inventory``, puis ``check``. Voir ``check`` pour ``http`` et
-    ``cache``."""
+    """Analyse une source : ``inventory``, l'aiguillage des registres (``routing.read`` : ceux que
+    déclarent les fichiers du projet et de la personne), puis ``check``. Voir ``check`` pour
+    ``http`` et ``cache``."""
     options = options or ScanOptions()
     emit = on_event or _ignore
     scanned_at = datetime.now(UTC)
     emit(Event(kind=EventKind.READING))
     report = inventory(source, include_tests=options.include_tests)
     report.scanned_at = scanned_at
+    routes = routing.read(report, source.read_text)
     emit(Event(kind=EventKind.PROJECTS_FOUND, total=len(report.projects)))
-    await check(report, options, on_event=emit, http=http, cache=cache)
+    await check(report, options, on_event=emit, http=http, cache=cache, routes=routes)
     emit(Event(kind=EventKind.FINISHED))
     return report
 
@@ -201,9 +208,15 @@ async def check(
     http: HttpClient | None = None,
     cache: Cache | None = None,
     today: date | None = None,
+    routes: Routing | None = None,
 ) -> None:
     """Vérifie les dépendances du rapport auprès des registres et d'OSV, et range les constats
     dans chaque projet, du plus grave au moins grave.
+
+    ``routes`` : à quel registre demander chaque paquet (``routing``, E33) ; par défaut, au
+    registre public. Un paquet privé n'est jamais demandé au registre public ni à OSV : une
+    remarque du projet dit que ses failles ne sont pas cherchées ; sans registre à qui le demander,
+    ou si le sien refuse l'accès, son constat est « privé : non vérifié ».
 
     Les fins de vie (E27) : celles des runtimes de chaque projet et des frameworks parmi les
     dépendances vérifiées, d'après endoflife.date, à la date ``today`` (par défaut
@@ -236,7 +249,7 @@ async def check(
         if cache is None:
             cache = Cache.default() if options.cache else Cache.disabled()
             stack.callback(cache.close)
-        await _check(report, options, emit, http, cache, today)
+        await _check(report, options, emit, http, cache, today, routes or Routing())
 
 
 async def _check(
@@ -246,21 +259,23 @@ async def _check(
     http: HttpClient,
     cache: Cache,
     today: date | None,
+    routes: Routing,
 ) -> None:
     """``check``, une fois ``http`` et ``cache`` ouverts."""
-    clients: dict[Ecosystem, Registry] = {}
-    unsupported: dict[Ecosystem, str] = {}
+    clients = Clients(http, cache, routes.credentials)
 
-    def client(ecosystem: Ecosystem) -> Registry | None:
-        """Le client du registre de ``ecosystem``, un par analyse ; ``None`` s'il n'y en a pas."""
-        if ecosystem not in clients and ecosystem not in unsupported:
-            try:
-                clients[ecosystem] = registries.for_ecosystem(ecosystem, http, cache)
-            except LookupError as error:
-                unsupported[ecosystem] = str(error)
-        return clients.get(ecosystem)
+    def key(project: Project, dependency: Dependency) -> _Key | None:
+        """La clé du paquet de ``dependency`` ; ``None`` si son écosystème n'a pas de registre."""
+        registry = clients.client(dependency.ecosystem)
+        if registry is None:
+            return None
+        route = routes.route(project, dependency)
+        return dependency.ecosystem, route.key, registry.normalize(dependency.name)
 
-    await _resolve_imports(report, client)
+    routing.apply(report, routes)
+    for project in report.projects:
+        project.notices.extend(routes.notices(project))
+    await _resolve_imports(report, clients, routes)
     ignore = config.ignore_rules(report, options)
     for project in report.projects:
         config.mark_ignored(project, ignore)
@@ -272,7 +287,13 @@ async def _check(
     ]
     to_check: list[tuple[Project, Dependency]] = []
     for project, dependency in selected:
-        if dependency.verifiable:
+        unchecked = routes.route(project, dependency).unchecked
+        if dependency.verifiable and unchecked is not None:
+            message = f"{unchecked}."
+            project.findings.append(
+                Finding(kind=FindingKind.UNVERIFIABLE, message=message, dependency=dependency)
+            )
+        elif dependency.verifiable:
             to_check.append((project, dependency))
         elif dependency.unverifiable_reason != REASON_WORKSPACE:
             # Un membre du workspace est du code du dépôt lui-même : rien à vérifier.
@@ -283,13 +304,20 @@ async def _check(
                     dependency=dependency,
                 )
             )
-    audited: list[tuple[Project, Dependency, Current]] = [
-        (project, dependency, current)
-        for project in report.projects
-        for dependency in project.dependencies
-        if vulns.audited(dependency, options)
-        and (current := vulns.version_to_check(dependency)) is not None
-    ]
+    audited: list[tuple[Project, Dependency, Current]] = []
+    private: dict[tuple[int, str], int] = {}
+    for project in report.projects:
+        for dependency in project.dependencies:
+            if not vulns.audited(dependency, options):
+                continue
+            if routes.route(project, dependency).private:
+                # OSV ne connaît que les paquets publics : un homonyme n'est pas ce paquet-ci.
+                where = (id(project), dependency.file)
+                private[where] = private.get(where, 0) + 1
+            elif (current := vulns.version_to_check(dependency)) is not None:
+                audited.append((project, dependency, current))
+    for project in report.projects:
+        project.notices.extend(_private_notices(project, private))
     queries = sorted({_query(dependency, current) for _, dependency, current in audited})
     lived = [
         (project, runtime)
@@ -303,65 +331,65 @@ async def _check(
     ]
     products = sorted({r.product for _, r in lived} | {product for *_, product in frameworks})
 
-    ecosystems = {dependency.ecosystem for _, dependency in to_check}
-    ecosystems |= {dependency.ecosystem for _, dependency, _ in audited}
-    for ecosystem in sorted(ecosystems):
-        client(ecosystem)
-    packages = sorted(
-        {
-            (dependency.ecosystem, clients[dependency.ecosystem].normalize(dependency.name))
-            for _, dependency in to_check
-            if dependency.ecosystem in clients
-        }
-    )
+    wanted: dict[_Key, Route] = {}
+    for project, dependency in to_check:
+        if (found_key := key(project, dependency)) is not None:
+            wanted[found_key] = routes.route(project, dependency)
+    packages = sorted(wanted)
     progress = _Progress(emit, total=len(packages) + (1 if queries else 0))
     emit(Event(kind=EventKind.CHECKING, total=progress.total))
     osv = Osv(http, cache)
     outcomes, found, lifecycles = await asyncio.gather(
-        _lookup_all(clients, packages, progress),
+        _lookup_all(clients, {k: wanted[k] for k in packages}, progress),
         _vulnerabilities(osv, queries, progress),
         _lifecycles(EndOfLifeDate(http, cache), products),
     )
     # Les versions publiées des indirectes en faille, pour choisir celle qui corrige.
-    vulnerable = {
-        (dependency.ecosystem, clients[dependency.ecosystem].normalize(dependency.name))
-        for _, dependency, current in audited
-        if dependency.ecosystem in clients
-        and dependency.ignored is None  # pas de mise à jour pour un paquet ignoré
-        and isinstance(result := found[_query(dependency, current)], Vulnerabilities)
-        and result.advisories
-    }
-    outcomes |= await _lookup_all(clients, sorted(vulnerable - set(outcomes)), None)
-    outcomes = _without_ignored(report, clients, outcomes, ignore)
+    vulnerable: dict[_Key, Route] = {}
+    for project, dependency, current in audited:
+        if (
+            dependency.ignored is None  # pas de mise à jour pour un paquet ignoré
+            and isinstance(result := found[_query(dependency, current)], Vulnerabilities)
+            and result.advisories
+            and (found_key := key(project, dependency)) is not None
+            and found_key not in outcomes
+        ):
+            vulnerable[found_key] = routes.route(project, dependency)
+    outcomes |= await _lookup_all(clients, dict(sorted(vulnerable.items())), None)
+    outcomes = _without_ignored(report, clients, key, outcomes, ignore)
 
     def refused(project: Project, dependency: Dependency) -> Mapping[str, Refusal]:
-        registry = clients.get(dependency.ecosystem)
-        if registry is None:
-            return {}
-        info = outcomes.get((dependency.ecosystem, registry.normalize(dependency.name)))
+        found_key = key(project, dependency)
+        info = outcomes.get(found_key) if found_key is not None else None
         if not isinstance(info, PackageInfo):
             return {}
         return runtimes.refused(info, runtimes.project_runtime(project, dependency.ecosystem))
 
     _record_lifecycles(lived, frameworks, lifecycles, today or eol.today(), refused)
-    _record_findings(report, options, to_check, audited, clients, unsupported, outcomes, found)
+    _record_findings(report, options, to_check, audited, clients, key, outcomes, found)
     infos = {
         (dependency.ecosystem, dependency.name): outcome
         for project in report.projects
         for dependency in project.dependencies
-        if dependency.ecosystem in clients
-        and isinstance(
-            outcome := outcomes.get(
-                (dependency.ecosystem, clients[dependency.ecosystem].normalize(dependency.name))
-            ),
-            PackageInfo,
-        )
+        if (found_key := key(project, dependency)) is not None
+        and isinstance(outcome := outcomes.get(found_key), PackageInfo)
     }
     known = {q: v for q, v in found.items() if isinstance(v, Vulnerabilities)}
     rules = planner.rules(report.config.selection if report.config else (), options.selection)
     planner.plan(report, infos, known, rules)
-    # Les versions proposées ont-elles elles-mêmes des failles ? Une requête pour toutes.
-    proposed = [q for q in planner.proposed_versions(report) if q not in found]
+    # Les versions proposées ont-elles elles-mêmes des failles ? Une requête pour toutes, sans
+    # les paquets privés (OSV n'a pas à apprendre leur nom).
+    private_names = {
+        (dependency.ecosystem, dependency.name)
+        for project in report.projects
+        for dependency in project.dependencies
+        if routes.route(project, dependency).private
+    }
+    proposed = [
+        q
+        for q in planner.proposed_versions(report)
+        if q not in found and (q[0], q[1]) not in private_names
+    ]
     found |= await osv.vulnerabilities(proposed) if proposed else {}
     planner.audit(report, found, rules)
 
@@ -371,21 +399,26 @@ async def _check(
     report.oldest_data = min(dates, default=None)
 
 
-async def _resolve_imports(report: Report, client: Callable[[Ecosystem], Registry | None]) -> None:
+async def _resolve_imports(report: Report, clients: Clients, routes: Routing) -> None:
     """Rattache à son paquet chaque import dont le paquet n'est pas sûr (``parsers.code.
     candidates`` : un module Go, un paquet sous un espace de noms Python) : le premier des noms
     possibles que le registre connaît, du plus long au plus court, comme ``go mod tidy``
     (vérifié avec Go 1.27 : ``golang.org/x/text/language`` vient de ``golang.org/x/text``).
     Aucun : la dépendance est non vérifiable. Le registre muet : elle garde son nom, et sa
-    vérification dira l'erreur. Deux imports du même paquet n'en font plus qu'une."""
+    vérification dira l'erreur. Deux imports du même paquet n'en font plus qu'une. Chaque nom
+    est demandé là où le dit l'aiguillage (``routing``) : un module privé n'est demandé à
+    personne, sa vérification dira « privé : non vérifié »."""
 
-    async def resolve(dependency: Dependency, names: list[str]) -> Dependency:
-        registry = client(dependency.ecosystem)
+    async def resolve(project: Project, dependency: Dependency, names: list[str]) -> Dependency:
+        registry = clients.client(dependency.ecosystem)
         if registry is None:
             return dependency
         for name in names:
+            route = routes.route(project, dataclasses.replace(dependency, name=name))
+            if route.unchecked is not None:
+                return dependency
             try:
-                await registry.package(name)
+                await clients.package(dependency.ecosystem, route, name)
             except PackageNotFound:
                 continue
             except RegistryError:
@@ -405,7 +438,7 @@ async def _resolve_imports(report: Report, client: Callable[[Ecosystem], Registr
     ]
     if not pending:
         return
-    resolved = await asyncio.gather(*(resolve(d, names) for _, _, d, names in pending))
+    resolved = await asyncio.gather(*(resolve(p, d, names) for p, _, d, names in pending))
     for (project, index, _, _), dependency in zip(pending, resolved, strict=True):
         project.dependencies[index] = dependency
     for project in {id(project): project for project, *_ in pending}.values():
@@ -422,32 +455,32 @@ async def _resolve_imports(report: Report, client: Callable[[Ecosystem], Registr
 
 def _without_ignored(
     report: Report,
-    clients: Mapping[Ecosystem, Registry],
-    outcomes: dict[tuple[Ecosystem, str], _Outcome],
+    clients: Clients,
+    key: Callable[[Project, Dependency], _Key | None],
+    outcomes: dict[_Key, _Outcome],
     rules: list[config.IgnoreRule],
-) -> dict[tuple[Ecosystem, str], _Outcome]:
+) -> dict[_Key, _Outcome]:
     """``outcomes``, sans les versions qu'ignorent les règles de versions (``config.
     without_ignored`` : forceupdate fait comme si elles n'étaient pas publiées), sauf celles
     qu'utilisent les projets. Chaque projet qui déclare le paquet le dit dans une remarque :
     combien de versions la règle écarte, ou qu'elle ne se lit pas pour son écosystème."""
     if all(rule.whole for rule in rules):
         return outcomes
-    declared: dict[tuple[Ecosystem, str], list[tuple[Project, Dependency]]] = {}
+    declared: dict[_Key, list[tuple[Project, Dependency]]] = {}
     for project in report.projects:
         for dependency in project.dependencies:
-            registry = clients.get(dependency.ecosystem)
-            if registry is not None:
-                key = (dependency.ecosystem, registry.normalize(dependency.name))
-                declared.setdefault(key, []).append((project, dependency))
+            found_key = key(project, dependency)
+            if found_key is not None:
+                declared.setdefault(found_key, []).append((project, dependency))
     filtered = dict(outcomes)
-    for key, info in outcomes.items():
-        users = declared.get(key)
+    for found_key, info in outcomes.items():
+        users = declared.get(found_key)
         if not isinstance(info, PackageInfo) or not users:
             continue
         used = {v for _, d in users if (v := checks.current_version(d).version) is not None}
         result = config.without_ignored(info, users[0][1], rules, used)
-        filtered[key] = result.info
-        label = clients[key[0]].label
+        filtered[found_key] = result.info
+        label = clients.public[found_key[0]].label
         said: set[tuple[int, str]] = set()
         for project, dependency in users:
             for rule, count in result.removed.items():
@@ -524,19 +557,19 @@ def _record_findings(
     options: ScanOptions,
     to_check: list[tuple[Project, Dependency]],
     audited: list[tuple[Project, Dependency, Current]],
-    clients: dict[Ecosystem, Registry],
-    unsupported: dict[Ecosystem, str],
-    outcomes: dict[tuple[Ecosystem, str], _Outcome],
+    clients: Clients,
+    key: Callable[[Project, Dependency], _Key | None],
+    outcomes: dict[_Key, _Outcome],
     found: dict[Query, _Found],
 ) -> None:
     """Range dans chaque projet les constats tirés des registres et d'OSV, du plus grave au
     moins grave."""
     for project, dependency in to_check:
-        client = clients.get(dependency.ecosystem)
-        if client is None:
-            outcome: _Outcome = RegistryError(unsupported[dependency.ecosystem])
+        found_key = key(project, dependency)
+        if found_key is None:
+            outcome: _Outcome = RegistryError(clients.unsupported[dependency.ecosystem])
         else:
-            outcome = outcomes[dependency.ecosystem, client.normalize(dependency.name)]
+            outcome = outcomes[found_key]
         project.findings.extend(_findings(project, dependency, outcome))
     unchecked: dict[tuple[int, str, str], int] = {}
     for project, dependency, current in audited:
@@ -558,6 +591,21 @@ def _record_findings(
                 project.notices.append(Notice(file=file, message=message))
         project.notices.extend(_unpinned_notices(project))
         project.findings = checks.sort_findings(project.findings)
+
+
+def _private_notices(project: Project, private: Mapping[tuple[int, str], int]) -> list[Notice]:
+    """Une remarque par fichier qui a des paquets privés (``routing``) : leurs failles ne sont pas
+    demandées à OSV."""
+    notices = []
+    for (owner, file), count in private.items():
+        if owner == id(project):
+            what = "le paquet privé" if count == 1 else f"les {count} paquets privés"
+            message = (
+                f"Failles non cherchées pour {what} : OSV ne connaît que les paquets publics (un "
+                "homonyme n'est pas le même paquet), et n'a pas à apprendre leur nom."
+            )
+            notices.append(Notice(file=file, message=message))
+    return notices
 
 
 def _unpinned_notices(project: Project) -> list[Notice]:
@@ -614,32 +662,33 @@ async def _vulnerabilities(
 
 
 async def _lookup_all(
-    clients: dict[Ecosystem, Registry],
-    packages: list[tuple[Ecosystem, str]],
-    progress: _Progress | None,
-) -> dict[tuple[Ecosystem, str], _Outcome]:
-    """Demande tous les paquets en même temps ; un événement par paquet vérifié, sauf sans
-    ``progress``."""
+    clients: Clients, packages: Mapping[_Key, Route], progress: _Progress | None
+) -> dict[_Key, _Outcome]:
+    """Demande tous les paquets en même temps, chacun par sa route ; un événement par paquet
+    vérifié, sauf sans ``progress``."""
 
-    async def lookup(ecosystem: Ecosystem, name: str) -> PackageInfo:
+    async def lookup(found_key: _Key, route: Route) -> PackageInfo:
+        ecosystem, _, name = found_key
         try:
-            return await clients[ecosystem].package(name)
+            return await clients.package(ecosystem, route, name)
         finally:
             if progress is not None:
                 progress.step(EventKind.PACKAGE_CHECKED, ecosystem=ecosystem, name=name)
 
-    results = await asyncio.gather(
-        *(lookup(ecosystem, name) for ecosystem, name in packages), return_exceptions=True
-    )
+    keys = list(packages)
+    results = await asyncio.gather(*(lookup(k, packages[k]) for k in keys), return_exceptions=True)
     for result in results:
         if isinstance(result, BaseException) and not isinstance(
             result, PackageNotFound | RegistryError
         ):
             raise result
-    return dict(zip(packages, results, strict=True))  # type: ignore[arg-type]
+    return dict(zip(keys, results, strict=True))  # type: ignore[arg-type]
 
 
 def _findings(project: Project, dependency: Dependency, outcome: _Outcome) -> list[Finding]:
+    if isinstance(outcome, AccessRefused):
+        message = f"Registre privé : non vérifié : {outcome}"
+        return [Finding(kind=FindingKind.UNVERIFIABLE, message=message, dependency=dependency)]
     if isinstance(outcome, PackageNotFound):
         message = str(outcome)
         if dependency.imported is not None:

@@ -200,7 +200,7 @@ Ce que remplit chaque type :
 | `eol` (runtime) | la dernière version du cycle conseillé (`3.15.2`) ; `null` s'il n'y en a pas | `dependency` à `null`, `eol` (avec `runtime`), `current_version` (la version lue), `url` |
 | `eol` (framework) | de même (`5.2.18` pour Django 3.2) | `dependency` (le premier paquet du produit dans le projet : un constat par cycle), `eol`, `gap` |
 | `unpinned` | la dernière version stable, si le registre en a une | `message` : « Version non fixée : la dernière est X. » (« (importé : cv2) » pour un import) |
-| `unverifiable` | `null` | `message` : la raison (paquet introuvable, dépendance git…) |
+| `unverifiable` | `null` | `message` : la raison (paquet introuvable, dépendance git, paquet d'un registre privé qu'on ne peut pas demander : « Privé : non vérifié : … », « Registre privé : non vérifié : … refuse l'accès »…) |
 | `inconclusive` | la dernière, si on la connaît | `message` : pourquoi (réseau, hors ligne sans cache, version utilisée inconnue, version inconnue du registre, failles non vérifiées, fin de vie non vérifiée : endoflife.date injoignable, ou une version qu'il ne connaît pas) |
 
 ### Fin de vie
@@ -438,7 +438,7 @@ Les noms d'OSV : `PyPI`, `npm`, `crates.io`, `Go`, `Packagist`, `RubyGems`,
 | `yanked` | la version utilisée a été retirée du registre |
 | `deprecated` | le paquet, ou la version utilisée (npm), est déprécié |
 | `unpinned` | rien ne fixe la version, ni contrainte ni lockfile (un import d'un fichier de code seul, une dépendance écrite sans version : E28) ; la dernière est dite, les failles ne sont pas vérifiables (une remarque du projet le dit, par fichier) ; jamais pour `--fail-on` |
-| `unverifiable` | impossible à vérifier : paquet introuvable, dépendance git ou locale |
+| `unverifiable` | impossible à vérifier : paquet introuvable, dépendance git ou locale, registre privé qu'on ne peut pas demander (E33) |
 | `inconclusive` | on ne conclut rien : erreur réseau, hors ligne sans cache, version utilisée inconnue |
 
 ### Gravités

@@ -7,7 +7,14 @@ interface. Pour un paquet, trois issues :
 - ``PackageNotFound`` : il ne le connaît pas (paquet privé, faute de frappe). Le constat
   est « non vérifiable », ce n'est pas une erreur fatale ;
 - ``RegistryError`` : pas de réponse exploitable (réseau, hors ligne sans cache, réponse
-  illisible). Le constat est « non concluant », jamais faux.
+  illisible). Le constat est « non concluant », jamais faux ;
+- ``AccessRefused`` (un ``RegistryError``) : un registre déclaré (privé, E33) refuse l'accès
+  (401, 403). Le constat est « privé : non vérifié ».
+
+Un registre déclaré par le projet ou par la personne (``routing``, E33) est un client de la même
+classe, à une autre adresse (``base_url``), avec les identifiants de l'analyse (``auth`` : seul
+celui qui est lié à l'adresse demandée part, ``net.auth``) ; son nom dans les messages est son
+hôte, jamais l'adresse (qui peut contenir un token).
 
 Les versions restent des chaînes, telles que le registre les donne. Elles s'interprètent
 avec ``forceupdate.versions`` ; une version que ses règles ne savent pas lire (un vieux
@@ -27,6 +34,7 @@ from typing import Any, ClassVar
 
 from forceupdate import versions
 from forceupdate.models import Ecosystem
+from forceupdate.net.auth import Credentials
 from forceupdate.net.cache import Cache, CacheEntry, CacheKind
 from forceupdate.net.http import HttpClient, NetworkError, Response
 from forceupdate.versions import InvalidVersion
@@ -46,6 +54,14 @@ class PackageNotFound(LookupError):
 class RegistryError(Exception):
     """Le registre n'a pas donné de réponse exploitable : réseau, mode hors ligne sans
     cache, statut inattendu, réponse illisible.
+
+    Le message, en français, est fait pour être montré tel quel dans le rapport.
+    """
+
+
+class AccessRefused(RegistryError):
+    """Un registre déclaré (privé) refuse l'accès (401, 403) : identifiants absents ou refusés.
+    Rien n'est rangé dans le cache : la réponse changera avec les identifiants.
 
     Le message, en français, est fait pour être montré tel quel dans le rapport.
     """
@@ -146,11 +162,24 @@ class Registry(ABC):
     """Les statuts qui disent que le registre ne connaît pas le paquet (404 ; 410 aussi pour le
     proxy Go)."""
 
-    def __init__(self, http: HttpClient, cache: Cache, *, base_url: str | None = None) -> None:
+    def __init__(
+        self,
+        http: HttpClient,
+        cache: Cache,
+        *,
+        base_url: str | None = None,
+        auth: Credentials | None = None,
+        label: str | None = None,
+    ) -> None:
         self._http = http
         self._cache = cache
+        self.declared = base_url is not None
+        """Un registre déclaré (``base_url`` donnée) : un refus d'accès est ``AccessRefused``."""
         if base_url is not None:
             self.base_url = base_url.rstrip("/")
+        if label is not None:
+            self.label = label
+        self._auth = auth
         self._lookups: dict[str, asyncio.Future[PackageInfo]] = {}
 
     # -- à écrire pour chaque registre ------------------------------------------
@@ -170,6 +199,12 @@ class Registry(ABC):
     @abstractmethod
     def parse(self, name: str, response: Response, fetched_at: datetime) -> PackageInfo:
         """Lit la réponse (statut 200) ; lève ``ValueError`` si elle est illisible."""
+
+    async def _url(self, name: str) -> str:
+        """L'URL à interroger pour ``name`` : ``url_for``, sauf pour un registre qui doit d'abord
+        lire son propre index (un dépôt Composer : son ``packages.json``). Peut lever
+        ``PackageNotFound`` ou ``RegistryError``."""
+        return self.url_for(name)
 
     async def _complete(self, name: str, info: PackageInfo) -> PackageInfo:
         """``info`` complété par d'autres requêtes, avant d'aller au cache : le proxy Go donne
@@ -194,7 +229,7 @@ class Registry(ABC):
         return await asyncio.shield(lookup)
 
     async def _lookup(self, name: str) -> PackageInfo:
-        url = self.url_for(name)
+        url = await self._url(name)
         entry = self._cache.get(CacheKind.VERSIONS, url, stale_ok=self._http.offline)
         if entry is not None:
             cached = self._from_cache(name, entry)
@@ -204,17 +239,10 @@ class Registry(ABC):
             raise RegistryError(
                 f"{self.label} : mode hors ligne, et {name} n'est pas dans le cache."
             )
-        try:
-            response = await self._http.get(url, headers=self.headers)
-        except NetworkError as error:
-            raise RegistryError(f"{self.label} : {error}") from error
-        if response.status_code in self.not_found_statuses:
+        response = await self._get(url, name, found=True)
+        if response is None:
             self._cache.set(CacheKind.VERSIONS, url, {"format": _FORMAT, "not_found": True})
             raise PackageNotFound(self._not_found(name))
-        if response.status_code != 200:
-            raise RegistryError(
-                f"{self.label} : réponse inattendue pour {name} (HTTP {response.status_code})."
-            )
         try:
             info = self.parse(name, response, datetime.now(UTC))
             info = await self._complete(name, info)
@@ -229,7 +257,29 @@ class Registry(ABC):
         self._cache.set(CacheKind.VERSIONS, url, _info_to_cache(info))
         return info
 
+    async def _get(self, url: str, name: str, *, found: bool = False) -> Response | None:
+        """La réponse 200 du registre à ``url`` (pour le paquet ``name``) ; ``None`` pour un statut
+        de ``not_found_statuses`` si ``found``. Lève ``AccessRefused`` pour un registre déclaré
+        qui refuse l'accès, ``RegistryError`` sinon."""
+        try:
+            response = await self._http.get(url, headers=self.headers, auth=self._auth)
+        except NetworkError as error:
+            raise RegistryError(f"{self.label} : {error}") from error
+        status = response.status_code
+        if found and status in self.not_found_statuses:
+            return None
+        if self.declared and status in (401, 403):
+            raise AccessRefused(
+                f"{self.label} refuse l'accès à {name} (HTTP {status}) : identifiants absents ou "
+                "refusés."
+            )
+        if status != 200:
+            raise RegistryError(f"{self.label} : réponse inattendue pour {name} (HTTP {status}).")
+        return response
+
     def _not_found(self, name: str) -> str:
+        if self.declared:
+            return f"{name} est introuvable sur {self.label}."
         return f"{name} est introuvable sur {self.label} : paquet privé, ou nom mal écrit ?"
 
     def _from_cache(self, name: str, entry: CacheEntry) -> PackageInfo | None:

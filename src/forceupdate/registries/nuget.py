@@ -23,6 +23,11 @@ Ce qu'on en tire :
   quand sa dernière version l'est comme « plus maintenue » (``Legacy`` : WindowsAzure.Storage,
   xunit 2), avec son remplaçant ;
 - **la dernière stable** : la plus haute version listée, sans pré-version.
+
+Un flux déclaré dans ``nuget.config`` (E33, ``NuGetFeed``) : son adresse est celle de son index de
+services (``…/v3/index.json``), qui donne l'adresse de son API « registration »
+(``RegistrationsBaseUrl``, de préférence la version 3.6.0 : SemVer 2, compressée) ; ses pages sont
+lues de même. Azure Artifacts, GitHub Packages, Artifactory, ProGet et nuget.org la servent.
 """
 
 import asyncio
@@ -31,7 +36,7 @@ from typing import Any
 from urllib.parse import quote
 
 from forceupdate.models import Ecosystem
-from forceupdate.net.http import NetworkError, Response
+from forceupdate.net.http import Response
 from forceupdate.registries.base import (
     PackageInfo,
     PackageVersion,
@@ -41,6 +46,16 @@ from forceupdate.registries.base import (
     sorted_versions,
 )
 from forceupdate.versions.nuget import NUGET
+
+REGISTRATIONS = (
+    "RegistrationsBaseUrl/3.6.0",
+    "RegistrationsBaseUrl/3.4.0",
+    "RegistrationsBaseUrl/3.0.0-rc",
+    "RegistrationsBaseUrl/3.0.0-beta",
+    "RegistrationsBaseUrl",
+)
+"""Les ressources de l'index de services qui donnent l'API « registration », de la préférée (SemVer
+2, compressée) à la plus ancienne."""
 
 _REASONS = {"Legacy": "plus maintenu", "CriticalBugs": "bogues critiques", "Other": "déprécié"}
 """Les raisons d'une dépréciation, en français."""
@@ -97,6 +112,10 @@ class NuGet(Registry):
     def url_for(self, name: str) -> str:
         return f"{self.base_url}/{quote(name, safe='')}/index.json"
 
+    def _pages(self) -> str:
+        """L'adresse sous laquelle sont les pages d'un paquet (celle de l'API « registration »)."""
+        return self.base_url
+
     def page_url(self, name: str) -> str | None:
         if self.base_url != NuGet.base_url:
             return None
@@ -111,7 +130,7 @@ class NuGet(Registry):
         for page in data["items"]:
             if isinstance(page, dict) and "items" not in page:
                 url = page.get("@id")
-                if not isinstance(url, str) or not url.startswith(f"{self.base_url}/"):
+                if not isinstance(url, str) or not url.startswith(f"{self._pages()}/"):
                     raise ValueError(f"page hors du registre : {url!r:.80}")
                 pending.append(url)
             else:
@@ -133,14 +152,8 @@ class NuGet(Registry):
         return self._info(name, entries, info.fetched_at)
 
     async def _page(self, url: str, name: str) -> Any:
-        try:
-            response = await self._http.get(url, headers=self.headers)
-        except NetworkError as error:
-            raise RegistryError(f"{self.label} : {error}") from error
-        if response.status_code != 200:
-            raise RegistryError(
-                f"{self.label} : réponse inattendue pour {name} (HTTP {response.status_code})."
-            )
+        response = await self._get(url, name)
+        assert response is not None
         return response.json()
 
     def _info(self, name: str, entries: list[dict[str, Any]], fetched_at: datetime) -> PackageInfo:
@@ -175,3 +188,54 @@ class NuGet(Registry):
             url=self.page_url(name),
             fetched_at=fetched_at,
         )
+
+
+class NuGetFeed(NuGet):
+    """Un flux NuGet v3 déclaré : ``base_url`` est l'adresse de son index de services."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._registrations: asyncio.Future[str] | None = None
+
+    def page_url(self, name: str) -> str | None:
+        return None
+
+    def _pages(self) -> str:
+        assert self._registrations is not None and self._registrations.done()
+        return self._registrations.result()
+
+    async def _read_service_index(self) -> str:
+        response = await self._get(self.base_url, "son index de services")
+        assert response is not None
+        try:
+            data = response.json()
+        except ValueError:
+            data = None
+        resources = data.get("resources") if isinstance(data, dict) else None
+        if not isinstance(resources, list):
+            raise RegistryError(
+                f"{self.label} : pas d'index de services NuGet v3 (un flux v2 n'est pas lu)."
+            )
+        found: dict[str, str] = {}
+        for resource in resources:
+            if not isinstance(resource, dict) or not isinstance(resource.get("@id"), str):
+                continue
+            types = resource.get("@type")
+            for kind in types if isinstance(types, list) else [types]:
+                if isinstance(kind, str):
+                    found.setdefault(kind, resource["@id"])
+        for kind in REGISTRATIONS:
+            if kind in found:
+                return found[kind].rstrip("/")
+        raise RegistryError(
+            f"{self.label} : pas d'API « registration » dans son index de services."
+        )
+
+    async def registrations(self) -> str:
+        """L'adresse de l'API « registration » du flux, lue une fois par analyse."""
+        if self._registrations is None:
+            self._registrations = asyncio.ensure_future(self._read_service_index())
+        return await asyncio.shield(self._registrations)
+
+    async def _url(self, name: str) -> str:
+        return f"{await self.registrations()}/{quote(name, safe='')}/index.json"

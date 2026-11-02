@@ -126,7 +126,7 @@ Statuts : `à faire`, `en cours`, `fait`.
 | E30 | H | Robustesse et performance | fait |
 | E31 | H | Forges : robustesse | fait |
 | E32 | H | Mise à jour : le npm du projet, Python, NuGet, Go | fait |
-| E33 | H | Registres et dépôts privés | à faire |
+| E33 | H | Registres et dépôts privés | fait |
 | E34 | H | Compléments d'analyse | à faire |
 | E35 | H | Documentation, packaging, CI | à faire |
 | E36 | H | Recette finale | à faire |
@@ -3090,17 +3090,147 @@ Un paquet d'un registre privé est aujourd'hui demandé au registre public (intr
 homonyme). Le demander à son registre, avec ses identifiants (jamais envoyés ailleurs), ou dire
 « privé : non vérifié ».
 
-- [ ] Depuis E22 (Go) : un module privé (`GOPRIVATE`, `GONOPROXY`, lus dans l'environnement et dans `go env -w`) est demandé au proxy public et à OSV, et le proxy cherche lui-même son hôte : ne pas les demander (« module privé : non vérifié »), comme `go` ; de même pour un paquet npm d'un registre privé (`.npmrc`, `@scope:registry`).
-- [ ] Depuis E23 (PHP) : un dépôt `composer` de `repositories` (Satis, Private Packagist) : ses paquets sont cherchés sur Packagist ; les demander à ce dépôt (son `packages.json`, `metadata-url`), avec `auth.json`.
-- [ ] Depuis E25 (Java) : les dépôts Maven déclarés (`<repositories>`, miroirs de `~/.m2/settings.xml`, `repositories { }` de Gradle) ne sont pas lus : leurs artefacts sont cherchés sur Maven Central (un privé y est introuvable) ; les lire, avec leurs identifiants.
-- [ ] Depuis E26 (.NET) : les flux privés de `nuget.config` (ses sources, leurs identifiants) pour les versions publiées.
-- [ ] Depuis E28 (Python) : `[tool.uv] index` d'un script (un autre index que PyPI) ; de même pour un projet (`[[tool.uv.index]]`, `--index-url` d'un `requirements`) : à vérifier.
+- [x] Depuis E22 (Go) : un module privé (`GOPRIVATE`, `GONOPROXY`, lus dans l'environnement et dans `go env -w`) est demandé au proxy public et à OSV, et le proxy cherche lui-même son hôte : ne pas les demander (« module privé : non vérifié »), comme `go` ; de même pour un paquet npm d'un registre privé (`.npmrc`, `@scope:registry`).
+- [x] Depuis E23 (PHP) : un dépôt `composer` de `repositories` (Satis, Private Packagist) : ses paquets sont cherchés sur Packagist ; les demander à ce dépôt (son `packages.json`, `metadata-url`), avec `auth.json`.
+- [x] Depuis E25 (Java) : les dépôts Maven déclarés (`<repositories>`, miroirs de `~/.m2/settings.xml`, `repositories { }` de Gradle) ne sont pas lus : leurs artefacts sont cherchés sur Maven Central (un privé y est introuvable) ; les lire, avec leurs identifiants.
+- [x] Depuis E26 (.NET) : les flux privés de `nuget.config` (ses sources, leurs identifiants) pour les versions publiées.
+- [x] Depuis E28 (Python) : `[tool.uv] index` d'un script (un autre index que PyPI) ; de même pour un projet (`[[tool.uv.index]]`, `--index-url` d'un `requirements`) : à vérifier.
+- [x] Ajouté en route (E24, Ruby) : la source globale d'un `Gemfile` (`source "https://gems.corp…"` hors d'un bloc) n'était pas distinguée : ses gems étaient demandées à rubygems.org ; elles sont maintenant « non vérifiées » (lire ce serveur : case ajoutée à E34).
 
 **Fini quand** : pour chaque écosystème, un paquet d'un registre privé déclaré est demandé à ce
 registre (testé avec un registre simulé), ou dit « privé : non vérifié » ; jamais au registre
 public.
 
+**Notes** (session 33) :
+
+- **Commit d'abord** : E32 commitée (`41f2fc8`), avec l'accord de l'utilisateur.
+- **Décidé avec l'utilisateur (les identifiants)** : forceupdate **lit les identifiants dans les
+  fichiers de la personne**, comme son outil le ferait, et un identifiant ne part que vers l'hôte
+  exact (et le port, et le chemin quand ils sont dits) pour lequel il est déclaré, en https — ou en
+  http vers la machine elle-même (`localhost`, `127.0.0.1`, `::1` : rien ne quitte la machine ;
+  ajouté pour un Verdaccio ou un index local) ; jamais lors d'une redirection vers une autre
+  origine ; jamais dans le cache, un rapport, un journal, l'API ni le navigateur ; les variables
+  (`${NOM}`, `%NOM%`) d'un fichier du projet ne sont jamais développées (un dépôt pourrait faire
+  partir un secret de l'environnement vers l'adresse de son choix) ; jamais un paquet privé demandé
+  au registre public.
+- **Vérifié en vrai** avant d'écrire (2026-11-02, dans le scratchpad) :
+  - **Go 1.27.3** : `go env GOENV` vaut `%APPDATA%\go\env` ; `go env -w` y écrit `CLÉ=valeur` ;
+    l'environnement l'emporte sur le fichier ; `GONOPROXY` et `GONOSUMDB` valent `GOPRIVATE` s'ils
+    ne sont pas donnés (`none` : aucun) ; `GOAUTH` vaut `netrc` ; **proxy.golang.org va chercher
+    lui-même un module chez son hôte** (`git ls-remote` vers GitHub : 404 « could not read
+    Username » ; un hôte d'entreprise : « no such host ») ;
+  - **npm 11.6.2** : `npm config list` (le `.npmrc` du projet, puis celui de la personne,
+    `NPM_CONFIG_USERCONFIG`), valeurs entre guillemets, commentaires `;` et `#`, `${NOM}` ; les
+    identifiants sont « protected » ;
+  - **Composer 2.11.0** avec un dépôt servi en local (`packages.json`, `metadata-url`,
+    `available-packages`) : `packages.json` puis `p2/acme/private.json` ; il demande **aussi**
+    `p2/acme/private.json` à Packagist (404 : le blocage des failles de Composer 2.9+ y cherche les
+    avis) ; forceupdate, non ;
+  - **SDK .NET 10.0.403** (`dotnet nuget list source`) : le `nuget.config` le plus proche d'abord,
+    puis ceux des dossiers parents, puis celui de la personne ; `<clear />` écarte tout le reste,
+    celui de la personne compris ;
+  - **uv 0.10.11** avec un index local qui exige un identifiant : `Accept` du JSON (PEP 691) puis
+    du HTML ; `UV_INDEX_<NOM>_USERNAME` et `_PASSWORD` rattachés au nom de l'index ; un essai sans
+    identifiant, puis un avec ; `uv.lock` note le registre de chaque paquet ;
+  - **Maven et Gradle ne sont pas installés** (choix de l'utilisateur) : leurs formats sont lus
+    d'après leur documentation (« Settings Reference », « Guide to Mirror Settings », « Declaring
+    repositories »), sans vérification par l'outil ;
+  - la personne n'a ni `~/.npmrc`, ni `auth.json`, ni `settings.xml`, ni fichier `GOENV`, ni
+    `.netrc` : seulement le `NuGet.Config` par défaut (nuget.org).
+- **Organisation** :
+  - `userfiles.py` (ajouté : `home`, `config_home`, `xdg_config_home`, `environ`, `env`, `read`,
+    `expand`, `unexpanded`) : les fichiers et l'environnement de la personne, tout passe par lui ;
+  - `net/auth.py` (ajouté : `Credential` lié à son adresse, `Credentials.for_url`, `bound_to`,
+    `bound_or_none`, `split_userinfo`, `bearer`, `basic`, `is_loopback`, `origin`) ;
+    `net/http.py` : `auth=` (l'identifiant de chaque requête ; les redirections suivies à la main,
+    `MAX_REDIRECTS`, sans identifiant vers une autre origine) ;
+  - `registries/base.py` : `AccessRefused`, `Registry.declared`, `auth`, `label`, `_url`
+    (asynchrone), `_get` ; `registries.declared` (la classe d'un registre déclaré par écosystème et
+    sorte) et `for_ecosystem(…, auth=)` ; `registries/composer.py` (ajouté : `ComposerRepository`,
+    `packages.json`, `metadata-url`, `available-packages`, `includes`) ; `nuget.py` : `NuGetFeed`
+    (l'index de services, `RegistrationsBaseUrl/3.6.0`…) ; `pypi.py` : `SimpleIndex` (JSON, sinon
+    HTML : `simple_html_files`) ; `packagist.py` : `Packagist.info`, `abandoned_message(…, where)` ;
+  - `routing/` (ajouté) : `__init__.py` (`Declared`, `Route`, `PUBLIC`, `Reading`, `User`,
+    `Routing`, `read`, `apply`, `Clients` : la chaîne des registres), `npm.py` (`.npmrc`,
+    `.yarnrc.yml`), `go.py`, `netrc.py`, `composer.py`, `nuget.py`, `python.py`, `maven.py`
+    (Maven et Gradle), `ruby.py` ;
+  - `engine.py` : `analyze` lit l'aiguillage (`routing.read`), `check(…, routes=)` ; une clé par
+    route (`_Key`) ; `_private_notices` ; la seconde requête à OSV (versions proposées) sans les
+    paquets privés ; `sources/forge.py` : `_requested` lit l'aiguillage (une forge télécharge
+    `.npmrc`, `nuget.config`, `uv.toml`… comme les manifestes) ;
+  - `parsers/python.py` : `attached_index`, `requirements_options` ; `parsers/maven.py` :
+    `pom_chain` ;
+  - tests : neuvième garde-fou (`conftest.user_files` : un dossier personnel et un environnement
+    propres au test, toute lecture hors des dossiers des tests refusée) ; `e2e_server.py` de même.
+- **Tranché** :
+  - **trois cas**, d'après la configuration de l'outil : un registre **qui remplace** le public (un
+    miroir : `registry=`, `--index-url`, un `<mirror>`, un autre `GOPROXY`) : ses paquets lui sont
+    demandés, et à OSV ; des registres **en plus** (`--extra-index-url`, un dépôt `composer`, des
+    `<repositories>`, les sources de NuGet) : demandés d'abord, dans l'ordre, le premier qui a le
+    paquet l'emporte (comme uv et Composer), le public ensuite ; un paquet **privé par son nom**
+    (portée npm, `GOPRIVATE`, `index =` de uv, `source =` de Poetry, `index =` de Pipfile,
+    `include_packages` de PDM, `only` de Composer, `packageSourceMapping` de NuGet, `includeGroup`
+    et `exclusiveContent` de Gradle) : son registre seul, **jamais le public ni OSV** ;
+  - **un refus (401, 403) ou une erreur d'un registre déclaré arrête la chaîne** : le public n'est
+    pas demandé à sa place (le registre pourrait avoir le paquet). « Registre privé : non vérifié :
+    … refuse l'accès » ; jamais mis en cache. Sans registre à qui demander : « Privé : non vérifié »
+    (GOPRIVATE) ou « Non vérifié : … » (GOPROXY=direct, `--no-index`, un flux NuGet v2, la source
+    privée d'un `Gemfile`) ;
+  - **OSV** : seuls les paquets privés par leur nom n'y vont pas (une remarque par fichier :
+    « Failles non cherchées pour le paquet privé ») ; ceux d'un miroir ou d'un registre en plus y
+    vont (un miroir sert des paquets publics : Nexus, Private Packagist) ;
+  - **un identifiant rattaché à un nom** (`<server id>` de Maven, une source de NuGet,
+    `UV_INDEX_<NOM>_*`, `http-basic.<nom>` de Poetry) ne part que vers l'adresse que donne à ce nom
+    un fichier de la personne ; sinon, une remarque le dit. Les identifiants d'un dépôt Gradle (des
+    propriétés lues par le script) ne sont pas lus ; ceux de Poetry (son trousseau, `auth.toml`) non
+    plus ;
+  - **les registres publics reçoivent aussi un identifiant déclaré pour leur hôte** (un paquet
+    privé hébergé sur npmjs.com) ; `.netrc` vaut pour tous les ports d'un hôte, comme pip, uv et Go ;
+  - **les messages citent l'hôte, jamais l'adresse** (une adresse peut porter un jeton dans son
+    chemin : Gemfury) ; les identifiants écrits dans une adresse (`https://nom:secret@hôte`) en
+    sont retirés partout (la clé du cache est l'adresse) ;
+  - **Python** : l'outil du projet décide (un script ou uv, Poetry, PDM, Pipenv, sinon pip) ; un
+    paquet rattaché à un index reste « venu de l'index … » pour le parseur, l'aiguillage le rend
+    vérifiable (`Route.attached`) ; une source `primary` de Poetry retire PyPI ;
+  - **NuGet** : sans `packageSourceMapping`, les sources autres que nuget.org d'abord, la première
+    qui a le paquet l'emporte (NuGet les réunit) ; un flux v2 n'est pas lu ; un dossier local non
+    plus ;
+  - **l'interface ne change pas** : constats et remarques existants (le skill `ui-ux-pro-max` n'a
+    pas été chargé) ; ni le format JSON ni l'API.
+- **Trouvé** : la seconde requête à OSV (les versions proposées) emportait les noms privés
+  (corrigé) ; le client public ne recevait aucun identifiant (corrigé, voir plus haut) ; un heredoc
+  a encore abîmé un script (CLAUDE.md le dit : les scripts passent par l'outil d'écriture).
+- **Tests** (122) : `test_routing.py` (31 : le socle, identifiants, `HttpClient` et redirections,
+  `userfiles` et son garde-fou, la chaîne), `test_routing_npm.py` (16), `test_routing_go.py` (23),
+  `test_routing_composer.py` (8), `test_routing_nuget.py` (9), `test_routing_python.py` (14),
+  `test_routing_maven.py` (18), `test_routing_ruby.py` (3), de bout en bout par le moteur avec des
+  registres simulés (respx) ; `test_sources_forge.py` (les fichiers de configuration téléchargés).
+- **Vérifié à la main** : `forceupdate scan` sur six mini-projets du scratchpad, un dossier
+  personnel factice (`USERPROFILE`, `APPDATA`) et six registres privés servis sur 127.0.0.1, qui
+  exigent un identifiant : npm (jeton de `~/.npmrc`, `${ACME_NPM_TOKEN}`), index Python (HTML,
+  `.netrc`), dépôt Composer (`auth.json`), proxy Go (`go env -w`, `.netrc`), flux NuGet
+  (`NuGet.Config`, `packageSourceMapping` du projet), Maven (profil et serveur de `settings.xml`) :
+  chacun demandé avec son identifiant, les versions privées dans le rapport, les publiques venues
+  du vrai registre, aucun secret dans le rapport ; sans le jeton npm : « Registre privé : non
+  vérifié » et la remarque sur la variable absente.
+- **Limites** (pour la doc, E35) : Composer, la configuration globale (`config.json` de
+  `COMPOSER_HOME`) et `canonical: false` ne sont pas lus ; un dépôt `providers-url` seul non plus ;
+  NuGet, un `Password` chiffré (DPAPI), un dossier local, un flux v2 ; Maven, un mot de passe
+  chiffré de `settings.xml`, `${env.…}` d'un `pom.xml`, `<httpHeaders>` d'un serveur ; Gradle,
+  les identifiants et un dépôt dont l'adresse est calculée ; Go, la suite de `GOPROXY` après le
+  public (un `,` qui retomberait sur un autre proxy) ; npm, `cafile` et `strict-ssl` (un certificat
+  refusé est dit, `SSL_CERT_FILE`), le `resolved` d'un lockfile (un paquet installé depuis un
+  autre registre sans configuration) ; Python, le trousseau (`keyring`), les identifiants de
+  Poetry, `--find-links` ; Ruby et Rust : voir E34.
+
 ### E34 — Compléments d'analyse
+
+- [ ] Depuis E33 (registres privés) :
+  - Ruby : la source globale d'un `Gemfile` et ses blocs `source "…" do` : demander ce serveur (son
+    index compact, `/info/{gem}`) avec les identifiants de Bundler (`BUNDLE_<HÔTE>` de
+    l'environnement, `~/.bundle/config`), au lieu de « non vérifié » ;
+  - Rust : `registry = "…"` (`.cargo/config.toml` du projet et de la personne, `[registries]`,
+    l'index « sparse », `credentials.toml`), au lieu de « non vérifiable ».
 
 - [ ] Depuis E21 (Rust) : la version « permise » d'une contrainte Cargo est la plus haute qu'elle accepte ; le résolveur 3 (édition 2024, `resolver = "3"`) préfère celles dont le `rust-version` convient au projet (celui de `[package]`, sinon la version de `rustc`) : l'index donne `rust_version` de chaque version, le prendre en compte.
 - [ ] Depuis E22 (Go) :
@@ -3268,3 +3398,4 @@ En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.
 | 30 | 2026-11-02 | E30 | Fait. Commit de E29 d'abord (accord de l'utilisateur) ; E30 découpée avec lui : les cases des forges font E31 (« Forges : robustesse »), E31 à E35 deviennent E32 à E36. Vérifié en vrai : l'arbre de `npm.CMD` (`subprocess.run` rend un délai de 3 s après 25,8 s, ou laisse node tourner ; `taskkill /T` tue les quatre processus), Ctrl+Break (code 3), une jonction (suivie par `os.walk` et par `git ls-files`), un sous-module non initialisé (`RecursionError`), le BOM sur chaque fichier des mini-projets (TOML, requirements, go.mod, yarn.lock… cassés) et l'UTF-16 de PowerShell 5.1, httpx avec truststore, `SSL_CERT_FILE` (httpx seul remplace certifi : pypi.org refusé) et un proxy `CONNECT`. `processes.py` (tout outil, git et `gh` : l'arbre tué au délai, à Ctrl+C, à l'arrêt du serveur), `decode_text` (BOM, UTF-16), `_Listing` (200 000 fichiers au plus, jonctions, sous-modules), `Report.notices` (« Analyse partielle » dans l'interface), `ssl_context` (truststore, ajouté aux dépendances), un certificat refusé dit sans reprise, Ctrl+C pendant l'écriture ou un outil et l'arrêt du serveur : ce qui n'était pas fini est remis (`_undo_written`, `Jobs.stopping`), Ctrl+Break comme Ctrl+C. **Mesure** : Argos, cache vide, 3,2 s (86 directes, 569 à OSV), 7,4 s avec `--transitive` (570 vérifiées), aucun non concluant ; un vrai npm au délai de 0,3 s tué, fichiers remis en 0,5 s. Suite Python : 4 min 26. 4 761 tests Python verts (plus 21 réseau), 163 Vitest, 67 Playwright. E30 pas encore commitée. |
 | 31 | 2026-11-02 | E31 | Fait. Commit de E30 d'abord (`a4f500a`, accord de l'utilisateur). Trois décisions de l'utilisateur : le trousseau sous Linux, la doc seulement ; une PR fermée sans fusion, le demander au récapitulatif ; l'arrêt pendant un envoi, tout de suite. Vérifié en vrai : `insteadOf` (configuration globale de test : détourne une adresse en argument, neutralisé par une règle vers elle-même, `pushInsteadOf` à part, l'adresse exacte gagne à égalité), les sous-modules dans l'arborescence (GitHub, GitLab : `type: commit`), le coût du `fetch` (cpython : 0,9 s et 480 Ko quand la branche part du `main` actuel, 2,4 s et 20 Mo à 300 commits), la spécification de Bitbucket (rien sur la durée d'un refresh token ; permission effective), keyring sans backend ; 662 clones d'analyses laissés dans le dossier temporaire (objets git en lecture seule). `web/workdirs.py` (le dossier du serveur, verrouillé, balayé au démarrage), `Forge.cancel` et `cancel` jusqu'à git, `processes.run` qui ne lance rien si l'arrêt est demandé, `Forge.closed_request` et l'écran 8 (badge, date, lien), le helper git qui ne donne le token qu'à l'hôte, `insteadOf` neutralisé, `Tree.submodules` et `ForgeSource.notices`, le `fetch` de Bitbucket sauté quand il est inutile. Huitième garde-fou des tests (`server_temp`). Trouvé : une course à l'arrêt (le nettoyage d'un clone et celui du dossier du serveur), le lien dans une phrase refusé par axe-core. Vérifié avec les vrais comptes, en lecture seule (PR #1 et MR !1 pas touchées). 4 789 tests Python verts (plus 21 réseau), 164 Vitest, 71 Playwright. |
 | 32 | 2026-11-02 | E32 | Fait. E31 déjà commitée (`44d5183`). Vérifié en vrai, dans le scratchpad : la table Node → npm (nodejs.org : Node 22 → npm 10, Node 24 et 26 → npm 11 ; la LTS 26 s'appelle « Lithium »), `npx -y npm@10` (npm 6 et 7 réécriraient le lockfile dans un format plus ancien), `npm ci --dry-run` qui relit vraiment, pnpm 12 et corepack qui suivent `packageManager`, les en-têtes de `uv export`, `pip-compile`, PDM (Poetry n'en écrit pas), `dotnet restore` après une `PackageVersion` épinglée ou une `PackageReference` ajoutée, `go mod vendor`, Composer 2.9.8 (qui ignore `COMPOSER_POLICY_ADVISORIES_BLOCK`), le workspace npm (trois formes de version forcée). L'élagage de npm 11 n'a pas pu être recréé ; npm 11 et 10 se disputent les `"peer": true` (le témoin du test `network`). `update/project_npm.py` (le npm qu'attend le projet), la CI comme runtime (`parsers/runtimes.ci`), `Job.extra` : une case cochée d'office (le npm du projet par `npx`, relu par son `npm ci --dry-run` ; `go mod vendor`, `vendor/` remis sur un échec), décochée par l'écran 5 (`declined`) ou `--no-extras`, toujours faite pour une PR ; les `requirements.txt` générés en lockfiles (refaits après le leur : `uv export`, `pdm export`, `poetry export`), `Dependency.manual` (`--hash`), l'indirecte NuGet ajoutée au projet (`EditKind.REFERENCE`, une réécriture qui insère, relue), Composer 2.9 dit, `$x` des versions forcées npm. Écrans 5 et 8 (avec le skill `ui-ux-pro-max`), mini-projet `exports` fait par les vrais outils. Critère de fin vérifié : une copie à CI en Node 22, mise à jour avec le npm 11 de la machine, donne un lockfile que le vrai `npm@10 ci` accepte. 4 864 tests Python verts (plus 23 réseau), 167 Vitest, 72 Playwright. Pas encore commitée. |
+| 33 | 2026-11-02 | E33 | Fait. Commit de E32 d'abord (`41f2fc8`, accord de l'utilisateur). Décidé avec lui : les identifiants des registres privés sont lus dans les fichiers de la personne et ne partent que vers l'hôte exact (https, ou la machine elle-même), jamais dans le cache, un rapport, un journal, l'API ni le navigateur ; les variables d'un fichier du projet ne sont jamais développées. Vérifié en vrai : `go env -w` et `GOENV`, le proxy public qui va chercher un module chez son hôte, `npm config`, un dépôt Composer local (Composer demande aussi Packagist), `dotnet nuget list source` et `<clear />`, uv et un index local à identifiants ; Maven et Gradle d'après leur documentation. `userfiles.py`, `net/auth.py` (un identifiant lié à son adresse ; `HttpClient` suit les redirections sans lui vers une autre origine), `routing/` (npm et `.yarnrc.yml`, Go, `.netrc`, Composer, NuGet, Python, Maven et Gradle, Ruby), `ComposerRepository`, `NuGetFeed`, `SimpleIndex` (JSON ou HTML) ; un paquet privé par son nom n'est jamais demandé au registre public ni à OSV ; un refus arrête la chaîne. Neuvième garde-fou des tests (`user_files`). Ajouté en route : la source globale d'un `Gemfile` (non vérifiée) ; à E34 : Ruby et Rust privés. Vérifié à la main : `forceupdate scan` contre six registres privés locaux, chacun avec son identifiant, aucun secret dans le rapport. Interface inchangée. 4987 tests Python verts (plus 23 réseau ; ceux des registres relancés), 167 Vitest, 72 Playwright. |

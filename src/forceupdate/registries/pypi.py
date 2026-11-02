@@ -21,6 +21,14 @@ Ce qu'on en tire :
   ``deprecated``, ou ``quarantined`` (soupçon de code malveillant : PyPI ne propose plus ses
   fichiers, toutes ses versions sont donc retirées).
 
+Un index déclaré (E33, ``SimpleIndex`` : ``--index-url``, ``[[tool.uv.index]]``, une source de
+Poetry…) parle la même API à son adresse (``{index}/{nom}/``) : en JSON s'il la sert, sinon en
+HTML (PEP 503, celle de tous les index : Artifactory, Nexus, devpi, pypiserver, GitLab). C'est
+l'``Accept`` de uv (vérifié avec uv 0.10.11 sur un index servi en local) : du JSON, puis du
+HTML. Dans le HTML,
+chaque lien est un fichier : son texte est le nom du fichier, ``data-yanked`` le retire (avec sa
+raison), ``data-requires-python`` dit le Python qu'il demande.
+
 Les fichiers sont rangés par version d'après leur nom : ``Flask-2.0.1-py3-none-any.whl``,
 ``flask-2.0.1.tar.gz``, mais aussi les vieux formats (``PyYAML-3.10.win32-py2.7.exe``,
 ``pytz-2005k.tar.bz2``). Le nom peut écrire la version autrement que la liste (``1.8rc1``
@@ -31,8 +39,9 @@ retirée : un nom de fichier mal lu ne doit pas donner un faux « retiré ».
 
 from collections.abc import Iterable, Mapping
 from datetime import datetime
+from html.parser import HTMLParser
 from typing import Any, ClassVar
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlsplit
 
 from packaging.utils import (
     InvalidSdistFilename,
@@ -55,6 +64,11 @@ from forceupdate.versions import InvalidVersion
 from forceupdate.versions.pypi import PYPI
 
 ACCEPT = "application/vnd.pypi.simple.v1+json"
+ACCEPT_ANY = (
+    "application/vnd.pypi.simple.v1+json, application/vnd.pypi.simple.v1+html;q=0.2, "
+    "text/html;q=0.01"
+)
+"""Celui de uv : du JSON, sinon du HTML."""
 
 _STATUS = {
     "archived": "projet archivé sur PyPI : il ne recevra plus de nouvelles versions",
@@ -96,6 +110,16 @@ class PyPI(Registry):
         else:
             listed = _versions_from_filenames(f.get("filename") for f in files)
         status = _mapping(data.get("project-status"))
+        return self._info(name, listed, files, status, fetched_at)
+
+    def _info(
+        self,
+        name: str,
+        listed: list[str],
+        files: list[Mapping[str, Any]],
+        status: Mapping[str, Any],
+        fetched_at: datetime,
+    ) -> PackageInfo:
         state = status.get("status")
         quarantined = state == "quarantined"
 
@@ -254,3 +278,71 @@ def _after_name(filename: str, canonical: str) -> str | None:
         if char == "-" and canonicalize_name(filename[:index]) == canonical:
             return filename[index + 1 :]
     return None
+
+
+class SimpleIndex(PyPI):
+    """Un index Python déclaré : ``base_url`` est son adresse (``https://pkgs.example/simple``)."""
+
+    label = "index"
+    headers: ClassVar[Mapping[str, str]] = {"Accept": ACCEPT_ANY}
+
+    def url_for(self, name: str) -> str:
+        return f"{self.base_url}/{quote(name)}/"
+
+    def page_url(self, name: str) -> str | None:
+        return None
+
+    def parse(self, name: str, response: Response, fetched_at: datetime) -> PackageInfo:
+        if response.media_type == ACCEPT:
+            return super().parse(name, response, fetched_at)
+        if response.media_type not in ("text/html", "application/vnd.pypi.simple.v1+html", ""):
+            raise ValueError(f"ni JSON ni HTML de l'API Simple ({response.media_type})")
+        files = simple_html_files(response.content.decode("utf-8", errors="replace"))
+        listed = _versions_from_filenames(f.get("filename") for f in files)
+        return self._info(name, listed, files, {}, fetched_at)
+
+
+class _Links(HTMLParser):
+    """Les liens d'une page de l'API Simple en HTML."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.files: list[dict[str, Any]] = []
+        self._current: dict[str, Any] | None = None
+        self._text: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "a":
+            return
+        attributes = dict(attrs)
+        href = attributes.get("href") or ""
+        entry: dict[str, Any] = {"href": href}
+        if "data-yanked" in attributes:
+            entry["yanked"] = attributes["data-yanked"] or True
+        if attributes.get("data-requires-python"):
+            entry["requires-python"] = attributes["data-requires-python"]
+        self._current = entry
+        self._text = []
+
+    def handle_data(self, data: str) -> None:
+        if self._current is not None:
+            self._text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag != "a" or self._current is None:
+            return
+        entry = self._current
+        text = "".join(self._text).strip()
+        path = unquote(urlsplit(entry.pop("href")).path)
+        entry["filename"] = text or path.rpartition("/")[2]
+        self.files.append(entry)
+        self._current = None
+
+
+def simple_html_files(text: str) -> list[dict[str, Any]]:
+    """Les fichiers d'une page de l'API Simple en HTML (PEP 503), au format de son JSON
+    (``filename``, ``yanked``, ``requires-python``)."""
+    parser = _Links()
+    parser.feed(text)
+    parser.close()
+    return parser.files

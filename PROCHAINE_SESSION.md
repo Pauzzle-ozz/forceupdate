@@ -1,72 +1,66 @@
-# Session 33 — Étape E33 : Registres et dépôts privés
+# Session 34 — Étape E34 : Compléments d'analyse
 
-Contexte : E01 à E32 sont faites. E32 (mise à jour : le npm du projet, Python, NuGet, Go) a fait
-`update/project_npm.py` (le npm qu'attend le projet : `packageManager`, `devEngines`, `engines`, le
-plus ancien Node choisi, la CI ; régénéré par `npx -y npm@10`, case cochée d'office, relu par
-`npm ci --dry-run`), la CI lue comme un runtime (`parsers/runtimes.py` : workflows de GitHub,
-`.gitlab-ci.yml`, `bitbucket-pipelines.yml`), les `requirements.txt` générés sans `.in` traités en
-lockfiles (et refaits après le leur), `Dependency.manual` pour une ligne à `--hash`, l'indirecte
-NuGet ajoutée au projet (`EditKind.REFERENCE`, une réécriture qui insère), `go mod vendor` (case
-cochée d'office, `vendor/` remis sur un échec), Composer 2.9 dit dans le plan, et le message d'une
-version forcée npm par référence (`$x`). Détail et décisions dans les notes de E32.
-4 864 tests Python verts (plus 23 réseau), 167 Vitest, 72 Playwright.
-**E32 n'est pas commitée : à proposer d'abord.**
+Contexte : E01 à E33 sont faites. E33 (registres et dépôts privés) a fait `routing/` (à quel
+registre demander chaque paquet : le public, un miroir, des registres en plus, ou celui d'un paquet
+privé par son nom, jamais demandé au public ni à OSV ; npm et `.yarnrc.yml`, Go, Composer, NuGet,
+Python, Maven et Gradle, la source globale d'un `Gemfile`), `net/auth.py` (un identifiant lié à son
+adresse, jamais ailleurs), `userfiles.py` (les fichiers de la personne) et le neuvième garde-fou des
+tests (`user_files`). Décision de l'utilisateur, docs/BRIEF.md n° 24. Détail dans les notes de E33.
+4 987 tests Python verts (plus 23 réseau), 167 Vitest, 72 Playwright.
+**E33 n'est pas commitée : à proposer d'abord.**
 
-Lis CLAUDE.md, puis l'étape E33 de PLAN.md (toutes ses cases), et ce qu'elle cite : les notes de
-E22 (Go : `GOPRIVATE`, le proxy, OSV), de E23 (Composer : les dépôts de `repositories`, `auth.json`,
-`COMPOSER_AUTH`), de E25 (Maven et Gradle : les dépôts déclarés), de E26 (NuGet : `nuget.config`,
-l'API « registration »), de E28 (uv : `[tool.uv] index` d'un script), et de E06 (le client HTTP,
-le cache, « une requête par paquet et par session »). Puis le code qui sert de modèle :
-`registries/` (un client par registre, `PackageInfo`), `net/http.py` (`HttpClient`, l'hôte
-injoignable abandonné), `net/cache.py`, `advisories/osv.py` (ce qui part chez OSV), `engine.check`
-(qui demande quoi, à quel registre), `parsers/npm.py`, `parsers/go.py`, `parsers/php.py`,
-`parsers/maven.py`, `parsers/gradle.py`, `parsers/nuget.py`, `parsers/python.py` (les index).
+Lis CLAUDE.md, puis l'étape E34 de PLAN.md (toutes ses cases), et les notes qu'elle cite : E21
+(Rust), E22 (Go), E23 (PHP), E24 (Ruby), E25 (Java), E26 (.NET), E27 (fins de vie), E28 (fichier de
+code isolé), E32 (la CI comme runtime), E33 (registres privés : les règles des identifiants).
 
-À faire :
-- Go : un module privé (`GOPRIVATE`, `GONOPROXY`, de l'environnement et de `go env -w`) n'est
-  demandé ni au proxy public ni à OSV : « module privé : non vérifié », comme `go` ; npm : un
-  paquet d'un registre privé (`.npmrc`, `@scope:registry`) de même, ou demandé à ce registre ;
-- Composer : un dépôt `composer` de `repositories` (Satis, Private Packagist) : ses paquets
-  demandés à ce dépôt (son `packages.json`, `metadata-url`), avec `auth.json` ;
-- Maven et Gradle : les dépôts déclarés (`<repositories>`, miroirs de `~/.m2/settings.xml`,
-  `repositories { }`) lus, avec leurs identifiants ;
-- NuGet : les sources de `nuget.config` et leurs identifiants, pour les versions publiées ;
-- Python : `[tool.uv] index` d'un script ; `[[tool.uv.index]]` d'un projet, `--index-url` d'un
-  `requirements` (à vérifier).
+**E34 est grosse** (sept cases, une vingtaine de points, huit écosystèmes) : **proposer d'abord à
+l'utilisateur de la découper**, comme E29 l'a été en cinq étapes, par exemple : Ruby et Rust privés
+avec les autres cases Rust, Go et PHP ; Java et .NET ; fins de vie et fichiers de code. La
+documentation (E35) et la recette (E36) seraient décalées d'autant. Ne pas découper seul ; une
+session = une étape.
+
+À faire (les cases de E34) :
+- depuis E33 : Ruby (la source globale d'un `Gemfile` et ses blocs `source … do` : l'index compact
+  du serveur, avec les identifiants de Bundler) ; Rust (`registry = "…"` : `.cargo/config.toml`,
+  `[registries]`, l'index « sparse », `credentials.toml`) ;
+- depuis E21 (Rust) : le `rust-version` des versions (résolveur 3) ;
+- depuis E22 (Go) : la version construite dans un workspace `go.work` ; la majeure suivante d'un
+  module à `+incompatible` ;
+- depuis E23 (PHP) : les avis de Packagist (FriendsOfPHP) réunis à ceux d'OSV ; `prefer-stable` et
+  `minimum-stability` ;
+- depuis E25 (Java) : le `pom` d'un parent ou d'un BOM distant ; `<relocation>` ; `gradle.lockfile` ;
+  `settings.gradle(.kts)`, `buildSrc`, les versions riches ; la version corrigée de la variante
+  utilisée (Guava `-jre`) ;
+- depuis E26 (.NET) : `Directory.Build.targets` (`PackageReference Update=`) ;
+- depuis E27 : ce qui n'est pas lu (images non officielles, `mise.toml`, `required_ruby_version`…),
+  les tests `network` des tables tenues à la main (produits d'endoflife.date, LTS de Node,
+  `NODE_NPM`), les autres `actions/setup-*` des workflows ;
+- depuis E28 : Deno (`npm:`, `jsr:`), `tsconfig.json` (`paths`), `.ipynb`, `.vue`, `.svelte`,
+  `importlib`, un paquet d'espace de noms local, `exclude-newer`, le test `network` de
+  `IMPORT_PACKAGES`.
 
 Attention :
-- **Demander à l'utilisateur** d'abord le commit de E32 (message « E32 : mise à jour : le npm du
-  projet, Python, NuGet, Go », un résumé comme pour E30 et E31).
-- **Lui demander aussi** comment traiter les identifiants des registres privés : les lire dans les
-  fichiers de la personne (`.npmrc`, `auth.json`, `settings.xml`, `nuget.config`, `netrc`…) et les
-  envoyer à ce registre seul, ou s'en tenir à « privé : non vérifié » sans jamais rien lire. C'est
-  une décision de sécurité (un token qui partirait ailleurs, ou dans un log) : ne pas la prendre
-  seul. Quoi qu'il décide : jamais un identifiant dans le cache, un rapport, l'API, ni le
-  navigateur ; jamais un paquet privé demandé au registre public (un homonyme serait une attaque
-  par confusion de dépendances).
-- Vérifier en vrai avant d'écrire : `go env GOPRIVATE`, `go env -w` (le fichier `GOENV`), ce que
-  fait le proxy pour un module privé ; `npm config get @scope:registry`, la forme de `.npmrc` ; un
-  dépôt `composer` (un `packages.json` servi en local suffit) ; `nuget.config` et `dotnet nuget list
-  source` ; uv et ses index (`uv lock` avec `[[tool.uv.index]]`). Maven et Gradle ne sont pas
-  installés (choix de l'utilisateur) : lire les formats d'après leur documentation, le dire.
-  Toujours dans le scratchpad, jamais dans `tests/projects/`.
-- Les tests : jamais le réseau sans `network`, jamais un vrai outil, ni le cache, le trousseau, les
-  réglages ou le dossier temporaire de la personne (huit garde-fous de `conftest.py`) ; **les
-  fichiers de configuration de la personne** (`~/.npmrc`, `~/.m2/settings.xml`, le `nuget.config`
-  de son profil, `auth.json` de `COMPOSER_HOME`, le fichier `GOENV`) ne doivent jamais être lus par
-  un test : un neuvième garde-fou s'il en faut un. Un registre privé se simule (respx).
-- E32 a rendu la CI « runtime » du projet : une CI en Node 18 écarte maintenant les versions qui
-  demandent Node 20 ; si un test de E33 en est surpris, c'est voulu (notes de E32).
-- Scripts : les écrire dans le scratchpad avec l'outil d'écriture, jamais par un heredoc (il mange
-  les barres obliques inverses) ; `python -I` ignore `PYTHONIOENCODING` (`-X utf8`) ; un argument
-  qui commence par `/` sous Git Bash : `MSYS_NO_PATHCONV=1` ; une suppression : un chemin écrit en
-  entier (le contrôle de l'outil refuse `rm -rf "$VAR/x"`, et tout `rm -rf` d'un lecteur).
-- Si l'interface change (« privé : non vérifié » dans le rapport), charger d'abord le skill
-  `ui-ux-pro-max` et lire `design-system/MASTER.md` et l'écran concerné.
+- **Demander à l'utilisateur** d'abord le commit de E33 (message « E33 : registres et dépôts
+  privés », un résumé comme pour E31 et E32), puis le découpage de E34.
+- Les registres privés de Ruby et de Rust suivent les règles de E33 (BRIEF n° 24) : les
+  identifiants de Bundler (`BUNDLE_<HÔTE>`, `~/.bundle/config`) sont liés à leur hôte ; ceux de
+  Cargo (`credentials.toml`) à un *nom* de registre : seulement vers l'adresse qu'un fichier de la
+  personne donne à ce nom. Un nouveau fichier de la personne passe par `userfiles` (le garde-fou
+  des tests le couvre alors) ; un module de `routing/` par écosystème.
+- Vérifier en vrai avant d'écrire : Bundler 4.0.20 (`bundle config`, un serveur de gems local à
+  index compact), cargo (un registre « sparse » local : `config.json` et l'index), `composer audit`
+  contre OSV, le SDK .NET (`Directory.Build.targets`), endoflife.date ; Maven et Gradle ne sont pas
+  installés (choix de l'utilisateur) : d'après leur documentation, le dire. Toujours dans le
+  scratchpad, jamais dans `tests/projects/` ; pour un essai qui lit des fichiers de la personne, un
+  dossier personnel factice (`USERPROFILE`, `HOME`, `APPDATA`, voir CLAUDE.md).
+- Scripts : les écrire dans le scratchpad avec l'outil d'écriture, jamais par un heredoc ni par
+  `python -c` avec des `\n` dans une chaîne (l'outil Bash les transforme) ; `python -I -X utf8`.
+- Si l'interface change (une dépréciation par `<relocation>`, par exemple), charger d'abord le
+  skill `ui-ux-pro-max` et lire `design-system/MASTER.md` et l'écran concerné.
 
-Fini quand : pour chaque écosystème, un paquet d'un registre privé déclaré est demandé à ce
-registre (testé avec un registre simulé), ou dit « privé : non vérifié » ; jamais au registre
-public. Vérifier avec : `uv run pytest`, `uv run ruff check`, `uv run ruff format --check` ; dans
-`frontend/` : `npm test`, `npm run typecheck`, `npm run lint`, `npm run test:e2e`.
+Fini quand : chaque case de l'étape (telle que découpée avec l'utilisateur) a ses tests et a été
+vérifiée en vrai ; les limites qui restent sont écrites, pour la documentation. Vérifier avec :
+`uv run pytest`, `uv run ruff check`, `uv run ruff format --check` ; dans `frontend/` : `npm test`,
+`npm run typecheck`, `npm run lint`, `npm run test:e2e`.
 
 En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.
