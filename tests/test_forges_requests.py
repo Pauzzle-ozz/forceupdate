@@ -5,6 +5,7 @@ pousse vers des dépôts « bare » du dossier du test."""
 
 import asyncio
 from collections.abc import Awaitable, Callable, Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypeVar
 
@@ -23,6 +24,7 @@ from fake_forge import (
 from forceupdate.forges import git as forge_git
 from forceupdate.forges.base import (
     AccessDenied,
+    ChangeRequest,
     EmptyRepository,
     ForgeError,
     Repository,
@@ -237,6 +239,52 @@ def test_a_request_opened_meanwhile_is_updated_not_doubled(
     assert request.number == 7
     assert len(fake.pulls) == 1
     assert fake.pulls[0].body == "B"
+
+
+def test_the_last_request_closed_without_merge_is_found(
+    github: FakeGitHubRepos, remotes: Path
+) -> None:
+    """``closed_request`` : la dernière PR de la branche, si elle est fermée sans fusion (E31).
+    Une PR fusionnée ou ouverte après elle efface le refus."""
+    repo = repository(remotes)
+    pulls = github.repos["octo/app"].pulls
+
+    def closed() -> object:
+        return run(lambda forge: forge.closed_request(repo, BRANCH), remotes)
+
+    assert closed() is None  # jamais de PR
+    pulls.append(
+        FakePull(
+            number=3,
+            title="T",
+            body="B",
+            head=BRANCH,
+            base="main",
+            state="closed",
+            closed_at="2026-10-12T09:30:00Z",
+        )
+    )
+    pulls.append(FakePull(number=4, title="T", body="B", head="autre", base="main", state="closed"))
+    found = closed()
+    assert isinstance(found, ChangeRequest)
+    assert (found.number, found.branch, found.base) == (3, BRANCH, "main")
+    assert found.url == "https://github.com/octo/app/pull/3"
+    assert found.closed_at == datetime(2026, 10, 12, 9, 30, tzinfo=UTC)
+    pulls.append(
+        FakePull(
+            number=5,
+            title="T",
+            body="B",
+            head=BRANCH,
+            base="main",
+            state="closed",
+            merged=True,
+            closed_at="2026-10-20T09:30:00Z",
+        )
+    )
+    assert closed() is None  # fusionnée depuis
+    pulls.append(FakePull(number=6, title="T", body="B", head=BRANCH, base="main"))
+    assert closed() is None  # une ouverte
 
 
 def test_a_request_on_a_read_only_repository_is_refused(

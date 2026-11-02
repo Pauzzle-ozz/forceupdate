@@ -6,14 +6,16 @@ GitHub est simulé (``fake_forge``) ; git clone et pousse vers des dépôts « b
 test ; npm et uv sont simulés (``FakeTools``) ; les registres et OSV répondent avec les réponses
 enregistrées ; le trousseau est en mémoire."""
 
+import asyncio
 import json
+import threading
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import FakeTools, recorded_responses
+from conftest import API_BASE, API_TOKEN, FakeTools, ToolCall, recorded_responses
 from fake_forge import (
     FakeGitHubRepos,
     FakePull,
@@ -28,11 +30,13 @@ from fastapi.testclient import TestClient
 from test_update_forge import tools
 from test_web_repositories import Finished, connect, rows, run_batch
 
+from forceupdate import processes
 from forceupdate.forges import git as forge_git
 from forceupdate.forges import github as github_module
+from forceupdate.forges.base import ForgeKind
 from forceupdate.net import http as http_module
 from forceupdate.update.forge import BRANCH
-from forceupdate.web import openapi
+from forceupdate.web import Settings, create_app, openapi
 
 PROJECTS = Path(__file__).parent / "projects"
 TOKEN = "gho_depots"
@@ -368,6 +372,99 @@ def test_a_token_refused_when_sending(
     accounts = api.get("/api/accounts").json()
     github_account = next(f for f in accounts["forges"] if f["forge"] == "github")["account"]
     assert "refuse le token" in (github_account["problem"] or "")
+
+
+def test_a_request_closed_without_merge_is_asked_before_a_new_one(
+    api: TestClient, github: FakeGitHubRepos, analyzed: None, npm_uv: FakeTools
+) -> None:
+    """La dernière PR de forceupdate fermée sans fusion (E31) : le récapitulatif la montre, et
+    le dépôt, prêt, n'est pas coché d'office ; l'envoyer quand même en ouvre une nouvelle."""
+    first = propose(api, "octo/vulnerable")
+    opened = items(sent(api, first["id"], "octo/vulnerable"))["octo/vulnerable"]
+    assert opened["request"]["number"] == 41
+    pull = github.pull("octo/vulnerable")
+    pull.state, pull.closed_at = "closed", "2026-10-30T08:00:00Z"
+
+    again = propose(api, "octo/vulnerable")
+    assert (again["ready"], again["existing"]) == (1, 0)
+    item = items(again)["octo/vulnerable"]
+    assert (item["state"], item["checked"], item["request"]) == ("ready", False, None)
+    assert item["closed"]["number"] == 41
+    assert item["closed"]["url"] == "https://github.com/octo/vulnerable/pull/41"
+    assert item["closed"]["closed_at"].startswith("2026-10-30T08:00:00")
+    reopened = items(sent(api, again["id"], "octo/vulnerable"))["octo/vulnerable"]
+    assert reopened["state"] == "opened", reopened["error"]
+    assert reopened["request"]["number"] == 42
+    assert not reopened["pushed"]  # la branche avait déjà ce contenu
+
+    # Elle est ouverte : le récapitulatif suivant la met à jour, sans rien demander.
+    last = items(propose(api, "octo/vulnerable"))["octo/vulnerable"]
+    assert (last["checked"], last["closed"], last["request"]["number"]) == (True, None, 42)
+
+
+def test_stopping_the_server_stops_the_sending(
+    web_settings: Settings,
+    github: FakeGitHubRepos,
+    fake_tools: Callable[..., FakeTools],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Ctrl+C pendant un envoi (E31) : l'outil de lockfile et git sont arrêtés
+    (``Jobs.stopping``), rien n'est poussé, les dépôts qui restent ne partent pas, la console le
+    dit, et le dossier de travail du serveur est effacé."""
+    npm_uv = tools(fake_tools, "npm", "uv")
+    running = threading.Event()
+
+    def npm(call: ToolCall) -> None:
+        # Ce que fait processes.run d'un outil qui tourne quand cancel est levé : il le tue.
+        running.set()
+        assert call.options["cancel"].wait(30)
+        raise processes.Interrupted("npm arrêté")
+
+    npm_uv.handlers["npm"] = npm
+    with TestClient(
+        create_app(web_settings),
+        base_url=API_BASE,
+        headers={"Authorization": f"Bearer {API_TOKEN}"},
+    ) as client:
+        connect(client)
+        client.get("/api/repositories")
+        jobs = client.app.state.jobs  # type: ignore[attr-defined]
+
+        def finished(url: str) -> dict[str, Any]:
+            deadline = time.monotonic() + 10
+            while (state := client.get(url).json())["status"] == "running":
+                assert time.monotonic() < deadline, url
+                time.sleep(0.02)
+            return state
+
+        run_batch(client, finished, ["octo/vulnerable", "octo/muet"])
+        proposal = propose(client, "octo/vulnerable", "octo/muet")
+        body = {"repositories": [key("octo/vulnerable"), key("octo/muet")]}
+        assert client.post(f"/api/proposals/{proposal['id']}/send", json=body).status_code == 202
+        assert running.wait(30)
+        workdir = jobs.workdirs.path
+        assert workdir.is_dir()
+    # Sortir du client arrête le serveur.
+    assert "envoi des PR en cours : interrompu" in caplog.text
+    for name in ("octo/vulnerable", "octo/muet"):
+        remote = github.repos[name].remote
+        assert remote is not None
+        assert not git(remote, "branch", "--list", BRANCH).strip()
+        assert github.repos[name].pulls == []
+    assert [call.program for call in npm_uv.calls] == ["npm"]  # ni uv, ni octo/muet
+    assert not workdir.exists()
+
+
+def test_the_git_of_the_forges_stops_with_the_server(
+    api: TestClient, github: FakeGitHubRepos
+) -> None:
+    """Les forges du serveur (analyses, envois) ont ``Jobs.stopping`` pour arrêter git."""
+    accounts = connect(api)
+    repositories = api.app.state.repositories  # type: ignore[attr-defined]
+    account = accounts.get(ForgeKind.GITHUB, "github.com")
+    assert account is not None
+    forge = asyncio.run(repositories.worker_forge_of(account))
+    assert forge.cancel is api.app.state.jobs.stopping  # type: ignore[attr-defined]
 
 
 def test_the_analysis_finds_the_open_request(

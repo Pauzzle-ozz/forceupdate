@@ -7,6 +7,13 @@ Adapté de ``sechunter/core/repo/git_client.py`` d'Argos :
   l'environnement du seul processus git (``FORCEUPDATE_GIT_PASSWORD``) ; seul le nom de la
   variable est dans les arguments. ``-c credential.helper=`` vide d'abord la liste des helpers
   configurés : le gestionnaire d'identification de Windows ne garde donc pas le token ;
+- **il ne va qu'à la forge** : le helper ne le donne que pour ``https://`` et l'hôte de
+  l'adresse (``FORCEUPDATE_GIT_HOST``). Les ``url.<base>.insteadOf`` et ``pushInsteadOf`` de la
+  configuration de la personne (GitHub par SSH : ``url."git@github.com:".insteadOf``) sont
+  neutralisés pour nos commandes : une règle de l'adresse vers elle-même, passée par ``-c``, est
+  la plus longue et l'emporte (vérifié le 2026-11-02, git 2.52). Seule une règle de la personne
+  sur l'adresse exacte gagnerait (à égalité, la première lue) : git irait ailleurs, mais sans le
+  token ;
 - **jamais dans une adresse** : l'adresse est sans identifiants (refusée sinon), git ne l'écrit
   donc pas dans ``.git/config`` ;
 - toute sortie de git rapportée passe par ``redact`` (le token, et toute adresse
@@ -17,7 +24,9 @@ Adapté de ``sechunter/core/repo/git_client.py`` d'Argos :
 Le clone est superficiel (``--depth 1``), d'une seule branche (la branche par défaut), sans
 étiquettes, sans sous-modules et sans les fichiers LFS. La configuration de la personne est
 gardée (proxy, certificats), sauf ce qui changerait le résultat : fins de ligne converties
-(``core.autocrlf``), hooks, signature des commits. Le commit a pour auteur le compte du token.
+(``core.autocrlf``), hooks, signature des commits, adresse réécrite. Le commit a pour auteur le
+compte du token. ``cancel`` levé (l'arrêt du serveur), la commande en cours est tuée avec tout
+son arbre (``processes.Interrupted``).
 
 ``Workspace`` est le dossier de travail temporaire d'une mise à jour, effacé à la sortie
 (adapté de ``workspace.py`` d'Argos).
@@ -32,6 +41,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import urllib.parse
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -51,14 +61,19 @@ LOCAL_TIMEOUT = 60.0
 
 USERNAME_VARIABLE = "FORCEUPDATE_GIT_USERNAME"
 PASSWORD_VARIABLE = "FORCEUPDATE_GIT_PASSWORD"
+HOST_VARIABLE = "FORCEUPDATE_GIT_HOST"
 
 _HELPER = (
-    '!f() { test "$1" = get && '
+    '!f() { test "$1" = get || return 0; h=; p=; '
+    'while IFS= read -r line; do case "$line" in '
+    'host=*) h="${line#host=}";; protocol=*) p="${line#protocol=}";; esac; done; '
+    f'test "$p" = https && test "$h" = "${HOST_VARIABLE}" && '
     f'printf "username=%s\\npassword=%s\\n" "${USERNAME_VARIABLE}" "${PASSWORD_VARIABLE}"; '
     "}; f"
 )
 """Le credential helper : git le lance par ``sh`` (celui de Git pour Windows aussi), et ne lui
-demande les identifiants (``get``) qu'au moment de parler à la forge."""
+demande les identifiants (``get``) qu'au moment de parler à la forge, en lui disant à qui
+(``protocol=``, ``host=`` sur l'entrée standard) : rien pour un autre hôte, ni en ``http``."""
 
 _CONFIG = (
     "core.autocrlf=false",  # le contenu tel qu'il est dans le dépôt, fins de ligne comprises
@@ -94,6 +109,7 @@ _DROPPED_ENV = frozenset(
         "GIT_COMMITTER_DATE",
         USERNAME_VARIABLE,
         PASSWORD_VARIABLE,
+        HOST_VARIABLE,
     }
 )
 """Ce qui, hérité de l'environnement (d'un hook, d'un autre git), ferait viser un autre dépôt
@@ -177,9 +193,11 @@ def clone(
     branch: str,
     credentials: Credentials | None,
     depth: int = 1,
+    cancel: threading.Event | None = None,
 ) -> str:
     """Clone la branche ``branch`` de ``url`` dans ``destination`` (absent, ou vide), sur
-    ``depth`` commits ; rend le commit obtenu. Lève ``GitError``."""
+    ``depth`` commits ; rend le commit obtenu. Lève ``GitError``, ou ``processes.Interrupted``
+    si ``cancel`` est levé."""
     _check_url(url)
     if destination.exists() and any(destination.iterdir()):
         raise GitError(
@@ -188,7 +206,14 @@ def clone(
     destination.parent.mkdir(parents=True, exist_ok=True)
     arguments = ["clone", "--no-tags", "--single-branch", "--no-recurse-submodules"]
     arguments += ["--depth", str(depth), "--branch", branch, "--", url, str(destination)]
-    _git(arguments, credentials=credentials, timeout=CLONE_TIMEOUT, action="cloner")
+    _git(
+        arguments,
+        remote=url,
+        credentials=credentials,
+        timeout=CLONE_TIMEOUT,
+        cancel=cancel,
+        action="cloner",
+    )
     return head(destination)
 
 
@@ -202,12 +227,27 @@ def tree(checkout: Path) -> str:
     return _git(["rev-parse", "HEAD^{tree}"], cwd=checkout, action="lire l'arbre").strip()
 
 
+def parents(checkout: Path) -> tuple[str, ...]:
+    """Les parents de ``HEAD`` (aucun pour le commit d'un clone superficiel)."""
+    said = _git(["rev-list", "--parents", "-n", "1", "HEAD"], cwd=checkout, action="lire")
+    return tuple(said.split()[1:])
+
+
 def remote_tree(
-    checkout: Path, url: str, branch: str, *, credentials: Credentials | None
+    checkout: Path,
+    url: str,
+    branch: str,
+    *,
+    credentials: Credentials | None,
+    cancel: threading.Event | None = None,
 ) -> str | None:
     """L'arbre du dernier commit de la branche ``branch`` de ``url``, lu par un ``fetch``
     superficiel dans le clone (``HEAD`` et les fichiers n'en changent pas) ; ``None`` si elle
-    n'existe pas. Pour une forge dont l'API ne donne pas l'arbre d'un commit (Bitbucket)."""
+    n'existe pas. Pour une forge dont l'API ne donne pas l'arbre d'un commit (Bitbucket).
+
+    Ne sont reçus que les objets que le clone n'a pas : peu de chose si la branche part de son
+    commit (cpython, 37 Mo en ``--depth 1`` : 0,9 s et 480 Ko pour un commit à 5 commits de
+    ``main``), bien plus sinon (2,4 s et 20 Mo à 300 commits ; mesuré le 2026-11-02)."""
     _check_url(url)
     arguments = ["fetch", "--no-tags", "--no-recurse-submodules", "--depth", "1"]
     arguments += ["--", url, f"refs/heads/{branch}"]
@@ -215,8 +255,10 @@ def remote_tree(
         _git(
             arguments,
             cwd=checkout,
+            remote=url,
             credentials=credentials,
             timeout=CLONE_TIMEOUT,
+            cancel=cancel,
             action="lire la branche",
         )
     except GitError as err:
@@ -261,10 +303,12 @@ def push(
     *,
     credentials: Credentials | None,
     expected: str | None,
+    cancel: threading.Event | None = None,
 ) -> None:
     """Pousse ``HEAD`` du clone sur la branche ``branch`` de ``url``, en la remplaçant si
     elle pointe toujours sur ``expected`` (``None`` : elle ne doit pas exister). Si quelqu'un
-    l'a changée entre-temps, rien n'est poussé (``GitFailure.STALE``)."""
+    l'a changée entre-temps, rien n'est poussé (``GitFailure.STALE``). Tué en route (``cancel``),
+    la branche est poussée ou ne l'est pas : la forge ne la change que d'un coup."""
     _check_url(url)
     ref = f"refs/heads/{branch}"
     lease = f"--force-with-lease={ref}:{expected or ''}"
@@ -272,8 +316,10 @@ def push(
     _git(
         arguments,
         cwd=checkout,
+        remote=url,
         credentials=credentials,
         timeout=CLONE_TIMEOUT,
+        cancel=cancel,
         action="pousser la branche",
     )
 
@@ -282,8 +328,9 @@ class Workspace:
     """Un dossier de travail temporaire, effacé à la sortie, réussite ou échec (adapté de
     ``RepoWorkspace`` d'Argos). Effacer plusieurs fois ne fait rien de plus."""
 
-    def __init__(self, prefix: str = "forceupdate-pr-") -> None:
-        self.path = Path(tempfile.mkdtemp(prefix=prefix))
+    def __init__(self, prefix: str = "forceupdate-pr-", *, parent: Path | None = None) -> None:
+        """Le dossier est créé dans ``parent`` (par défaut, le dossier temporaire du système)."""
+        self.path = Path(tempfile.mkdtemp(prefix=prefix, dir=parent))
         self.cleaned = False
 
     def cleanup(self) -> None:
@@ -311,11 +358,15 @@ class Workspace:
 
 def remove_tree(path: Path) -> None:
     """Efface ``path`` et son contenu. Sous Windows, git écrit ses objets en lecture seule :
-    ``shutil.rmtree`` seul échouerait sur eux."""
+    ``shutil.rmtree`` seul échouerait sur eux. Un fichier déjà parti (effacé à côté) n'est pas
+    une erreur."""
     if not path.exists():
         return
 
-    def writable(function: Callable[..., Any], target: str, *_: object) -> None:
+    def writable(function: Callable[..., Any], target: str, error: Any) -> None:
+        found = error if isinstance(error, BaseException) else error[1]
+        if isinstance(found, FileNotFoundError):
+            return
         os.chmod(target, stat.S_IWRITE)
         function(target)
 
@@ -332,14 +383,18 @@ def _git(
     arguments: list[str],
     *,
     cwd: Path | None = None,
+    remote: str | None = None,
     credentials: Credentials | None = None,
     env: dict[str, str] | None = None,
     stdin: bytes | None = None,
     timeout: float = LOCAL_TIMEOUT,
+    cancel: threading.Event | None = None,
     action: str,
 ) -> str:
     """La sortie de ``git arguments`` ; lève ``GitError`` si git échoue, avec ce qu'il a dit,
-    masqué."""
+    masqué, et ``processes.Interrupted`` si ``cancel`` est levé. ``remote`` : l'adresse à
+    laquelle git parle, gardée telle quelle (``url.<base>.insteadOf`` de la personne neutralisé),
+    et la seule dont l'hôte reçoit ``credentials``."""
     program = _which("git")
     if program is None:
         raise GitError(
@@ -348,12 +403,16 @@ def _git(
     command = [program]
     for setting in _CONFIG:
         command += ["-c", setting]
+    if remote is not None:
+        command += ["-c", f"url.{remote}.insteadOf={remote}"]
+        command += ["-c", f"url.{remote}.pushInsteadOf={remote}"]
     environment = _environment()
     secrets: tuple[str, ...] = ()
     if credentials is not None:
         command += ["-c", "credential.helper=", "-c", f"credential.helper={_HELPER}"]
         environment[USERNAME_VARIABLE] = credentials.username
         environment[PASSWORD_VARIABLE] = credentials.password
+        environment[HOST_VARIABLE] = urllib.parse.urlsplit(remote or "").netloc
         secrets = (credentials.password,)
     else:
         command += ["-c", "credential.helper="]
@@ -367,6 +426,7 @@ def _git(
             input=stdin if stdin is not None else b"",
             capture_output=True,
             timeout=timeout,
+            cancel=cancel,
         )
     except subprocess.TimeoutExpired:
         raise GitError(

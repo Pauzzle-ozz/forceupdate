@@ -117,6 +117,11 @@ class FakePull:
     head: str
     base: str
     state: str = "open"
+    """``open`` ou ``closed`` (GitHub) ; ``opened``, ``closed`` ou ``merged`` (GitLab) ;
+    ``OPEN``, ``DECLINED`` ou ``MERGED`` (Bitbucket)."""
+    merged: bool = False
+    """GitHub : une PR ``closed`` fusionnée (``merged_at``)."""
+    closed_at: str | None = None
 
     def document(self, repo: FakeRepo) -> dict[str, Any]:
         owner = repo.full_name.split("/")[0]
@@ -128,6 +133,8 @@ class FakePull:
             "state": self.state,
             "head": {"ref": self.head, "label": f"{owner}:{self.head}"},
             "base": {"ref": self.base},
+            "closed_at": self.closed_at,
+            "merged_at": self.closed_at if self.merged else None,
         }
 
 
@@ -355,14 +362,17 @@ class FakeGitHubRepos:
         owner = repo.full_name.split("/")[0]
         if request.method == "GET":
             assert rest == "/pulls"
+            state = query.get("state", ["open"])[0]
             found = [
                 pull.document(repo)
                 for pull in repo.pulls
-                if pull.state == query.get("state", ["open"])[0]
+                if state in ("all", pull.state)
                 and (not query.get("head") or query["head"][0] == f"{owner}:{pull.head}")
                 and (not query.get("base") or query["base"][0] == pull.base)
             ]
-            return self._json(200, found)
+            if query.get("direction") == ["desc"]:  # ``sort=created`` : par numéro
+                found.reverse()
+            return self._json(200, found[: int(query.get("per_page", ["30"])[0])])
         if not repo.push:
             return self._json(403, {"message": "Resource not accessible by integration"})
         body = json.loads(request.content)

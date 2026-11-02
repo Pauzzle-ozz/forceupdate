@@ -4,9 +4,10 @@ Les tests qui touchent le vrai réseau sont marqués ``network`` : ils sont saut
 par défaut, et lancés avec ``--run-network``. Les autres tournent hors ligne, sur
 des réponses HTTP enregistrées dans ``tests/fixtures/``.
 
-Sept garde-fous valent pour tous les tests : le cache de l'utilisateur n'est jamais
-touché (``Cache.default()`` en ouvre un dans le dossier du test), un test qui n'est pas
-marqué ``network`` ne peut pas ouvrir de connexion (une requête non simulée par ``respx``
+Huit garde-fous valent pour tous les tests : le cache de l'utilisateur n'est jamais
+touché (``Cache.default()`` en ouvre un dans le dossier du test), ni son dossier temporaire
+par le serveur (``server_temp`` : le dossier de travail et son balayage, E31), un test qui
+n'est pas marqué ``network`` ne peut pas ouvrir de connexion (une requête non simulée par ``respx``
 échoue au lieu de partir sur le réseau : jamais le vrai GitHub), ni lancer un vrai outil de
 lockfile (npm, uv… : ``update.lockfiles`` les croit absents ; un test les simule avec
 ``FakeTools``), ni lancer git vers autre chose qu'un dépôt local (``forges.git`` : une adresse
@@ -57,7 +58,7 @@ from forceupdate.registries.maven import coordinates, repository
 from forceupdate.registries.nuget import NuGet
 from forceupdate.registries.pypi import ACCEPT
 from forceupdate.update import lockfiles
-from forceupdate.web import Settings, create_app
+from forceupdate.web import Settings, create_app, workdirs
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -73,6 +74,15 @@ def _no_user_cache(
     """``Cache.default()`` ouvre un cache neuf, propre au test, jamais celui de l'utilisateur."""
     path = tmp_path_factory.mktemp("user-cache") / "cache.sqlite3"
     monkeypatch.setattr(cache_module, "default_cache_path", lambda: path)
+
+
+@pytest.fixture(autouse=True)
+def server_temp(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Où le serveur range son dossier de travail (``web.workdirs.default_base``) : un dossier
+    propre au test, jamais le dossier temporaire de l'utilisateur, que le démarrage balaie."""
+    path = tmp_path_factory.mktemp("server-temp")
+    monkeypatch.setattr(workdirs, "default_base", lambda: path)
+    return path
 
 
 @pytest.fixture(autouse=True)
@@ -125,7 +135,14 @@ def _no_git_network(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPa
     spawn = forge_git._spawn
 
     def guarded(command: list[str], **options: Any) -> subprocess.CompletedProcess[bytes]:
-        remote = [argument for argument in command if _REMOTE_ADDRESS.match(argument)]
+        # Les valeurs de ``-c`` (``url.<adresse>.insteadOf=…``) ne sont pas des adresses : celle
+        # à qui git parle est aussi un argument à part.
+        settings = {i + 1 for i, argument in enumerate(command) if argument == "-c"}
+        remote = [
+            argument
+            for i, argument in enumerate(command)
+            if i not in settings and _REMOTE_ADDRESS.match(argument)
+        ]
         if remote:
             raise RuntimeError(f"test hors ligne : git vers {remote[0]} refusé")
         return spawn(command, **options)

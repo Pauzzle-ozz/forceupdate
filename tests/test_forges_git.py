@@ -6,12 +6,14 @@ le dossier de travail effacé. Avec le vrai git, sur des dépôts « bare » du 
 import os
 import stat
 import subprocess
+import threading
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fake_forge import FakeRepo, git, make_remote, push_commit, remotes_url
 
+from forceupdate import processes
 from forceupdate.forges import git as forge_git
 from forceupdate.forges.git import Author, Credentials, GitError, GitFailure, Workspace
 
@@ -51,6 +53,7 @@ def test_the_token_reaches_git_by_the_helper_never_by_the_arguments(
     spy = Spy(monkeypatch)
     said = forge_git._git(
         ["credential", "fill"],
+        remote="https://github.com/octo/app.git",
         credentials=Credentials("x-access-token", TOKEN),
         stdin=b"protocol=https\nhost=github.com\npath=octo/app.git\n\n",
         action="tester",
@@ -76,6 +79,88 @@ def test_without_credentials_no_helper_answers(monkeypatch: pytest.MonkeyPatch) 
             action="tester",
         )
     assert raised.value.failure is GitFailure.AUTH
+
+
+@pytest.mark.parametrize(
+    ("remote", "asked"),
+    [
+        ("https://github.com/octo/app.git", "protocol=https\nhost=mirror.example\n"),
+        ("https://github.com/octo/app.git", "protocol=http\nhost=github.com\n"),
+        ("https://gitlab.example:8443/g/app.git", "protocol=https\nhost=gitlab.example\n"),
+    ],
+)
+def test_the_token_goes_only_to_the_host_of_the_address(remote: str, asked: str) -> None:
+    """Une adresse réécrite (un ``insteadOf`` à égalité avec la nôtre), une redirection vers
+    un autre hôte, ou ``http`` : le helper ne donne rien, git n'a pas de token."""
+    with pytest.raises(GitError) as raised:
+        forge_git._git(
+            ["credential", "fill"],
+            remote=remote,
+            credentials=Credentials("x-access-token", TOKEN),
+            stdin=f"{asked}\n".encode(),
+            action="tester",
+        )
+    assert raised.value.failure is GitFailure.AUTH
+    assert TOKEN not in str(raised.value) and TOKEN not in raised.value.output
+
+
+def test_the_token_goes_to_a_host_with_its_port() -> None:
+    said = forge_git._git(
+        ["credential", "fill"],
+        remote="https://gitlab.example:8443/g/app.git",
+        credentials=Credentials("oauth2", TOKEN),
+        stdin=b"protocol=https\nhost=gitlab.example:8443\n\n",
+        action="tester",
+    )
+    assert "username=oauth2" in said and "password=***" in said
+
+
+def test_the_insteadof_of_the_person_is_ignored(
+    monkeypatch: pytest.MonkeyPatch, remote: tuple[FakeRepo, str], tmp_path: Path
+) -> None:
+    """``url.<base>.insteadOf`` et ``pushInsteadOf`` de la personne (GitHub par SSH, un miroir)
+    ne détournent ni le clone, ni le fetch, ni le push : vérifié avec une configuration globale
+    de test qui envoie l'adresse du dépôt ailleurs."""
+    repo, url = remote
+    assert repo.remote is not None
+    base = url.rpartition("/octo/")[0] + "/"
+    config = tmp_path / "gitconfig"
+    nowhere = (tmp_path / "nulle-part").as_uri() + "/"
+    config.write_text(
+        f'[url "{nowhere}"]\n\tinsteadOf = {base}\n\tpushInsteadOf = {base}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
+    # Sans nos règles, git suit celle de la personne et ne trouve rien.
+    plain = subprocess.run(["git", "ls-remote", url], capture_output=True, check=False, timeout=60)
+    assert plain.returncode != 0
+    checkout = _changed_clone(url, tmp_path / "clone", b"flask==0.12.4\r\n")
+    branch = "forceupdate/dependencies"
+    assert forge_git.remote_tree(checkout, url, branch, credentials=None) is None
+    forge_git.push(checkout, url, branch, credentials=None, expected=None)
+    pushed = git(repo.remote, "rev-parse", f"refs/heads/{branch}").strip()
+    assert pushed == forge_git.head(checkout)
+    assert forge_git.remote_tree(checkout, url, branch, credentials=None) == forge_git.tree(
+        checkout
+    )
+
+
+def test_cancel_kills_git(remote: tuple[FakeRepo, str], tmp_path: Path) -> None:
+    """``cancel`` levé (l'arrêt du serveur) : git est tué, ``processes.Interrupted`` levée, rien
+    n'est poussé."""
+    repo, url = remote
+    assert repo.remote is not None
+    stop = threading.Event()
+    stop.set()
+    with pytest.raises(processes.Interrupted):
+        forge_git.clone(url, tmp_path / "arrete", branch="main", credentials=None, cancel=stop)
+    checkout = _changed_clone(url, tmp_path / "clone", b"flask==0.12.4\r\n")
+    branch = "forceupdate/dependencies"
+    with pytest.raises(processes.Interrupted):
+        forge_git.push(checkout, url, branch, credentials=None, expected=None, cancel=stop)
+    with pytest.raises(processes.Interrupted):
+        forge_git.remote_tree(checkout, url, branch, credentials=None, cancel=stop)
+    assert git(repo.remote, "branch", "--list", branch).strip() == ""
 
 
 def test_the_inherited_environment_cannot_redirect_git(

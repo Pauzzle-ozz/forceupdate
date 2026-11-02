@@ -426,6 +426,7 @@ récapitulatif, et retrouver les liens.
 | Erreur | Par dépôt : push refusé, branche protégée, conflit, outil en échec (fichiers non commités) ; les autres dépôts continuent |
 | Hors ligne | Envoi impossible : bouton désactivé avec la raison |
 | Non concluant | Dépôts à l'analyse non concluante : signalés dans le récapitulatif, décochés par défaut |
+| PR refusée | La dernière PR de forceupdate fermée sans fusion : signalée (badge d'avertissement, date, lien), décochée par défaut (E31) |
 
 **Fait à E18** (GitHub ; `frontend/src/screens/proposals/`) :
 
@@ -456,6 +457,16 @@ récapitulatif, et retrouver les liens.
 - **Fait à E20** : Bitbucket sans changement de fond : « PR » et `#1`, « met à jour la PR #1 »,
   « Voir la PR #1 sur Bitbucket » ; sa forge dite sur la carte quand le récapitulatif mêle les
   comptes.
+- **Fait à E31** : la dernière PR de forceupdate d'un dépôt **fermée sans fusion** (et aucune
+  ouverte) : sur sa carte, à côté de « nouvelle PR », le badge d'avertissement « PR #3 fermée sans
+  fusion » (`triangle-alert`), et la phrase « La PR #3 a été fermée sans fusion le 30 oct. 2026 :
+  l'envoyer en ouvre une nouvelle. Pas cochée par défaut. », puis sur sa propre ligne le lien
+  « Voir la PR #3 sur GitHub » (dans la phrase, il ne se distinguait que par sa couleur : axe-core,
+  `link-in-text-block`) ; le dépôt est prêt mais décoché, comme une analyse non concluante. Un envoi
+  interrompu par l'arrêt du serveur : « Interrompu : forceupdate s'est arrêté. Relancer l'envoi ;
+  une branche déjà poussée sera reprise. » (l'erreur du dépôt, si le navigateur relit le
+  récapitulatif avant la fin de l'arrêt ; la console le dit toujours, les récapitulatifs ne
+  survivent pas au serveur).
 
 ## 9. Réglages (E29)
 

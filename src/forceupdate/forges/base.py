@@ -12,7 +12,8 @@ Ce que fait chaque méthode, et à quelle étape elle arrive :
   cloner (E17) ;
 - ``clone``, ``branch``, ``branch_tree``, ``push_branch`` : cloner pour mettre à jour, voir où
   en est la branche de forceupdate sur la forge (et son contenu), la pousser (E18) ;
-- ``find_open_request``, ``open_or_update_request`` : la PR (MR sur GitLab), idempotente (E18).
+- ``find_open_request``, ``open_or_update_request`` : la PR (MR sur GitLab), idempotente (E18) ;
+  ``closed_request`` : la dernière, si elle a été fermée sans fusion (E31).
 
 Une réponse d'erreur de la forge lève une ``ForgeError`` (message en français, fait pour être
 montré) ; une requête qui n'aboutit pas lève ``net.NetworkError``.
@@ -23,6 +24,7 @@ import base64
 import enum
 import hashlib
 import secrets
+import threading
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -182,6 +184,10 @@ class Tree:
     truncated: bool
     """La forge n'a pas tout rendu (GitHub, au-delà de 100 000 entrées ; GitLab, au-delà de
     ``gitlab.MAX_TREE_PAGES`` pages) : cloner."""
+    submodules: tuple[str, ...] = ()
+    """Les chemins des sous-modules : un autre dépôt, à un commit (``type: commit`` et mode
+    ``160000`` chez GitHub et GitLab, l'attribut ``subrepository`` chez Bitbucket ; vérifié le
+    2026-11-02). Pas analysés : le rapport le dit."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -196,6 +202,9 @@ class ChangeRequest:
     """La branche proposée (``forceupdate/dependencies``)."""
     base: str
     """La branche visée (celle par défaut)."""
+    closed_at: datetime | None = None
+    """Quand elle a été fermée sans être fusionnée (``Forge.closed_request``) ; ``None`` pour
+    une PR ouverte."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -207,6 +216,8 @@ class BranchCommit:
     merge: bool
     """Un commit de fusion (plusieurs parents) : « Update branch » de GitHub (« Merge » de
     la branche visée sur GitLab), qui ne fait qu'apporter la branche par défaut."""
+    parents: tuple[str, ...] = ()
+    """Ses parents, quand la forge les donne (Bitbucket)."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -273,6 +284,9 @@ class Forge(abc.ABC):
 
     kind: ClassVar[ForgeKind]
     host: str
+    cancel: threading.Event | None = None
+    """Levé, la commande git en cours (clone, ``fetch``, push) est tuée, avec tout son arbre, et
+    ``processes.Interrupted`` levée : l'arrêt du serveur (``Jobs.stopping``, ``forges.client``)."""
 
     @abc.abstractmethod
     async def whoami(self) -> Identity:
@@ -337,6 +351,13 @@ class Forge(abc.ABC):
     @abc.abstractmethod
     async def find_open_request(self, repo: Repository, branch: str) -> ChangeRequest | None:
         """La PR ouverte depuis ``branch``, s'il y en a une."""
+
+    @abc.abstractmethod
+    async def closed_request(self, repo: Repository, branch: str) -> ChangeRequest | None:
+        """La dernière PR de ``branch`` vers la branche par défaut, si elle a été fermée sans
+        être fusionnée (``closed_at`` dit quand) ; ``None`` si la dernière est ouverte ou
+        fusionnée, ou s'il n'y en a jamais eu. Le récapitulatif demande alors s'il faut en
+        ouvrir une nouvelle."""
 
     @abc.abstractmethod
     async def open_or_update_request(

@@ -5,17 +5,21 @@ instance GitLab) : chaque dépôt garde le sien.
 - **Le récapitulatif** (``Proposals.create``) : pour chaque dépôt demandé, sa dernière analyse,
   la sélection (celle donnée, ou celle par défaut du rapport) préparée comme en local sur les
   fichiers téléchargés à l'analyse (``update.local.prepare`` : diffs, lockfiles, outil trouvé ou
-  commande), et la PR déjà ouverte (``Forge.find_open_request``). Sautés, avec la raison :
-  archivé, lecture seule, vide, pas analysé (ou analyse en cours, échouée), rien à mettre à
-  jour. Un dépôt dont l'analyse n'a pas tout vérifié (un registre ou OSV muet, une arborescence
-  tronquée) est prêt, mais pas coché par défaut. Rien n'est cloné ni poussé.
+  commande), et la PR déjà ouverte (``Forge.find_open_request``) ; sans elle, la dernière PR de
+  forceupdate si elle a été fermée sans fusion (``Forge.closed_request``). Sautés, avec la
+  raison : archivé, lecture seule, vide, pas analysé (ou analyse en cours, échouée), rien à
+  mettre à jour. Un dépôt dont l'analyse n'a pas tout vérifié (un registre ou OSV muet, une
+  arborescence tronquée), ou dont la dernière PR a été refusée, est prêt, mais pas coché par
+  défaut : c'est à la personne d'en ouvrir une nouvelle. Rien n'est cloné ni poussé.
 - **L'envoi** (``Proposals.send``), une fois validé : les dépôts cochés, un à la fois, dans la
   boucle des analyses, avec une forge par compte créée sur son client ; pour chacun
   ``update.forge.deliver`` (clone, mise à jour, push, PR) dans un dossier de travail effacé
   ensuite, ses outils de lockfile dans le thread des mises à jour (``Jobs.in_updates``). Un
   dépôt qui échoue n'arrête pas les autres, un compte dont le token est refusé non plus.
-  L'auteur des commits est le compte du token (``Forge.whoami``). Un envoi ne s'annule pas (un
-  outil interrompu laisserait un clone à moitié fait, et une PR peut déjà être ouverte).
+  L'auteur des commits est le compte du token (``Forge.whoami``). Un envoi ne s'annule pas
+  depuis l'interface ; l'arrêt du serveur (Ctrl+C) l'arrête aussitôt : l'outil et la commande
+  git en cours sont tués (``Jobs.stopping``), les dépôts qui restent ne partent pas, et la
+  console le dit. Une branche poussée sans sa PR est reprise par l'envoi suivant.
 
 L'état n'est modifié que dans la boucle du serveur (``Jobs.post``) ; le token ne quitte pas le
 serveur. Les récapitulatifs restent en mémoire le temps de la session (``MAX_PROPOSALS``).
@@ -97,6 +101,8 @@ class Proposed:
     selection: dict[str, str] = field(default_factory=dict)
     prepared: Prepared | None = None
     request: ChangeRequest | None = None
+    closed: ChangeRequest | None = None
+    """La dernière PR de forceupdate, fermée sans fusion (et aucune ouverte)."""
     step: Step | None = None
     progress: Event | None = None
     delivered: Delivered | None = None
@@ -104,7 +110,7 @@ class Proposed:
 
     @property
     def checked(self) -> bool:
-        return self.state is ProposedState.READY and not self.inconclusive
+        return self.state is ProposedState.READY and not self.inconclusive and self.closed is None
 
     def document(self) -> schemas.ProposedRepository:
         delivered = self.delivered
@@ -128,6 +134,7 @@ class Proposed:
             inconclusive=self.inconclusive,
             checked=self.checked,
             request=self.request,
+            closed=self.closed,
             selection=self.selection,
             applied=tuple(schemas.proposed_update(c) for c in changes.applied) if changes else (),
             skipped=tuple(schemas.proposed_skip(s) for s in changes.skipped) if changes else (),
@@ -229,8 +236,8 @@ class Proposals:
         except TokenRefused as err:
             await asyncio.to_thread(connections.accounts.refused, account, str(err))
             raise RepositoryError(400, str(err)) from None
-        for item, (checked, request) in zip(items, found, strict=True):
-            item.request = request
+        for item, (checked, request, closed) in zip(items, found, strict=True):
+            item.request, item.closed = request, closed
             if checked:
                 self.repositories.remember(item.repo, request)
 
@@ -274,16 +281,21 @@ class Proposals:
         item.inconclusive = partial or unanswered > 0
         return item
 
-    async def _existing(self, forge: Forge, repo: Repository) -> tuple[bool, ChangeRequest | None]:
-        """La PR de forceupdate déjà ouverte sur ``repo`` ; ``(False, None)`` si la forge ne
-        répond pas (l'envoi la retrouvera)."""
+    async def _existing(
+        self, forge: Forge, repo: Repository
+    ) -> tuple[bool, ChangeRequest | None, ChangeRequest | None]:
+        """La PR de forceupdate déjà ouverte sur ``repo``, et sans elle la dernière, si elle a
+        été fermée sans fusion ; ``(False, None, None)`` si la forge ne répond pas (l'envoi
+        retrouvera la PR ouverte ; une PR refusée n'est alors pas signalée)."""
         try:
-            return True, await forge.find_open_request(repo, BRANCH)
+            request = await forge.find_open_request(repo, BRANCH)
+            closed = None if request is not None else await forge.closed_request(repo, BRANCH)
         except TokenRefused:
             raise
         except (ForgeError, NetworkError) as err:
             logger.info("%s : PR ouverte non cherchée (%s)", repo.full_name, err)
-            return False, None
+            return False, None, None
+        return True, request, closed
 
     # -- l'envoi -----------------------------------------------------------------------
 
@@ -323,8 +335,12 @@ class Proposals:
         future.add_done_callback(lambda done: self.jobs.post(self._sent, proposal, done))
 
     async def _send(self, groups: list[tuple[Forge, Account, list[Proposed]]]) -> None:
-        """Dans la boucle des analyses : compte par compte, chaque dépôt à son tour."""
+        """Dans la boucle des analyses : compte par compte, chaque dépôt à son tour. Le serveur
+        qui s'arrête (``Jobs.stopping``), les dépôts qui restent ne partent pas."""
+        waiting = [item for _, _, items in groups for item in items]
         for forge, account, items in groups:
+            if self.jobs.stopping.is_set():
+                break
             refused = refused_callback(self.repositories.connections, account)
             try:
                 author = await forge.whoami()
@@ -333,9 +349,15 @@ class Proposals:
                 if isinstance(err, TokenRefused):
                     await asyncio.to_thread(refused, message)
                 self.jobs.post(_abandon, items, sentence(message))
+                waiting = [item for item in waiting if item not in items]
                 continue
             for item in items:
+                if self.jobs.stopping.is_set():
+                    break
+                waiting.remove(item)
                 await self._send_one(item, forge, author, refused)
+        if waiting:
+            self.jobs.post(_abandon, waiting, forge_update.INTERRUPTED)
 
     async def _send_one(
         self, item: Proposed, forge: Forge, author: Identity, refused: Callable[[str], None]
@@ -344,7 +366,7 @@ class Proposals:
         post(setattr, item, "state", ProposedState.SENDING)
         scan = item.scan
         assert scan is not None and scan.report is not None
-        workspace = await asyncio.to_thread(git.Workspace)
+        workspace = await asyncio.to_thread(git.Workspace, "pr-", parent=self.jobs.workdirs.path)
         try:
             delivered = await forge_update.deliver(
                 forge,
@@ -380,7 +402,7 @@ class Proposals:
     def _sent(self, proposal: Proposal, future: concurrent.futures.Future[None]) -> None:
         error = future.exception() if not future.cancelled() else None
         if future.cancelled():
-            proposal.error = "Envoi interrompu : le serveur s'est arrêté."
+            proposal.error = forge_update.INTERRUPTED
         elif error is not None:
             logger.error("envoi des PR en échec", exc_info=error)
             proposal.error = f"Erreur inattendue : {error!r}."
@@ -389,6 +411,15 @@ class Proposals:
                 if item.state in (ProposedState.WAITING, ProposedState.SENDING):
                     item.state, item.error = ProposedState.FAILED, proposal.error
         proposal.status, proposal.finished_at = ProposalStatus.DONE, _now()
+
+    def closing(self) -> None:
+        """À l'arrêt du serveur, avant ``Jobs.close`` (qui arrête l'envoi en cours) : la console
+        dit qu'un envoi ne s'est pas fini, et comment le reprendre."""
+        if any(p.status is ProposalStatus.RUNNING for p in self.proposals.values()):
+            logger.warning(
+                "envoi des PR en cours : interrompu. Le relancer depuis l'interface ; une "
+                "branche déjà poussée sans sa PR sera reprise."
+            )
 
     def _tools(self) -> lockfiles.Tools:
         store = self.repositories.preferences

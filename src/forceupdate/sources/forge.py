@@ -27,6 +27,10 @@ Une arborescence que la forge a tronquée (GitHub : au-delà de 100 000 entrées
 de ``gitlab.MAX_TREE_PAGES`` pages) donnerait une
 analyse partielle : ``clone`` fait alors un clone superficiel du même dépôt, analysé comme un
 dossier (``ClonedSource``, E18).
+
+Un sous-module (un autre dépôt, à un commit) n'est pas analysé, ni par l'API ni dans un clone
+(fait sans eux) : le rapport le dit (``Source.notices``), comme pour un sous-module vide en
+local ; sous un dossier jamais parcouru (``vendor/``…), rien.
 """
 
 import asyncio
@@ -45,7 +49,7 @@ from forceupdate.detect.manifests import (
 )
 from forceupdate.forges import git
 from forceupdate.forges.base import Forge, Repository, Tree
-from forceupdate.models import Event, EventKind
+from forceupdate.models import Event, EventKind, Notice
 from forceupdate.sources.base import Source, SourceFile
 from forceupdate.sources.local import LocalSource
 
@@ -56,6 +60,9 @@ MAX_ROUNDS = 8
 mène à un fichier, qui peut en inclure un autre…"""
 MAX_DOWNLOADS = 8
 """Fichiers téléchargés en même temps, pour un dépôt."""
+
+SUBMODULE = "sous-module git : pas analysé (un autre dépôt, à analyser à part)."
+"""La remarque d'un sous-module d'un dépôt d'une forge."""
 
 
 class ForgeSource(Source):
@@ -81,6 +88,15 @@ class ForgeSource(Source):
         """La forge n'a pas rendu toute l'arborescence : l'analyse est partielle."""
         return self.tree.truncated
 
+    @property
+    def notices(self) -> list[Notice]:
+        """Les sous-modules du dépôt, hors des dossiers jamais parcourus."""
+        return [
+            Notice(file=path, message=SUBMODULE)
+            for path in sorted(self.tree.submodules)
+            if not is_ignored_path(path)
+        ]
+
     def files(self) -> list[SourceFile]:
         return list(self._files)
 
@@ -98,9 +114,11 @@ class ForgeSource(Source):
 
 class ClonedSource(LocalSource):
     """Un dépôt cloné (superficiellement) : quand la forge n'en rend pas toute l'arborescence.
-    Lu comme un dossier : ce que ``.gitignore`` écarte ne compte pas."""
+    Lu comme un dossier : ce que ``.gitignore`` écarte ne compte pas. Cloné sans ses
+    sous-modules : ils sont dits comme ceux d'un dépôt lu par l'API."""
 
     truncated = False
+    SUBMODULE = SUBMODULE
 
     def __init__(self, repo: Repository, commit: str, root: Path) -> None:
         super().__init__(root)

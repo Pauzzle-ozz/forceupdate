@@ -34,7 +34,7 @@ import { Checkbox } from '@/components/ui/choice'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useCreateProposal, useProposal, useSendProposal } from '@/hooks/useProposals'
 import { useOnline } from '@/hooks/useStatus'
-import { NBSP, count, fr } from '@/lib/format'
+import { NBSP, count, formatDate, fr } from '@/lib/format'
 import {
   defaultChecked,
   finished,
@@ -385,6 +385,12 @@ function RecapCard({
                 nouvelle {word}
               </Badge>
             )}
+            {item.closed && (
+              <Badge variant="warning">
+                <TriangleAlert aria-hidden="true" />
+                {fr(`${word} ${requestNumber(item.forge, item.closed)} fermée sans fusion`)}
+              </Badge>
+            )}
             {item.inconclusive && (
               <Badge variant="inconclusive">
                 <CircleHelp aria-hidden="true" />
@@ -402,6 +408,22 @@ function RecapCard({
               </>
             )}
           </p>
+          {item.closed && (
+            <div className="flex flex-col gap-1 text-sm">
+              <p>
+                {fr(
+                  `La ${word} ${requestNumber(item.forge, item.closed)} a été fermée sans fusion${
+                    item.closed.closed_at ? ` le ${formatDate(item.closed.closed_at)}` : ''
+                  } : l'envoyer en ouvre une nouvelle. Pas cochée par défaut.`,
+                )}
+              </p>
+              <p>
+                <ExternalLink href={item.closed.url}>
+                  {`Voir la ${word} ${requestNumber(item.forge, item.closed)} sur ${forgeLabel(item.forge, item.host)}`}
+                </ExternalLink>
+              </p>
+            </div>
+          )}
           {item.inconclusive && (
             <p className="text-sm">
               {fr(`Des paquets n'ont pas pu être vérifiés : la ${word} peut manquer des mises à jour. Pas cochée par défaut.`)}

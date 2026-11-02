@@ -763,6 +763,8 @@ export interface components {
             branch: string;
             /** Base */
             base: string;
+            /** Closed At */
+            closed_at: string | null;
         };
         /**
          * Chosen
@@ -1469,6 +1471,7 @@ export interface components {
             /** Checked */
             checked: boolean;
             request: components["schemas"]["ChangeRequest"] | null;
+            closed: components["schemas"]["ChangeRequest"] | null;
             /** Selection */
             selection: {
                 [key: string]: string;

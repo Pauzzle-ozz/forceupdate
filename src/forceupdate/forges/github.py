@@ -316,7 +316,7 @@ class GitHub(Forge):
     async def tree(self, repo: Repository, ref: str | None = None) -> Tree:
         """L'arborescence du dernier commit de ``ref`` : le commit d'abord (les fichiers se
         liront à ce commit, même si la branche avance entre-temps), puis son arbre en un
-        appel. Sans les sous-modules ni les liens symboliques ; GitHub la tronque au-delà de
+        appel. Sans les liens symboliques, les sous-modules à part ; GitHub la tronque au-delà de
         100 000 entrées."""
         branch = ref or repo.default_branch
         if repo.empty or branch is None:
@@ -330,15 +330,21 @@ class GitHub(Forge):
         items = body.get("tree") if isinstance(body, dict) else None
         if not isinstance(items, list):
             raise ForgeError(f"Réponse inattendue de GitHub pour {base}/git/trees.")
+        listed = [
+            item for item in items if isinstance(item, dict) and isinstance(item.get("path"), str)
+        ]
         entries = tuple(
             TreeEntry(path=item["path"], size=_size(item.get("size")))
-            for item in items
-            if isinstance(item, dict)
-            and item.get("type") == "blob"
-            and item.get("mode") != "120000"  # lien symbolique
-            and isinstance(item.get("path"), str)
+            for item in listed
+            if item.get("type") == "blob" and item.get("mode") != "120000"  # lien symbolique
         )
-        return Tree(commit=commit, entries=entries, truncated=bool(body.get("truncated")))
+        submodules = tuple(item["path"] for item in listed if item.get("type") == "commit")
+        return Tree(
+            commit=commit,
+            entries=entries,
+            truncated=bool(body.get("truncated")),
+            submodules=submodules,
+        )
 
     async def read_file(self, repo: Repository, path: str, ref: str) -> bytes | None:
         """Le contenu brut (``application/vnd.github.raw``), jusqu'à 100 Mo : en JSON,
@@ -398,6 +404,7 @@ class GitHub(Forge):
                 destination,
                 branch=repo.default_branch,
                 credentials=self._credentials(),
+                cancel=self.cancel,
             )
         except git.GitError as err:
             raise self._git_error(err, repo, "lire") from None
@@ -453,6 +460,7 @@ class GitHub(Forge):
                 branch,
                 credentials=self._credentials(),
                 expected=expected,
+                cancel=self.cancel,
             )
         except git.GitError as err:
             raise self._git_error(err, repo, "pousser une branche dans") from None
@@ -474,6 +482,30 @@ class GitHub(Forge):
             raise ForgeError(f"Réponse inattendue de GitHub pour /repos/{repo.full_name}/pulls.")
         found = [_change_request(item) for item in items]
         return next((request for request in found if request is not None), None)
+
+    async def closed_request(self, repo: Repository, branch: str) -> ChangeRequest | None:
+        """La dernière PR créée depuis ``branch`` (``state=all``), si elle est fermée sans
+        ``merged_at``."""
+        if repo.default_branch is None:
+            return None
+        query = urllib.parse.urlencode(
+            {
+                "state": "all",
+                "head": f"{repo.owner}:{branch}",
+                "base": repo.default_branch,
+                "sort": "created",
+                "direction": "desc",
+                "per_page": "1",
+            }
+        )
+        items = await self.get(f"/repos/{_quote(repo.full_name)}/pulls?{query}")
+        if not isinstance(items, list):
+            raise ForgeError(f"Réponse inattendue de GitHub pour /repos/{repo.full_name}/pulls.")
+        last = items[0] if items and isinstance(items[0], dict) else None
+        if last is None or last.get("state") != "closed" or last.get("merged_at"):
+            return None
+        request = _change_request(last)
+        return None if request is None else replace(request, closed_at=_date(last.get("closed_at")))
 
     async def open_or_update_request(
         self, repo: Repository, *, branch: str, title: str, body: str

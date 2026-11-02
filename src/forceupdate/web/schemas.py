@@ -802,10 +802,13 @@ class ProposedRepository:
     inconclusive: bool
     """L'analyse n'a pas tout vérifié : signalé, et pas coché par défaut."""
     checked: bool
-    """À envoyer par défaut : prêt, et analyse concluante."""
+    """À envoyer par défaut : prêt, analyse concluante, et dernière PR pas refusée."""
     request: ChangeRequest | None
     """La PR déjà ouverte (elle sera mise à jour) ; après l'envoi, celle ouverte ou mise à
     jour."""
+    closed: ChangeRequest | None
+    """Sans PR ouverte : la dernière PR de forceupdate, si elle a été fermée sans fusion
+    (``closed_at``). Signalé, et pas coché par défaut : l'envoi en ouvrirait une nouvelle."""
     selection: dict[str, str]
     """La sélection préparée (``Update.id`` → version)."""
     applied: tuple[ProposedUpdate, ...]

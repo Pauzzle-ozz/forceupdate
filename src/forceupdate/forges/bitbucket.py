@@ -354,12 +354,13 @@ class Bitbucket(Forge):
     async def tree(self, repo: Repository, ref: str | None = None) -> Tree:
         """L'arborescence du dernier commit de ``ref`` : le commit d'abord (les fichiers se
         liront à ce commit, même si la branche avance), puis ses fichiers, ``MAX_TREE_DEPTH``
-        niveaux d'un coup, page par page. Sans les sous-modules ni les liens symboliques."""
+        niveaux d'un coup, page par page. Sans les liens symboliques ; les sous-modules à part."""
         branch = ref or repo.default_branch
         if repo.empty or branch is None:
             raise EmptyRepository(_EMPTY)
         commit = await self._commit(repo, branch)
         entries: list[TreeEntry] = []
+        submodules: list[str] = []
         truncated = False
         url = f"{_repo(repo)}/src/{commit}/?max_depth={MAX_TREE_DEPTH}"
         try:
@@ -372,13 +373,14 @@ class Bitbucket(Forge):
                     if path.count("/") + 1 >= MAX_TREE_DEPTH:
                         truncated = True  # ce dossier n'a pas été parcouru
                     continue
-                attributes = item.get("attributes")
-                if item.get("type") != "commit_file" or (
-                    isinstance(attributes, list)
-                    and {"link", "subrepository"} & {str(a) for a in attributes}
-                ):
+                if item.get("type") != "commit_file":
                     continue
-                entries.append(TreeEntry(path=path, size=_size(item.get("size"))))
+                found = item.get("attributes")
+                attributes = {str(a) for a in found} if isinstance(found, list) else set()
+                if "subrepository" in attributes:
+                    submodules.append(path)
+                elif "link" not in attributes:
+                    entries.append(TreeEntry(path=path, size=_size(item.get("size"))))
         except _Truncated:
             truncated = True
         except NetworkError as err:
@@ -386,7 +388,12 @@ class Bitbucket(Forge):
                 raise
             logger.info("Bitbucket : arborescence de %s trop lente (555)", repo.full_name)
             truncated = True
-        return Tree(commit=commit, entries=tuple(entries), truncated=truncated)
+        return Tree(
+            commit=commit,
+            entries=tuple(entries),
+            truncated=truncated,
+            submodules=tuple(submodules),
+        )
 
     async def read_file(self, repo: Repository, path: str, ref: str) -> bytes | None:
         """Le contenu brut (``src/{commit}/{chemin}``)."""
@@ -451,6 +458,7 @@ class Bitbucket(Forge):
                 destination,
                 branch=repo.default_branch,
                 credentials=credentials,
+                cancel=self.cancel,
             )
         except git.GitError as err:
             raise self._git_error(err, repo, "lire") from None
@@ -481,10 +489,19 @@ class Bitbucket(Forge):
 
     async def branch_tree(self, repo: Repository, checkout: Path, branch: Branch) -> str | None:
         """L'arbre du dernier commit de ``branch``, lu par git dans le clone (l'API de Bitbucket
-        ne le donne pas) ; ``None`` si elle n'a pas de commit à elle, ou si git n'a pas pu le
-        lire (on poussera, sans risque : le bail protège la branche)."""
+        ne le donne pas) ; ``None`` si elle n'a pas de commit à elle, si elle ne part pas du
+        même commit que celui du clone (``HEAD``, le commit de forceupdate), ou si git n'a pas pu
+        le lire (on poussera, sans risque : le bail protège la branche).
+
+        Une branche faite sur une branche par défaut qui a avancé depuis n'a pas le contenu du
+        clone : on pousse sans la lire. Le ``fetch`` coûte alors le plus (tout ce qui a changé
+        depuis : 20 Mo pour cpython à 300 commits de ``main``, mesuré le 2026-11-02), pour rien."""
         if not branch.commits:
             return None
+        if branch.ahead == len(branch.commits):  # tous ses commits sont là : le premier dit d'où
+            ours = await asyncio.to_thread(git.parents, checkout)
+            if not set(ours) & set(branch.commits[0].parents):
+                return None
         credentials = await self._credentials()
         try:
             return await asyncio.to_thread(
@@ -493,6 +510,7 @@ class Bitbucket(Forge):
                 self._clone_url(repo),
                 branch.name,
                 credentials=credentials,
+                cancel=self.cancel,
             )
         except git.GitError as err:
             if err.failure is git.GitFailure.AUTH:
@@ -517,6 +535,7 @@ class Bitbucket(Forge):
                 branch,
                 credentials=credentials,
                 expected=expected,
+                cancel=self.cancel,
             )
         except git.GitError as err:
             raise self._git_error(err, repo, "pousser une branche dans") from None
@@ -540,6 +559,40 @@ class Bitbucket(Forge):
             if request is not None and _source_repository(item) in (None, repo.full_name.lower()):
                 return request
         return None
+
+    async def closed_request(self, repo: Repository, branch: str) -> ChangeRequest | None:
+        """La dernière PR créée depuis ``branch`` (du dépôt même), tous états confondus, si elle
+        est ``DECLINED`` ; sa date est celle de sa dernière modification (Bitbucket ne donne pas
+        celle de la fermeture)."""
+        if repo.default_branch is None:
+            return None
+        condition = (
+            f"source.branch.name={_bbql(branch)} AND "
+            f"destination.branch.name={_bbql(repo.default_branch)}"
+        )
+        states = [("state", state) for state in ("OPEN", "MERGED", "DECLINED", "SUPERSEDED")]
+        query = urllib.parse.urlencode(
+            [("q", condition), *states, ("sort", "-created_on"), ("pagelen", "10")]
+        )
+        page = await self.get(f"{_repo(repo)}/pullrequests?{query}")
+        values = page.get("values") if isinstance(page, dict) else None
+        if not isinstance(values, list):
+            raise ForgeError(f"Réponse inattendue de Bitbucket pour les PR de {repo.full_name}.")
+        last = next(
+            (
+                item
+                for item in values
+                if isinstance(item, dict)
+                and _source_repository(item) in (None, repo.full_name.lower())
+            ),
+            None,
+        )
+        if last is None or last.get("state") != "DECLINED":
+            return None
+        request = _change_request(last)
+        if request is None:
+            return None
+        return replace(request, closed_at=_date(last.get("updated_on")))
 
     async def open_or_update_request(
         self, repo: Repository, *, branch: str, title: str, body: str
@@ -809,11 +862,17 @@ def _date(value: Any) -> datetime | None:
 
 def _branch_commit(item: dict[str, Any]) -> BranchCommit:
     message = item.get("message")
-    parents = item.get("parents")
+    found = item.get("parents")
+    parents = tuple(
+        parent["hash"]
+        for parent in (found if isinstance(found, list) else [])
+        if isinstance(parent, dict) and isinstance(parent.get("hash"), str)
+    )
     return BranchCommit(
         sha=str(item.get("hash") or ""),
         message=message if isinstance(message, str) else "",
-        merge=isinstance(parents, list) and len(parents) > 1,
+        merge=len(parents) > 1,
+        parents=parents,
     )
 
 

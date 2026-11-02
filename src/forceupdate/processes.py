@@ -56,8 +56,12 @@ def run(
 
     Lève ``subprocess.TimeoutExpired`` après ``timeout`` secondes, ``Interrupted`` dès que
     ``cancel`` est levé, et laisse passer ``KeyboardInterrupt`` : dans les trois cas, tout l'arbre
-    du programme est tué d'abord. Avec ``check``, lève ``subprocess.CalledProcessError`` pour un
-    code de retour non nul. ``OSError`` si le programme ne se lance pas."""
+    du programme est tué d'abord. ``cancel`` déjà levé : rien n'est lancé (un ``git push`` local
+    aurait le temps de finir avant ``taskkill``). Avec ``check``, lève
+    ``subprocess.CalledProcessError`` pour un code de retour non nul. ``OSError`` si le programme
+    ne se lance pas."""
+    if cancel is not None and cancel.is_set():
+        raise Interrupted(f"{command[0]} pas lancé")
     if capture_output:
         options["stdout"] = options["stderr"] = subprocess.PIPE
     if input is not None:

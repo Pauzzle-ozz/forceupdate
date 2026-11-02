@@ -216,6 +216,30 @@ def test_downloads_are_announced(github: FakeGitHubRepos, tmp_path: Path) -> Non
     assert (events[-1].done, events[-1].total) == (3, 3)
 
 
+@pytest.mark.parametrize("forge", ["github", "gitlab", "bitbucket"])
+def test_a_submodule_is_said_not_skipped_silently(
+    github: FakeGitHubRepos, tmp_path: Path, forge: str
+) -> None:
+    """Un sous-module (``type: commit`` de l'arborescence, ``subrepository`` chez Bitbucket) n'est
+    pas analysé : le rapport le dit, comme en local (E31) ; sous ``vendor/``, rien."""
+    repo = FakeRepo(
+        full_name="octo/parent",
+        files={"requirements.txt": b"flask==3.0.0\n"},
+        submodules=("libs/sub", "vendor/autre"),
+    )
+    if forge == "github":
+        source = fetch(github, repo, tmp_path / "depot")
+    elif forge == "gitlab":
+        source, _ = fetch_gitlab(repo, tmp_path / "depot")
+    else:
+        source, _ = fetch_bitbucket(repo, tmp_path / "depot")
+    assert source.tree.submodules[0] == "libs/sub"
+    assert [(n.file, n.message) for n in source.notices] == [("libs/sub", forge_source.SUBMODULE)]
+    report = engine.inventory(source)
+    assert [(n.file, n.message) for n in report.notices] == [("libs/sub", forge_source.SUBMODULE)]
+    assert [file.path for file in source.files()] == ["requirements.txt"]
+
+
 def test_a_truncated_tree_is_kept(github: FakeGitHubRepos, tmp_path: Path) -> None:
     repo = FakeRepo(
         full_name="octo/immense", files={"requirements.txt": b"flask\n"}, truncated=True

@@ -2,15 +2,14 @@
 seulement son contenu. Un manifeste, un lockfile, ou un fichier de code dont forceupdate lit les
 imports (E28 : ``detect.code.READ_ALONE``), analysé seul : il n'a pas de projet autour.
 
-Il est rangé dans un dossier temporaire, puis analysé comme un fichier de l'ordinateur : même
-progression, même rapport, même plan. Mais rien ne s'écrit sur le disque de la personne et
-aucun outil n'est lancé : sa version réécrite se télécharge depuis le plan
-(``GET /api/updates/{id}/files/{nom}``).
+Il est rangé dans un dossier temporaire (dans le dossier de travail du serveur), puis analysé
+comme un fichier de l'ordinateur : même progression, même rapport, même plan. Mais rien ne
+s'écrit sur le disque de la personne et aucun outil n'est lancé : sa version réécrite se
+télécharge depuis le plan (``GET /api/updates/{id}/files/{nom}``).
 """
 
 import asyncio
-import tempfile
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -53,7 +52,7 @@ async def upload_file(
     lancée, comme ``POST /api/scans``."""
     _check_name(name)
     content = await _read_body(request, max_read_size(name))
-    directory = Path(await asyncio.to_thread(tempfile.mkdtemp, prefix="forceupdate-"))
+    directory = await asyncio.to_thread(jobs.workdirs.make, "envoi-")
     path = directory / name
     await asyncio.to_thread(path.write_bytes, content)
     source = LocalSource(path, alone=True)

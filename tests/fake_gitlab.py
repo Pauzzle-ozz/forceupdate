@@ -391,6 +391,7 @@ class FakeGitLab:
             "target_branch": pull.base,
             "source_project_id": project,
             "target_project_id": project,
+            "closed_at": pull.closed_at if pull.state == "closed" else None,
         }
 
     def _merge_requests(
@@ -398,13 +399,16 @@ class FakeGitLab:
     ) -> httpx.Response:
         if request.method == "GET":
             assert rest == "/merge_requests"
+            state = query.get("state", ["opened"])[0]
             found = [
                 self._document(repo, pull)
                 for pull in repo.pulls
-                if pull.state == query.get("state", ["opened"])[0]
+                if state in ("all", pull.state)
                 and (not query.get("source_branch") or query["source_branch"][0] == pull.head)
                 and (not query.get("target_branch") or query["target_branch"][0] == pull.base)
             ]
+            if query.get("sort") == ["desc"]:  # ``order_by=created_at`` : par numéro
+                found.reverse()
             return self._json(200, found)
         if not repo.push:
             return self._json(403, {"message": "403 Forbidden"})

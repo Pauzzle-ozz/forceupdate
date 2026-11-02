@@ -434,6 +434,7 @@ class FakeBitbucket:
             "description": pull.body,
             "summary": {"raw": pull.body},
             "state": pull.state,
+            "updated_on": pull.closed_at or "2026-10-20T10:00:00.000000+00:00",
             "source": {
                 "branch": {"name": pull.head},
                 "repository": {"full_name": repo.full_name},
@@ -462,6 +463,8 @@ class FakeBitbucket:
                     for key, value in wanted.items()
                 )
             ]
+            if query.get("sort") == ["-created_on"]:  # par numéro
+                found.reverse()
             return self._page(request, found, query)
         if request.method == "GET":
             number = int(rest.removeprefix("/pullrequests/"))

@@ -44,7 +44,7 @@ du rapport, `ignored` des dépendances, `ignore` et `selection` des options).
 | `languages` | liste de [langages](#langage) | du plus lourd au plus léger |
 | `projects` | liste de [projets](#projet) | dans l'ordre des chemins |
 | `ignored_manifests` | liste de chemins | manifestes et lockfiles écartés, parce que rangés dans un dossier de tests, de fixtures ou d'exemples |
-| `notices` | liste de [remarques](#remarque) | les remarques sur la source elle-même, pas sur un projet (E30) : la liste des fichiers coupée (plus de 200 000), un sous-module git non initialisé, plus de 2 000 fichiers de dépendances. `file` est un dossier, `.` pour la racine. Un rapport qui en a n'est pas complet : à afficher |
+| `notices` | liste de [remarques](#remarque) | les remarques sur la source elle-même, pas sur un projet (E30) : la liste des fichiers coupée (plus de 200 000), un sous-module git non initialisé (ou, pour un dépôt d'une forge, tout sous-module : un autre dépôt, E31), plus de 2 000 fichiers de dépendances. `file` est un dossier, `.` pour la racine. Un rapport qui en a n'est pas complet : à afficher |
 | `code` | [fichier de code](#fichier-de-code) ou `null` | le fichier de code choisi, et comment il est analysé (E28) ; `null` pour un dossier, un manifeste, un lockfile ou un dépôt |
 | `config` | [configuration](#configuration) ou `null` | la configuration du projet (`forceupdate.toml`, `[tool.forceupdate]`, E29) ; `null` s'il n'en a pas |
 | `options` | [options](#options) ou `null` | ce qui a été vérifié ; `null` si les dépendances n'ont pas été vérifiées auprès des registres |
@@ -1226,22 +1226,23 @@ token absent du trousseau.
 | `state` | chaîne | `ready`, `skipped` (pas de PR : `reason`), puis à l'envoi `waiting`, `sending`, et `opened` (PR ouverte), `updated` (PR déjà ouverte, mise à jour), `nothing` (rien à faire sur le dépôt tel qu'il est : rien n'est poussé) ou `failed` (`error`) |
 | `reason` | chaîne ou `null` | `skipped` : `archivé : lecture seule`, `lecture seule : pas de droit de push`, `vide`, `pas encore analysé`, `analyse en cours`, `analyse échouée…`, `aucune mise à jour cochée`, `rien à mettre à jour`, `pas coché à l'envoi` |
 | `inconclusive` | booléen | l'analyse n'a pas tout vérifié (un registre ou OSV muet, une arborescence tronquée) : la PR peut manquer des mises à jour |
-| `checked` | booléen | à envoyer par défaut : prêt, et `inconclusive` faux |
+| `checked` | booléen | à envoyer par défaut : prêt, `inconclusive` faux, et `closed` `null` |
 | `request` | [PR](#pr) ou `null` | la PR déjà ouverte ; après l'envoi, celle ouverte ou mise à jour |
+| `closed` | [PR](#pr) ou `null` | sans PR ouverte, la dernière PR de forceupdate du dépôt si elle a été fermée sans fusion (`closed_at`, E31) : pas cochée par défaut, l'envoyer en ouvre une nouvelle |
 | `selection` | objet | la sélection préparée |
 | `applied` | liste | les mises à jour que la PR porte : `{"update", "name", "ecosystem", "project", "direct", "current", "version", "gap", "fixes"}` (`update` : l'`id` de la [mise à jour](#mise-à-jour) ; `current` : la version utilisée ; `fixes` : les failles corrigées) |
 | `skipped` | liste | les options choisies qui ne seront pas appliquées : `{"update", "name", "version", "reason"}` |
 | `files`, `lockfiles` | listes | comme dans le [plan](#plan-de-mise-à-jour) |
-
-`applied`, `skipped`, `files` et `lockfiles` viennent de l'analyse dans le récapitulatif, du
-clone après l'envoi.
 | `step` | chaîne ou `null` | `sending` : `cloning`, `updating` (réécriture, lockfiles, commit), `pushing`, `requesting` |
 | `progress` | [événement](#événement) ou `null` | le dernier de la mise à jour (`regenerating` : le lockfile en cours) |
 | `pushed` | booléen | la branche a été poussée (faux : rien à faire, ou elle avait déjà ce contenu) |
 | `base` | chaîne ou `null` | le commit de la branche par défaut sur lequel la mise à jour a été faite |
 | `results` | liste de [lockfiles régénérés](#lockfile-régénéré) | sur le clone |
 | `committed` | liste de chemins | les fichiers du commit |
-| `error` | chaîne ou `null` | `failed` : ce qui s'est passé (push refusé, branche protégée, commits d'un autre sur la branche, token fine-grained sans les droits…) |
+| `error` | chaîne ou `null` | `failed` : ce qui s'est passé (push refusé, branche protégée, commits d'un autre sur la branche, token fine-grained sans les droits, envoi interrompu par l'arrêt du serveur…) |
+
+`applied`, `skipped`, `files` et `lockfiles` viennent de l'analyse dans le récapitulatif, du
+clone après l'envoi.
 
 ### PR
 
@@ -1252,6 +1253,7 @@ clone après l'envoi.
 | `title` | chaîne | |
 | `branch` | chaîne | la branche proposée (`forceupdate/dependencies`) |
 | `base` | chaîne | la branche visée (celle par défaut) |
+| `closed_at` | date ou `null` | quand elle a été fermée sans fusion (`closed` d'un [dépôt du récapitulatif](#dépôt-du-récapitulatif) ; Bitbucket : sa dernière modification) ; `null` pour une PR ouverte |
 
 ## Réglages
 

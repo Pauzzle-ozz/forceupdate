@@ -8,7 +8,9 @@ refresh token renouvelé à chaque usage, pas de révocation. Bitbucket est simu
 (``fake_bitbucket``), git clone et pousse vers des dépôts « bare » du dossier du test."""
 
 import asyncio
+import threading
 from collections.abc import Awaitable, Callable, Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeVar
 from urllib.parse import parse_qs, urlsplit
@@ -18,6 +20,7 @@ import respx
 from fake_bitbucket import FakeBitbucket, FakeToken
 from fake_forge import FakePull, FakeRepo, git, make_remote, push_commit, remotes_url
 
+from forceupdate import processes
 from forceupdate.forges import bitbucket
 from forceupdate.forges import git as forge_git
 from forceupdate.forges.base import (
@@ -313,8 +316,16 @@ def remote_cloud(remotes: Path) -> Iterator[FakeBitbucket]:
 
 
 def clone_commit_push(
-    forge: Bitbucket, repo: Repository, workdir: Path, content: str, *, expected: str | None
+    forge: Bitbucket,
+    repo: Repository,
+    workdir: Path,
+    content: str,
+    *,
+    expected: str | None,
+    push: bool = True,
 ) -> Awaitable[Path]:
+    """Clone, un commit de forceupdate, puis le push (``push``)."""
+
     async def work() -> Path:
         checkout = workdir / "clone"
         await forge.clone(repo, checkout)
@@ -327,7 +338,8 @@ def clone_commit_push(
             "Mise à jour\n\nGenerated-by: forceupdate 0\n",
             author=author,
         )
-        await forge.push_branch(repo, checkout, BRANCH, expected=expected)
+        if push:
+            await forge.push_branch(repo, checkout, BRANCH, expected=expected)
         return checkout
 
     return work()
@@ -454,6 +466,93 @@ def test_a_pull_request_opened_in_between_is_updated(
     request = run(work)
     assert request.number == 7
     assert [(p.number, p.title) for p in app.pulls] == [(7, "T")]
+
+
+def test_the_last_pull_request_declined_is_found(remote_cloud: FakeBitbucket) -> None:
+    """``closed_request`` : la dernière PR de la branche, tous états confondus, si elle est
+    ``DECLINED`` (E31) ; sa date : sa dernière modification."""
+    app = remote_cloud.repositories["ecureuil/app"]
+
+    def closed() -> Any:
+        async def work(http: HttpClient) -> Any:
+            forge = Bitbucket(http, TOKEN)
+            repo = await forge.repository("ecureuil/app")
+            return await forge.closed_request(repo, BRANCH)
+
+        return run(work)
+
+    assert closed() is None
+    app.pulls.append(
+        FakePull(
+            number=2,
+            title="T",
+            body="B",
+            head=BRANCH,
+            base="main",
+            state="DECLINED",
+            closed_at="2026-10-12T09:30:00.000000+00:00",
+        )
+    )
+    found = closed()
+    assert (found.number, found.branch) == (2, BRANCH)
+    assert found.closed_at == datetime(2026, 10, 12, 9, 30, tzinfo=UTC)
+    app.pulls.append(
+        FakePull(number=3, title="T", body="B", head=BRANCH, base="main", state="MERGED")
+    )
+    assert closed() is None
+
+
+@needs_git
+def test_a_branch_made_on_an_older_default_branch_is_not_fetched(
+    remote_cloud: FakeBitbucket, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """La branche de forceupdate faite sur un ``main`` qui a avancé depuis : son contenu n'est pas
+    celui du clone, son arbre n'est pas lu (le ``fetch`` coûterait tout ce qui a changé), on
+    poussera. Faite sur le même ``main`` : il est lu."""
+    app = remote_cloud.repositories["ecureuil/app"]
+    assert app.remote is not None
+    fetched: list[str] = []
+    original = forge_git.remote_tree
+
+    def spied(*args: Any, **kwargs: Any) -> str | None:
+        fetched.append(args[2])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(forge_git, "remote_tree", spied)
+
+    async def tree_of(http: HttpClient, directory: Path) -> str | None:
+        forge = Bitbucket(http, TOKEN)
+        repo = await forge.repository("ecureuil/app")
+        checkout = await clone_commit_push(
+            forge, repo, directory, "flask==2.3.3\n", expected=None, push=False
+        )
+        branch = await forge.branch(repo, BRANCH)
+        assert branch is not None
+        return await forge.branch_tree(repo, checkout, branch)
+
+    push_commit(app, BRANCH, {"requirements.txt": "flask==2.3.3\n"}, "x\n\nGenerated-by: f")
+    same = run(lambda http: tree_of(http, tmp_path / "un"))
+    assert same == git(app.remote, "rev-parse", f"{BRANCH}^{{tree}}").strip()
+    assert fetched == [BRANCH]
+    push_commit(app, "main", {"README.md": "plus récent\n"}, "main avance")
+    assert run(lambda http: tree_of(http, tmp_path / "deux")) is None
+    assert fetched == [BRANCH]  # pas de fetch
+
+
+@needs_git
+def test_a_clone_stops_with_the_server(remote_cloud: FakeBitbucket, tmp_path: Path) -> None:
+    """``Forge.cancel`` levé (l'arrêt du serveur, E31) : git n'est pas lancé, ou il est tué."""
+    stop = threading.Event()
+    stop.set()
+
+    async def work(http: HttpClient) -> None:
+        forge = Bitbucket(http, TOKEN)
+        forge.cancel = stop
+        await forge.clone(await forge.repository("ecureuil/app"), tmp_path / "c")
+
+    with pytest.raises(processes.Interrupted):
+        run(work)
+    assert not (tmp_path / "c").exists()
 
 
 @needs_git

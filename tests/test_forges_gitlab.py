@@ -6,7 +6,9 @@ PKCE sans secret, refresh token à usage unique, révocation. GitLab est simulé
 (``fake_gitlab``), git clone et pousse vers des dépôts « bare » du dossier du test."""
 
 import asyncio
+import threading
 from collections.abc import Awaitable, Callable, Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeVar
 from urllib.parse import parse_qs, urlsplit
@@ -16,6 +18,7 @@ import respx
 from fake_forge import FakePull, FakeRepo, git, make_remote, push_commit, remotes_url
 from fake_gitlab import FakeGitLab, FakeToken
 
+from forceupdate import processes
 from forceupdate.forges import git as forge_git
 from forceupdate.forges import gitlab
 from forceupdate.forges.base import (
@@ -463,6 +466,41 @@ def test_a_merge_request_opened_in_between_is_updated(
     assert [(p.number, p.title) for p in app.pulls] == [(7, "T")]
 
 
+def test_the_last_merge_request_closed_without_merge_is_found(remote_lab: FakeGitLab) -> None:
+    """``closed_request`` : la dernière MR de la branche, si elle est ``closed`` (E31) ; une
+    ``merged`` après elle efface le refus."""
+    app = remote_lab.projects["renard/outils/app"]
+
+    def closed() -> Any:
+        async def work(http: HttpClient) -> Any:
+            forge = GitLab(http, TOKEN)
+            repo = await forge.repository("renard/outils/app")
+            return await forge.closed_request(repo, BRANCH)
+
+        return run(work)
+
+    assert closed() is None
+    app.pulls.append(
+        FakePull(
+            number=2,
+            title="T",
+            body="B",
+            head=BRANCH,
+            base="main",
+            state="closed",
+            closed_at="2026-10-12T09:30:00.000Z",
+        )
+    )
+    found = closed()
+    assert (found.number, found.branch) == (2, BRANCH)
+    assert found.url.endswith("/renard/outils/app/-/merge_requests/2")
+    assert found.closed_at == datetime(2026, 10, 12, 9, 30, tzinfo=UTC)
+    app.pulls.append(
+        FakePull(number=3, title="T", body="B", head=BRANCH, base="main", state="merged")
+    )
+    assert closed() is None
+
+
 @needs_git
 def test_git_never_sees_the_token(
     remote_lab: FakeGitLab, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -486,6 +524,22 @@ def test_git_never_sees_the_token(
         assert all(TOKEN not in part for part in command)
     clone = next(env for command, env in seen if "clone" in command)
     assert clone[forge_git.USERNAME_VARIABLE] == "oauth2"
+
+
+@needs_git
+def test_a_clone_stops_with_the_server(remote_lab: FakeGitLab, tmp_path: Path) -> None:
+    """``Forge.cancel`` levé (l'arrêt du serveur, E31) : git n'est pas lancé, ou il est tué."""
+    stop = threading.Event()
+    stop.set()
+
+    async def work(http: HttpClient) -> None:
+        forge = GitLab(http, TOKEN)
+        forge.cancel = stop
+        await forge.clone(await forge.repository("renard/outils/app"), tmp_path / "c")
+
+    with pytest.raises(processes.Interrupted):
+        run(work)
+    assert not (tmp_path / "c").exists()
 
 
 # -- OAuth -------------------------------------------------------------------------------

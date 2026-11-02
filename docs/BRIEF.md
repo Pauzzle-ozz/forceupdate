@@ -138,7 +138,7 @@ Prises pour pouvoir planifier. Si l'une change : modifier ce tableau, puis les
 | 11 | Comment mettre à jour en local ? | Sélection → diff → validation. Réécriture ciblée du texte des manifestes (la mise en forme et les commentaires restent). Lockfile régénéré par l'outil natif (npm, uv…), sans jamais lancer les scripts du projet | Un diff minimal, relisible, sans surprise |
 | 12 | Quelles mises à jour sont proposées par défaut ? | Correctifs, mineures et failles pré-cochés. Majeures proposées mais **jamais cochées d'office** : c'est la personne qui les coche (voir « Les trois niveaux »). En ligne de commande : `--level minor` par défaut | **Confirmé.** Une majeure peut demander d'adapter le code |
 | 13 | Connexion aux forges ? | Chaque personne connecte son propre compte depuis l'interface (OAuth). L'outil est enregistré une fois auprès de chaque forge par son auteur, l'utilisateur de ce projet. Repli : token collé, ou `gh`. Tokens dans le trousseau du système. **GitHub (E16)** : une OAuth App (pas une GitHub App), portées `repo` et `read:org`, tokens sans expiration (confirmé à la session 29 : pas de refresh token, comme `gh`) ; device flow en repli ; se déconnecter révoque le token donné à forceupdate. **GitLab (E19)** : une application « non confidentielle » sur gitlab.com (PKCE, sans secret), portée `api` ; ses tokens expirent après 2 h et se renouvellent par leur refresh token ; une instance auto-hébergée par son adresse et un token d'accès personnel ; un compte par hôte. **Bitbucket Cloud (E20)** : un « OAuth client » public dans un workspace de l'auteur (Bitbucket n'a ni PKCE ni client sans secret : le secret est embarqué, comme celui de GitHub), portées `account` (et son adresse), dépôts et pull requests en écriture ; tokens de 2 h renouvelés ; pas de révocation par l'API (la personne retire l'accès dans ses réglages) ; en repli, un token d'API Atlassian collé | **Confirmé.** « Je lie mon compte, l'outil a accès ». OAuth App plutôt que GitHub App : un clic et tous les dépôts, sans installer l'app sur chaque compte et organisation (comme `gh`) |
-| 14 | Mettre à jour sur une forge ? | Une PR (ou MR) par dépôt, idempotente. Jamais de push sur la branche par défaut | **Confirmé.** La CI du dépôt teste la PR, un humain la fusionne |
+| 14 | Mettre à jour sur une forge ? | Une PR (ou MR) par dépôt, idempotente. Jamais de push sur la branche par défaut. **Une PR fermée sans fusion** (la dernière de forceupdate) : le récapitulatif le dit et ne coche pas le dépôt, c'est la personne qui en rouvre une (E31 : rien n'est gardé sur la machine, la forge sert de mémoire). **Un arrêt du serveur pendant un envoi** l'arrête aussitôt (outil et git tués), la console le dit ; une branche poussée sans sa PR est reprise par l'envoi suivant | **Confirmé** (E31 pour les deux derniers points, choisis par l'utilisateur). La CI du dépôt teste la PR, un humain la fusionne |
 | 15 | Analyser sur une forge ? | Par l'API, sans cloner (arborescence + manifestes). Clone superficiel seulement pour mettre à jour, ou si l'API ne donne pas l'arborescence | Rapide sur des dizaines de dépôts |
 | 16 | Quelles forges en V1 ? | GitHub, GitLab (gitlab.com et auto-hébergé), Bitbucket Cloud | **Confirmé.** Demandé par l'utilisateur |
 | 17 | Avec quoi faire le front ? | React + TypeScript + Vite + Tailwind 4 + shadcn/ui, icônes Lucide ; polices IBM Plex Sans et JetBrains Mono embarquées. Le design system est dans `design-system/` (E13). Le front construit est livré dans le paquet Python : pas besoin de node pour utiliser l'outil | **Confirmé** (E13). Pile que le skill connaît, proche de celle d'Argos (React, Vite, Tailwind) |
@@ -470,6 +470,34 @@ chaque fois) :
     de requêtes restantes dans les en-têtes (1 000 par heure sur les dépôts) ;
   - `src/{commit}/?max_depth=` lit l'arborescence en largeur, avec les tailles ; trop
     profonde, Bitbucket peut répondre 555.
+- **Constaté à E31** (les trois forges, et git) :
+  - **un sous-module** est une entrée `type: commit`, mode `160000`, sans adresse, dans
+    l'arborescence de GitHub (`git/trees?recursive=1` : 173 dans boostorg/boost) et de GitLab
+    (`repository/tree` : inkscape) ; chez Bitbucket, un `commit_file` à l'attribut
+    `subrepository`. Le rapport le dit (« sous-module git : pas analysé ») ;
+  - **`url.<base>.insteadOf`** de la personne (GitHub par SSH : `url."git@github.com:".insteadOf
+    https://github.com/`) détourne aussi une adresse passée en argument : `git ls-remote
+    --get-url` donne `git@github.com:…`, et le clone part par SSH, hors du token. Une règle de
+    l'adresse vers elle-même passée par `-c` est la plus longue et l'emporte ; le push suit
+    `pushInsteadOf` d'abord (sa propre règle). À égalité (une règle de la personne sur l'adresse
+    exacte), la sienne gagne : le credential helper ne donne donc le token qu'à `https://` et à
+    l'hôte attendu (`host=` que git lui passe, port compris) ;
+  - le `fetch` de l'arbre d'une branche (Bitbucket) ne reçoit que ce qui manque au clone :
+    0,9 s et 480 Ko pour cpython (clone de 37 Mo en 4 s) quand la branche part du `main` actuel,
+    2,4 s et 20 Mo quand `main` a 300 commits de plus ; 1,3 s sur le petit dépôt de test. Une
+    branche faite sur un `main` plus ancien n'est donc plus lue (son contenu diffère forcément) ;
+  - une PR de Bitbucket n'a pas de `closed_on` (sa dernière modification, `updated_on`, en tient
+    lieu) ; `pullrequests` accepte plusieurs `state=` et `sort=-created_on`. GitHub :
+    `pulls?state=all&sort=created&direction=desc`, une PR fermée sans fusion a `merged_at` nul ;
+    GitLab : `state=all&order_by=created_at&sort=desc`, `closed` (une fusionnée est `merged`) ;
+  - la spécification d'Atlassian ne dit rien de la durée d'un refresh token (seulement que les
+    tokens expirent) ; `…/permissions/repositories` rend « la permission effective, la plus
+    haute », « sans distinguer les droits explicites et implicites » ;
+  - sous Windows, git écrit ses objets en lecture seule : `shutil.rmtree(ignore_errors=True)`
+    les laisse (662 dossiers `forceupdate-depot-*` trouvés dans le dossier temporaire, les clones
+    des analyses) ;
+  - un `git push` local finit avant que `taskkill` ne le tue : un arrêt déjà demandé ne lance
+    plus rien (`processes.run`).
 - **PR idempotente** : relancer l'outil ne doit pas ouvrir une deuxième PR.
 - **Registres** : limites de débit (crates.io : 1 requête par seconde et
   User-Agent obligatoire). Un même paquet revient dans plusieurs dépôts : cache

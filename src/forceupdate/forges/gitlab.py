@@ -39,7 +39,7 @@ import os
 import re
 import urllib.parse
 from collections.abc import AsyncIterator, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, ClassVar
@@ -282,26 +282,31 @@ class GitLab(Forge):
     async def tree(self, repo: Repository, ref: str | None = None) -> Tree:
         """L'arborescence du dernier commit de ``ref`` : le commit d'abord (les fichiers se
         liront à ce commit, même si la branche avance), puis ses fichiers, page par page. Sans
-        les sous-modules ni les liens symboliques ; GitLab ne donne pas leur taille."""
+        les liens symboliques, les sous-modules à part ; GitLab ne donne pas leur taille."""
         branch = ref or repo.default_branch
         if repo.empty or branch is None:
             raise EmptyRepository(_EMPTY)
         commit = await self._commit(repo, branch)
         entries: list[TreeEntry] = []
+        submodules: list[str] = []
         truncated = False
         url = f"{_repo(repo)}/tree?ref={commit}&recursive=true&pagination=keyset"
         try:
             async for item in self.paginate(url, limit=MAX_TREE_PAGES):
-                if (
-                    isinstance(item, dict)
-                    and item.get("type") == "blob"
-                    and item.get("mode") != "120000"  # lien symbolique
-                    and isinstance(item.get("path"), str)
-                ):
+                if not isinstance(item, dict) or not isinstance(item.get("path"), str):
+                    continue
+                if item.get("type") == "blob" and item.get("mode") != "120000":  # pas un lien
                     entries.append(TreeEntry(path=item["path"], size=None))
+                elif item.get("type") == "commit":
+                    submodules.append(item["path"])
         except _Truncated:
             truncated = True
-        return Tree(commit=commit, entries=tuple(entries), truncated=truncated)
+        return Tree(
+            commit=commit,
+            entries=tuple(entries),
+            truncated=truncated,
+            submodules=tuple(submodules),
+        )
 
     async def read_file(self, repo: Repository, path: str, ref: str) -> bytes | None:
         """Le contenu brut (``repository/files/…/raw``)."""
@@ -359,6 +364,7 @@ class GitLab(Forge):
                 destination,
                 branch=repo.default_branch,
                 credentials=credentials,
+                cancel=self.cancel,
             )
         except git.GitError as err:
             raise self._git_error(err, repo, "lire") from None
@@ -418,6 +424,7 @@ class GitLab(Forge):
                 branch,
                 credentials=credentials,
                 expected=expected,
+                cancel=self.cancel,
             )
         except git.GitError as err:
             raise self._git_error(err, repo, "pousser une branche dans") from None
@@ -445,6 +452,38 @@ class GitLab(Forge):
             and item.get("source_project_id") == item.get("target_project_id")
         ]
         return next((request for request in found if request is not None), None)
+
+    async def closed_request(self, repo: Repository, branch: str) -> ChangeRequest | None:
+        """La dernière MR créée depuis ``branch`` (du projet même), si elle est ``closed`` (une
+        MR fusionnée est ``merged``)."""
+        if repo.default_branch is None:
+            return None
+        query = urllib.parse.urlencode(
+            {
+                "state": "all",
+                "source_branch": branch,
+                "target_branch": repo.default_branch,
+                "order_by": "created_at",
+                "sort": "desc",
+                "per_page": "10",
+            }
+        )
+        items = await self.get(f"{_project(repo)}/merge_requests?{query}")
+        if not isinstance(items, list):
+            raise ForgeError(f"Réponse inattendue de {self._name} pour les MR de {repo.full_name}.")
+        last = next(
+            (
+                item
+                for item in items
+                if isinstance(item, dict)
+                and item.get("source_project_id") == item.get("target_project_id")
+            ),
+            None,
+        )
+        if last is None or last.get("state") != "closed":
+            return None
+        request = _change_request(last)
+        return None if request is None else replace(request, closed_at=_date(last.get("closed_at")))
 
     async def open_or_update_request(
         self, repo: Repository, *, branch: str, title: str, body: str

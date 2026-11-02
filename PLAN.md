@@ -124,7 +124,7 @@ Statuts : `à faire`, `en cours`, `fait`.
 | E28 | G | Fichier de code isolé | fait |
 | E29 | H. Livraison | Configuration et page Réglages | fait |
 | E30 | H | Robustesse et performance | fait |
-| E31 | H | Forges : robustesse | à faire |
+| E31 | H | Forges : robustesse | fait |
 | E32 | H | Mise à jour : le npm du projet, Python, NuGet, Go | à faire |
 | E33 | H | Registres et dépôts privés | à faire |
 | E34 | H | Compléments d'analyse | à faire |
@@ -2714,23 +2714,198 @@ l'écran 9 et s'appliquent aux analyses et aux plans suivants ; le cache se vide
 Venue de E30, découpée à la session 30 avec l'accord de l'utilisateur (E31 à E35 de départ
 deviennent E32 à E36).
 
-- [ ] Depuis E16 :
+- [x] Depuis E16 :
   - tokens GitHub qui expirent : **tranché avec l'utilisateur (session 29) : ils restent sans expiration** (décision n°13, comme `gh`) ; la doc le dit (E35). Pour mémoire, les faire expirer demanderait de garder le `refresh_token` (8 h pour le token, 6 mois sans usage pour le `refresh_token`), de le renouveler une seule fois à la fois, et de traiter `bad_refresh_token` ;
-  - le trousseau sous Linux sans Secret Service (serveur, WSL) : la connexion est refusée avec la raison (`keyring` dans `GET /api/accounts`) ; dire dans la doc comment en installer un, ou envisager un repli (fichier chiffré : à justifier).
-- [ ] Depuis E18 (les PR) :
-  - un arrêt du serveur pendant un envoi peut laisser une branche poussée sans PR (relancer la reprend) : le dire à l'arrêt, ou attendre la fin du dépôt en cours comme pour une mise à jour locale ; les dossiers de travail `forceupdate-pr-*` laissés par un arrêt brutal : les effacer au démarrage ;
-  - une PR fermée sans fusion est rouverte (nouvelle) au prochain envoi : garder le souvenir d'un refus (par version, comme Dependabot), ou le demander dans le récapitulatif ;
-  - `url.<base>.insteadOf` dans la configuration git de la personne peut faire passer le clone par SSH : le détecter (`git config --get-regexp url\.`) et le dire, ou l'ignorer pour nos commandes.
-- [ ] Depuis E20 (Bitbucket) :
-  - un refresh token de Bitbucket inutilisé pendant 3 mois expire : le compte passe en `problem` (« se reconnecter ») ; le dire dans la carte avant, ou le renouveler de temps en temps ;
-  - un dépôt où le compte écrit par un groupe, sans droit explicite ni administration du workspace : vu en lecture seule (`…/permissions/repositories` ne liste que les droits explicites) ; le vérifier sur un vrai workspace d'équipe, et sinon essayer `role=contributor` ;
-  - lire l'arbre de la branche par git (`git.remote_tree`) coûte un `fetch` de plus par envoi, quand la branche existe déjà : le mesurer sur un gros dépôt.
-- [ ] Depuis E30 :
-  - un sous-module d'un dépôt (une entrée `commit` de l'arborescence de la forge) est sauté sans rien dire : le dire, comme en local (`Source.notices`, « sous-module git non initialisé ») ;
-  - à l'arrêt du serveur, l'outil de lockfile d'un envoi est tué (`Jobs.stopping`), mais pas ses commandes git (clone, push) : sous Windows Ctrl+C les atteint par la console, ailleurs elles ont leur session et vont jusqu'au bout ; décider avec la première case de E18 (le dire, ou attendre la fin du dépôt en cours) et passer `cancel` à `forges.git` s'il le faut.
+  - le trousseau sous Linux sans Secret Service (serveur, WSL) : **tranché avec l'utilisateur (session 31) : la doc seulement**, pas de repli à nous. La connexion est refusée avec la raison (`keyring` dans `GET /api/accounts`), qui dit désormais aussi `PYTHON_KEYRING_BACKEND` ; la doc (E35) dit comment installer un Secret Service, ou choisir un autre trousseau par le mécanisme de keyring (voir les notes).
+- [x] Depuis E18 (les PR) :
+  - un arrêt du serveur pendant un envoi : **tranché avec l'utilisateur : il l'arrête aussitôt** (l'outil et git tués, les dépôts qui restent ne partent pas, la console le dit) ; une branche poussée sans sa PR est reprise par l'envoi suivant (testé) ; les dossiers laissés par un arrêt brutal sont effacés au démarrage (`web/workdirs.py`, nouveau : tout ce que le serveur range est dans son dossier verrouillé) ;
+  - une PR fermée sans fusion : **tranché avec l'utilisateur : le récapitulatif le demande** (la dernière PR de forceupdate, fermée sans fusion : signalée, avec sa date et son lien, et le dépôt pas coché ; l'envoyer en ouvre une nouvelle). `Forge.closed_request`, rien de gardé sur la machine ;
+  - `url.<base>.insteadOf` : **ignoré pour nos commandes** (une règle de l'adresse vers elle-même, et `pushInsteadOf`), et le token ne va qu'à l'hôte attendu, en `https`.
+- [x] Depuis E20 (Bitbucket) :
+  - un refresh token inutilisé pendant 3 mois : **pas reproductible** (et pas dans la spécification d'Atlassian) ; un refresh token refusé passait déjà le compte en `problem` (« se reconnecter », la raison dite) ; chaque usage le renouvelle (2 h). Rien de plus à faire : une carte ne se voit que serveur lancé, et la lancer renouvelle (voir les notes) ;
+  - les droits d'écriture par un groupe : la spécification dit que `…/permissions/repositories` rend la permission **effective**, sans distinguer les droits explicites et implicites ; pas vérifiable en vrai (un seul compte, propriétaire de son seul workspace) : noté pour la recette (E36) et la doc (E35) ;
+  - le coût du `fetch` de `git.remote_tree` : **mesuré** (cpython, Bitbucket) ; une branche faite sur une branche par défaut plus ancienne n'est plus lue (son contenu diffère : on pousse sans le `fetch`, le plus coûteux).
+- [x] Depuis E30 :
+  - un sous-module d'un dépôt (entrée `commit` de l'arborescence) : dit (`Tree.submodules`, `ForgeSource.notices`, « sous-module git : pas analysé (un autre dépôt, à analyser à part) »), aussi dans un clone (`ClonedSource`) ;
+  - les commandes git d'un envoi reçoivent `cancel` (`Forge.cancel`, posé par `forges.client` : `Jobs.stopping`), avec la première case de E18.
 
 **Fini quand** : chaque case a ses tests, ou une décision notée (la doc, E35) ; vérifié avec
 les dépôts de test des forges, sans toucher à leurs PR et MR (recette, E36).
+
+**Notes** (session 31) :
+
+- **Commit d'abord** : E30 commitée seule (`a4f500a`, `E30 : robustesse et performance`), avec
+  l'accord de l'utilisateur. **Trois décisions posées à l'utilisateur** avec options et
+  recommandation, avant d'écrire : le trousseau sous Linux (**la doc seulement** : pas de fichier
+  à nous ; en clair comme `gh --insecure-storage`, ou chiffré avec une phrase de passe, refusés),
+  une PR fermée sans fusion (**le demander dans le récapitulatif**, plutôt que retenir le refus
+  par version comme Dependabot, ou ne rien faire), l'arrêt pendant un envoi (**arrêter tout de
+  suite**, plutôt que finir le dépôt en cours). Décision n°14 du brief complétée.
+- **Vérifié en vrai** avant d'écrire (2026-11-02, Windows 11, git 2.52) :
+  - `git config --get-regexp url\.` : rien chez l'utilisateur. Avec une configuration globale de
+    test (`GIT_CONFIG_GLOBAL` dans le scratchpad) et un dépôt « bare » local : une règle
+    `insteadOf` qui réécrit le début de notre adresse la détourne (« Please make sure you have
+    the correct access rights ») ; `-c url.<adresse>.insteadOf=<adresse>` (vers elle-même) la
+    neutralise, la plus longue gagnant, sans boucle ; le push suit `pushInsteadOf` (la règle
+    `insteadOf` seule ne le neutralise pas) : il faut les deux ; une règle de la personne sur
+    l'adresse exacte gagne à égalité (la première lue). Sur GitHub (dépôt public, en lecture) :
+    avec `url."git@github.com:".insteadOf https://github.com/`, `ls-remote --get-url` donne
+    `git@github.com:octocat/Hello-World.git` et échoue (SSH en `BatchMode`) ; avec nos règles,
+    il passe en HTTPS. D'où aussi le helper qui ne donne le token qu'à `protocol=https` et à
+    l'hôte de l'adresse (`git credential fill` : rien pour `mirror.example`, ni en `http` ; le
+    port compris pour une instance) ;
+  - **les sous-modules** : GitHub (`boostorg/boost`, `git/trees/master?recursive=1`, 446 entrées
+    dont 173 `type: commit`, `mode: 160000`, sans adresse) ; GitLab (`inkscape/inkscape`,
+    `repository/tree?path=share` : `type: commit`, `mode: 160000`) ; Bitbucket : l'attribut
+    `subrepository` d'un `commit_file` (spécification ; pas de dépôt public à sous-module sous la
+    main). Les trois forges simulées des tests les avaient déjà ;
+  - **le `fetch` de `git.remote_tree`** (clone `--depth 1`, puis `fetch --depth 1` d'un commit,
+    dépôts publics de GitHub, en lecture) : django (13 Mo) : 38 objets et ~140 Ko à 5 commits de
+    `main`, ~5 Mo à 300 commits ; cpython (37 Mo, clone en 4,0 s) : 0,9 s et 480 Ko à 5 commits,
+    2,4 s et 20 Mo à 300. Le coût suit ce qui a changé depuis la base de la branche : faible quand
+    on relance sans que `main` ait bougé, lourd quand il a avancé (le cas courant d'une relance),
+    et inutile alors (le contenu diffère forcément). Sur le dépôt de test de Bitbucket : clone
+    2,8 s, `fetch` 1,3 s (surtout la latence) ;
+  - **Bitbucket** : la spécification OpenAPI d'Atlassian (téléchargée) ne dit rien de la durée
+    d'un refresh token ni de 3 mois (seule la page « refresh tokens » : « Our access tokens
+    expire in one hour », 2 h en vrai depuis E20) ; un fil de la communauté (2022) dit qu'ils
+    n'expirent pas. `/user/workspaces/{ws}/permissions/repositories` : « for each repository the
+    caller has explicit access to … their effective permission — the highest level … does not
+    distinguish between explicit and implicit privileges » ; `role=contributor` : « explicit write
+    access ». Une PR n'a pas de `closed_on` ; `pullrequests` accepte plusieurs `state=` ;
+  - **le trousseau sans Secret Service** : pas de Linux sous la main (WSL n'a que la distribution
+    de Docker Desktop, arrêtée ; pas démarrée). Lu dans keyring 25.7 : sans backend, `fail.Keyring`
+    lève `NoKeyringError` (« No recommended backend was available… »), que `Accounts.unavailable`
+    attrape ; essayé avec `PYTHON_KEYRING_BACKEND=keyring.backends.fail.Keyring` : le message de
+    refus sort. keyring choisit son backend par `PYTHON_KEYRING_BACKEND` ou `keyringrc.cfg` ;
+  - **le dossier temporaire de l'utilisateur** : 773 dossiers `forceupdate-*` (127 Mo), dont 662
+    `forceupdate-depot-*` qui n'ont plus que `clone/.git/objects/pack/*` en lecture seule :
+    `Jobs._remove` (`shutil.rmtree(ignore_errors=True)`) les sautait sous Windows. Toute analyse
+    clonée d'un dépôt (arborescence tronquée) laissait son clone, en vrai aussi.
+- **Organisation** :
+  - `forges/git.py` : `_HELPER` lit `protocol=` et `host=` sur son entrée, ne répond que pour
+    `https` et `FORCEUPDATE_GIT_HOST` (l'hôte de l'adresse, port compris) ; `_git(remote=,
+    cancel=)` ajoute `url.<adresse>.insteadOf` et `pushInsteadOf` vers elle-même ; `clone`,
+    `push`, `remote_tree` prennent `cancel` ; `parents` (nouveau) ; `Workspace(parent=)` ;
+  - `processes.run` : `cancel` déjà levé, rien n'est lancé (un push local finissait avant
+    `taskkill`) ;
+  - `forges/base.py` : `Tree.submodules`, `ChangeRequest.closed_at`, `BranchCommit.parents`,
+    `Forge.cancel`, `Forge.closed_request` (11e méthode abstraite) ; `forges.client(cancel=)` ;
+    GitHub, GitLab, Bitbucket : `closed_request` (la dernière PR de la branche, tous états, si
+    fermée sans fusion), les sous-modules de `tree`, `cancel` à git ; Bitbucket : `branch_tree`
+    ne fait plus le `fetch` d'une branche qui ne part pas du même commit que le clone ;
+  - `sources/forge.py` : `SUBMODULE`, `ForgeSource.notices`, `ClonedSource.SUBMODULE` ;
+    `sources/local.py` : `LocalSource.SUBMODULE`, `_Listing(submodule=)` ;
+  - `update/forge.py` : `INTERRUPTED`, `deliver` attrape `processes.Interrupted` ;
+    `web/proposals.py` : `Proposed.closed` (pas coché), `_existing` cherche la PR fermée sans
+    PR ouverte, `_send` s'arrête avec `Jobs.stopping` (les dépôts restants : `INTERRUPTED`),
+    `closing` (la console) ; `web/jobs.py` : `Jobs.workdirs`, `temp_dir`, le balayage dans un
+    thread au démarrage, `in_updates` lève `Interrupted` une fois l'arrêt lancé, `_remove` par
+    `git.remove_tree` (qui ignore un fichier déjà parti), `Worker._close` attend les threads de
+    sa boucle (`SHUTDOWN_WAIT`) ; `web/workdirs.py` (nouveau) : `Workdirs` (un dossier
+    `forceupdate-ui-*` verrouillé, `msvcrt.locking` ou `flock`), `sweep` ; `web/app.py` :
+    `Settings.temp_dir`, `proposals.closing()` à l'arrêt ; `routes/files.py` : l'envoi dans le
+    dossier du serveur ; `web/schemas.py` : `ProposedRepository.closed` ; `web/repositories.py` :
+    les forges du serveur ont `cancel=jobs.stopping` ; `forges/accounts.py` : le message du
+    trousseau dit `PYTHON_KEYRING_BACKEND` ;
+  - front : l'écran 8 (`ProposalPage.tsx`) : le badge d'avertissement « PR #3 fermée sans
+    fusion », la phrase avec la date, le lien sur sa ligne ; `design-system/ECRANS.md` le dit.
+- **Tranché** :
+  - **pas de repli à nous pour le trousseau** (avec l'utilisateur) : un fichier chiffré a besoin
+    d'une clé, posée à côté (du masquage) ou demandée à chaque lancement (ce que fait déjà
+    `keyrings.cryptfile`, maintenu) ; keyring sait déjà prendre un autre backend
+    (`PYTHON_KEYRING_BACKEND`, `keyringrc.cfg`) : `uv tool install forceupdate --with
+    keyrings.cryptfile`. Pour la doc (E35) ;
+  - **l'arrêt pendant un envoi** (avec l'utilisateur) : tout est tué (outil, clone, `fetch`,
+    push) ; un push tué en route a poussé, ou pas (la forge change la branche d'un coup) ; le
+    dépôt en cours échoue avec `INTERRUPTED`, ceux qui restent aussi, sans partir ; le
+    `logger.warning` « envoi des PR en cours : interrompu… » sort sur la console (le même chemin
+    que celui d'une mise à jour locale à E30). Les analyses clonées s'arrêtent de même ;
+  - **une PR refusée** (avec l'utilisateur) : la **dernière** PR de forceupdate du dépôt (vers la
+    branche par défaut, du dépôt même) décide : fermée sans fusion, on demande ; fusionnée ou
+    ouverte depuis, plus rien. Une requête de plus par dépôt au récapitulatif, seulement sans PR
+    ouverte ; si la forge ne répond pas, rien n'est signalé (comme la PR ouverte). La branche,
+    restée sur la forge, est reprise telle quelle (même contenu : rien poussé) ;
+  - **`insteadOf`** : neutralisé plutôt que dit (le cas courant, GitHub par SSH, aurait bloqué les
+    développeurs qui l'utilisent) ; la configuration de la personne reste gardée pour le reste
+    (proxy, certificats) ;
+  - **le dossier de travail du serveur** : un seul, `forceupdate-ui-*`, où vont les fichiers des
+    analyses de dépôts (`depot-*`), les fichiers envoyés (`envoi-*`) et les clones des PR
+    (`pr-*`) ; verrouillé tant que le serveur tourne (le système relâche le verrou à sa mort, même
+    brutale), effacé à l'arrêt ; au démarrage, ceux dont personne ne tient le verrou sont effacés,
+    dans un thread (il peut y en avoir beaucoup) ; un dossier sans verrou de moins de 60 s est
+    laissé (un serveur qui naît), un fichier encore ouvert le laisse pour le démarrage suivant.
+    Jamais celui d'un autre serveur qui tourne. Les anciens dossiers `forceupdate-depot-*`,
+    `forceupdate-pr-*` et `forceupdate-<x>` (d'avant E31) ne sont pas balayés : seules des
+    versions de développement en ont fait (la 0.1.0 publiée n'a pas `ui`), et `forceupdate-<x>`
+    est aussi le préfixe des dossiers d'une commande `update` qui tourne peut-être ;
+  - **Bitbucket, refresh token** : rien de plus. Le dire « avant » dans la carte n'a pas de sens
+    (la carte ne se voit que serveur lancé, et l'afficher renouvelle le token) ; renouveler « de
+    temps en temps » non plus (serveur arrêté, rien ne tourne) ; refusé, le compte dit déjà
+    « Bitbucket ne renouvelle plus le token (accès retiré à forceupdate, ou resté trop longtemps
+    sans servir) : se reconnecter » ;
+  - **le `fetch` de Bitbucket** : gardé quand la branche part du même commit que le clone (le
+    seul cas où le contenu peut être le même ; cher seulement si les fichiers changés sont gros),
+    sauté sinon. Si Bitbucket ne rend pas tous les commits de la branche (`ahead` au-delà de
+    30), on ne sait pas d'où elle part : le `fetch` reste.
+- **Trouvé** : un heredoc a encore mangé les barres obliques inverses d'un script (CLAUDE.md le
+  dit) ; le garde-fou git des tests prenait une valeur de `-c` (`url.file:///…insteadOf=…`) pour
+  une adresse : il saute désormais les valeurs de `-c` (l'adresse est aussi un argument à part) ;
+  dans `deliver`, le clone a déjà le commit de forceupdate quand on lit l'arbre de la branche :
+  c'est le parent de `HEAD` qu'il faut comparer (`git.parents`), pas `HEAD` (un test l'a vu) ;
+  un balayage qui échoue sur un fichier ouvert efface d'abord le `.lock` : le dossier attend
+  alors 60 s ; **une course à l'arrêt**, vue par la suite complète (pas seule) : la tâche d'envoi
+  annulée laissait le nettoyage de son clone tourner dans un thread pendant que
+  `Workdirs.close` effaçait le même dossier (`WinError 2`, le dossier restait) : l'arrêt de la
+  boucle des analyses attend ses threads (`shutdown_default_executor`, 30 s au plus), et
+  `remove_tree` ignore un fichier déjà parti ; **axe-core** a refusé le lien de la PR fermée
+  placé dans la phrase (`link-in-text-block` : il ne s'en distinguait que par sa couleur) : il est
+  sur sa propre ligne, comme les autres liens externes ; une suppression `rm -rf "$VAR/run"` a été refusée
+  par le contrôle de sécurité de l'outil (chemin non résolu) : un chemin écrit en entier.
+- **Tests** : `test_forges_git.py` (le token pour le seul hôte, ni `http` ni un autre hôte, le port
+  d'une instance ; `insteadOf` et `pushInsteadOf` d'une configuration globale de test ignorés
+  pour le clone, le `fetch` et le push ; `cancel` : rien lancé, rien poussé) ;
+  `test_forges_requests.py`, `test_forges_gitlab.py`, `test_forges_bitbucket.py` (`closed_request`
+  : jamais, fermée, puis fusionnée ou ouverte depuis ; le clone arrêté par `Forge.cancel` ;
+  Bitbucket : la branche faite sur un `main` plus ancien n'est pas lue, sur le même `main` elle
+  l'est) ; `test_forges_github.py` (la 11e méthode, `client(cancel=)` pour les trois) ;
+  `test_sources_forge.py` (un sous-module dit, pour les trois forges, pas sous `vendor/`) ;
+  `test_sources.py` (le sous-module d'un clone : la remarque de la forge) ;
+  `test_update_forge.py` (la branche poussée sans PR reprise ; l'arrêt pendant le clone et
+  pendant l'outil : rien poussé, `INTERRUPTED`) ; `test_web_proposals.py` (la PR fermée sans
+  fusion dite et pas cochée, l'envoyer en ouvre une nouvelle ; **Ctrl+C pendant un envoi, de bout
+  en bout** : npm tué, rien poussé, le deuxième dépôt pas parti, la console le dit, le dossier de
+  travail effacé ; les forges du serveur ont `stopping`) ; `test_web_workdirs.py` (nouveau :
+  verrou et effacement, **le dossier d'un vrai processus Python mort balayé, celui d'un vivant
+  gardé**, un dossier sans verrou jeune ou vieux, le balayage au démarrage et l'effacement à
+  l'arrêt, un fichier envoyé dans le dossier du serveur, un clone en lecture seule effacé, un
+  fichier ouvert laissé pour plus tard) ; `test_forges_accounts.py` (le message du trousseau).
+  **Huitième garde-fou** (`conftest.py`, `server_temp`) : le serveur ne range ni ne balaie rien
+  dans le dossier temporaire de la personne. Front : `Proposals.test.tsx` (la PR fermée : badge,
+  date, lien, pas cochée, l'envoyer) ; Playwright : `forges.spec.ts` (écran 8 avec une PR
+  fermée, la réponse du vrai serveur retouchée en route, axe-core en clair et en sombre à 1440 et
+  375 px). 4 789 tests Python verts (plus 21 réseau, avec les vrais outils), aussi sous 3.11 pour les nouveaux ; 164 Vitest ; 71 Playwright (4 de plus), sans erreur de console. La suite Python a pris 13 min 22 sur une machine chargée (un autre programme, très gourmand, tournait) ; ses tests les plus longs comme à E30 (4,5 s au plus) : rien de lent n'a été ajouté. Vérifié aussi à l'œil : la carte de la PR fermée en clair et en sombre, à 1440 et 375 px (captures).
+- **Vérifié avec les vrais comptes** (lecture seule ; rien poussé ; la PR #1 et la MR !1 pas
+  touchées) : les trois dépôts de test : la PR (MR) ouverte trouvée, `closed_request` à `None`
+  (la dernière est ouverte), la requête acceptée par les trois forges (`state=all`, tris,
+  plusieurs `state=` chez Bitbucket), aucun sous-module ; des PR fermées sans fusion de dépôts
+  publics trouvées avec leur date (`cli/cli` #14837, GitHub ; `gitlab-org/gitlab-runner` !7695,
+  GitLab) ; Bitbucket : le premier commit de la branche a pour parent le `main` actuel, l'arbre lu
+  (`branch_tree` 1,6 s, `fetch` seul 1,3 s, clone 2,8 s) ; le dépôt privé de GitHub cloné par le
+  token malgré `url."git@github.com:".insteadOf` (git seul aurait pris
+  `git@github.com:Pauzzle-ozz/forceupdate-demo.git`) ; `boostorg/boost` lu par l'API : 173
+  remarques de sous-modules. Les tokens de GitLab et de Bitbucket ont été renouvelés au passage
+  (rangés dans le trousseau, comme à l'usage). **Avec l'accord de l'utilisateur**, les 773
+  dossiers `forceupdate-*` d'avant E31 effacés de son dossier temporaire (89 Mo de fichiers) ;
+  restent les `forceupdate-e2e-*` du serveur des tests de bout en bout (case de E35).
+- **Limites** (pour la doc, E35) : une règle `insteadOf` de la personne sur l'adresse exacte du
+  dépôt l'emporte (git va ailleurs, sans le token : échec « la forge refuse le token ») ; un
+  sous-module n'est pas analysé (l'analyser à part) ; une PR refusée n'est signalée que si c'est
+  la dernière de la branche, et que la forge répond ; les droits d'écriture par un groupe sur
+  Bitbucket ne sont vus que d'après la spécification ; un envoi interrompu ne se voit qu'à la
+  console (les récapitulatifs ne survivent pas au serveur) ; le dossier d'un arrêt brutal reste
+  jusqu'au démarrage suivant (et un fichier encore ouvert par un git orphelin, jusqu'au
+  suivant) ; sous Linux sans Secret Service, pas de compte sans un autre trousseau.
 
 ### E32 — Mise à jour : le npm du projet, Python, NuGet, Go
 
@@ -2826,6 +3001,15 @@ public.
     n'était pas fini est remis) ; les autres limites des notes de E30.
 - [ ] Depuis E20 : dans `docs/FORGES.md`, Bitbucket : enregistrer son propre « OAuth client » (Workspace settings → OAuth clients ; « Authorization code » et « Refresh token », jamais « Client credentials » ; Account Read et Email, Repositories et Pull requests en écriture ; adresse de retour `http://127.0.0.1/oauth/bitbucket/callback`) et le passer par `FORCEUPDATE_BITBUCKET_CLIENT_ID` / `…_SECRET` ; le token d'API Atlassian (`id.atlassian.com`, application Bitbucket, ses six portées), les app passwords qui ne marchent plus ; pas de révocation (« Retirer l'accès » dans `bitbucket.org/account/settings/app-authorizations/`) ; pas d'adresse `noreply` (l'adresse principale du compte signe les commits) ; Bitbucket Data Center hors V1.
 - [ ] Depuis E18 : dans `docs/FORGES.md`, ce que fait une PR (branche `forceupdate/dependencies` remplacée à chaque envoi, un commit au nom du compte avec son adresse `noreply`, marqué `Generated-by: forceupdate` ; jamais par-dessus le commit d'un autre ; ce que dit la description ; un lockfile dont l'outil manque sur l'ordinateur) et qu'il faut git ; dans le README, une capture de l'écran 8 et d'une PR.
+- [ ] Depuis E31 : dans `docs/FORGES.md` :
+  - **le trousseau sous Linux** (serveur, WSL) : sans Secret Service, aucun compte ne se connecte (la raison est dite) ; en installer un (GNOME Keyring : `gnome-keyring` et `dbus`, `dbus-run-session -- sh -c 'echo -n "<phrase>" | gnome-keyring-daemon --unlock; forceupdate ui'` sur un serveur sans session graphique : à vérifier sur une vraie machine le jour venu), ou choisir un autre trousseau par keyring : `uv tool install forceupdate --with keyrings.cryptfile`, puis `PYTHON_KEYRING_BACKEND=keyrings.cryptfile.cryptfile.CryptFileKeyring` (sa phrase de passe demandée dans le terminal, ou `KEYRING_CRYPTFILE_PASSWORD`) ; jamais de fichier en clair par forceupdate (décision de la session 31) ;
+  - les tokens GitHub sans expiration (comme `gh`) ; ceux de GitLab et Bitbucket (2 h) renouvelés à chaque usage ; un refresh token de Bitbucket qui ne marche plus : « se reconnecter » ;
+  - une PR fermée sans fusion : le récapitulatif la signale et ne coche pas le dépôt (l'envoyer en ouvre une nouvelle ; la branche restée sur la forge est reprise) ;
+  - Ctrl+C pendant un envoi : tout s'arrête aussitôt (la console le dit), relancer l'envoi ; une branche déjà poussée sans sa PR est reprise ;
+  - `url.<base>.insteadOf` de la configuration git (GitHub par SSH…) : ignoré pour les commandes de forceupdate, qui passent par HTTPS avec le token ; seule une règle sur l'adresse exacte d'un dépôt l'emporte (échec « la forge refuse le token ») ;
+  - un sous-module n'est pas analysé (le rapport le dit) : l'analyser comme un dépôt à part ;
+  - Bitbucket : un dépôt où le compte écrit par un groupe est vu d'après la permission effective que donne Bitbucket (non vérifié en vrai) ;
+  - le dossier de travail du serveur (`forceupdate-ui-*` du dossier temporaire) : effacé à l'arrêt, ou au démarrage suivant après un arrêt brutal.
 - [ ] Packaging :
   - le front est construit avant `uv build`, et le paquet le contient : fait à E14 (`publish.yml`, `artifacts` de hatchling, vérifié dans le wheel) ;
   - `uv tool install .` testé sous Windows (Linux via la CI), sur une machine sans node ;
@@ -2917,3 +3101,4 @@ En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.
 | 28 | 2026-11-02 | E28 | Fait. Commit de E27 d'abord (accord de l'utilisateur). Vérifié en vrai : uv 0.10 et PEP 723 (bloc n'importe où, jusqu'au dernier `# ///`, refusé s'il n'est pas fermé, invisible derrière un BOM ; `uv lock --script` écrit `x.py.lock` ; un script à bloc ignore le projet autour), les 72 modules intégrés de Node 24.12 (4 seulement avec `node:`), le proxy Go (404 pour un sous-paquet ; `go mod tidy` rattache `golang.org/x/text/language` à `golang.org/x/text`). Un fichier de code dans un projet : la remontée jusqu'au premier manifeste de son écosystème (arrêt à la racine git, du disque, ou avant le dossier personnel), la source est le dépôt git, « analysé via `<manifeste>` ». Seul : le bloc PEP 723 (vrai manifeste, réécrivable, `requires-python` en runtime, `script.py.lock` lu et régénéré par `uv lock --script`), sinon ses imports (`ast` ; des lexers pour JS/TS et Go ; table import → paquet, espaces de noms et modules Go rattachés à la vérification). Nouveau constat `unpinned` (« version non fixée, dernière X »), remarque « failles non vérifiables ». Interface : écran 2 (fichiers de code, dépôt), écran 4 (lecture du fichier, compteur et alerte, badges). 4587 tests Python verts, 151 Vitest, 59 Playwright ; vérifié à la main en ligne de commande et dans l'interface (un débordement à 375 px trouvé et corrigé). |
 | 29 | 2026-11-02 | E29 | Fait. Commit de E28 d'abord (accord de l'utilisateur). E29 de départ découpée avec lui en cinq étapes (E29 configuration et Réglages, E30 robustesse et performance, E31 mise à jour : le npm du projet, Python, NuGet, Go, E32 registres et dépôts privés, E33 compléments d'analyse ; documentation E34, recette E35). Décidé avec lui pour la suite : tokens GitHub sans expiration, `truststore`, `npx npm@10` coché d'office. Vérifié en vrai : rustup 1.29 (`rustup default`, `RUSTUP_TOOLCHAIN` devant `rust-toolchain.toml`, sans rien installer). `config.py` : `forceupdate.toml` ou `[tool.forceupdate]` (paquets et versions ignorés dans une syntaxe commune aux huit écosystèmes, dossiers exclus, dossiers de tests, sélection par défaut par écosystème), valeurs fausses dites et écartées ; un paquet ignoré n'est ni vérifié ni mis à jour mais ses failles restent dites, une version ignorée est retirée de ce que dit le registre. `preferences.py` : les réglages de la personne (le même format, dans son dossier de configuration ; dépôts exclus, délais des outils et du clone, chaîne d'outils Rust), lus par la ligne de commande (`--include-tests`, `--level` sinon le projet puis les réglages) et le serveur (`GET`/`PUT /api/settings`, `DELETE /api/cache`, `Cache.stats`). Le projet prime. Écran 9 (sélection, ignorés, analyse, dépôts exclus, outils, cache confirmé, thème) ; le rapport dit la configuration. Septième garde-fou des tests (`user_settings`). Trouvé par Playwright : une règle générale égale aux valeurs par défaut faisait dire « sélection réglée » (écartée). 4667 tests Python verts (plus 21 réseau), 162 Vitest, 67 Playwright ; vérifié à la main en ligne de commande et dans l'interface (vrai réseau, 375 px). Suite Python : 4 min 24 au calme (7 min à la fin de E28). Pas encore commitée. |
 | 30 | 2026-11-02 | E30 | Fait. Commit de E29 d'abord (accord de l'utilisateur) ; E30 découpée avec lui : les cases des forges font E31 (« Forges : robustesse »), E31 à E35 deviennent E32 à E36. Vérifié en vrai : l'arbre de `npm.CMD` (`subprocess.run` rend un délai de 3 s après 25,8 s, ou laisse node tourner ; `taskkill /T` tue les quatre processus), Ctrl+Break (code 3), une jonction (suivie par `os.walk` et par `git ls-files`), un sous-module non initialisé (`RecursionError`), le BOM sur chaque fichier des mini-projets (TOML, requirements, go.mod, yarn.lock… cassés) et l'UTF-16 de PowerShell 5.1, httpx avec truststore, `SSL_CERT_FILE` (httpx seul remplace certifi : pypi.org refusé) et un proxy `CONNECT`. `processes.py` (tout outil, git et `gh` : l'arbre tué au délai, à Ctrl+C, à l'arrêt du serveur), `decode_text` (BOM, UTF-16), `_Listing` (200 000 fichiers au plus, jonctions, sous-modules), `Report.notices` (« Analyse partielle » dans l'interface), `ssl_context` (truststore, ajouté aux dépendances), un certificat refusé dit sans reprise, Ctrl+C pendant l'écriture ou un outil et l'arrêt du serveur : ce qui n'était pas fini est remis (`_undo_written`, `Jobs.stopping`), Ctrl+Break comme Ctrl+C. **Mesure** : Argos, cache vide, 3,2 s (86 directes, 569 à OSV), 7,4 s avec `--transitive` (570 vérifiées), aucun non concluant ; un vrai npm au délai de 0,3 s tué, fichiers remis en 0,5 s. Suite Python : 4 min 26. 4 761 tests Python verts (plus 21 réseau), 163 Vitest, 67 Playwright. E30 pas encore commitée. |
+| 31 | 2026-11-02 | E31 | Fait. Commit de E30 d'abord (`a4f500a`, accord de l'utilisateur). Trois décisions de l'utilisateur : le trousseau sous Linux, la doc seulement ; une PR fermée sans fusion, le demander au récapitulatif ; l'arrêt pendant un envoi, tout de suite. Vérifié en vrai : `insteadOf` (configuration globale de test : détourne une adresse en argument, neutralisé par une règle vers elle-même, `pushInsteadOf` à part, l'adresse exacte gagne à égalité), les sous-modules dans l'arborescence (GitHub, GitLab : `type: commit`), le coût du `fetch` (cpython : 0,9 s et 480 Ko quand la branche part du `main` actuel, 2,4 s et 20 Mo à 300 commits), la spécification de Bitbucket (rien sur la durée d'un refresh token ; permission effective), keyring sans backend ; 662 clones d'analyses laissés dans le dossier temporaire (objets git en lecture seule). `web/workdirs.py` (le dossier du serveur, verrouillé, balayé au démarrage), `Forge.cancel` et `cancel` jusqu'à git, `processes.run` qui ne lance rien si l'arrêt est demandé, `Forge.closed_request` et l'écran 8 (badge, date, lien), le helper git qui ne donne le token qu'à l'hôte, `insteadOf` neutralisé, `Tree.submodules` et `ForgeSource.notices`, le `fetch` de Bitbucket sauté quand il est inutile. Huitième garde-fou des tests (`server_temp`). Trouvé : une course à l'arrêt (le nettoyage d'un clone et celui du dossier du serveur), le lien dans une phrase refusé par axe-core. Vérifié avec les vrais comptes, en lecture seule (PR #1 et MR !1 pas touchées). 4 789 tests Python verts (plus 21 réseau), 164 Vitest, 71 Playwright. |

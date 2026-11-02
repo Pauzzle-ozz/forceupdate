@@ -36,7 +36,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, TypeVar
 
-from forceupdate import __version__
+from forceupdate import __version__, processes
 from forceupdate.forges import git, info
 from forceupdate.forges.base import (
     Access,
@@ -76,6 +76,11 @@ en accepte bien plus, mais une description si longue ne se lit plus)."""
 FINE_GRAINED = (
     " Token fine-grained : il lui faut « Contents » et « Pull requests » en écriture sur ce dépôt."
 )
+INTERRUPTED = (
+    "Interrompu : forceupdate s'est arrêté. Relancer l'envoi ; une branche déjà poussée sera "
+    "reprise."
+)
+"""L'échec d'un dépôt dont l'envoi a été arrêté (``cancel``)."""
 
 T = TypeVar("T")
 
@@ -156,7 +161,9 @@ async def deliver(
 
     ``on_step`` reçoit chaque étape, ``on_event`` les ``Event`` de la mise à jour (un
     ``regenerating`` par outil lancé). ``cancel`` levé (l'arrêt du serveur), l'outil de lockfile
-    en cours est tué, et rien n'est poussé."""
+    en cours est tué, comme les commandes git de la forge (``Forge.cancel``, le même), et l'envoi
+    s'arrête là (``INTERRUPTED``). Une branche déjà poussée sans sa PR est reprise par l'envoi
+    suivant : la branche est de forceupdate, la PR s'ouvre."""
     step = on_step or _ignore
     hint = FINE_GRAINED if author.access is Access.UNKNOWN else ""
     base: str | None = None
@@ -216,6 +223,8 @@ async def deliver(
         step(Step.REQUESTING)
         body = request_body(report, prepared, results, repo=repo, base=base)
         request = await forge.open_or_update_request(repo, branch=BRANCH, title=TITLE, body=body)
+    except processes.Interrupted:
+        return failed(INTERRUPTED)
     except TokenRefused as err:
         return failed(str(err), refused=True)
     except AccessDenied as err:

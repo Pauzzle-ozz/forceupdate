@@ -10,6 +10,7 @@ et OSV répondent avec les réponses enregistrées."""
 import asyncio
 import dataclasses
 import shutil
+import threading
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -107,7 +108,9 @@ class Run:
         *,
         repo: Repository | None = None,
         author: Identity = AUTHOR,
+        cancel: threading.Event | None = None,
     ) -> Delivered:
+        """``cancel`` : l'arrêt du serveur, pour ``deliver`` et pour git (``Forge.cancel``)."""
         self.count += 1
         workdir = self.workdir / f"envoi-{self.count}"
         workdir.mkdir(parents=True)
@@ -123,13 +126,19 @@ class Run:
                     author=author,
                     workdir=workdir,
                     on_step=self.steps.append,
-                )
+                    cancel=cancel,
+                ),
+                cancel=cancel,
             )
         )
 
-    async def _with(self, work: Callable[[GitHub], Any]) -> Any:
+    async def _with(
+        self, work: Callable[[GitHub], Any], *, cancel: threading.Event | None = None
+    ) -> Any:
         async with HttpClient() as http:
-            return await work(GitHub(http, self.token, git_url=remotes_url(self.remotes)))
+            github = GitHub(http, self.token, git_url=remotes_url(self.remotes))
+            github.cancel = cancel
+            return await work(github)
 
 
 @pytest.fixture
@@ -222,6 +231,59 @@ def test_relaunching_updates_the_same_request(
         git(remote, "rev-parse", f"{BRANCH}~1").strip() == git(remote, "rev-parse", "main").strip()
     )
     assert len(github.repos[NAME].pulls) == 1
+
+
+def test_a_branch_pushed_without_its_request_is_resumed(
+    github: FakeGitHubRepos,
+    report: Report,
+    deliver: Run,
+    fake_tools: Callable[..., FakeTools],
+) -> None:
+    """Un arrêt du serveur entre le push et la PR (E31) laisse la branche sans PR : l'envoi
+    suivant la reprend (même contenu, rien poussé) et ouvre la PR."""
+    tools(fake_tools, "npm", "uv")
+    first = deliver(report)
+    remote = github.repos[NAME].remote
+    assert remote is not None
+    head = git(remote, "rev-parse", BRANCH).strip()
+    github.repos[NAME].pulls.clear()  # la PR n'a pas été ouverte
+    again = deliver(report)
+    assert again.outcome is Outcome.OPENED, again.error
+    assert not again.pushed
+    assert again.request is not None and again.request.number != first.request.number
+    assert git(remote, "rev-parse", BRANCH).strip() == head
+
+
+@pytest.mark.parametrize("when", ["clone", "tool"])
+def test_stopping_interrupts_the_delivery(
+    github: FakeGitHubRepos,
+    report: Report,
+    deliver: Run,
+    fake_tools: Callable[..., FakeTools],
+    when: str,
+) -> None:
+    """L'arrêt du serveur (``cancel``, E31) pendant le clone ou l'outil de lockfile : git et
+    l'outil sont arrêtés, rien n'est poussé, l'échec dit comment reprendre."""
+    fake = tools(fake_tools, "npm", "uv")
+    stop = threading.Event()
+    if when == "clone":
+        stop.set()
+    else:
+        handler = fake.handlers["npm"]
+
+        def npm(call: ToolCall) -> None:
+            handler(call)
+            stop.set()  # pendant que npm finit
+
+        fake.handlers["npm"] = npm
+    done = deliver(report, cancel=stop)
+    assert done.outcome is Outcome.FAILED
+    assert done.error == forge.INTERRUPTED
+    remote = github.repos[NAME].remote
+    assert remote is not None
+    assert not git(remote, "branch", "--list", BRANCH).strip()
+    assert github.repos[NAME].pulls == []
+    assert [call.program for call in fake.calls] == ([] if when == "clone" else ["npm"])
 
 
 def test_a_missing_tool_is_said_in_the_request(

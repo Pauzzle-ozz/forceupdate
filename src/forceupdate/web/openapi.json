@@ -2958,6 +2958,18 @@
           "base": {
             "type": "string",
             "title": "Base"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
           }
         },
         "type": "object",
@@ -2966,7 +2978,8 @@
           "url",
           "title",
           "branch",
-          "base"
+          "base",
+          "closed_at"
         ],
         "title": "ChangeRequest",
         "description": "Une pull request (merge request sur GitLab)."
@@ -4816,6 +4829,16 @@
               }
             ]
           },
+          "closed": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChangeRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "selection": {
             "additionalProperties": {
               "type": "string"
@@ -4927,6 +4950,7 @@
           "inconclusive",
           "checked",
           "request",
+          "closed",
           "selection",
           "applied",
           "skipped",

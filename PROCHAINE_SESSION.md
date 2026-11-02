@@ -1,76 +1,72 @@
-# Session 31 — Étape E31 : Forges : robustesse
+# Session 32 — Étape E32 : Mise à jour : le npm du projet, Python, NuGet, Go
 
-Contexte : E01 à E30 sont faites. À la session 30, E30 de départ a été découpée (accord de
-l'utilisateur) : E30 robustesse et performance (faite), E31 forges : robustesse (les cases venues
-de E16, E18, E20, et deux de E30) ; E31 à E35 de départ deviennent E32 à E36 (les mentions « E31 »
-à « E35 » d'avant la session 30 désignent E32 à E36). E30 a fait `processes.py` (tout outil, git et
-`gh` lancés sans shell, leur arbre tué au délai, à Ctrl+C ou à l'arrêt du serveur : `taskkill /T`,
-`killpg`), les encodages (UTF-16, BOM), les jonctions, les sous-modules non initialisés,
-`Report.notices` (« Analyse partielle » dans l'interface), truststore et `SSL_CERT_FILE`,
-Ctrl+Break, les interruptions (ce qui n'était pas fini est remis). Argos, cache vide : 3,2 s
-(7,4 s avec `--transitive`, 570 dépendances). 4 761 tests Python verts (plus 21 réseau), 163
-Vitest, 67 Playwright ; la suite Python prend 4 min 26 au calme. **E30 n'est pas commitée : à proposer
-d'abord.**
+Contexte : E01 à E31 sont faites. E31 (forges : robustesse) a fait `web/workdirs.py` (le dossier
+de travail du serveur, `forceupdate-ui-*`, verrouillé, effacé à l'arrêt ; ceux d'un arrêt brutal,
+au démarrage), l'arrêt immédiat d'un envoi de PR (git reçoit `cancel` : `Forge.cancel`,
+`Jobs.stopping`), la PR fermée sans fusion signalée au récapitulatif (`Forge.closed_request`,
+pas cochée), `url.<base>.insteadOf` neutralisé et le token donné au seul hôte de l'adresse, les
+sous-modules d'un dépôt dits (`Tree.submodules`), le `fetch` de Bitbucket mesuré et évité quand
+il est inutile. Les décisions de l'utilisateur sont dans les notes de E31 (trousseau sous Linux :
+la doc seulement). 4 789 tests Python verts (plus 21 réseau), 164 Vitest, 71 Playwright.
+**E31 n'est pas commitée : à proposer d'abord.**
 
-Lis CLAUDE.md, puis l'étape E31 de PLAN.md (toutes ses cases), les notes de E30 (le découpage,
-`processes`, `Jobs.stopping`, ce qui a été vérifié en vrai), de E18, E19 et E20 (les PR, la branche
-remplacée, Bitbucket : refresh token, droits), et `docs/BRIEF.md` (décisions n°13, 14, 22 ; « Pièges
-connus », Forges). Puis le code qui sert de modèle : `update/forge.py` (`deliver`, `Step`),
-`web/proposals.py` (l'envoi, ses étapes, `Workspace`), `forges/git.py` (`Workspace`, `_git`,
-`remote_tree`, `_CONFIG`, `_environment`), `forges/accounts.py` (trousseau, morceaux,
-renouvellement), `forges/bitbucket.py` (refresh token, `permissions`), `forges/github.py`
-(`tree`, entrées `commit`), `forges/gitlab.py`, `sources/forge.py`, `web/jobs.py` (`close`,
-`stopping`), `web/app.py` (démarrage). Si l'interface change (un message de carte de compte, le
-récapitulatif des PR), charger d'abord le skill `ui-ux-pro-max` et lire `design-system/MASTER.md`,
-l'écran dans `design-system/ECRANS.md` (6, 7, 8) et `design-system/pages/`.
+Lis CLAUDE.md, puis l'étape E32 de PLAN.md (toutes ses cases), les notes de E11 (lockfiles,
+`npm update`, la relecture), de E22 (Go, `vendor/`), de E23 (Composer, `--no-blocking`), de E26
+(NuGet : la plus basse version qui convient), de E27 (`Project.runtimes`,
+`checks.runtimes.project_runtime`) et de E29 (la décision « `npx npm@10` coché d'office »), et
+`docs/BRIEF.md` (décision n°11 ; « Pièges connus »). Puis le code qui sert de modèle :
+`update/lockfiles.py` (`plan`, `regenerate`, `_poetry_major`, `Tools`, `_Context`), `update/local.py`
+(`prepare`, `apply`), `update/planner.py` (`manual`), `parsers/python.py` (requirements),
+`parsers/nuget.py` et `update/writers/` (la réécriture, insérer un élément), `processes.py`. Si
+l'interface change (une case dans le plan de l'écran 5, un avertissement), charger d'abord le
+skill `ui-ux-pro-max` et lire `design-system/MASTER.md`, l'écran 5 dans `design-system/ECRANS.md`
+et `design-system/pages/mise-a-jour.md`.
 
 À faire :
-- Depuis E16 : le trousseau sous Linux sans Secret Service (serveur, WSL) : la connexion est refusée
-  avec la raison ; le dire dans la doc (comment en installer un), ou un repli (fichier chiffré : à
-  justifier). Les tokens GitHub restent sans expiration (tranché, rien à faire que la doc).
-- Depuis E18 : un arrêt du serveur pendant un envoi (le dire, ou attendre la fin du dépôt en
-  cours) ; les dossiers `forceupdate-pr-*` laissés par un arrêt brutal, effacés au démarrage ; une
-  PR fermée sans fusion rouverte au prochain envoi (souvenir d'un refus par version, ou le
-  demander) ; `url.<base>.insteadOf` de la configuration git de la personne.
-- Depuis E20 (Bitbucket) : le refresh token inutilisé 3 mois ; les droits d'écriture par un
-  groupe ; le coût du `fetch` de `git.remote_tree` (le mesurer).
-- Depuis E30 : un sous-module d'un dépôt (entrée `commit` de l'arborescence) sauté sans rien dire :
-  le dire comme en local (`Source.notices`) ; à l'arrêt du serveur, les commandes git d'un envoi
-  ne reçoivent pas `cancel` (décider avec la case de E18).
+- le npm du projet : lire la version attendue (`packageManager`, `devEngines.packageManager`,
+  `engines.npm`, puis la version de Node du projet, puis `actions/setup-node` des workflows),
+  la comparer à la majeure du npm installé, le dire dans le plan et régénérer par `npx -y npm@10`
+  (une case cochée d'office), vérifier par `npx -y npm@10 ci --dry-run --ignore-scripts` ; pnpm et
+  Yarn (corepack) ; les PR des forges (le clone a la CI du dépôt) ; un test qui reproduit le cas et
+  un test `network` avec les deux vrais npm ;
+- le workspace npm : une indirecte d'un membre retenue par une version forcée de la racine, sur un
+  vrai workspace ;
+- les `requirements.txt` générés sans `.in` (`uv export`, `poetry export`, `pdm export`,
+  `pip-compile pyproject.toml`) : les reconnaître et les traiter comme des lockfiles ;
+- une ligne de `requirements` à empreintes (`--hash`) : l'option `manual` dès l'analyse ;
+- NuGet : appliquer l'option « à la main » d'une indirecte en faille (`PackageReference`, ou
+  `PackageVersion` et `CentralPackageTransitivePinningEnabled`), relue comme les autres ;
+- Go : proposer `go mod vendor` après `go mod tidy`, avec de quoi remettre `vendor/` ;
+- Composer 2.9 : dire `config.audit.block-insecure` dans le plan.
 
 Attention :
-- **Demander à l'utilisateur** d'abord le commit de E30 (message « E30 : robustesse et
-  performance », un résumé comme pour E28 et E29).
-- Plusieurs cases demandent une décision de l'utilisateur (repli du trousseau sous Linux ; PR
-  refusée : s'en souvenir ou demander ; arrêt pendant un envoi) : les lui poser avec les options
-  et une recommandation, avant d'écrire.
-- Vérifier en vrai avant d'écrire, comme à E27–E30 : `git config --get-regexp url\.` et un
-  `insteadOf` posé dans un dépôt de test local (jamais dans la configuration globale de la
-  personne sans son accord : `GIT_CONFIG_GLOBAL` vers un fichier du scratchpad) ; ce que rend
-  l'arborescence de GitHub pour un sous-module (`type: commit`), sur un dépôt public, en lecture ;
-  le refus de Bitbucket d'un refresh token expiré n'est pas reproductible (3 mois) : le dire.
-- Les dépôts de test des forges (`Pauzzle-ozz/forceupdate-demo` sur GitHub et gitlab.com,
-  `pauzzle/forceupdate-demo` sur Bitbucket) sont gardés pour la recette E36 : y lire, ne rien y
-  pousser sans l'accord de l'utilisateur, ne pas toucher à leur PR #1 et MR !1.
+- **Demander à l'utilisateur** d'abord le commit de E31 (message « E31 : forges : robustesse »,
+  un résumé comme pour E29 et E30).
+- Vérifier en vrai avant d'écrire, comme à E27–E31 : la table Node → npm sur nodejs.org (Node 22
+  et 24 aujourd'hui), ce que fait `npx -y npm@10` (le cache de npx : dans le scratchpad,
+  `npm_config_cache`), `npm ci --dry-run` sur un lockfile écrit par npm 11, `corepack` pour pnpm et
+  Yarn (`corepack yarn@4.18.1`), les en-têtes des `requirements.txt` de `uv export`, `uvx poetry
+  export`, `uvx pdm export` et `uvx --from pip-tools pip-compile`, `dotnet restore` après l'ajout
+  d'une `PackageReference`, `go mod vendor`, Composer 2.9 si on peut l'avoir à côté (sinon le
+  dire). Toujours sur une copie dans le scratchpad, jamais dans `tests/projects/` (les outils
+  réécrivent les lockfiles) ; les PATH des outils sont dans CLAUDE.md.
+- Une case de plan nouvelle change l'API (`openapi.json`, `npm run gen:api`) et l'écran 5.
 - Les tests : jamais le réseau sans `network`, jamais un vrai outil (`FakeTools`), jamais le cache,
-  le trousseau ni les réglages de l'utilisateur (`user_settings`) ; git seulement vers des dépôts
-  « bare » locaux (`fake_forge.make_remote`) ; dans un test, jamais `monkeypatch.undo()` (pour
-  la vraie fonction d'un module remplacé par un garde-fou, la prendre à l'import, comme
-  `REAL_SPAWN` de `test_lockfiles.py`). respx relève l'exception d'un `side_effect` depuis la sienne
-  (la cause d'origine est perdue, la chaîne reboucle).
-- Un test qui lance une vraie commande `ui` bloque la suite ; le test de Ctrl+Break
-  (`test_web_server.py`) fait sortir pytest en code 3 si la correction disparaît.
-- Les tests Playwright partagent le serveur et tournent en parallèle ; une expression régulière ne
-  trouve pas un texte passé par `fr()` (espace insécable) : `\s`.
+  le trousseau, les réglages ni le dossier temporaire de l'utilisateur (huit garde-fous de
+  `conftest.py`, dont `server_temp` depuis E31) ; dans un test, jamais `monkeypatch.undo()`.
+- Le dossier temporaire de l'utilisateur : les 773 dossiers `forceupdate-*` d'avant E31 ont été
+  effacés avec son accord (session 31) ; les `forceupdate-e2e-*` que laisse le serveur des tests
+  de bout en bout restent (case de E35).
 - Scripts : les écrire dans le scratchpad avec l'outil d'écriture, jamais par un heredoc (il mange
-  les barres obliques inverses) ; l'outil d'écriture change un `\uXXXX` en caractère (écrire
-  `\N{…}` ou `chr(0x…)`) ; `python -I` ignore `PYTHONIOENCODING` (`-X utf8`) ; un argument qui
-  commence par `/` sous Git Bash : `MSYS_NO_PATHCONV=1`. Un script Python qui réécrit un fichier :
-  `newline="\n"`.
+  les barres obliques inverses : encore vu à la session 31) ; l'outil d'écriture change un
+  `\uXXXX` en caractère ; `python -I` ignore `PYTHONIOENCODING` (`-X utf8`) ; un argument qui
+  commence par `/` sous Git Bash : `MSYS_NO_PATHCONV=1` ; une suppression : un chemin écrit en
+  entier (le contrôle de l'outil refuse `rm -rf "$VAR/x"`).
 
-Fini quand : chaque case a ses tests, ou une décision notée (la doc, E35) ; vérifié avec les dépôts
-de test des forges, sans toucher à leurs PR et MR. Vérifier avec : `uv run pytest`,
-`uv run ruff check`, `uv run ruff format --check` ; dans `frontend/` : `npm test`,
-`npm run typecheck`, `npm run lint`, `npm run test:e2e`.
+Fini quand : sur une copie d'un projet dont la CI est en Node 22, une mise à jour faite avec
+npm 11 installé donne un lockfile que `npm@10 ci` accepte ; les autres cases ont leurs tests et
+sont vérifiées avec le vrai outil. Vérifier avec : `uv run pytest`, `uv run ruff check`,
+`uv run ruff format --check` ; dans `frontend/` : `npm test`, `npm run typecheck`, `npm run lint`,
+`npm run test:e2e`.
 
 En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.

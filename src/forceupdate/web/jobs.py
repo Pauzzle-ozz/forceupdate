@@ -26,7 +26,9 @@ lockfile plusieurs minutes.
 
 Les analyses et les plans restent en mémoire, le temps de la session (les ``MAX_SCANS`` plus
 récentes, plus la dernière de chaque dépôt) ; seuls les derniers chemins analysés sont gardés
-sur le disque (``Recent``).
+sur le disque (``Recent``). Leurs fichiers (un fichier envoyé, ceux d'un dépôt) et les clones des
+PR sont dans le dossier de travail du serveur (``workdirs``), effacé à l'arrêt ; ceux qu'un arrêt
+brutal a laissés sont effacés au démarrage suivant.
 """
 
 import asyncio
@@ -35,8 +37,6 @@ import contextlib
 import json
 import logging
 import secrets
-import shutil
-import tempfile
 import threading
 from collections.abc import AsyncIterator, Callable, Coroutine
 from dataclasses import dataclass, field
@@ -45,6 +45,7 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 from forceupdate import engine, processes
+from forceupdate.forges import git
 from forceupdate.forges.base import ChangeRequest, Forge, ForgeError, Repository, TokenRefused
 from forceupdate.models import Event, Report, ScanOptions, to_dict
 from forceupdate.net import Cache, HttpClient, NetworkError
@@ -57,7 +58,7 @@ from forceupdate.update import local, writers
 from forceupdate.update.forge import BRANCH
 from forceupdate.update.local import Prepared
 from forceupdate.update.lockfiles import Regenerated
-from forceupdate.web import schemas
+from forceupdate.web import schemas, workdirs
 from forceupdate.web.schemas import SourceKind, TaskStatus
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,9 @@ MAX_RECENT = 10
 PING_EVERY = 15.0
 """Secondes sans événement après lesquelles un flux SSE envoie un commentaire : un navigateur
 parti est ainsi remarqué, et son flux fermé."""
+SHUTDOWN_WAIT = 30.0
+"""Secondes d'attente, à l'arrêt, des threads de la boucle des analyses (git tué, un clone
+qu'on efface)."""
 
 T = TypeVar("T")
 
@@ -392,6 +396,12 @@ class Worker:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        # Une tâche annulée laisse ses threads finir (git tué, un clone qu'on efface) : les
+        # attendre, sinon le dossier de travail s'effacerait en même temps qu'eux.
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(
+                asyncio.get_running_loop().shutdown_default_executor(), SHUTDOWN_WAIT
+            )
         if self.http is not None:
             await self.http.aclose()
 
@@ -425,7 +435,11 @@ class Jobs:
     """Les analyses et les plans de la session. À créer et à fermer dans la boucle du serveur
     (``app.create_app`` : au démarrage et à l'arrêt)."""
 
-    def __init__(self, *, recent: Recent, cache: Cache | None = None) -> None:
+    def __init__(
+        self, *, recent: Recent, cache: Cache | None = None, temp_dir: Path | None = None
+    ) -> None:
+        """``temp_dir`` : où ranger le dossier de travail du serveur (par défaut, le dossier
+        temporaire du système)."""
         self.recent = recent
         self.scans: dict[str, Scan] = {}
         self.plans: dict[str, Plan] = {}
@@ -436,15 +450,24 @@ class Jobs:
         )
         self.stopping = threading.Event()
         """Levé à l'arrêt (``close``) : l'outil de lockfile d'une mise à jour en cours est tué,
-        celles qui attendent ne lancent plus rien."""
+        comme les commandes git des forges (``Forge.cancel``) ; celles qui attendent ne lancent
+        plus rien."""
+        self._temp_base = temp_dir
+        self.workdirs = workdirs.Workdirs(temp_dir)
+        """Le dossier de travail du serveur : les fichiers des analyses, les clones des PR."""
 
     def start(self) -> None:
+        """Lance la boucle des analyses, et efface à côté (dans un thread : il peut y en avoir
+        beaucoup) les dossiers de travail laissés par un serveur arrêté brutalement."""
         self.worker.start()
+        threading.Thread(
+            target=workdirs.sweep, args=(self._temp_base,), name="forceupdate-sweep", daemon=True
+        ).start()
 
     async def close(self) -> None:
         """Annule les analyses en cours, arrête la mise à jour en cours (son outil est tué, ce
-        qui n'était pas fini est remis comme avant), puis arrête les threads et efface les
-        fichiers envoyés."""
+        qui n'était pas fini est remis comme avant) et l'envoi de PR en cours (git aussi), puis
+        arrête les threads et efface le dossier de travail."""
         self.stopping.set()
         for scan in self.scans.values():
             self.cancel(scan)
@@ -452,15 +475,17 @@ class Jobs:
             logger.warning("mise à jour en cours : arrêtée, ce qui n'était pas fini est remis")
         await asyncio.to_thread(self._updates.shutdown)
         await asyncio.to_thread(self.worker.stop)
-        for scan in self.scans.values():
-            _remove(scan.upload_dir)
+        await asyncio.to_thread(self.workdirs.close)
 
     # -- analyses -----------------------------------------------------------------
 
     def in_updates(self, function: Callable[[], T]) -> "asyncio.Future[T]":
         """Fait tourner ``function`` dans le thread des mises à jour (après celles qui
         attendent), depuis une boucle : les outils de lockfile d'une PR ne tournent jamais en
-        même temps que ceux d'une autre mise à jour."""
+        même temps que ceux d'une autre mise à jour. Lève ``processes.Interrupted`` une fois le
+        serveur en train de s'arrêter (``stopping``) : l'envoi d'une PR s'arrête là."""
+        if self.stopping.is_set():
+            raise processes.Interrupted("forceupdate s'arrête")
         return asyncio.wrap_future(self._updates.submit(function))
 
     def start_scan(
@@ -496,7 +521,7 @@ class Jobs:
     ) -> Scan:
         """Lance l'analyse du dépôt ``target.repo`` : ses fichiers de dépendances sont
         téléchargés dans un dossier temporaire, effacé avec l'analyse."""
-        directory = Path(tempfile.mkdtemp(prefix="forceupdate-depot-"))
+        directory = self.workdirs.make("depot-")
         scan = Scan(
             id=_new_id(),
             source=None,
@@ -676,5 +701,11 @@ def same(one: Repository, other: Repository) -> bool:
 
 
 def _remove(directory: Path | None) -> None:
-    if directory is not None:
-        shutil.rmtree(directory, ignore_errors=True)
+    """Efface ``directory``, le clone d'un dépôt compris (git écrit ses objets en lecture seule
+    sous Windows) ; un échec est noté (il partira avec le dossier de travail)."""
+    if directory is None:
+        return
+    try:
+        git.remove_tree(directory)
+    except OSError as err:
+        logger.info("dossier non effacé (%s) : %s", directory, err)

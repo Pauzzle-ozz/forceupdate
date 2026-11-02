@@ -106,9 +106,12 @@ class LocalSource(Source):
     def notices(self) -> list[Notice]:
         return list(self._notices)
 
+    SUBMODULE = "sous-module git non initialisé : pas analysé (git submodule update --init)."
+    """La remarque d'un sous-module vide."""
+
     def files(self) -> list[SourceFile]:
         if self._file is None or (self._code is not None and self._code.project is not None):
-            listing = _Listing(MAX_FILES)
+            listing = _Listing(MAX_FILES, submodule=self.SUBMODULE)
             listing.directory(self.root, "")
             self._notices = listing.notices
             return sorted(listing.files)
@@ -202,8 +205,10 @@ class _Listing:
     """Les fichiers d'une source en cours de liste : au plus ``limit``, et les remarques à faire
     dans le rapport."""
 
-    def __init__(self, limit: int) -> None:
+    def __init__(self, limit: int, *, submodule: str) -> None:
+        """``submodule`` : la remarque d'un sous-module vide."""
         self.limit = limit
+        self.submodule = submodule
         self.files: list[SourceFile] = []
         self.notices: list[Notice] = []
         self._full = False
@@ -246,13 +251,7 @@ class _Listing:
         if (directory / ".git").exists():
             self.directory(directory, f"{path}/")
         elif submodule:
-            self.notices.append(
-                Notice(
-                    file=path,
-                    message="sous-module git non initialisé : pas analysé "
-                    "(git submodule update --init).",
-                )
-            )
+            self.notices.append(Notice(file=path, message=self.submodule))
 
     def _walk(self, directory: Path, prefix: str) -> None:
         """Parcourt ``directory`` sans git, en sautant les dossiers ignorés, les liens et les

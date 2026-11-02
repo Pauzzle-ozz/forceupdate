@@ -94,8 +94,9 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   │                         Cloud (bitbucket.py : workspaces puis dépôts, arborescence en largeur, fichiers,
 │   │                         OAuth avec secret et refresh token, token d'API Atlassian, clone, branche dont
 │   │                         l'arbre est lu par git, PR), git (git.py : token par un credential helper
-│   │                         éphémère, clone superficiel, commit, push avec bail, arbre d'une branche
-│   │                         distante, dossier de travail), comptes connectés (accounts.py : tokens dans le
+│   │                         éphémère, donné au seul hôte de l'adresse, insteadOf de la personne
+│   │                         neutralisé, clone superficiel, commit, push avec bail, arbre d'une branche
+│   │                         distante, dossier de travail, cancel), comptes connectés (accounts.py : tokens dans le
 │   │                         trousseau, keyring, en morceaux s'ils sont longs, un compte par forge et par
 │   │                         hôte, renouvellement)
 │   ├── parsers/            ← un module par écosystème : python.py, npm.py, rust.py (Cargo.toml, Cargo.lock,
@@ -134,6 +135,8 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   └── web/                ← le serveur de ui (FastAPI) ; repositories.py : les dépôts des comptes et leurs
 │                             analyses groupées ; proposals.py : le récapitulatif des PR et leur envoi ;
 │                             preferences.py : les réglages côté serveur (routes/settings.py : écran 9) ;
+│                             workdirs.py : le dossier de travail du serveur (forceupdate-ui-*, verrouillé,
+│                             effacé à l'arrêt ; ceux d'un arrêt brutal, au démarrage) ;
 │                             openapi.json, exporté, donne les types du front ;
 │                             static/ : le front construit (npm run build), ignoré par git, livré dans le paquet
 └── tests/                  ← les tests ; conftest.py gère le marqueur network
@@ -199,8 +202,10 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
 - Les tests ne touchent jamais le réseau sans le marqueur `network` (donc jamais le vrai
   GitHub), ni le cache de l'utilisateur, ni un vrai outil de lockfile (npm, uv…), ni le
   trousseau du système ni `gh`, ne lancent git que vers des dépôts locaux, et n'ouvrent jamais
-  le navigateur, ni les réglages de la personne (`user_settings` : un fichier propre au test) :
-  sept garde-fous automatiques de `tests/conftest.py` y veillent. Les tests des
+  le navigateur, ni les réglages de la personne (`user_settings` : un fichier propre au test),
+  ni le dossier temporaire de la personne par le serveur (`server_temp` : son dossier de travail
+  et son balayage au démarrage) : huit garde-fous automatiques de `tests/conftest.py` y veillent
+  (celui de git ignore les valeurs de `-c`, où est la règle `insteadOf` de l'adresse). Les tests des
   PR clonent et poussent pour de vrai, vers des dépôts « bare » du dossier du test
   (`fake_forge.make_remote`, `github.GIT_URL` vers `remotes_url(…)`). Dans un test, jamais
   `monkeypatch.undo()` : il défait aussi ces garde-fous (`monkeypatch.context()`). GitLab se simule avec

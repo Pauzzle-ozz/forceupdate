@@ -5,6 +5,8 @@ le navigateur de la personne (brief, décision n°10).
 - ``security.py`` : jeton de session, ``Host``, ``Origin``, en-têtes ;
 - ``jobs.py`` : les analyses et les mises à jour, en tâches de fond hors de la boucle du
   serveur, et leur progression ;
+- ``workdirs.py`` : le dossier de travail du serveur (fichiers des analyses, clones des PR),
+  effacé à l'arrêt, et ceux qu'un arrêt brutal a laissés, au démarrage ;
 - ``sse.py`` : la progression envoyée au navigateur (Server-Sent Events) ;
 - ``routes/`` : les routes de ``/api`` ;
 - ``schemas.py`` : ce que l'API reçoit et rend ; ``openapi.py`` : le schéma exporté dans

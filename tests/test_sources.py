@@ -9,8 +9,11 @@ from pathlib import Path
 import pytest
 
 from forceupdate.detect.manifests import DEFAULT_MAX_FILE_SIZE
+from forceupdate.forges.base import ForgeKind, Repository
+from forceupdate.sources import forge as forge_source
 from forceupdate.sources import local as local_module
 from forceupdate.sources.base import SourceError, SourceFile
+from forceupdate.sources.forge import ClonedSource
 from forceupdate.sources.local import LocalSource
 
 MakeTree = Callable[..., Path]
@@ -268,6 +271,34 @@ class TestSubmodules:
                 "libs/sub",
                 "sous-module git non initialisé : pas analysé (git submodule update --init).",
             )
+        ]
+
+    def test_the_submodule_of_a_cloned_repository_is_said_like_on_the_forge(
+        self, make_tree: MakeTree, tmp_path: Path
+    ) -> None:
+        """Le clone d'un dépôt d'une forge (E31) : fait sans ses sous-modules ; la remarque est
+        celle d'un dépôt lu par l'API, pas « git submodule update --init »."""
+        parent = self.parent_with_submodule(tmp_path, make_tree)
+        clone = tmp_path / "clone"
+        subprocess.run(
+            ["git", "clone", "-q", str(parent), str(clone)], check=True, capture_output=True
+        )
+        repo = Repository(
+            forge=ForgeKind.GITHUB,
+            host="github.com",
+            full_name="octo/parent",
+            default_branch="main",
+            private=False,
+            archived=False,
+            fork=False,
+            can_push=True,
+            url="https://github.com/octo/parent",
+            clone_url="https://github.com/octo/parent.git",
+        )
+        source = ClonedSource(repo, "0" * 40, clone)
+        assert paths(source) == [".gitmodules", "requirements.txt"]
+        assert [(n.file, n.message) for n in source.notices] == [
+            ("libs/sub", forge_source.SUBMODULE)
         ]
 
 

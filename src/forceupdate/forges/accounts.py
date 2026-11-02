@@ -133,8 +133,9 @@ class Accounts:
             logger.warning("trousseau indisponible : %s", type(err).__name__)
             return (
                 "Aucun trousseau du système n'est utilisable : les tokens ne peuvent pas être "
-                "gardés. Sous Linux, installer un service de trousseau (GNOME Keyring, "
-                "KWallet)."
+                "gardés. Sous Linux (serveur, WSL), installer un service de trousseau (GNOME "
+                "Keyring, KWallet), ou en choisir un autre par PYTHON_KEYRING_BACKEND : voir la "
+                "documentation."
             )
         return None
 

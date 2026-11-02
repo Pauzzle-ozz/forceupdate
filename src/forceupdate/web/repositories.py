@@ -259,7 +259,8 @@ class Repositories:
 
     async def forge(self, account: Account, http: HttpClient) -> Forge | None:
         """La forge du compte, sur ``http`` (le client de la boucle où elle servira), avec son
-        token, renouvelé s'il expire ; ``None`` si le token n'est plus dans le trousseau."""
+        token, renouvelé s'il expire ; ``None`` si le token n'est plus dans le trousseau. Ses
+        commandes git (clone, push) sont tuées à l'arrêt du serveur (``Jobs.stopping``)."""
         token = await self.token(account)
         if token is None:
             return None
@@ -269,6 +270,7 @@ class Repositories:
             token,
             host=account.host,
             renew=self.connections.renew(account),
+            cancel=self.jobs.stopping,
         )
 
     async def worker_forge_of(self, account: Account) -> Forge:
@@ -527,7 +529,9 @@ class Repositories:
         if account is not None:
             forge = await self.worker_forge_of(account)
         else:
-            forge = forges.client(forge_info.kind, self._worker_http(), None, host=host)
+            forge = forges.client(
+                forge_info.kind, self._worker_http(), None, host=host, cancel=self.jobs.stopping
+            )
         target = RepositoryTarget(
             forge=forge,
             repo=repo,

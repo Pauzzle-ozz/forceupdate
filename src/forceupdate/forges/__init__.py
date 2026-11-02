@@ -17,6 +17,7 @@ d'un token ; ``parse_repository`` lit un dépôt donné par son nom ou son adres
 """
 
 import re
+import threading
 import urllib.parse
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -152,11 +153,17 @@ def client(
     *,
     host: str | None = None,
     renew: Renew | None = None,
+    cancel: threading.Event | None = None,
 ) -> Forge:
     """La forge ``kind`` (sur ``host`` : par défaut son service en ligne), vue avec ``token`` ;
-    sans token, ses dépôts publics seulement. ``renew`` renouvelle un token qui expire."""
+    sans token, ses dépôts publics seulement. ``renew`` renouvelle un token qui expire ;
+    ``cancel`` levé arrête ses commandes git (``Forge.cancel``)."""
+    forge: Forge
     if kind is ForgeKind.GITHUB:
-        return GitHub(http, token)
-    if kind is ForgeKind.GITLAB:
-        return GitLab(http, token, host=host or HOSTS[kind], renew=renew)
-    return Bitbucket(http, token, renew=renew)
+        forge = GitHub(http, token)
+    elif kind is ForgeKind.GITLAB:
+        forge = GitLab(http, token, host=host or HOSTS[kind], renew=renew)
+    else:
+        forge = Bitbucket(http, token, renew=renew)
+    forge.cancel = cancel
+    return forge

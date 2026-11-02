@@ -509,6 +509,7 @@ export function proposedRepository(overrides: Partial<ProposedRepository> = {}):
     inconclusive: false,
     checked: true,
     request: null,
+    closed: null,
     selection: plan.selection,
     applied: [
       { update: '.|npm|lodash', name: 'lodash', ecosystem: 'npm', project: '.', direct: true, current: '4.17.15', version: '4.18.1', gap: 'minor', fixes: ['CVE-2021-23337', 'CVE-2020-8203'] },

@@ -24,6 +24,7 @@ const REQUEST = {
   title: 'Mise à jour des dépendances (forceupdate)',
   branch: 'forceupdate/dependencies',
   base: 'main',
+  closed_at: null,
 }
 
 /** Le récapitulatif de trois dépôts : un prêt, un prêt avec une PR déjà ouverte et une analyse non concluante, un sauté. */
@@ -128,6 +129,27 @@ describe('PR (écran 8)', () => {
     const send = calls.find((call) => call.method === 'POST')!
     expect(send.url.pathname).toBe('/api/proposals/pr1/send')
     expect(JSON.parse(String(send.init.body))).toEqual({ repositories: [{ forge: 'github', host: 'github.com', full_name: 'octo/boutique' }, { forge: 'github', host: 'github.com', full_name: 'octo/site' }] })
+  })
+
+  it('une PR fermée sans fusion : dite avec son lien, pas cochée, l’envoyer en ouvre une nouvelle', async () => {
+    const closed = { ...REQUEST, number: 3, url: 'https://github.com/octo/boutique/pull/3', closed_at: '2026-10-30T08:00:00Z' }
+    const calls = mockApi({
+      'GET /api/proposals/pr1': proposal({ repositories: [proposedRepository({ closed, checked: false })] }),
+      'POST /api/proposals/pr1/send': proposal({ status: 'running' }),
+    })
+    const user = userEvent.setup()
+    renderApp('/pr/pr1')
+    const box = within(await card('octo/boutique'))
+    expect(box.getByText(/PR\s#3 fermée sans fusion/, { selector: '[data-slot="badge"]' })).toBeInTheDocument()
+    expect(box.getByText('nouvelle PR')).toBeInTheDocument()
+    expect(box.getByText(/La PR\s#3 a été fermée sans fusion le 30\soct\.\s2026\s: l'envoyer en ouvre une nouvelle\. Pas cochée par défaut\./)).toBeInTheDocument()
+    expect(box.getByRole('link', { name: /Voir la PR #3 sur GitHub/ })).toHaveAttribute('href', 'https://github.com/octo/boutique/pull/3')
+    const checkbox = box.getByRole('checkbox', { name: 'Envoyer la PR de octo/boutique' })
+    expect(checkbox).not.toBeChecked()
+    expect(screen.getByRole('button', { name: 'Envoyer la PR' })).toBeDisabled()
+    await user.click(checkbox)
+    await user.click(screen.getByRole('button', { name: 'Envoyer la PR' }))
+    await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true))
   })
 
   it('rien de coché, ou hors ligne : pas d’envoi, et pourquoi', async () => {
@@ -351,6 +373,7 @@ describe('GitLab : des MR, et des récapitulatifs à plusieurs forges', () => {
     title: 'Mise à jour des dépendances (forceupdate)',
     branch: 'forceupdate/dependencies',
     base: 'main',
+    closed_at: null,
   }
   const gitlabRow = (overrides: Parameters<typeof repositoryRow>[0] = {}) =>
     repositoryRow({
@@ -478,6 +501,7 @@ describe('Bitbucket : des PR, avec celles de GitHub', () => {
     title: 'Mise à jour des dépendances (forceupdate)',
     branch: 'forceupdate/dependencies',
     base: 'main',
+    closed_at: null,
   }
   const cloudRow = (overrides: Parameters<typeof repositoryRow>[0] = {}) =>
     repositoryRow({

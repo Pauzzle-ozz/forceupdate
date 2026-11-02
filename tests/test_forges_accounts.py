@@ -187,7 +187,10 @@ def test_an_unreadable_file_is_ignored(store: Accounts, content: str) -> None:
 def test_a_broken_keyring(store: Accounts, monkeypatch: pytest.MonkeyPatch) -> None:
     assert store.unavailable() is None
     monkeypatch.setattr(keyring.core, "_keyring_backend", BrokenKeyring())
-    assert "Aucun trousseau du système n'est utilisable" in (store.unavailable() or "")
+    reason = store.unavailable() or ""
+    assert "Aucun trousseau du système n'est utilisable" in reason
+    # Sous Linux sans Secret Service (E31) : en installer un, ou en choisir un autre (keyring).
+    assert "GNOME Keyring" in reason and "PYTHON_KEYRING_BACKEND" in reason
     with pytest.raises(AccountsError, match="refuse de garder le token"):
         store.save(identity(), TOKEN, ConnectMethod.TOKEN)
     assert not store.path.exists()

@@ -68,6 +68,9 @@ class Settings:
     """Où garder les chemins récemment analysés, et les comptes connectés (sans leurs
     tokens, qui sont dans le trousseau)."""
     static_dir: Path = STATIC_DIR
+    temp_dir: Path | None = None
+    """Où ranger le dossier de travail du serveur (``web.workdirs``) ; par défaut, le dossier
+    temporaire du système."""
 
 
 def create_app(server: Settings) -> FastAPI:
@@ -75,7 +78,7 @@ def create_app(server: Settings) -> FastAPI:
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        jobs = Jobs(recent=Recent(server.state_dir / "recent.json"))
+        jobs = Jobs(recent=Recent(server.state_dir / "recent.json"), temp_dir=server.temp_dir)
         jobs.start()
         app.state.jobs = jobs
         app.state.preferences = preferences = UserPreferences()
@@ -89,6 +92,7 @@ def create_app(server: Settings) -> FastAPI:
         try:
             yield
         finally:
+            app.state.proposals.closing()
             await app.state.connections.close()
             await jobs.close()
             preferences.close()

@@ -292,6 +292,49 @@ for (const scheme of ['light', 'dark'] as const) {
 
 for (const scheme of ['light', 'dark'] as const) {
   for (const width of [1440, 375]) {
+    test(`écran 8, une PR fermée sans fusion, ${scheme === 'light' ? 'clair' : 'sombre'}, ${width} px`, async ({ page }) => {
+      // Le serveur de test n'a pas de PR refusée (ses dépôts sont partagés) : sa réponse, réelle,
+      // est retouchée en route, comme la rendrait un dépôt dont la dernière PR a été fermée.
+      await page.route(/\/api\/proposals(\/[0-9a-f]+)?$/, async (route) => {
+        const response = await route.fetch()
+        const body = (await response.json()) as { repositories?: Record<string, unknown>[] }
+        for (const item of body.repositories ?? []) {
+          if (item.full_name !== 'octo-e2e/vulnerable' || item.state !== 'ready') continue
+          Object.assign(item, {
+            request: null,
+            checked: false,
+            closed: {
+              number: 3,
+              url: 'https://github.com/octo-e2e/vulnerable/pull/3',
+              title: 'Mise à jour des dépendances (forceupdate)',
+              branch: 'forceupdate/dependencies',
+              base: 'main',
+              closed_at: '2026-10-30T08:00:00Z',
+            },
+          })
+        }
+        await route.fulfill({ response, json: body })
+      })
+      const errors = watchConsole(page)
+      await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' })
+      await page.setViewportSize({ width, height: 900 })
+      await repositories(page)
+      await analyzeVulnerable(page)
+      await page.goto('/pr?depots=github:github.com/octo-e2e/vulnerable')
+      const card = page.locator('[data-slot="card"]').filter({ has: page.getByRole('heading', { name: 'octo-e2e/vulnerable' }) })
+      await expect(card.getByText(/PR\s#3 fermée sans fusion/).first()).toBeVisible()
+      await expect(card.getByText(/a été fermée sans fusion le 30\soct\.\s2026/)).toBeVisible()
+      await expect(card.getByRole('link', { name: /Voir la PR #3 sur GitHub/ })).toHaveAttribute('href', 'https://github.com/octo-e2e/vulnerable/pull/3')
+      await expect(card.getByRole('checkbox', { name: 'Envoyer la PR de octo-e2e/vulnerable' })).not.toBeChecked()
+      await expect(page.getByRole('button', { name: 'Envoyer la PR' })).toBeDisabled()
+      await audit(page, 'PR fermée')
+      expect(errors).toEqual([])
+    })
+  }
+}
+
+for (const scheme of ['light', 'dark'] as const) {
+  for (const width of [1440, 375]) {
     test(`écran 7, ${scheme === 'light' ? 'clair' : 'sombre'}, ${width} px`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' })
       await page.setViewportSize({ width, height: 900 })

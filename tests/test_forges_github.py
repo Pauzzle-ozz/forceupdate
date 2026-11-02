@@ -5,6 +5,7 @@ PKCE, device flow, révocation) et le token de ``gh`` (``forges.github``). GitHu
 import asyncio
 import json
 import subprocess
+import threading
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
 from urllib.parse import parse_qs, urlsplit
@@ -256,6 +257,7 @@ def test_the_forge_interface_is_fixed() -> None:
         "branch",
         "push_branch",
         "find_open_request",
+        "closed_request",
         "open_or_update_request",
     }
 
@@ -296,6 +298,15 @@ def test_the_forges_and_their_client() -> None:
     assert isinstance(bitbucket, Bitbucket)
     assert bitbucket.host == "bitbucket.org"
     assert TOKEN not in repr(bitbucket)
+
+    # L'arrêt du serveur arrête leurs commandes git (E31).
+    stop = threading.Event()
+
+    async def stoppable(http: HttpClient) -> list[Any]:
+        return [client(kind, http, TOKEN, cancel=stop) for kind in ForgeKind]
+
+    assert all(forge.cancel is stop for forge in run(stoppable))
+    assert bitbucket.cancel is None
 
 
 # -- OAuth --------------------------------------------------------------------------
