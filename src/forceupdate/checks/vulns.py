@@ -16,7 +16,11 @@ interroge OSV (``advisories``) ; ce module en tire les constats.
   la version utilisée (``Advisory.fixed_in``) ; si les avis réunis ne sont pas d'accord, la
   plus haute des leurs. Un avis Go cite souvent chaque majeure du module (``…/v5``) : une faille
   corrigée seulement sous une autre majeure n'a pas de version corrigée, et le message dit où
-  elle l'est.
+  elle l'est. Une version corrigée d'une autre variante (OSV écrit ``32.0.0-android`` pour Guava,
+  à qui a ``-jre``), ou une version Maven qui n'est pas publiée (``33.7.2``, quand Guava ne publie
+  que ``33.7.2-jre`` et ``33.7.2-android``) : la plus petite publiée de la variante utilisée qui
+  n'est plus concernée (E34 : ``32.0.0-jre``), pré-versions exclues, quand on connaît les versions
+  publiées.
 - **Version utilisée** : l'installée, ou celle d'une contrainte exacte. Sans lockfile, la
   borne basse de la contrainte, « approximative » : la faille n'est alors que **possible**
   (affichée « faille possible »), car la version réellement installée peut être plus récente,
@@ -29,11 +33,21 @@ interroge OSV (``advisories``) ; ce module en tire les constats.
 """
 
 from collections.abc import Sequence
+from typing import Any
 
 from forceupdate import versions
 from forceupdate.advisories import Advisory, OsvError, Vulnerabilities
 from forceupdate.checks.base import Current, current_version, sentence
-from forceupdate.models import Dependency, Finding, FindingKind, ScanOptions, Scope, Severity
+from forceupdate.models import (
+    Dependency,
+    Ecosystem,
+    Finding,
+    FindingKind,
+    ScanOptions,
+    Scope,
+    Severity,
+)
+from forceupdate.versions import InvalidVersion, VersionScheme
 
 SEVERITY_LABELS = {
     Severity.CRITICAL: "critique",
@@ -65,11 +79,19 @@ def version_to_check(dependency: Dependency) -> Current | None:
     return current if current.version is not None else None
 
 
-def check(dependency: Dependency, current: Current, found: Vulnerabilities) -> list[Finding]:
+def check(
+    dependency: Dependency,
+    current: Current,
+    found: Vulnerabilities,
+    published: Sequence[str] = (),
+) -> list[Finding]:
     """Les failles de ``dependency`` en version ``current``, d'après ce qu'OSV en dit
     (``found``) : un constat par faille, les plus graves d'abord (gravité, puis score CVSS).
-    Une liste vide s'il n'y en a pas."""
-    findings = [_finding(dependency, current, group) for group in _groups(found.advisories)]
+    Une liste vide s'il n'y en a pas. ``published`` : ses versions publiées, quand on les
+    connaît (la version corrigée d'une autre variante)."""
+    findings = [
+        _finding(dependency, current, group, published) for group in _groups(found.advisories)
+    ]
     return sorted(findings, key=lambda f: (-f.severity.rank, -(f.cvss_score or 0), f.identifiers))
 
 
@@ -113,7 +135,9 @@ def _groups(advisories: Sequence[Advisory]) -> list[list[Advisory]]:
     return found
 
 
-def _finding(dependency: Dependency, current: Current, group: list[Advisory]) -> Finding:
+def _finding(
+    dependency: Dependency, current: Current, group: list[Advisory], published: Sequence[str]
+) -> Finding:
     assert current.version is not None
     scheme = versions.for_ecosystem(dependency.ecosystem)
     known = [advisory for advisory in group if advisory.unavailable is None]
@@ -134,6 +158,11 @@ def _finding(dependency: Dependency, current: Current, group: list[Advisory]) ->
         if (fix := advisory.fixed_in(dependency.ecosystem, dependency.name, current.version))
     ]
     target = max(fixes, key=scheme.sort_key) if fixes else None
+    unpublished = (
+        dependency.ecosystem is Ecosystem.MAVEN and bool(published) and target not in published
+    )
+    if target is not None and (unpublished or not _same_variant(scheme, current.version, target)):
+        target = _variant_fix(dependency, current.version, known, published, target)
     main = min(group, key=_main_order)
     summary = next((a.summary for a in sorted(group, key=_main_order) if a.summary), "")
 
@@ -184,6 +213,37 @@ def _finding(dependency: Dependency, current: Current, group: list[Advisory]) ->
         detail=summary or None,
         url=main.url,
     )
+
+
+def _same_variant(scheme: VersionScheme[Any], current: str, version: str) -> bool:
+    try:
+        return scheme.compatible(current, version)
+    except InvalidVersion:
+        return True
+
+
+def _variant_fix(
+    dependency: Dependency,
+    current: str,
+    known: list[Advisory],
+    published: Sequence[str],
+    target: str,
+) -> str:
+    """La plus petite version publiée de la variante de ``current`` (``-jre``), au-dessus d'elle,
+    qu'aucun avis ne concerne plus ; ``target`` (celle d'OSV) sans versions publiées connues."""
+    scheme = versions.for_ecosystem(dependency.ecosystem)
+    candidates = []
+    for version in published:
+        try:
+            if not scheme.compatible(current, version) or scheme.compare(version, current) <= 0:
+                continue
+            if scheme.is_prerelease(version) and not scheme.is_prerelease(current):
+                continue
+        except InvalidVersion:
+            continue
+        if not any(a.affects(dependency.ecosystem, dependency.name, version) for a in known):
+            candidates.append(version)
+    return min(candidates, key=scheme.sort_key) if candidates else target
 
 
 def _fixed_elsewhere(dependency: Dependency, known: list[Advisory]) -> tuple[str, str] | None:

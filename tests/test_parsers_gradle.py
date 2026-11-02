@@ -10,6 +10,7 @@ from forceupdate.parsers.gradle import (
     configuration_scope,
     parse_gradle_project,
     read_catalog,
+    read_lockfile,
     read_properties,
     read_script,
     script_dependencies,
@@ -359,9 +360,146 @@ def test_a_subproject() -> None:
     assert [(d.name, d.constraint, d.file) for d in found] == [
         ("org.yaml:snakeyaml", "1.30", "gradle.properties"),
         ("com.google.code.gson:gson", "2.8.8", "build.gradle.kts"),
+        ("a:b", "", "app/gradle.lockfile"),  # une indirecte des verrous (E34)
     ]
     assert [n.message.split(" :")[0] for n in notices] == [
         "« libs.plugins.missing » absent du catalogue gradle/libs.versions.toml",
         "verrous de Gradle",
     ]
     assert notices[1].file == "app/gradle.lockfile"
+
+
+# ---------------------------------------------------------------------------
+# E34 : versions riches, settings.gradle(.kts), autres catalogues, gradle.lockfile
+# ---------------------------------------------------------------------------
+
+
+def test_rich_versions_of_a_script() -> None:
+    kotlin = """\
+dependencies {
+    implementation("org.slf4j:slf4j-api") {
+        version {
+            strictly("1.7.36")
+        }
+    }
+    implementation("com.google.guava:guava") {
+        version { require("31.0-jre"); prefer("31.1-jre") }
+    }
+    implementation("a:b") { exclude(group = "c") }
+}
+"""
+    found = script(kotlin)
+    assert rows(found) == [
+        ("org.slf4j:slf4j-api", "1.7.36", Scope.RUNTIME, None),
+        ("com.google.guava:guava", "31.0-jre", Scope.RUNTIME, None),  # require avant prefer
+        ("a:b", "", Scope.RUNTIME, REASON_PLATFORM),
+    ]
+    assert found[0].location == Location(line=4, column=22, end_column=28)
+    groovy = """\
+dependencies {
+    implementation('org.slf4j:slf4j-api') {
+        version { strictly '[1.7, 1.8[' }
+    }
+}
+"""
+    assert rows(script(groovy, "build.gradle")) == [
+        ("org.slf4j:slf4j-api", "[1.7, 1.8[", Scope.RUNTIME, None)
+    ]
+
+
+SETTINGS = """\
+pluginManagement {
+    plugins { id("org.jetbrains.kotlin.jvm") version "1.9.0" }
+}
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "0.8.0"
+}
+dependencyResolutionManagement {
+    versionCatalogs {
+        create("deps") { from(files("gradle/deps.versions.toml")) }
+        create("remote") { from("com.example:catalog:1.0") }
+    }
+}
+include("app")
+"""
+
+
+def test_settings_plugins_and_other_catalogs() -> None:
+    files = {
+        "settings.gradle.kts": SETTINGS,
+        "gradle/deps.versions.toml": """[libraries]
+okio = "com.squareup.okio:okio:3.4.0"
+""",
+    }
+    notices: list[Notice] = []
+    found = parse_gradle_project(".", ["settings.gradle.kts"], files.get, ["."], notices)
+    assert [(d.name, d.constraint, d.file) for d in found] == [
+        ("com.squareup.okio:okio", "3.4.0", "gradle/deps.versions.toml"),
+        ("org.jetbrains.kotlin.jvm", "1.9.0", "settings.gradle.kts"),
+        ("org.gradle.toolchains.foojay-resolver-convention", "0.8.0", "settings.gradle.kts"),
+    ]
+    assert [n.message for n in notices] == [
+        "catalogue « remote » publié (com.example:catalog:1.0) : pas lu par forceupdate."
+    ]
+
+
+def test_a_groovy_catalog_block() -> None:
+    settings = """\
+dependencyResolutionManagement {
+  versionCatalogs {
+    tools { from(files('../shared/tools.toml')) }
+  }
+}
+"""
+    files = {
+        "build/settings.gradle": settings,
+        "shared/tools.toml": """[libraries]
+x = "a:b:1.0"
+""",
+    }
+    found = parse_gradle_project("build", ["build/settings.gradle"], files.get, ["build"], [])
+    assert [(d.name, d.file) for d in found] == [("a:b", "shared/tools.toml")]
+
+
+LOCKS = """\
+# This is a Gradle generated file for dependency locking.
+# Manual edits can break the build and are not advised.
+# This file is expected to be part of source control.
+com.google.guava:guava:31.1-jre=compileClasspath,runtimeClasspath
+com.google.guava:failureaccess:1.0.1=compileClasspath,runtimeClasspath
+junit:junit:4.13.2=testCompileClasspath,testRuntimeClasspath
+org.hamcrest:hamcrest-core:1.3=testCompileClasspath,testRuntimeClasspath
+empty=annotationProcessor
+"""
+
+
+def test_read_lockfile() -> None:
+    locks = read_lockfile(LOCKS)
+    assert locks["com.google.guava:guava"] == (
+        "31.1-jre",
+        ("compileClasspath", "runtimeClasspath"),
+    )
+    assert "empty" not in locks
+    assert len(locks) == 4
+
+
+def test_the_lockfile_gives_installed_versions_and_indirects() -> None:
+    files = {
+        "build.gradle.kts": """\
+dependencies {
+    implementation("com.google.guava:guava:31.0-jre")
+    testImplementation("junit:junit:4.13.1")
+}
+""",
+        "gradle.lockfile": LOCKS,
+    }
+    notices: list[Notice] = []
+    found = parse_gradle_project(".", ["build.gradle.kts"], files.get, ["."], notices)
+    assert [(d.name, d.constraint, d.installed, d.direct, d.scope, d.lockfile) for d in found] == [
+        ("com.google.guava:guava", "31.0-jre", "31.1-jre", True, Scope.RUNTIME, None),
+        ("junit:junit", "4.13.1", "4.13.2", True, Scope.DEV, None),
+        ("com.google.guava:failureaccess", "", "1.0.1", False, Scope.RUNTIME, None),
+        ("org.hamcrest:hamcrest-core", "", "1.3", False, Scope.DEV, None),
+    ]
+    (notice,) = notices
+    assert notice.message.startswith("verrous de Gradle : lus pour les versions installées")

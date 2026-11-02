@@ -39,9 +39,9 @@ from forceupdate.net.cache import Cache, CacheEntry, CacheKind
 from forceupdate.net.http import HttpClient, NetworkError, Response
 from forceupdate.versions import InvalidVersion
 
-_FORMAT = 2
+_FORMAT = 3
 """Version du format des entrées du cache : une autre est ignorée, et le registre réinterrogé
-(2 : le runtime que demande chaque version, E27)."""
+(2 : le runtime que demande chaque version, E27 ; 3 : celui des crates, E34)."""
 
 
 class PackageNotFound(LookupError):
@@ -84,8 +84,8 @@ class PackageVersion:
     """npm : le message de dépréciation de cette version ; ``None`` si elle ne l'est pas."""
     requires_runtime: str | None = None
     """Le runtime qu'elle demande, tel que le registre l'écrit : ``engines.node`` (npm),
-    ``require.php`` (Packagist), ``ruby`` (RubyGems), ``requires-python`` (PyPI) ; ``None`` si
-    elle n'en dit rien (``checks.runtimes``)."""
+    ``require.php`` (Packagist), ``ruby`` (RubyGems), ``requires-python`` (PyPI), ``rust_version``
+    (crates.io) ; ``None`` si elle n'en dit rien (``checks.runtimes``)."""
 
 
 @dataclass(frozen=True, kw_only=True)

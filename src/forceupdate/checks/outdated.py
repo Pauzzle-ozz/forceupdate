@@ -44,9 +44,11 @@ from forceupdate.checks.runtimes import Refusal
 from forceupdate.models import Dependency, Ecosystem, Finding, FindingKind, Gap, Severity
 from forceupdate.registries import PackageInfo
 from forceupdate.versions import InvalidVersion, VersionScheme
+from forceupdate.versions.composer import COMPOSER
 from forceupdate.versions.npm import NPM, NpmRange
 
 _NONE: Mapping[str, Refusal] = {}
+_NO_SETTINGS: Mapping[str, str] = {}
 
 
 def check(
@@ -54,10 +56,12 @@ def check(
     info: PackageInfo,
     current: Current,
     refused: Mapping[str, Refusal] = _NONE,
+    resolution: Mapping[str, str] = _NO_SETTINGS,
 ) -> list[Finding]:
     """Le constat « plus récente » de ``dependency`` ; une liste vide si elle est à jour, ou
     si le registre n'a rien à proposer (pas de dernière stable). ``refused`` : les versions que
-    le runtime du projet ne fait pas tourner (``checks.runtimes``)."""
+    le runtime du projet ne fait pas tourner (``checks.runtimes``) ; ``resolution`` : les
+    réglages de l'outil du projet (``Project.resolution``), pour la version permise."""
     scheme = versions.for_ecosystem(dependency.ecosystem)
     if current.version is not None:
         try:
@@ -82,7 +86,7 @@ def check(
         return [_unpinned(dependency, info, target, blocked, refused)]
     if target is None and blocked is None:
         return []
-    wanted = wanted_version(dependency, info, current, refused)
+    wanted = wanted_version(dependency, info, current, refused, resolution)
     if current.version is None:
         shown = target or blocked
         return [
@@ -157,10 +161,12 @@ def wanted_version(
     info: PackageInfo,
     current: Current,
     refused: Mapping[str, Refusal] = _NONE,
+    resolution: Mapping[str, str] = _NO_SETTINGS,
 ) -> str | None:
     """La plus haute version que la contrainte accepte déjà, choisie comme le ferait le
     gestionnaire de paquets ; ``None`` pour une dépendance indirecte (sa contrainte est celle
-    du paquet qui la tire) ou une contrainte illisible. Jamais une version de ``refused``."""
+    du paquet qui la tire) ou une contrainte illisible. Jamais une version de ``refused``.
+    Composer suit le ``minimum-stability`` et le ``prefer-stable`` du projet (``resolution``)."""
     if not dependency.direct or current.constraint is None:
         return None
     scheme = versions.for_ecosystem(dependency.ecosystem)
@@ -172,10 +178,33 @@ def wanted_version(
     # Une version que le projet écarte (conflict de composer.json) n'est jamais choisie. NuGet
     # restaure aussi une version non listée (vérifié : log4net 2.0.8 pour « 2.0.7.1 »).
     published = [v.version for v in info.versions] if scheme.lowest else info.available()
-    available = [
-        v for v in published if v not in refused and not is_excluded(scheme, dependency.excluded, v)
-    ]
-    return scheme.chosen(current.constraint, available, current.version)
+    allowed = [v for v in published if not is_excluded(scheme, dependency.excluded, v)]
+    available = [v for v in allowed if v not in refused]
+    if dependency.ecosystem is Ecosystem.PACKAGIST and resolution:
+        chosen = COMPOSER.resolved(
+            current.constraint,
+            available,
+            current.version,
+            minimum_stability=resolution.get("minimum-stability", "stable"),
+            prefer_stable=resolution.get("prefer-stable") == "true",
+        )
+    else:
+        chosen = scheme.chosen(current.constraint, available, current.version)
+    if chosen is None and refused and dependency.ecosystem is Ecosystem.CRATES_IO:
+        # Le résolveur 3 de Cargo se replie sur la plus haute quand aucune ne convient au
+        # rust-version du projet (vérifié avec cargo 1.99).
+        chosen = scheme.chosen(current.constraint, allowed, current.version)
+    if (
+        dependency.ecosystem in (Ecosystem.GO, Ecosystem.MAVEN)
+        and chosen is not None
+        and current.version is not None
+        and scheme.compare(current.version, chosen) > 0
+    ):
+        # Un workspace go.work construit la version d'un autre membre, plus haute (E34) ; les
+        # verrous de Gradle figent une version plus haute que son « require » : la sélection ne
+        # descend jamais en dessous.
+        chosen = current.version
+    return chosen
 
 
 def _npm_wanted(

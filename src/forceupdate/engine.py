@@ -27,8 +27,8 @@ import dataclasses
 from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime
 
-from forceupdate import checks, config, parsers, routing
-from forceupdate.advisories import Osv, OsvError, Query, Vulnerabilities
+from forceupdate import checks, config, managed, parsers, routing, versions
+from forceupdate.advisories import Osv, OsvError, PackagistAdvisories, Query, Vulnerabilities
 from forceupdate.checks import eol, runtimes, vulns
 from forceupdate.checks.base import Current
 from forceupdate.checks.runtimes import Refusal
@@ -54,9 +54,10 @@ from forceupdate.models import (
 from forceupdate.net import Cache, HttpClient
 from forceupdate.parsers import code as code_parser
 from forceupdate.parsers import python
-from forceupdate.parsers.base import REASON_WORKSPACE
+from forceupdate.parsers.base import REASON_WORKSPACE, ReadText
 from forceupdate.parsers.lockfiles import dirname
 from forceupdate.registries import AccessRefused, PackageInfo, PackageNotFound, RegistryError
+from forceupdate.registries.maven import Maven
 from forceupdate.routing import Clients, Route, Routing
 from forceupdate.sources.base import ChosenCode, Source
 from forceupdate.update import planner
@@ -152,6 +153,8 @@ def _code_inventory(source: Source, code: ChosenCode) -> Report:
         lockfiles=[lock] if script and _read_quietly(source, lock) is not None else [],
     )
     parsers.parse_project(project, source.read_text, [project.path])
+    if not script:
+        code_parser.without_local_namespaces(project, code.path, source.is_directory)
     reading = CodeReading.SCRIPT if script else CodeReading.IMPORTS
     return Report(
         source=source.origin,
@@ -187,7 +190,15 @@ async def analyze(
     report.scanned_at = scanned_at
     routes = routing.read(report, source.read_text)
     emit(Event(kind=EventKind.PROJECTS_FOUND, total=len(report.projects)))
-    await check(report, options, on_event=emit, http=http, cache=cache, routes=routes)
+    await check(
+        report,
+        options,
+        on_event=emit,
+        http=http,
+        cache=cache,
+        routes=routes,
+        read_text=source.read_text,
+    )
     emit(Event(kind=EventKind.FINISHED))
     return report
 
@@ -209,12 +220,15 @@ async def check(
     cache: Cache | None = None,
     today: date | None = None,
     routes: Routing | None = None,
+    read_text: ReadText | None = None,
 ) -> None:
     """Vérifie les dépendances du rapport auprès des registres et d'OSV, et range les constats
     dans chaque projet, du plus grave au moins grave.
 
     ``routes`` : à quel registre demander chaque paquet (``routing``, E33) ; par défaut, au
-    registre public. Un paquet privé n'est jamais demandé au registre public ni à OSV : une
+    registre public. ``read_text`` : les fichiers de la source, pour les versions Maven gérées
+    par un parent ou un BOM distant (``managed``, E34) ; sans lui, elles restent non
+    vérifiables. Un paquet privé n'est jamais demandé au registre public ni à OSV : une
     remarque du projet dit que ses failles ne sont pas cherchées ; sans registre à qui le demander,
     ou si le sien refuse l'accès, son constat est « privé : non vérifié ».
 
@@ -249,7 +263,7 @@ async def check(
         if cache is None:
             cache = Cache.default() if options.cache else Cache.disabled()
             stack.callback(cache.close)
-        await _check(report, options, emit, http, cache, today, routes or Routing())
+        await _check(report, options, emit, http, cache, today, routes or Routing(), read_text)
 
 
 async def _check(
@@ -260,6 +274,7 @@ async def _check(
     cache: Cache,
     today: date | None,
     routes: Routing,
+    read_text: ReadText | None = None,
 ) -> None:
     """``check``, une fois ``http`` et ``cache`` ouverts."""
     clients = Clients(http, cache, routes.credentials)
@@ -276,6 +291,10 @@ async def _check(
     for project in report.projects:
         project.notices.extend(routes.notices(project))
     await _resolve_imports(report, clients, routes)
+    if read_text is not None:
+        await managed.resolve(
+            report, read_text, lambda project: _pom_fetcher(clients, routes, project)
+        )
     ignore = config.ignore_rules(report, options)
     for project in report.projects:
         config.mark_ignored(project, ignore)
@@ -339,11 +358,25 @@ async def _check(
     progress = _Progress(emit, total=len(packages) + (1 if queries else 0))
     emit(Event(kind=EventKind.CHECKING, total=progress.total))
     osv = Osv(http, cache)
+    packagist = PackagistAdvisories(http, cache)
     outcomes, found, lifecycles = await asyncio.gather(
         _lookup_all(clients, {k: wanted[k] for k in packages}, progress),
-        _vulnerabilities(osv, queries, progress),
+        _vulnerabilities(osv, packagist, queries, progress),
         _lifecycles(EndOfLifeDate(http, cache), products),
     )
+    if packagist.error is not None:
+        php = {
+            id(project): dependency.file
+            for project, dependency, _ in reversed(audited)
+            if dependency.ecosystem is Ecosystem.PACKAGIST
+        }
+        message = (
+            f"Failles de Packagist (GitHub, FriendsOfPHP) non lues : {packagist.error} Seules "
+            "celles d'OSV sont cherchées."
+        )
+        for project in report.projects:
+            if id(project) in php:
+                project.notices.append(Notice(file=php[id(project)], message=message))
     # Les versions publiées des indirectes en faille, pour choisir celle qui corrige.
     vulnerable: dict[_Key, Route] = {}
     for project, dependency, current in audited:
@@ -357,6 +390,7 @@ async def _check(
             vulnerable[found_key] = routes.route(project, dependency)
     outcomes |= await _lookup_all(clients, dict(sorted(vulnerable.items())), None)
     outcomes = _without_ignored(report, clients, key, outcomes, ignore)
+    outcomes = _without_newer(report, key, outcomes, today)
 
     def refused(project: Project, dependency: Dependency) -> Mapping[str, Refusal]:
         found_key = key(project, dependency)
@@ -390,7 +424,7 @@ async def _check(
         for q in planner.proposed_versions(report)
         if q not in found and (q[0], q[1]) not in private_names
     ]
-    found |= await osv.vulnerabilities(proposed) if proposed else {}
+    found |= await packagist.merge(await osv.vulnerabilities(proposed)) if proposed else {}
     planner.audit(report, found, rules)
 
     dates = [o.fetched_at for o in outcomes.values() if isinstance(o, PackageInfo)]
@@ -453,6 +487,25 @@ async def _resolve_imports(report: Report, clients: Clients, routes: Routing) ->
         project.dependencies = kept
 
 
+def _pom_fetcher(clients: Clients, routes: Routing, project: Project) -> managed.Fetch:
+    """De quoi lire le ``pom`` d'un artefact Maven pour ``project`` (``managed``) : là où
+    l'aiguillage le demande (ses dépôts déclarés, puis Maven Central)."""
+
+    async def fetch(name: str, version: str) -> str | None:
+        probe = Dependency(ecosystem=Ecosystem.MAVEN, name=name, file=project.path)
+        route = routes.route(project, probe)
+        if route.unchecked is not None:
+            raise RegistryError(route.unchecked)
+        for declared in route.registries:
+            registry = clients.declared(Ecosystem.MAVEN, declared)
+            if isinstance(registry, Maven) and (text := await registry.pom(name, version)):
+                return text
+        public = clients.client(Ecosystem.MAVEN) if route.public else None
+        return await public.pom(name, version) if isinstance(public, Maven) else None
+
+    return fetch
+
+
 def _without_ignored(
     report: Report,
     clients: Clients,
@@ -495,6 +548,55 @@ def _without_ignored(
                     said.add((id(project), rule))
                     message = f"{rule} : version illisible pour {label}, rien n'est écarté."
                     project.notices.append(Notice(file=dependency.file, message=message))
+    return filtered
+
+
+def _without_newer(
+    report: Report,
+    key: Callable[[Project, Dependency], _Key | None],
+    outcomes: dict[_Key, _Outcome],
+    today: date | None,
+) -> dict[_Key, _Outcome]:
+    """``outcomes``, sans les versions de PyPI publiées après l'``exclude-newer`` de uv (E34,
+    ``Project.resolution``) : uv ne les installe pas, forceupdate ne les propose pas. Un paquet
+    qu'un projet sans ce réglage utilise aussi garde toutes ses versions ; une version sans date
+    est gardée. Une remarque par projet le dit, ou dit le réglage illisible."""
+    cutoffs: dict[int, datetime | None] = {}
+    for project in report.projects:
+        written = project.resolution.get("exclude-newer")
+        if written is None:
+            continue
+        cutoff = python.exclude_newer_cutoff(written, datetime.now(UTC))
+        cutoffs[id(project)] = cutoff
+        if cutoff is None:
+            message = f"exclude-newer = « {written} » (uv) : illisible, rien n'est écarté."
+        else:
+            message = (
+                f"exclude-newer = « {written} » (uv) : les versions de PyPI publiées après le "
+                f"{cutoff:%d/%m/%Y à %H:%M} (UTC) ne sont pas proposées, comme uv ne les "
+                "installe pas."
+            )
+        project.notices.append(Notice(file=project.manifests[0], message=message))
+    if not any(cutoffs.values()):
+        return outcomes
+    users: dict[_Key, list[datetime | None]] = {}
+    for project in report.projects:
+        for dependency in project.dependencies:
+            found_key = key(project, dependency)
+            if found_key is not None and dependency.ecosystem is Ecosystem.PYPI:
+                users.setdefault(found_key, []).append(cutoffs.get(id(project)))
+    filtered = dict(outcomes)
+    for found_key, limits in users.items():
+        info = outcomes.get(found_key)
+        if not isinstance(info, PackageInfo) or any(limit is None for limit in limits):
+            continue
+        cutoff = min(limit for limit in limits if limit is not None)
+        kept = tuple(v for v in info.versions if v.published is None or v.published <= cutoff)
+        if len(kept) == len(info.versions):
+            continue
+        scheme = versions.for_ecosystem(Ecosystem.PYPI)
+        latest = scheme.latest(v.version for v in kept if not v.yanked)
+        filtered[found_key] = dataclasses.replace(info, versions=kept, latest=latest)
     return filtered
 
 
@@ -575,7 +677,10 @@ def _record_findings(
     for project, dependency, current in audited:
         result = found[_query(dependency, current)]
         if isinstance(result, Vulnerabilities):
-            project.findings.extend(vulns.check(dependency, current, result))
+            found_key = key(project, dependency)
+            info = outcomes.get(found_key) if found_key is not None else None
+            published = info.available() if isinstance(info, PackageInfo) else ()
+            project.findings.extend(vulns.check(dependency, current, result, published))
         elif checks.selected(dependency, options):
             project.findings.append(vulns.unchecked(dependency, current, result))
         else:
@@ -651,12 +756,13 @@ class _Progress:
 
 
 async def _vulnerabilities(
-    osv: Osv, queries: list[Query], progress: _Progress
+    osv: Osv, packagist: PackagistAdvisories, queries: list[Query], progress: _Progress
 ) -> dict[Query, _Found]:
-    """Les failles de toutes les versions demandées, auprès d'OSV."""
+    """Les failles de toutes les versions demandées, auprès d'OSV, et de Packagist pour les
+    paquets PHP (E34 : les avis de FriendsOfPHP qui manquent à OSV)."""
     if not queries:
         return {}
-    found = await osv.vulnerabilities(queries)
+    found = await packagist.merge(await osv.vulnerabilities(queries))
     progress.step(EventKind.VULNERABILITIES_CHECKED)
     return found
 
@@ -701,7 +807,8 @@ def _findings(project: Project, dependency: Dependency, outcome: _Outcome) -> li
     if isinstance(outcome, RegistryError):
         return [Finding(kind=FindingKind.INCONCLUSIVE, message=str(outcome), dependency=dependency)]
     runtime = runtimes.project_runtime(project, dependency.ecosystem)
-    return checks.check_dependency(dependency, outcome, runtimes.refused(outcome, runtime))
+    refused = runtimes.refused(outcome, runtime)
+    return checks.check_dependency(dependency, outcome, refused, project.resolution)
 
 
 def _ignore(_: Event) -> None:

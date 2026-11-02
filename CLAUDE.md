@@ -91,7 +91,13 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   ├── routing/            ← à quel registre demander chaque paquet (E33) : le public, un miroir, des
 │   │                         registres en plus, ou celui d'un paquet privé par son nom (jamais le public
 │   │                         ni OSV) ; un module par écosystème (npm et .yarnrc.yml, go, netrc, composer,
-│   │                         nuget, python, maven pour Maven et Gradle, ruby) ; Clients : la chaîne
+│   │                         nuget, python, maven pour Maven et Gradle, ruby : les serveurs de gems et la
+│   │                         configuration de Bundler, cargo : [registries] et credentials.toml, E34) ;
+│   │                         Clients : la chaîne
+│   ├── advisories/         ← les failles : osv.py (OSV), packagist.py (les avis de Packagist, FriendsOfPHP
+│   │                         compris, ajoutés à ceux d'OSV pour PHP, E34), cvss.py
+│   ├── managed.py          ← les versions Maven gérées par un parent ou un BOM distant : leur pom lu au
+│   │                         dépôt (E34), comme Maven construit son modèle
 │   ├── checks/             ← les constats : outdated.py, vulns.py, deprecated.py, eol.py (fins de vie, E27 :
 │   │                         la table des frameworks, le cycle d'une version, le cycle conseillé),
 │   │                         runtimes.py (les versions que le runtime du projet ne fait pas tourner)
@@ -166,7 +172,9 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
     │                         fichiers, branches, commits propres, PR, OAuth : Basic, refresh token renouvelé)
     ├── fake_bundler.py     ← bundle lock simulé (FakeTools.handlers["bundle"]), comme le vrai Bundler 4.0
     ├── fixtures/           ← réponses HTTP enregistrées (NuGet : compressées ; endoflife/ : endoflife.date ;
-    │                         tls/ : une autorité de test, son certificat public seul) ;
+    │                         tls/ : une autorité de test, son certificat public seul ; maven/poms/ : des
+    │                         pom de parents, de BOM et de dernières versions, E34 ;
+    │                         packagist-advisories.json : les avis de Packagist, E34) ;
     │                         record.py les ré-enregistre, RECORDED_ON : le jour des fins de vie des tests
     └── projects/           ← mini-projets par outil, lockfiles produits par les vrais outils ; eol/ : E27 ;
                               scripts/ : E28 (des fichiers de code seuls ; locked.py.lock de uv lock --script) ;
@@ -191,6 +199,8 @@ uv run ruff check                # lint
 uv run ruff format               # formatage ; la CI vérifie avec --check
 uv run python tests/fixtures/record.py   # ré-enregistre les réponses des registres et d'OSV
 uv run python tests/fixtures/record.py pypi:jinja2   # un seul paquet (déclaré dans PACKAGES)
+uv run python tests/fixtures/record.py maven-poms   # les pom que lisent les mini-projets maven et gradle
+uv run python tests/fixtures/record.py packagist-advisories   # les avis de Packagist des paquets PHP
 
 # le front (node 24 ; dans frontend/, après « npm ci »)
 npm run build                    # construit le front dans src/forceupdate/web/static/ (servi par ui)
@@ -244,6 +254,10 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   serveur de `ui` (client de test de FastAPI, jeton compris), `finished` attend la fin
   d'une tâche. GitHub se simule avec respx (`tests/test_web_accounts.py`, `FakeGitHub` pour les
   comptes ; `tests/fake_forge.py`, `FakeGitHubRepos`, pour les dépôts, faits des mini-projets).
+  respx remplace une route qui a le même motif qu'une autre : une route ajoutée à
+  `recorded_responses(ajout)` pour changer une réponse enregistrée prend un autre motif
+  (`url__regex=`). Les tables tenues à la main (`FRAMEWORKS`, `NODE_CODENAMES`, `NODE_NPM`,
+  `IMPORT_PACKAGES`) ont des tests `network` (`tests/test_tables_network.py`, E34).
 - Les retours d'OAuth (`/oauth/github/callback`, `/oauth/gitlab/callback`,
   `/oauth/bitbucket/callback`) sont les seules adresses que le garde du serveur laisse passer
   sans jeton : ne pas en ajouter d'autre sans la même protection (`state`).

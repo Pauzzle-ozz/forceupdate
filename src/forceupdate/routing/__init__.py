@@ -2,7 +2,7 @@
 projet et la personne, avec leurs identifiants (``net.auth``).
 
 D'après la configuration de l'outil de chaque écosystème (un module par écosystème : ``npm``,
-``go``, ``composer``, ``maven``, ``nuget``, ``python``), trois cas :
+``go``, ``composer``, ``maven``, ``nuget``, ``python``, ``ruby`` et ``cargo``, E34), trois cas :
 
 - un registre **qui remplace** le public pour tous les paquets (un miroir : ``registry=`` de npm,
   ``--index-url``, un ``<mirror>`` Maven de ``central``, un autre ``GOPROXY``) : les paquets y
@@ -132,9 +132,10 @@ ReadProject = Callable[[Project, ReadText, User], "Reading | None"]
 
 
 def _readers() -> dict[Ecosystem, ReadProject]:
-    from forceupdate.routing import composer, go, maven, npm, nuget, python, ruby
+    from forceupdate.routing import cargo, composer, go, maven, npm, nuget, python, ruby
 
     return {
+        Ecosystem.CRATES_IO: cargo.read,
         Ecosystem.MAVEN: maven.read,
         Ecosystem.NPM: npm.read,
         Ecosystem.GO: go.read,

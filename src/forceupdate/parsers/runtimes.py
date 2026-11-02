@@ -9,32 +9,42 @@ le reste est une version choisie) :
 - Node.js : ``engines.node`` ; ``volta.node`` ;
 - Go : la directive ``go`` de ``go.mod`` ou ``go.work`` ; ``toolchain`` ;
 - Ruby : ``ruby "…"`` du ``Gemfile`` (``"3.2.2"`` ou ``"~> 3.2"``) ; ``RUBY VERSION`` du
-  ``Gemfile.lock`` ;
+  ``Gemfile.lock`` ; ``required_ruby_version`` d'un ``.gemspec`` (E34) ;
 - PHP : ``require.php`` de ``composer.json`` ; ``config.platform.php`` ;
 - Java : ``maven.compiler.release``, ``…target``, ``…source``, ``java.version`` (``pom.xml``,
   parents du dépôt compris) ; Gradle : ``targetCompatibility``, ``sourceCompatibility`` ;
   ``JavaLanguageVersion.of(17)``, ``jvmToolchain(17)`` ;
 - .NET : ``TargetFramework(s)`` (``net8.0`` : .NET 8 ; ``netcoreapp3.1`` ; ``net48`` : .NET
   Framework 4.8), ``TargetFrameworkVersion`` (``v4.7.2``) ; ``netstandard2.0`` n'est pas un
-  runtime.
+  runtime ; défini sous condition (E34), chacune des valeurs écrites ;
+- Rust (E34) : ``rust-version`` de ``[package]`` (la plus ancienne version de Rust que le projet
+  promet de faire tourner ; ``rust-version.workspace = true`` : celle de ``[workspace.package]``).
 
 **Dans les fichiers de runtime** (``Project.runtime_files``, des versions choisies) :
 ``.python-version`` (pyenv, uv), ``runtime.txt`` (``python-3.8.10``), ``.nvmrc`` et
 ``.node-version`` (``lts/gallium`` compris), ``.ruby-version``, ``.tool-versions`` (asdf, mise),
-``global.json`` (``sdk.version`` : le SDK .NET), et le ``FROM`` des ``Dockerfile`` : images
-officielles ``python``, ``node``, ``ruby``, ``php``, ``golang``, ``eclipse-temurin``,
-``amazoncorretto``, ``mcr.microsoft.com/dotnet/{sdk,aspnet,runtime}`` et
-``mcr.microsoft.com/dotnet/framework/…``. Les ``ARG`` d'avant le premier ``FROM`` y sont
-remplacés ; une étiquette sans version (``latest``, ``lts``, ``alpine``) ne dit rien.
+``global.json`` (``sdk.version`` : le SDK .NET), ``mise.toml`` et ``.mise.toml`` (``[tools]``,
+E34), ``rust-toolchain.toml`` et ``rust-toolchain``
+(``channel = "1.80.0"`` de rustup ; pas ``stable`` ni ``nightly``), et le ``FROM`` des
+``Dockerfile`` : images officielles ``python``, ``node``, ``ruby``, ``php``, ``golang``,
+``eclipse-temurin``, ``amazoncorretto``, ``mcr.microsoft.com/dotnet/{sdk,aspnet,runtime}`` et
+``mcr.microsoft.com/dotnet/framework/…``, et depuis E34 ``openjdk`` (dépréciée : lue comme
+Eclipse Temurin), leurs copies (``public.ecr.aws/docker/library/…``, ``mirror.gcr.io/…``) et des
+images non officielles qui suivent les mêmes versions : ``bitnami/…``, ``cimg/…`` et
+``circleci/…`` de CircleCI, ``mcr.microsoft.com/devcontainers/…`` (``1-3.11-bookworm`` : le ``1-``
+est la version de l'image). Les ``ARG`` d'avant le premier ``FROM`` y sont remplacés ; une
+étiquette sans version (``latest``, ``lts``, ``alpine``) ne dit rien.
 
 **Dans les fichiers de CI** (E32 : le npm qu'attend le projet se lit d'après le Node de sa CI) :
 les workflows de GitHub Actions (``.github/workflows/*.yml``) donnent la ``node-version`` de
-``actions/setup-node`` (une ``matrix`` donne chacune de ses valeurs, ``env`` est remplacé) et
-l'image d'un ``container`` ; ``.gitlab-ci.yml`` et ``bitbucket-pipelines.yml``, leurs ``image``
-(les ``variables`` de GitLab remplacées). ``lts/*``, ``latest`` ou une plage ne disent rien. Un
-fichier de CI vaut pour tous les projets de son dépôt (``detect.manifests.ci_base``) ; un workflow
-de GitHub n'est lu que pour un projet npm (il ne sert qu'à son Node, et chaque fichier lu est une
-requête de plus à la source d'une forge).
+``actions/setup-node``, et depuis E34 la version de ``actions/setup-python``, ``setup-go``,
+``setup-java`` (sa ``distribution`` donne le Java : ``temurin``, ``zulu``, ``corretto``),
+``setup-dotnet``, ``ruby/setup-ruby`` et ``shivammathur/setup-php`` (une ``matrix`` donne chacune
+de ses valeurs, ``env`` est remplacé), et l'image d'un ``container`` ; ``.gitlab-ci.yml`` et
+``bitbucket-pipelines.yml``, leurs ``image`` (les ``variables`` de GitLab remplacées). ``lts/*``,
+``latest``, ``3.x`` ou une plage ne disent rien. Un fichier de CI vaut pour tous les projets de son
+dépôt (``detect.manifests.ci_base``), et y donne le runtime de leur écosystème (lu pour tous les
+projets depuis E34 : une requête de plus par workflow à la source d'une forge).
 
 Un fichier de runtime d'un autre dossier (un ``.nvmrc`` à la racine du dépôt) ne vaut que pour un
 projet de l'écosystème du runtime : la racine d'un monorepo ne donne pas Node.js au ``backend/``
@@ -53,7 +63,7 @@ import yaml
 
 from forceupdate.detect.manifests import ci_base
 from forceupdate.models import Ecosystem, Project, Runtime
-from forceupdate.parsers import go, maven, nuget, python, ruby
+from forceupdate.parsers import go, maven, nuget, python, ruby, rust
 from forceupdate.parsers.base import ParseError, ReadText
 from forceupdate.parsers.lockfiles import dirname
 from forceupdate.parsers.ruby_spans import statements
@@ -74,6 +84,7 @@ LABELS = {
     "azul-zulu": "Java (Azul Zulu)",
     "dotnet": ".NET",
     "dotnetfx": ".NET Framework",
+    "rust": "Rust",
 }
 """Les runtimes lus, par leur nom chez endoflife.date (``Runtime.product``), et leur nom affiché.
 Java se lit d'après Eclipse Temurin, la distribution de référence d'OpenJDK, sauf une autre
@@ -90,6 +101,7 @@ ECOSYSTEMS = {
     "azul-zulu": Ecosystem.MAVEN,
     "dotnet": Ecosystem.NUGET,
     "dotnetfx": Ecosystem.NUGET,
+    "rust": Ecosystem.CRATES_IO,
 }
 """L'écosystème de paquets de chaque runtime."""
 
@@ -129,8 +141,45 @@ IMAGES = {
     "mcr.microsoft.com/dotnet/framework/sdk": "dotnetfx",
     "mcr.microsoft.com/dotnet/framework/aspnet": "dotnetfx",
     "mcr.microsoft.com/dotnet/framework/runtime": "dotnetfx",
+    # E34 : l'image openjdk, dépréciée, et des images non officielles aux mêmes versions.
+    "openjdk": "eclipse-temurin",
+    "bitnami/python": "python",
+    "bitnami/node": "nodejs",
+    "bitnami/ruby": "ruby",
+    "bitnami/php-fpm": "php",
+    "bitnami/golang": "go",
+    "bitnami/java": "eclipse-temurin",
+    "bitnami/dotnet": "dotnet",
+    "bitnami/dotnet-sdk": "dotnet",
+    "bitnami/aspnet-core": "dotnet",
+    "cimg/python": "python",
+    "cimg/node": "nodejs",
+    "cimg/ruby": "ruby",
+    "cimg/php": "php",
+    "cimg/go": "go",
+    "cimg/openjdk": "eclipse-temurin",
+    "circleci/python": "python",
+    "circleci/node": "nodejs",
+    "circleci/ruby": "ruby",
+    "circleci/php": "php",
+    "circleci/golang": "go",
+    "circleci/openjdk": "eclipse-temurin",
+    "mcr.microsoft.com/devcontainers/python": "python",
+    "mcr.microsoft.com/devcontainers/javascript-node": "nodejs",
+    "mcr.microsoft.com/devcontainers/typescript-node": "nodejs",
+    "mcr.microsoft.com/devcontainers/go": "go",
+    "mcr.microsoft.com/devcontainers/java": "eclipse-temurin",
+    "mcr.microsoft.com/devcontainers/ruby": "ruby",
+    "mcr.microsoft.com/devcontainers/php": "php",
+    "mcr.microsoft.com/devcontainers/dotnet": "dotnet",
 }
 """Les images d'un ``FROM`` dont l'étiquette dit la version d'un runtime, et ce runtime."""
+
+_MIRRORS = ("public.ecr.aws/docker/library/", "mirror.gcr.io/library/", "mirror.gcr.io/")
+"""Les copies de la bibliothèque officielle de Docker Hub (E34)."""
+_DEVCONTAINER = re.compile(r"(?:\d+-)?(\d+(?:\.\d+)*)(?:-.*)?")
+"""L'étiquette d'une image ``devcontainers`` : ``1-3.11-bookworm`` (la version 1 de l'image,
+Python 3.11)."""
 
 _TOOLS = {
     "python": "python",
@@ -142,6 +191,7 @@ _TOOLS = {
     "php": "php",
     "dotnet": "dotnet",
     "dotnet-core": "dotnet",
+    "rust": "rust",
 }
 """Les outils de ``.tool-versions`` (asdf, mise) et leur runtime. Java (``java temurin-17…``) est
 lu à part."""
@@ -149,6 +199,7 @@ lu à part."""
 _JAVA_VENDORS = {
     "temurin": "eclipse-temurin",
     "adoptopenjdk": "eclipse-temurin",
+    "openjdk": "eclipse-temurin",
     "corretto": "amazon-corretto",
     "zulu": "azul-zulu",
 }
@@ -163,6 +214,12 @@ _GRADLE_COMPATIBILITY = re.compile(
     r"\b(targetCompatibility|sourceCompatibility)\b\s*=?\s*"
     r"(?:JavaVersion\s*\.\s*VERSION_(\d+(?:_\d+)?)|[\"']?(\d+(?:\.\d+)?)[\"']?)"
 )
+_REQUIRED_RUBY = re.compile(
+    r"\.required_ruby_version\s*=\s*(?:Gem::Requirement\.new\s*\(?)?\s*\[?"
+    r"((?:\s*['\"][^'\"\n]*['\"]\s*,?)+)"
+)
+"""``spec.required_ruby_version = ">= 3.0"``, ``Gem::Requirement.new(">= 2.7", "< 4")``, une
+liste."""
 _TFM_CORE = re.compile(r"net(?:coreapp)?(\d+\.\d+)(?:-.*)?$", re.IGNORECASE)
 _TFM_FRAMEWORK = re.compile(r"net(\d)(\d)(\d)?$", re.IGNORECASE)
 _TFV = re.compile(r"v?(\d+\.\d+(?:\.\d+)?)$", re.IGNORECASE)
@@ -178,10 +235,6 @@ def detect(project: Project, read_text: ReadText) -> list[Runtime]:
         if reader is not None:
             found.extend(reader(project, read_text))
     for path in project.runtime_files:
-        if _workflow_path(path) and Ecosystem.NPM not in project.ecosystems:
-            # Un workflow de GitHub ne sert qu'au Node d'un projet npm (E32) : ne pas le lire
-            # ailleurs épargne une requête par fichier à la source d'une forge.
-            continue
         for runtime in _runtime_file(path, read_text):
             outside = dirname(path) != project.path
             if outside and ECOSYSTEMS.get(runtime.product) not in project.ecosystems:
@@ -347,6 +400,16 @@ def _ruby(project: Project, read_text: ReadText) -> list[Runtime]:
                 continue
             source = f'ruby "{argument.value}"'
             found.append(_bound(RUBYGEMS, argument.value, product="ruby", file=path, source=source))
+    for path in project.manifests:
+        if not path.endswith(".gemspec"):
+            continue
+        match = _REQUIRED_RUBY.search(_read(read_text, path) or "")
+        if match is not None:
+            parts = re.findall(r"['\"]([^'\"]+)['\"]", match[1])
+            constraint = ", ".join(part.strip() for part in parts)
+            if constraint:
+                source = f"required_ruby_version = {match[1].strip()}"
+                found.append(_bound(RUBYGEMS, constraint, product="ruby", file=path, source=source))
     for path in project.lockfiles:
         if posixpath.basename(path) not in ("Gemfile.lock", "gems.locked"):
             continue
@@ -446,6 +509,33 @@ def target_framework(value: str, *, file: str, source: str) -> Runtime | None:
     return None
 
 
+def _rust(project: Project, read_text: ReadText) -> list[Runtime]:
+    found = []
+    for path in _named(project, rust.MANIFEST):
+        data = _toml(read_text, path)
+        value, where = _get(data, "package", "rust-version"), path
+        if isinstance(value, dict) and value.get("workspace") is True:
+            root = rust.read_workspace_root(dirname(path), read_text)
+            value, where = None, path
+            if root is not None:
+                where = root[0]
+                try:
+                    value = _get(tomllib.loads(root[1]), "workspace", "package", "rust-version")
+                except tomllib.TOMLDecodeError:
+                    value = None
+        if isinstance(value, str) and _VERSION.fullmatch(value.strip()):
+            found.append(
+                Runtime(
+                    product="rust",
+                    version=value.strip(),
+                    approximate=True,
+                    file=where,
+                    source=f'rust-version = "{value.strip()}"',
+                )
+            )
+    return found
+
+
 _MANIFESTS: dict[Ecosystem, Callable[[Project, ReadText], list[Runtime]]] = {
     Ecosystem.PYPI: _python,
     Ecosystem.NPM: _node,
@@ -454,6 +544,7 @@ _MANIFESTS: dict[Ecosystem, Callable[[Project, ReadText], list[Runtime]]] = {
     Ecosystem.RUBYGEMS: _ruby,
     Ecosystem.MAVEN: _java,
     Ecosystem.NUGET: _dotnet,
+    Ecosystem.CRATES_IO: _rust,
 }
 
 
@@ -550,6 +641,37 @@ def _tool_versions(path: str, content: str) -> list[Runtime | None]:
     return found
 
 
+def _mise(path: str, content: str) -> list[Runtime | None]:
+    # mise : « [tools] python = "3.11" », une liste (la première), une table (« version = »),
+    # « java = "temurin-17" » ; pas « latest », « lts », « prefix:3 ».
+    try:
+        tools = _get(tomllib.loads(content), "tools")
+    except tomllib.TOMLDecodeError:
+        return []
+    found: list[Runtime | None] = []
+    for tool, value in (tools or {}).items() if isinstance(tools, dict) else []:
+        if isinstance(value, list):
+            value = value[0] if value else None
+        if isinstance(value, dict):
+            value = value.get("version")
+        if not isinstance(value, str):
+            continue
+        source = f'{tool} = "{value}"'
+        if tool.lower() == "java":
+            vendor, _, number = value.rpartition("-")
+            product = _JAVA_VENDORS.get(vendor.lower(), "eclipse-temurin" if not vendor else None)
+            leading = _LEADING.match(number)
+            java = _java_number(leading[1]) if leading else None
+            if product is not None and java is not None:
+                found.append(_choice(product, java, path, source))
+            continue
+        product = _TOOLS.get(tool.lower())
+        match = _VERSION.fullmatch(value.strip())
+        if product is not None and match is not None:
+            found.append(_choice(product, match[1], path, source))
+    return found
+
+
 def _global_json(path: str, content: str) -> list[Runtime | None]:
     try:
         data = json.loads(content)
@@ -561,6 +683,20 @@ def _global_json(path: str, content: str) -> list[Runtime | None]:
     return [_choice("dotnet", version, path, f'sdk.version = "{version}"')]
 
 
+def _rust_toolchain(path: str, content: str) -> list[Runtime | None]:
+    # rustup : « [toolchain] channel = "1.80.0" » ; l'ancien « rust-toolchain » peut n'avoir que
+    # la ligne « 1.80.0 ». Rien pour « stable » ni « nightly-2026-01-01 » ; « 1.80.0-x86_64-… »
+    # donne 1.80.0.
+    try:
+        channel = _get(tomllib.loads(content), "toolchain", "channel")
+    except tomllib.TOMLDecodeError:
+        channel = _first_line(content)
+    if not isinstance(channel, str):
+        return []
+    match = re.fullmatch(r"(\d+\.\d+(?:\.\d+)?)(?:-.*)?", channel.strip())
+    return [None if match is None else _choice("rust", match[1], path, f'channel = "{channel}"')]
+
+
 _FILES: dict[str, Callable[[str, str], list[Runtime | None]]] = {
     ".python-version": _python_version,
     "runtime.txt": _runtime_txt,
@@ -569,6 +705,10 @@ _FILES: dict[str, Callable[[str, str], list[Runtime | None]]] = {
     ".ruby-version": _ruby_version,
     ".tool-versions": _tool_versions,
     "global.json": _global_json,
+    "rust-toolchain.toml": _rust_toolchain,
+    "rust-toolchain": _rust_toolchain,
+    "mise.toml": _mise,
+    ".mise.toml": _mise,
 }
 
 
@@ -639,7 +779,8 @@ def ci(path: str, content: str) -> list[Runtime]:
 
 
 def _workflow(path: str, data: Any) -> list[Runtime | None]:
-    """Le Node.js de ``actions/setup-node`` et l'image des ``container`` d'un workflow."""
+    """Les runtimes des actions ``setup-*`` (``_SETUPS``) et l'image des ``container`` d'un
+    workflow."""
     jobs = _get(data, "jobs")
     found: list[Runtime | None] = []
     for job in jobs.values() if isinstance(jobs, dict) else []:
@@ -654,13 +795,61 @@ def _workflow(path: str, data: Any) -> list[Runtime | None]:
         steps = job.get("steps")
         for step in steps if isinstance(steps, list) else []:
             uses = step.get("uses") if isinstance(step, dict) else None
-            if not isinstance(uses, str) or not uses.lower().startswith("actions/setup-node@"):
+            if not isinstance(uses, str):
                 continue
-            wanted = _get(step, "with", "node-version")
+            action = uses.lower().partition("@")[0]
+            setup = _SETUPS.get(action)
+            if setup is None:
+                continue
+            key, product = setup
+            wanted = _get(step, "with", key)
+            if product == "eclipse-temurin":
+                distribution = _get(step, "with", "distribution")
+                product = _DISTRIBUTIONS.get(str(distribution or "").lower(), product)
             for version in _expanded(wanted, matrix, {**env, **_strings(step.get("env"))}):
-                source = f"actions/setup-node : node-version {version}"
-                found.append(_node_line(version, path, source))
+                source = f"{action} : {key} {version}"
+                if product == "nodejs":
+                    found.append(_node_line(version, path, source))
+                else:
+                    found.append(_setup_version(product, version, path, source))
     return found
+
+
+_SETUPS = {
+    "actions/setup-node": ("node-version", "nodejs"),
+    "actions/setup-python": ("python-version", "python"),
+    "actions/setup-go": ("go-version", "go"),
+    "actions/setup-java": ("java-version", "eclipse-temurin"),
+    "actions/setup-dotnet": ("dotnet-version", "dotnet"),
+    "ruby/setup-ruby": ("ruby-version", "ruby"),
+    "shivammathur/setup-php": ("php-version", "php"),
+}
+"""Les actions qui installent un runtime (E34), l'entrée de sa version, et ce runtime."""
+_DISTRIBUTIONS = {
+    "temurin": "eclipse-temurin",
+    "adopt": "eclipse-temurin",
+    "adopt-hotspot": "eclipse-temurin",
+    "adopt-openj9": "eclipse-temurin",
+    "zulu": "azul-zulu",
+    "corretto": "amazon-corretto",
+}
+"""La ``distribution`` d'``actions/setup-java`` ; les autres se lisent comme Eclipse Temurin."""
+
+
+def _setup_version(product: str, text: str, path: str, source: str) -> Runtime | None:
+    """La version d'une action ``setup-*`` : ``3.11``, ``1.21.x``, ``8.0.x`` ; ``None`` pour
+    ``3.x``, ``stable``, ``head``, ``pypy3.9`` ou une plage."""
+    value = re.sub(r"(?:\.[x*])+$", "", text.strip().strip("\"'").lower())
+    match = _VERSION.fullmatch(value)
+    if match is None:
+        return None
+    version = match[1]
+    if product in ("eclipse-temurin", "amazon-corretto", "azul-zulu"):
+        java = _java_number(version)
+        return None if java is None else _choice(product, java, path, source)
+    if "." not in version and product in ("python", "go", "ruby", "php", "dotnet"):
+        return None  # « 3 » : toute une majeure, pas une version
+    return _choice(product, version, path, source)
 
 
 _EXPRESSION = re.compile(r"\$\{\{\s*(\w+)\.([\w-]+)\s*\}\}")
@@ -752,7 +941,7 @@ def _image(
     if ":" in image.rsplit("/", 1)[-1]:
         name, _, tag = image.rpartition(":")
     name = name.lower()
-    for prefix in ("docker.io/", "index.docker.io/", "registry-1.docker.io/"):
+    for prefix in ("docker.io/", "index.docker.io/", "registry-1.docker.io/", *_MIRRORS):
         name = name.removeprefix(prefix)
     name = name.removeprefix("library/")
     product = IMAGES.get(name)
@@ -763,7 +952,10 @@ def _image(
         codename = tag.split("-")[0].lower()
         if codename in NODE_CODENAMES:
             return _choice("nodejs", NODE_CODENAMES[codename], path, source)
-    match = _LEADING.match(tag)
+    if name.startswith("mcr.microsoft.com/devcontainers/"):
+        match = _DEVCONTAINER.fullmatch(tag)
+    else:
+        match = _LEADING.match(tag)
     if match is None:
         return None
     version = match[1]

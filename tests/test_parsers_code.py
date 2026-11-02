@@ -7,6 +7,7 @@ import pytest
 
 from forceupdate.models import Dependency, Ecosystem, Project, Scope
 from forceupdate.parsers import code, parse_project
+from forceupdate.parsers.base import ParseError
 from forceupdate.parsers.code import (
     IMPORT_PACKAGES,
     NODE_BUILTINS,
@@ -293,3 +294,112 @@ def test_code_parse_project_skips_real_manifests():
     project = Project(path=".", ecosystems=[Ecosystem.PYPI], manifests=["requirements.txt"])
     code.parse_project(project, reader({"requirements.txt": "flask\n"}))
     assert project.dependencies == []
+
+
+# -- E34 : Jupyter, Vue, Svelte, importlib, Deno, tsconfig.json --------------------------------
+
+
+NOTEBOOK = {
+    "cells": [
+        {"cell_type": "markdown", "source": ["# import pas_un_import\n"]},
+        {"cell_type": "code", "source": ["%matplotlib inline\n", "import numpy as np\n"]},
+        {"cell_type": "code", "source": "!pip install requests\nimport requests"},
+        {"cell_type": "code", "source": ["%%bash\n", "import pas_du_python\n"]},
+        {"cell_type": "code", "source": ["await quelque_chose()\n", "import pandas\n"]},
+        {"cell_type": "code", "source": ["x = (\n", "import ne_se_lit_pas\n"]},
+        {"cell_type": "code", "source": ["from sklearn import svm\n"]},
+    ],
+    "metadata": {},
+    "nbformat": 4,
+}
+
+
+def test_notebook_imports():
+    import json
+
+    found = imported("analyse.ipynb", json.dumps(NOTEBOOK), Ecosystem.PYPI)
+    # « await » au premier niveau se lit (ast l'accepte, comme Jupyter) ; une cellule qui ne se
+    # lit pas est sautée, les autres restent.
+    assert [d.name for d in found] == ["numpy", "requests", "pandas", "scikit-learn"]
+
+
+def test_not_a_notebook():
+    with pytest.raises(ParseError):
+        imported("x.ipynb", "pas du json", Ecosystem.PYPI)
+
+
+def test_vue_and_svelte_scripts():
+    vue = """<template><div>{{ msg }}</div></template>
+<script setup lang="ts">
+import { ref } from 'vue'
+import axios from 'axios'
+</script>
+<style>@import 'pas-un-paquet';</style>
+"""
+    found = imported("App.vue", vue, Ecosystem.NPM)
+    assert [(d.name, d.imported) for d in found] == [("vue", "vue"), ("axios", "axios")]
+    svelte = """<script context="module">
+  import dayjs from 'dayjs'
+</script>
+<script>
+  import { onMount } from 'svelte'
+</script>
+<h1>import fake from 'pas-un-paquet'</h1>
+"""
+    assert [d.name for d in imported("Page.svelte", svelte, Ecosystem.NPM)] == ["dayjs", "svelte"]
+
+
+def test_importlib_with_a_written_name():
+    content = (
+        "import importlib\n"
+        "yaml = importlib.import_module('yaml')\n"
+        "from importlib import import_module\n"
+        "toml = import_module('tomli')\n"
+        "attrs = __import__('attr')\n"
+        "rel = import_module('.local', package='pkg')\n"
+        "name = 'x'\n"
+        "dyn = importlib.import_module(name)\n"
+    )
+    found = imported("script.py", content, Ecosystem.PYPI)
+    assert [d.name for d in found] == ["pyyaml", "tomli", "attrs"]
+
+
+def test_deno_specifiers():
+    content = (
+        'import express from "npm:express@4.18.2"\n'
+        'import chalk from "npm:chalk@^5/source/index.js"\n'
+        'import { z } from "npm:@zod/mini@4.1.0"\n'
+        'import { assertEquals } from "jsr:@std/assert@^1.0.0"\n'
+        'import { serve } from "https://deno.land/std@0.200.0/http/server.ts"\n'
+    )
+    found = imported("main.ts", content, Ecosystem.NPM)
+    assert [(d.name, d.constraint, d.unverifiable_reason) for d in found] == [
+        ("express", "4.18.2", None),
+        ("chalk", "^5", None),
+        ("@zod/mini", "4.1.0", None),
+        ("jsr:@std/assert", "^1.0.0", code.REASON_JSR),
+    ]
+    assert all(d.location is None for d in found)  # à réécrire à la main
+
+
+def test_tsconfig_paths_and_base_url():
+    files = {
+        "app/tsconfig.json": """{
+  // des commentaires, comme tsc les accepte
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "@app/*": ["src/*"], "config": ["src/config.ts"], },
+  },
+}""",
+        "app/src/utils/date.ts": "export const x = 1\n",
+    }
+    content = (
+        "import { x } from 'src/utils/date'\n"
+        "import { y } from '@app/thing'\n"
+        "import conf from 'config'\n"
+        "import lodash from 'lodash'\n"
+        "import { z } from 'src/missing'\n"
+    )
+    found = imported("app/src/index.ts", content, Ecosystem.NPM, reader(files))
+    # src/missing : rien sous baseUrl, c'est le paquet « src » pour forceupdate.
+    assert [d.name for d in found] == ["lodash", "src"]

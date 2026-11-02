@@ -42,6 +42,7 @@ import tomllib
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from packaging.requirements import InvalidRequirement, Requirement
@@ -729,6 +730,44 @@ class ScriptBlock:
         return dataclasses.replace(
             span, line=self.first_line + index, column=span.column + self.prefixes[index]
         )
+
+
+_DURATION_UNITS = {"second": 1, "minute": 60, "hour": 3600, "day": 86400, "week": 604800}
+_FRIENDLY = re.compile(r"(\d+)\s*(second|minute|hour|day|week)s?", re.IGNORECASE)
+_ISO_DURATION = re.compile(
+    r"P(?:(?P<w>\d+)W)?(?:(?P<d>\d+)D)?(?:T(?:(?P<h>\d+)H)?(?:(?P<m>\d+)M)?(?:(?P<s>\d+)S)?)?",
+    re.IGNORECASE,
+)
+
+
+def exclude_newer_cutoff(value: str, now: datetime) -> datetime | None:
+    """La date (UTC) de l'``exclude-newer`` de uv (vérifié avec uv 0.10.11, ``uv help lock``) : un
+    horodatage RFC 3339 (``2006-12-02T02:07:43Z``), une date (``2006-12-02``, minuit, lue ici en
+    UTC : uv prend le fuseau de la machine), une durée (``24 hours``, ``1 week``, ``30 days``) ou
+    une durée ISO 8601 (``P7D``, ``PT24H``) avant ``now`` ; ``None`` si elle ne se lit pas."""
+    text = value.strip()
+    try:
+        when = datetime.fromisoformat(text)
+    except ValueError:
+        when = None
+    if when is not None:
+        return when.replace(tzinfo=UTC) if when.tzinfo is None else when.astimezone(UTC)
+    friendly = _FRIENDLY.fullmatch(text)
+    if friendly is not None:
+        unit = _DURATION_UNITS[friendly.group(2).lower()]
+        return now - timedelta(seconds=int(friendly.group(1)) * unit)
+    iso = _ISO_DURATION.fullmatch(text)
+    if iso is not None and text.upper() not in ("P", "PT"):
+        parts = {k: int(v) for k, v in iso.groupdict().items() if v}
+        seconds = (
+            parts.get("w", 0) * 604800
+            + parts.get("d", 0) * 86400
+            + parts.get("h", 0) * 3600
+            + parts.get("m", 0) * 60
+            + parts.get("s", 0)
+        )
+        return now - timedelta(seconds=seconds)
+    return None
 
 
 def is_script(path: str) -> bool:
@@ -1427,6 +1466,39 @@ class _ProjectParser:
         self.transitives.sort(key=lambda d: (d.file, d.name, PYPI.sort_key(d.installed or "")))
         self.project.dependencies.extend(self.directs + self.transitives)
         self.project.notices.extend(self.notices)
+        newer = self._exclude_newer()
+        if newer is not None:
+            self.project.resolution["exclude-newer"] = newer
+
+    def _exclude_newer(self) -> str | None:
+        """``exclude-newer`` de ``[tool.uv]`` (E34) : celui du bloc PEP 723 d'un script, sinon du
+        ``pyproject.toml``, sinon du ``uv.toml`` du projet ; tel qu'écrit."""
+        for path in self.project.manifests:
+            if is_script(path):
+                try:
+                    content = self.read_text(path)
+                    block = script_block(content or "")
+                    data = _load_toml(block.toml) if block is not None else {}
+                except (ParseError, ValueError):
+                    data = {}
+                value = _table(data, "tool", "uv").get("exclude-newer")
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+        for path, keys in (
+            (self.manifests.get("pyproject.toml", [None])[0], ("tool", "uv")),
+            (join(self.project.path, "uv.toml"), ()),
+        ):
+            if path is None:
+                continue
+            try:
+                content = self.read_text(path)
+                data = _load_toml(content) if content else {}
+            except (ParseError, ValueError):
+                data = {}
+            value = (_table(data, *keys) if keys else data).get("exclude-newer")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
 
     # -- lecture ------------------------------------------------------------
 

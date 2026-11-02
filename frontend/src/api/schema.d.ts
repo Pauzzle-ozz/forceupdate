@@ -1437,6 +1437,10 @@ export interface components {
             runtime_files: string[];
             /** Runtimes */
             runtimes: components["schemas"]["Runtime"][];
+            /** Resolution */
+            resolution: {
+                [key: string]: string;
+            };
         };
         /**
          * Proposal

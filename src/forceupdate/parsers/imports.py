@@ -86,6 +86,16 @@ class _PythonVisitor(ast.NodeVisitor):
         if node.level == 0 and node.module:
             self._add(node.module, node.lineno, tuple(a.name for a in node.names if a.name != "*"))
 
+    def visit_Call(self, node: ast.Call) -> None:
+        """``importlib.import_module("x")`` et ``__import__("x")`` d'un nom écrit (E34)."""
+        if _name(node.func) in ("import_module", "__import__") and node.args:
+            first = node.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                module = first.value.strip()
+                if module and not module.startswith("."):
+                    self._add(module, node.lineno)
+        self.generic_visit(node)
+
     def visit_Try(self, node: ast.Try | ast.TryStar) -> None:
         guarded = any(_catches_import_error(handler) for handler in node.handlers)
         self.optional += guarded

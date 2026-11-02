@@ -29,6 +29,7 @@ GUZZLE, PSR7, TWIG, MONOLOG = "guzzlehttp/guzzle", "guzzlehttp/psr7", "twig/twig
 CONSOLE, LOG, CACHE = "symfony/console", "psr/log", "doctrine/cache"
 FACTORY = "php-http/message-factory"
 Routes = dict[str, respx.Route]
+MakeTree = Callable[..., Path]
 runner = CliRunner()
 
 
@@ -100,9 +101,13 @@ def messages(project: Project, kind: FindingKind, name: str) -> list[str]:
 
 def test_findings_of_the_composer_mini_project(recorded: Routes) -> None:
     (project,) = analyze(PROJECT).projects
-    # Les avis d'OSV pour Packagist écrivent les versions sans le v des étiquettes de twig.
-    assert len(vulnerabilities(project, TWIG)) == 15
+    # Les avis d'OSV pour Packagist écrivent les versions sans le v des étiquettes de twig. Les
+    # 17 de « composer audit » : 15 d'OSV, plus deux qui ne viennent que de FriendsOfPHP, lus chez
+    # Packagist (E34).
+    assert len(vulnerabilities(project, TWIG)) == 17
     assert ("CVE-2022-39261", "3.4.3") in vulnerabilities(project, TWIG)
+    assert ("CVE-2026-46627", "3.26.0") in vulnerabilities(project, TWIG)
+    assert ("CVE-2026-46636", "3.27.0") in vulnerabilities(project, TWIG)
     assert len(vulnerabilities(project, GUZZLE)) == 13
     assert ("CVE-2022-29248", "7.4.3") in vulnerabilities(project, GUZZLE)
     assert sorted(vulnerabilities(project, PSR7)) == [
@@ -315,3 +320,23 @@ def test_the_blocking_set_by_the_project_is_kept(
     assert json.loads((root / "composer.lock").read_text("utf-8")) == json.loads(
         (PROJECT / "composer.lock").read_text("utf-8")
     )
+
+
+def test_minimum_stability_gives_the_allowed_version(make_tree: MakeTree, recorded: Routes) -> None:
+    """E34 : la version permise suit minimum-stability et prefer-stable, comme composer update
+    (twig/twig enregistré : v4.0.0-alpha1 au-dessus de v3.30.0)."""
+    lock = {"packages": [{"name": "twig/twig", "version": "v3.4.1"}], "packages-dev": []}
+    for settings, wanted in (
+        ({"minimum-stability": "alpha"}, "v4.0.0-alpha1"),
+        ({"minimum-stability": "alpha", "prefer-stable": True}, "v3.30.0"),
+        ({}, "v3.30.0"),
+    ):
+        composer = {"require": {"twig/twig": ">=3.0"}, **settings}
+        root = make_tree(
+            {"composer.json": json.dumps(composer), "composer.lock": json.dumps(lock)},
+            root=make_tree({}) / str(len(settings)),
+        )
+        (project,) = analyze(root).projects
+        (finding,) = [f for f in project.findings if f.kind is FindingKind.OUTDATED]
+        assert finding.wanted_version == wanted
+        assert finding.target_version == "v3.30.0"  # forceupdate ne propose que des stables

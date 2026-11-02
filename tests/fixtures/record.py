@@ -3,7 +3,8 @@
     uv run python tests/fixtures/record.py          # toutes
     uv run python tests/fixtures/record.py npm      # celles d'un registre (pypi, npm, crates,
                                                     # goproxy, packagist, rubygems, maven, nuget,
-                                                    # osv, endoflife)
+                                                    # osv, packagist-advisories, maven-poms,
+                                                    # endoflife)
     uv run python tests/fixtures/record.py pypi:jinja2   # un seul paquet
     uv run python tests/fixtures/record.py endoflife:python   # un seul produit
 
@@ -44,13 +45,16 @@ import sys
 from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
+from urllib.parse import urlencode
 
 from forceupdate import engine
 from forceupdate.advisories.osv import BASE_URL
+from forceupdate.advisories.packagist import API_URL as PACKAGIST_API
 from forceupdate.checks import vulns
 from forceupdate.endoflife import EndOfLifeDate
 from forceupdate.models import Ecosystem, ScanOptions
 from forceupdate.net import Cache, HttpClient
+from forceupdate.net.auth import Credentials
 from forceupdate.net.http import Response
 from forceupdate.registries.base import PackageNotFound, Registry
 from forceupdate.registries.crates import Crates
@@ -154,6 +158,7 @@ PACKAGES: dict[str, tuple[type[Registry], dict[str, str]]] = {
             "github.com/pmezard/go-difflib": "indirecte du mini-projet go",
             "gopkg.in/yaml.v3": "indirecte en pseudo-version, faille corrigée en pseudo-version",
             "golang.org/x/exp": "aucune étiquette : la pseudo-version de @latest",
+            "github.com/russross/blackfriday": "v2.0.0+incompatible, et v2.1.0 sous …/v2",
             "github.com/mattn/go-sqlite3": "un intervalle de +incompatible retiré",
             "github.com/golang/protobuf": "déprécié au profit d'un autre module",
         },
@@ -220,6 +225,12 @@ PACKAGES: dict[str, tuple[type[Registry], dict[str, str]]] = {
             "org.springframework.boot": "un plugin de build.gradle.kts : le portail des plugins",
             "androidx.annotation:annotation": "Google Maven (gradle)",
             "org.mockito:mockito-core": "notation en carte, group: name: version: (gradle)",
+            "com.fasterxml.jackson.core:jackson-databind": (
+                "sans version, gérée par le BOM jackson-bom importé (maven, E34)"
+            ),
+            "org.apache.maven.plugins:maven-surefire-plugin": (
+                "sans version, gérée par le parent distant org.apache:apache (maven, E34)"
+            ),
         },
     ),
     "nuget": (
@@ -247,6 +258,12 @@ OSV_EXTRA: dict[tuple[Ecosystem, str, str], str] = {
     (Ecosystem.NPM, "ua-parser-js", "0.7.29"): "version malveillante, corrigée en 0.7.30",
     (Ecosystem.PYPI, "flask", "2.3.0"): "deux branches corrigées : 2.2.5 et 2.3.2",
     (Ecosystem.PYPI, "requests", "2.0"): "une borne basse (>=2.0), sans lockfile",
+    (Ecosystem.MAVEN, "com.fasterxml.jackson.core:jackson-databind", "2.13.0"): (
+        "gérée par le BOM jackson-bom 2.13.0 du mini-projet maven (E34 : lue dans son pom)"
+    ),
+    (Ecosystem.MAVEN, "org.apache.maven.plugins:maven-surefire-plugin", "2.22.0"): (
+        "gérée par le parent distant org.apache:apache 23 du mini-projet maven (E34)"
+    ),
 }
 """Les versions demandées à OSV en plus de celles des mini-projets, avec le cas couvert."""
 
@@ -280,8 +297,14 @@ class _Recording(HttpClient):
         super().__init__()
         self.seen: dict[str, Response] = {}
 
-    async def get(self, url: str, *, headers: Mapping[str, str] | None = None) -> Response:
-        response = await super().get(url, headers=headers)
+    async def get(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str] | None = None,
+        auth: Credentials | None = None,
+    ) -> Response:
+        response = await super().get(url, headers=headers, auth=auth)
         self.seen[url] = response
         return response
 
@@ -366,6 +389,58 @@ async def record_osv(http: HttpClient) -> None:
         (folder / "vulns" / f"{vuln_id}.json").write_bytes(response.content)
 
 
+POM_PROJECTS = (PROJECTS / "maven", PROJECTS / "gradle")
+"""Les mini-projets dont l'analyse lit des ``pom`` (E34) : ceux d'un parent ou d'un BOM distant,
+et celui de la dernière version de chaque artefact (sa relocation)."""
+
+
+async def record_poms() -> None:
+    """Les ``pom`` que demande l'analyse des mini-projets de ``POM_PROJECTS`` :
+    ``maven/poms/<groupe>__<artefact>__<version>.pom``, tels quels."""
+    folder = FIXTURES / "maven" / "poms"
+    folder.mkdir(parents=True, exist_ok=True)
+    for old in folder.glob("*.pom"):
+        old.unlink()
+    async with _Recording() as http:
+        for project in POM_PROJECTS:
+            await engine.analyze(LocalSource(project), http=http, cache=Cache.disabled())
+        poms = {url: r for url, r in http.seen.items() if url.endswith(".pom")}
+    for url, response in sorted(poms.items()):
+        if response.status_code != 200:
+            print(f"{url} : HTTP {response.status_code}, pas gardé")
+            continue
+        # …/maven2/{groupe en chemin}/{artefact}/{version}/{artefact}-{version}.pom
+        artifact_path, version, _ = url.split("/maven2/", 1)[-1].rsplit("/", 2)
+        group_path, artifact = artifact_path.rsplit("/", 1)
+        path = folder / f"{group_path.replace('/', '.')}__{artifact}__{version}.pom"
+        path.write_bytes(response.content)
+    print(f"maven/poms : {len(list(folder.glob('*.pom')))} pom")
+
+
+async def record_packagist_advisories(http: HttpClient) -> None:
+    """Les avis de Packagist (E34) des paquets PHP de ``PACKAGES["packagist"]`` et des versions
+    demandées à OSV : ``packagist-advisories.json``, par paquet, tels que l'API les rend."""
+    names = sorted(
+        {*PACKAGES["packagist"][1]}
+        | {name for ecosystem, name, _ in osv_queries() if ecosystem is Ecosystem.PACKAGIST}
+    )
+    found: dict[str, object] = {}
+    for start in range(0, len(names), 50):
+        batch = names[start : start + 50]
+        url = f"{PACKAGIST_API}?{urlencode([('packages[]', name) for name in batch])}"
+        response = await http.get(url, headers={"Accept": "application/json"})
+        if response.status_code != 200:
+            raise SystemExit(f"{url} : HTTP {response.status_code}")
+        advisories = response.json()["advisories"] or {}
+        for name in batch:
+            found[name] = advisories.get(name, [])
+    path = FIXTURES / "packagist-advisories.json"
+    text = json.dumps(found, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+    path.write_text(text, encoding="utf-8", newline="\n")
+    count = sum(len(v) for v in found.values())  # type: ignore[arg-type]
+    print(f"packagist-advisories.json : {len(names)} paquets, {count} avis")
+
+
 async def record_endoflife(http: HttpClient, only: str | None = None) -> None:
     client = EndOfLifeDate(http, Cache.disabled())
     folder = FIXTURES / "endoflife"
@@ -385,6 +460,10 @@ async def record(wanted: list[str]) -> None:
             key, _, only = item.partition(":")
             if key == "osv":
                 await record_osv(http)
+            elif key == "packagist-advisories":
+                await record_packagist_advisories(http)
+            elif key == "maven-poms":
+                await record_poms()
             elif key == "endoflife":
                 await record_endoflife(http, only or None)
             else:
@@ -392,7 +471,7 @@ async def record(wanted: list[str]) -> None:
 
 
 def main() -> None:
-    known = [*PACKAGES, "osv", "endoflife"]
+    known = [*PACKAGES, "osv", "packagist-advisories", "maven-poms", "endoflife"]
     wanted = sys.argv[1:] or known
     unknown = [item for item in wanted if item.partition(":")[0] not in known]
     if unknown:
@@ -401,7 +480,7 @@ def main() -> None:
         key, _, only = item.partition(":")
         if key == "endoflife" and only and only not in LIFECYCLES:
             raise SystemExit(f"{only} : pas dans la liste des produits (LIFECYCLES).")
-        if key not in ("endoflife", "osv") and only and only not in PACKAGES[key][1]:
+        if key in PACKAGES and only and only not in PACKAGES[key][1]:
             raise SystemExit(f"{only} : pas dans la liste des paquets de {key} (PACKAGES).")
     asyncio.run(record(wanted))
 

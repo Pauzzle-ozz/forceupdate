@@ -333,6 +333,19 @@ def osv_querybatch(results: dict[str, Any]) -> Callable[[httpx.Request], httpx.R
     return respond
 
 
+def packagist_advisories(advisories: dict[str, Any]) -> Callable[[httpx.Request], httpx.Response]:
+    """Une réponse de l'API des avis de Packagist (E34) faite de ``advisories`` (nom → ses avis,
+    comme ``tests/fixtures/packagist-advisories.json``) ; aucun avis pour un autre paquet. Comme
+    Packagist, un tableau vide s'il n'y en a aucun."""
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        names = request.url.params.get_list("packages[]")
+        found = {name: advisories[name] for name in names if advisories.get(name)}
+        return httpx.Response(200, json={"advisories": found or []})
+
+    return respond
+
+
 @pytest.fixture
 def recorded() -> Iterator[dict[str, respx.Route]]:
     """PyPI, npm, crates.io, le proxy Go, Packagist, RubyGems, Maven (Maven Central, Google Maven,
@@ -342,12 +355,14 @@ def recorded() -> Iterator[dict[str, respx.Route]]:
     regex, time, anyhow, log, smallvec ; les modules Go de ``PACKAGES["goproxy"]`` ; les paquets
     PHP de ``PACKAGES["packagist"]`` ; les gems de ``PACKAGES["rubygems"]`` ; les artefacts de
     ``PACKAGES["maven"]`` ; les paquets NuGet de ``PACKAGES["nuget"]``. Tout autre paquet est
-    introuvable (404). OSV connaît les failles des versions de ``tests/fixtures/osv/queries.json``
-    ; pour les autres, il n'en connaît pas. endoflife.date connaît les produits de
-    ``LIFECYCLES`` ; les autres sont introuvables (404). Rend les routes, par nom de paquet
-    (``crates:<nom>`` pour crates.io, ``goproxy:<module>`` pour la liste d'un module Go,
-    ``packagist:<nom>``, ``rubygems:<nom>``, ``maven:<groupe:artefact>``, ``nuget:<id>`` pour
-    l'index d'un paquet NuGet, ``endoflife:<produit>``), plus ``osv:querybatch`` et ``osv:<id>``.
+    introuvable (404). Packagist connaît les avis de ``tests/fixtures/packagist-advisories.json``
+    (``packagist:advisories``). OSV connaît les failles des versions de
+    ``tests/fixtures/osv/queries.json`` ; pour les autres, il n'en connaît pas. endoflife.date
+    connaît les produits de ``LIFECYCLES`` ; les autres sont introuvables (404). Rend les routes,
+    par nom de paquet (``crates:<nom>`` pour crates.io, ``goproxy:<module>`` pour la liste d'un
+    module Go, ``packagist:<nom>``, ``rubygems:<nom>``, ``maven:<groupe:artefact>``,
+    ``nuget:<id>`` pour l'index d'un paquet NuGet, ``endoflife:<produit>``), plus
+    ``osv:querybatch`` et ``osv:<id>``.
     """
     with recorded_responses() as routes:
         yield routes
@@ -405,6 +420,16 @@ def recorded_responses(
             routes[f"maven:{name}"] = router.get(url).respond(
                 200, content=path.read_bytes(), headers={"content-type": "text/xml"}
             )
+        for path in sorted((FIXTURES / "maven" / "poms").glob("*.pom")):
+            group, artifact, version = path.stem.split("__")
+            name = f"{group}:{artifact}"
+            url = (
+                f"{repository(name)}/{group.replace('.', '/')}/{artifact}/{version}/"
+                f"{artifact}-{version}.pom"
+            )
+            routes[f"pom:{name}:{version}"] = router.get(url).respond(
+                200, content=path.read_bytes(), headers={"content-type": "text/xml"}
+            )
         for path in sorted((FIXTURES / "nuget").glob("*.json.gz")):
             name = path.name.removesuffix(".json.gz")
             answers = json.loads(gzip.decompress(path.read_bytes()))
@@ -439,6 +464,12 @@ def recorded_responses(
         router.get(url__regex=r"^https://endoflife\.date/").respond(
             404, text="<!DOCTYPE html><title>Page not Found | endoflife.date</title>"
         )
+        advisories = json.loads(
+            (FIXTURES / "packagist-advisories.json").read_text(encoding="utf-8")
+        )
+        routes["packagist:advisories"] = router.get(
+            url__startswith="https://packagist.org/api/security-advisories/"
+        ).mock(side_effect=packagist_advisories(advisories))
         queries = json.loads((FIXTURES / "osv" / "queries.json").read_text(encoding="utf-8"))
         routes["osv:querybatch"] = router.post("https://api.osv.dev/v1/querybatch").mock(
             side_effect=osv_querybatch(queries)

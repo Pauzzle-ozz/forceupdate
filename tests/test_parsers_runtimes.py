@@ -6,7 +6,7 @@ import pytest
 from forceupdate import parsers
 from forceupdate.detect.manifests import find_projects, is_runtime_file
 from forceupdate.models import Project
-from forceupdate.parsers.runtimes import dockerfile, target_framework
+from forceupdate.parsers.runtimes import ci, dockerfile, target_framework
 
 
 def projects(files: dict[str, str], *, include_tests: bool = False) -> dict[str, Project]:
@@ -494,10 +494,9 @@ class TestCi:
             ("nodejs", "22", False, ".gitlab-ci.yml", "image: node:22"),
         ]
 
-    def test_a_workflow_is_read_for_an_npm_project_only(self) -> None:
-        """Un projet Python ne lit pas les workflows de GitHub (une requête de moins par fichier à
-        la source d'une forge) ; les ``image`` de GitLab et Bitbucket valent pour tous."""
-        read: list[str] = []
+    def test_a_workflow_is_read_for_every_project(self) -> None:
+        """E34 : un projet Python lit aussi les workflows de GitHub (son runtime y est), comme les
+        ``image`` de GitLab et Bitbucket."""
         files = {
             "pyproject.toml": '[project]\nname = "x"\nversion = "1"\n',
             ".github/workflows/ci.yml": "jobs:\n  t:\n    container: python:3.9\n",
@@ -505,13 +504,150 @@ class TestCi:
         }
         found, _ = find_projects(list(files))
         (project,) = found
+        parsers.parse_project(project, files.get)
+        assert sorted((r.version, r.file) for r in project.runtimes) == [
+            ("3.10", "bitbucket-pipelines.yml"),
+            ("3.9", ".github/workflows/ci.yml"),
+        ]
 
-        def read_text(path: str) -> str | None:
-            read.append(path)
-            return files.get(path)
+    def test_the_setup_actions(self) -> None:
+        """E34 : setup-python, setup-go, setup-java (et sa distribution), setup-dotnet,
+        ruby/setup-ruby, shivammathur/setup-php, avec une matrix."""
+        workflow = """\
+jobs:
+  test:
+    strategy:
+      matrix:
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.22.x
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+"""
+        found = [
+            (r.product, r.version, r.approximate, r.source)
+            for r in ci(".github/workflows/ci.yml", workflow)
+        ]
+        assert found == [
+            ("python", "3.10", False, "actions/setup-python : python-version 3.10"),
+            ("python", "3.12", False, "actions/setup-python : python-version 3.12"),
+            ("go", "1.22", False, "actions/setup-go : go-version 1.22.x"),
+            ("azul-zulu", "17", False, "actions/setup-java : java-version 17"),
+            ("eclipse-temurin", "21", False, "actions/setup-java : java-version 21"),
+            ("dotnet", "8.0", False, "actions/setup-dotnet : dotnet-version 8.0.x"),
+            ("ruby", "3.3", False, "ruby/setup-ruby : ruby-version 3.3"),
+            ("php", "8.2", False, "shivammathur/setup-php : php-version 8.2"),
+        ]
 
-        parsers.parse_project(project, read_text)
-        assert ".github/workflows/ci.yml" not in read
-        assert [(r.version, r.file) for r in project.runtimes] == [
-            ("3.10", "bitbucket-pipelines.yml")
+
+class TestE34:
+    """Ce que E34 lit en plus : images non officielles, mise.toml, required_ruby_version, un
+    TargetFramework sous condition."""
+
+    @pytest.mark.parametrize(
+        ("line", "expected"),
+        [
+            ("FROM openjdk:11-jre-slim", ("eclipse-temurin", "11")),
+            ("FROM bitnami/python:3.11.4-debian-11-r0", ("python", "3.11.4")),
+            ("FROM bitnami/node:20", ("nodejs", "20")),
+            ("FROM cimg/ruby:3.2.2", ("ruby", "3.2.2")),
+            ("FROM circleci/golang:1.17", ("go", "1.17")),
+            ("FROM mcr.microsoft.com/devcontainers/python:1-3.11-bookworm", ("python", "3.11")),
+            ("FROM mcr.microsoft.com/devcontainers/javascript-node:20-bookworm", ("nodejs", "20")),
+            ("FROM public.ecr.aws/docker/library/python:3.12-slim", ("python", "3.12")),
+            ("FROM mirror.gcr.io/library/node:22", ("nodejs", "22")),
+        ],
+    )
+    def test_more_images(self, line: str, expected: tuple[str, str]) -> None:
+        (runtime,) = dockerfile("Dockerfile", line + "\n")
+        assert (runtime.product, runtime.version) == expected
+
+    def test_mise_toml(self) -> None:
+        content = """\
+[tools]
+python = "3.11"
+node = ["20", "18"]
+ruby = { version = "3.2.2" }
+java = "temurin-17.0.2+8"
+go = "latest"
+"""
+        files = {"pyproject.toml": '[project]\nname = "x"\nversion = "1"\n', "mise.toml": content}
+        found, _ = find_projects(list(files))
+        (project,) = found
+        assert project.runtime_files == ["mise.toml"]
+        parsers.parse_project(project, files.get)
+        # Dans le dossier du projet : tous ses runtimes, comme .tool-versions.
+        assert [(r.product, r.version) for r in project.runtimes] == [
+            ("python", "3.11"),
+            ("nodejs", "20"),
+            ("ruby", "3.2.2"),
+            ("eclipse-temurin", "17"),
+        ]
+
+    def test_mise_toml_alone(self) -> None:
+        from forceupdate.parsers.runtimes import _mise
+
+        content = '[tools]\nnode = ["20", "18"]\njava = "21"\nruby = { version = "3.2.2" }\n'
+        found = [(r.product, r.version) for r in _mise("mise.toml", content) if r is not None]
+        assert found == [("nodejs", "20"), ("eclipse-temurin", "21"), ("ruby", "3.2.2")]
+
+    def test_required_ruby_version(self) -> None:
+        gemspec = """\
+Gem::Specification.new do |spec|
+  spec.name = "demo"
+  spec.required_ruby_version = Gem::Requirement.new(">= 3.1", "< 4")
+end
+"""
+        files = {"demo.gemspec": gemspec}
+        found, _ = find_projects(list(files))
+        (project,) = found
+        parsers.parse_project(project, files.get)
+        (runtime,) = project.runtimes
+        assert (runtime.product, runtime.version, runtime.approximate) == ("ruby", "3.1", True)
+        assert runtime.source == 'required_ruby_version = ">= 3.1", "< 4"'
+
+    def test_a_conditional_target_framework(self) -> None:
+        csproj = """\
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup Condition="'$(Configuration)' == 'Legacy'">
+    <TargetFramework>net6.0</TargetFramework>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' != 'Legacy'">
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+</Project>
+"""
+        files = {"App.csproj": csproj}
+        found, _ = find_projects(list(files))
+        (project,) = found
+        parsers.parse_project(project, files.get)
+        assert [(r.product, r.version) for r in project.runtimes] == [
+            ("dotnet", "6.0"),
+            ("dotnet", "8.0"),
         ]

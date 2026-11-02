@@ -2,6 +2,8 @@
 
 - ``osv.py`` : le client d'OSV (``Osv``), et ``Advisory``, un avis réduit à ce qui sert,
   avec la version qui corrige la faille (``Advisory.fixed_in``) ;
+- ``packagist.py`` : les avis de Packagist (GitHub et FriendsOfPHP, ceux de ``composer audit``),
+  ajoutés à ceux d'OSV pour les paquets PHP (E34) ;
 - ``cvss.py`` : le score CVSS 3 d'un vecteur, et la gravité qui va avec.
 
 Les constats qu'on en tire sont dans ``checks/vulns.py``, qui ne parle pas au réseau.
@@ -17,6 +19,7 @@ from forceupdate.advisories.osv import (
     Vulnerabilities,
     parse_vuln,
 )
+from forceupdate.advisories.packagist import PackagistAdvisories
 
 __all__ = [
     "Advisory",
@@ -24,6 +27,7 @@ __all__ = [
     "AffectedRange",
     "Osv",
     "OsvError",
+    "PackagistAdvisories",
     "Query",
     "Vulnerabilities",
     "parse_vuln",

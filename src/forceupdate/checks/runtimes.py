@@ -1,13 +1,17 @@
 """Les versions de paquets que le runtime du projet ne peut pas faire tourner (E27).
 
 Une version publiée peut demander un runtime : ``engines.node`` (npm), ``require.php``
-(Packagist), ``ruby`` (l'index compact de RubyGems), ``requires-python`` (PyPI). Les outils la
-refusent quand le runtime ne convient pas : Composer d'après ``config.platform.php`` (sinon le
-PHP de la machine), Bundler d'après le Ruby qui tourne, uv, Poetry et PDM d'après tout
-l'intervalle de ``requires-python``, ``npm outdated`` d'après le Node installé (``npm install``
-avertit seulement). La proposer fait échouer la régénération du lockfile (E23 : forceupdate v8.1.10
-de symfony/console, qui demande PHP 8.4, à un projet en PHP 8.1), ou casse ce que le projet
-promet de faire tourner.
+(Packagist), ``ruby`` (l'index compact de RubyGems), ``requires-python`` (PyPI), ``rust_version``
+(l'index de crates.io, E34). Les outils la refusent quand le runtime ne convient pas : Composer
+d'après ``config.platform.php`` (sinon le PHP de la machine), Bundler d'après le Ruby qui tourne,
+uv, Poetry et PDM d'après tout l'intervalle de ``requires-python``, ``npm outdated`` d'après le
+Node installé (``npm install`` avertit seulement), Cargo avec le résolveur 3 d'après le
+``rust-version`` du projet (vérifié avec cargo 1.99 : il prend la plus haute qui convient, et se
+replie sur la plus haute sinon ; le résolveur 2, celui de l'édition 2021 et d'avant, l'ignore). La
+proposer fait échouer la régénération du lockfile (E23 : forceupdate v8.1.10 de symfony/console,
+qui demande PHP 8.4, à un projet en PHP 8.1), ou casse ce que le projet promet de faire tourner
+(un ``rust-version`` : sous le résolveur 2, ``cargo update`` la prendrait, et la compilation avec
+ce Rust échouerait ; elle n'est pas proposée non plus).
 
 **Le runtime du projet** (``project_runtime``) : le plus ancien de ceux qu'on lit pour
 l'écosystème, versions choisies (``.nvmrc``, ``config.platform.php``) comme bornes basses
@@ -35,6 +39,7 @@ _REQUIRED = {
     Ecosystem.PACKAGIST: "php",
     Ecosystem.RUBYGEMS: "ruby",
     Ecosystem.PYPI: "python",
+    Ecosystem.CRATES_IO: "rust",
 }
 """Les écosystèmes dont le registre dit le runtime que demande chaque version."""
 
@@ -123,7 +128,10 @@ def refused(info: PackageInfo, runtime: Runtime | None) -> Mapping[str, Refusal]
 
 def _constraint(ecosystem: Ecosystem, requires: str) -> str:
     """``requires`` dans la syntaxe des contraintes de ``ecosystem`` : l'index compact de RubyGems
-    sépare ses conditions par ``&`` (``< 4.1.dev&>= 3.2``)."""
+    sépare ses conditions par ``&`` (``< 4.1.dev&>= 3.2``) ; le ``rust_version`` d'un crate est la
+    plus ancienne version de Rust qu'il accepte (``1.80`` : ``>=1.80``)."""
     if ecosystem is Ecosystem.RUBYGEMS:
         return ", ".join(part.strip() for part in requires.split("&"))
+    if ecosystem is Ecosystem.CRATES_IO:
+        return f">={requires.strip()}"
     return requires

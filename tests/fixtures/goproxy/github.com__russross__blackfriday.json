@@ -1,0 +1,22 @@
+{
+  "github.com/russross/blackfriday/@v/list": {
+    "body": "v1.5.1\nv1.6.0\nv2.0.0+incompatible\nv1.5.2\nv1.6.0-pre.1\n",
+    "content_type": "text/plain",
+    "status": 200
+  },
+  "github.com/russross/blackfriday/@v/v1.6.0.mod": {
+    "body": "module github.com/russross/blackfriday\n\ngo 1.13\n",
+    "content_type": "text/plain",
+    "status": 200
+  },
+  "github.com/russross/blackfriday/v2/@v/list": {
+    "body": "v2.0.0\nv2.1.0-pre.1\nv2.1.0\nv2.0.1\n",
+    "content_type": "text/plain",
+    "status": 200
+  },
+  "github.com/russross/blackfriday/v3/@v/list": {
+    "body": "not found: module github.com/russross/blackfriday/v3: no matching versions for query \"latest\"",
+    "content_type": "text/plain",
+    "status": 404
+  }
+}

@@ -27,11 +27,13 @@ def test_kinds_and_their_lifetime() -> None:
     assert CacheKind.VULNERABILITIES.ttl == 3600
     assert CacheKind.ADVISORIES.ttl == 7 * 24 * 3600
     assert CacheKind.LIFECYCLES.ttl == 24 * 3600
+    assert CacheKind.FILES.ttl == 7 * 24 * 3600  # le pom d'une version publiée (E34)
     assert [kind.value for kind in CacheKind] == [
         "versions",
         "vulnerabilities",
         "advisories",
         "lifecycles",
+        "files",
     ]
 
 

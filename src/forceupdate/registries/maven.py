@@ -11,8 +11,12 @@ Gradle pour connaître les versions d'un artefact. Vérifié le 2026-11-01 :
   Le dépôt ne date pas les versions : ``PackageVersion.published`` reste vide (aucun contrôle ne
   s'en sert) ;
 - un artefact inconnu : 404 (une page HTML) ;
-- pas de dépréciation ni de retrait : un artefact « déplacé » (``<relocation>`` du ``pom`` d'une
-  version) n'est pas vu.
+- pas de retrait ; **un artefact déplacé** (E34) : le ``pom`` de sa dernière version a une
+  ``<distributionManagement><relocation>`` (mysql:mysql-connector-java 8.0.33 : vers
+  ``com.mysql:mysql-connector-j``, avec un ``<message>``, vérifié le 2026-11-02) ; c'est sa
+  dépréciation, qui cite le remplaçant. Une requête de plus par artefact : ``…/{version}/{artefact}-
+  {version}.pom`` (``pom``, gardé 7 jours en cache, qui sert aussi aux versions gérées par un parent
+  ou un BOM distant : ``managed``).
 
 Les dépôts : **Google Maven** (``https://dl.google.com/android/maven2``, ``max-age=86400``) pour
 ``androidx.*``, ``com.android.*``, ``com.google.android.*``, ``com.google.firebase`` et
@@ -23,14 +27,24 @@ n'a pas) ; **Maven Central** (``https://repo1.maven.org/maven2``) pour le reste.
 (``<repositories>``, ``repositories { }``) n'est pas lu : ses artefacts sont cherchés là.
 """
 
+import asyncio
+import dataclasses
 from datetime import datetime
+from typing import Any
 
 from forceupdate.models import Ecosystem
+from forceupdate.net.cache import CacheKind
 from forceupdate.net.http import Response
 from forceupdate.parsers.base import ParseError
 from forceupdate.parsers.gradle import plugin_id
 from forceupdate.parsers.xml_spans import parse
-from forceupdate.registries.base import PackageInfo, PackageVersion, Registry, sorted_versions
+from forceupdate.registries.base import (
+    PackageInfo,
+    PackageVersion,
+    Registry,
+    RegistryError,
+    sorted_versions,
+)
 from forceupdate.versions.maven import MAVEN
 
 GOOGLE = "https://dl.google.com/android/maven2"
@@ -77,10 +91,38 @@ def parse_metadata(text: str) -> list[PackageVersion]:
     return [PackageVersion(version=version) for version in dict.fromkeys(found)]
 
 
+def relocation(text: str) -> str | None:
+    """Le remplaçant que donne la ``<relocation>`` d'un ``pom`` (``com.mysql:mysql-connector-j``,
+    et sa version si elle est écrite), et son message ; ``None`` sans relocation, ou pour un
+    ``pom`` illisible. Un ``groupId`` ou un ``artifactId`` absent est celui de l'artefact."""
+    try:
+        root = parse(text)
+    except ParseError:
+        return None
+    element = next(iter(root.path("distributionManagement", "relocation")), None)
+    if element is None:
+        return None
+    parent = root.find("parent")
+    group = element.child_text("groupId") or root.child_text("groupId")
+    if not group and parent is not None:
+        group = parent.child_text("groupId")
+    artifact = element.child_text("artifactId") or root.child_text("artifactId") or ""
+    target = f"{group or ''}:{artifact}"
+    version = element.child_text("version")
+    if version:
+        target += f":{version}"
+    message = " ".join((element.child_text("message") or "").split())
+    return f"{target} : {message}" if message else target
+
+
 class Maven(Registry):
     ecosystem = Ecosystem.MAVEN
     label = "Maven Central"
     base_url = "https://repo1.maven.org/maven2"
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._poms: dict[str, asyncio.Future[str | None]] = {}
 
     def normalize(self, name: str) -> str:
         return name.strip()
@@ -119,3 +161,48 @@ class Maven(Registry):
             url=self.page_url(name),
             fetched_at=fetched_at,
         )
+
+    async def _complete(self, name: str, info: PackageInfo) -> PackageInfo:
+        """La ``<relocation>`` du ``pom`` de la dernière version : la dépréciation de l'artefact
+        (voir la docstring du module). Rien pour un plugin Gradle (son marqueur n'en a pas), ni si
+        le ``pom`` ne se lit pas."""
+        if info.latest is None or plugin_id(name):
+            return info
+        try:
+            text = await self.pom(name, info.latest)
+        except RegistryError:
+            return info
+        moved = relocation(text) if text is not None else None
+        if moved is None:
+            return info
+        return dataclasses.replace(info, deprecated=f"déplacé vers {moved}")
+
+    def pom_url(self, name: str, version: str) -> str:
+        group, artifact = coordinates(name)
+        base = repository(name) if self.base_url == Maven.base_url else self.base_url
+        return f"{base}/{group.replace('.', '/')}/{artifact}/{version}/{artifact}-{version}.pom"
+
+    async def pom(self, name: str, version: str) -> str | None:
+        """Le ``pom`` de ``version`` de ``name`` ; ``None`` si le dépôt ne l'a pas. Une seule
+        requête par fichier dans la session, gardé 7 jours en cache (un ``pom`` publié ne change
+        pas). Lève ``RegistryError`` (``AccessRefused`` pour un dépôt déclaré qui refuse)."""
+        url = self.pom_url(name, version)
+        lookup = self._poms.get(url)
+        if lookup is None:
+            lookup = self._poms[url] = asyncio.ensure_future(self._fetch_pom(url, name, version))
+        return await asyncio.shield(lookup)
+
+    async def _fetch_pom(self, url: str, name: str, version: str) -> str | None:
+        entry = self._cache.get(CacheKind.FILES, url, stale_ok=self._http.offline)
+        if entry is not None and isinstance(entry.value, dict) and "text" in entry.value:
+            text = entry.value["text"]
+            return text if isinstance(text, str) else None
+        if self._http.offline:
+            raise RegistryError(
+                f"{self.label} : mode hors ligne, et le pom de {name} {version} n'est pas dans "
+                "le cache."
+            )
+        response = await self._get(url, name, found=True)
+        text = None if response is None else response.content.decode("utf-8", errors="replace")
+        self._cache.set(CacheKind.FILES, url, {"text": text})
+        return text

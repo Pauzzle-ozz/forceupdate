@@ -146,8 +146,9 @@ CSPROJ = """<Project Sdk="Microsoft.NET.Sdk">
 class TestMsBuildProject:
     def test_references_versions_and_their_location(self) -> None:
         found = project({"App.csproj": CSPROJ})["."]
+        # L'Update=, après l'Include, change sa version (E34, comme MSBuild).
         assert rows(found) == [
-            ("Newtonsoft.Json", "12.0.1", "12.0.1", Scope.RUNTIME, "App.csproj"),
+            ("Newtonsoft.Json", "13.0.1", "13.0.1", Scope.RUNTIME, "App.csproj"),
             ("Serilog", "2.10.0", "2.10.0", Scope.RUNTIME, "App.csproj"),
             ("Polly", "7.2.3", "7.2.3", Scope.RUNTIME, "App.csproj"),
             ("StyleCop.Analyzers", "1.1.118", "1.1.118", Scope.BUILD, "App.csproj"),
@@ -159,7 +160,7 @@ class TestMsBuildProject:
         ]
         located = [d for d in found.dependencies if d.location is not None]
         assert [at(CSPROJ, d) for d in located] == [
-            "12.0.1",
+            "13.0.1",
             "2.10.0",
             "7.2.3",
             "1.1.118",
@@ -171,11 +172,7 @@ class TestMsBuildProject:
         assert reasons["Missing"] == "propriété $(Nowhere) introuvable"
         assert reasons["Computed"] == REASON_EXPRESSION
         assert reasons["NoVersion"] == REASON_NO_VERSION
-        assert found.notices == [
-            Notice(
-                file="App.csproj", message="PackageReference Update=… pas lues (Newtonsoft.Json)."
-            )
-        ]
+        assert found.notices == []
 
     def test_read_alone(self) -> None:
         file = read_msbuild("App.csproj", CSPROJ)
@@ -266,6 +263,94 @@ class TestMsBuildProject:
             ("A", Location(line=1, column=62, end_column=67)),
             ("B", Location(line=1, column=62, end_column=67)),
         ]
+
+
+# ---------------------------------------------------------------------------
+# Directory.Build.targets (E34)
+# ---------------------------------------------------------------------------
+
+TARGETS_APP = """<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <SerilogVersion>2.10.0</SerilogVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="12.0.1" />
+    <PackageReference Include="Serilog" Version="$(SerilogVersion)" />
+    <PackageReference Include="Polly" Version="7.2.3" />
+  </ItemGroup>
+</Project>
+"""
+
+BUILD_TARGETS = """<Project>
+  <PropertyGroup>
+    <SerilogVersion>3.1.1</SerilogVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Update="Newtonsoft.Json" Version="13.0.1" />
+    <PackageReference Include="Humanizer.Core" Version="2.14.1" />
+  </ItemGroup>
+</Project>
+"""
+
+TARGETS_PROPS = """<Project>
+  <ItemGroup>
+    <PackageReference Update="Polly" Version="8.0.0" />
+  </ItemGroup>
+</Project>
+"""
+
+
+class TestDirectoryBuildTargets:
+    """Vérifié avec le SDK .NET 10.0.403 (``dotnet restore``, ``project.assets.json``) :
+    Newtonsoft.Json 13.0.1, Serilog 3.1.1, Humanizer.Core ajouté, Polly reste en 7.2.3."""
+
+    def test_like_msbuild(self) -> None:
+        files = {
+            "src/App/App.csproj": TARGETS_APP,
+            "Directory.Build.targets": BUILD_TARGETS,
+            "Directory.Build.props": TARGETS_PROPS,
+        }
+        found = project(files)["src/App"]
+        assert rows(found) == [
+            ("Newtonsoft.Json", "13.0.1", "13.0.1", Scope.RUNTIME, "Directory.Build.targets"),
+            ("Serilog", "3.1.1", "3.1.1", Scope.RUNTIME, "Directory.Build.targets"),
+            ("Polly", "7.2.3", "7.2.3", Scope.RUNTIME, "src/App/App.csproj"),
+            ("Humanizer.Core", "2.14.1", "2.14.1", Scope.RUNTIME, "Directory.Build.targets"),
+        ]
+        newtonsoft = found.dependencies[0]
+        assert at(BUILD_TARGETS, newtonsoft) == "13.0.1"
+        assert found.notices == [
+            Notice(
+                file="Directory.Build.props",
+                message=(
+                    'PackageReference Update="Polly" sans effet : aucune référence de ce nom '
+                    "n'est lue avant lui (MSBuild lit Directory.Build.props avant le projet, "
+                    "Directory.Build.targets après)."
+                ),
+            )
+        ]
+
+    def test_an_update_of_private_assets(self) -> None:
+        targets = (
+            '<Project><ItemGroup><PackageReference Update="Polly" PrivateAssets="all" />'
+            "</ItemGroup></Project>"
+        )
+        found = project({"src/App/App.csproj": TARGETS_APP, "Directory.Build.targets": targets})
+        polly = next(d for d in found["src/App"].dependencies if d.name == "Polly")
+        assert (polly.constraint, polly.scope, polly.file) == (
+            "7.2.3",
+            Scope.BUILD,
+            "src/App/App.csproj",
+        )
+
+    def test_the_writers_read_it_again(self) -> None:
+        from forceupdate.update.writers import _reader
+
+        reader = _reader("Directory.Build.targets")
+        assert reader is not None
+        declarations = reader("Directory.Build.targets", BUILD_TARGETS)
+        assert any(d.constraint == "13.0.1" and d.location is not None for d in declarations)
 
 
 # ---------------------------------------------------------------------------

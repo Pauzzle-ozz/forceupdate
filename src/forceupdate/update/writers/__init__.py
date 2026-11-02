@@ -576,7 +576,7 @@ def _reader(path: str, pattern: str | None = None) -> Reader | None:
         return npm.read_pnpm_workspace
     if posixpath.basename(path) == PROPERTIES:
         return java.read_gradle_properties
-    if posixpath.basename(path) == nuget.BUILD_PROPS:
+    if posixpath.basename(path) in (nuget.BUILD_PROPS, nuget.BUILD_TARGETS):
         return nuget.read_msbuild_file
     if posixpath.basename(path) == nuget.GLOBAL_JSON:
         return nuget.read_global_json

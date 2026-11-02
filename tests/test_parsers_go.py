@@ -350,6 +350,39 @@ class TestProject:
         # tools n'est pas dans « use » : hors du workspace, son require cherche le module.
         assert summary(parse(files, "tools")) == [("example.com/ws/lib", "v0.0.0", True, None)]
 
+    def test_the_workspace_builds_the_highest_version_of_its_members(self) -> None:
+        """E34 : ``go`` construit chaque module à la plus haute version que demandent les membres
+        (vérifié avec Go 1.27 : x/text v0.3.0 chez a, v0.14.0 chez b, v0.14.0 pour les deux)."""
+        files = {
+            "go.work": "go 1.22\n\nuse (\n\t./a\n\t./b\n)\n",
+            "a/go.mod": (
+                "module example.com/a\n\ngo 1.22\n\nrequire (\n\tgolang.org/x/text v0.3.0\n"
+                "\tgithub.com/google/uuid v1.6.0\n)\n"
+            ),
+            "b/go.mod": (
+                "module example.com/b\n\ngo 1.22\n\nrequire (\n\tgolang.org/x/text v0.14.0\n"
+                "\tgithub.com/google/uuid v1.3.0 // indirect\n)\n"
+            ),
+        }
+        a = parse(files, "a")
+        text, uuid = a.dependencies
+        assert (text.constraint, text.installed) == ("v0.3.0", "v0.14.0")
+        assert (uuid.constraint, uuid.installed) == ("v1.6.0", "v1.6.0")
+        (notice,) = a.notices
+        assert notice.message == (
+            "Dans le workspace go.work, go construit 1 module dans une version plus haute que "
+            "celle de go.mod, demandée par un autre membre : golang.org/x/text v0.14.0. C'est "
+            "elle qui est vérifiée."
+        )
+        b = parse(files, "b")
+        assert [d.installed for d in b.dependencies] == ["v0.14.0", "v1.6.0"]
+        assert b.notices[0].message.endswith(
+            ": github.com/google/uuid v1.6.0. C'est elle qui est vérifiée."
+        )
+        # Hors du workspace (GOWORK=off), le go.mod seul.
+        alone = {k: v for k, v in files.items() if k != "go.work"}
+        assert [d.installed for d in parse(alone, "a").dependencies] == ["v0.3.0", "v1.6.0"]
+
     def test_the_nearest_go_work_decides(self) -> None:
         files = {
             "go.work": "go 1.21\nuse ./a/b\n",

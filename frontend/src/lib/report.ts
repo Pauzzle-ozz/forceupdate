@@ -280,6 +280,7 @@ export const RUNTIME_LABEL: Record<string, string> = {
   'azul-zulu': 'Java (Azul Zulu)',
   dotnet: '.NET',
   dotnetfx: '.NET Framework',
+  rust: 'Rust',
 }
 
 /** Une version de runtime lue, avec tous les fichiers qui la donnent. */

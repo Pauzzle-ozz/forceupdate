@@ -5,6 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 import respx
 
@@ -17,6 +18,7 @@ from forceupdate.registries.maven import (
     Maven,
     coordinates,
     parse_metadata,
+    relocation,
     repository,
 )
 
@@ -41,6 +43,26 @@ METADATA = b"""<?xml version="1.0" encoding="UTF-8"?>
   </versioning>
 </metadata>
 """
+
+
+@pytest.fixture(autouse=True)
+def _no_poms(request: pytest.FixtureRequest) -> None:
+    """Le ``pom`` de la dernière version (sa ``<relocation>``, E34) : introuvable, sauf dans les
+    tests qui le servent (``serve_poms``). Pas pour un test ``network`` (le vrai dépôt)."""
+    if request.node.get_closest_marker("network") is not None:
+        return
+    respx_mock: respx.MockRouter = request.getfixturevalue("respx_mock")
+    respx_mock.get(url__regex=r"\.pom$", name="poms").respond(404)
+
+
+def serve_poms(respx_mock: respx.MockRouter, poms: dict[str, str]) -> None:
+    """Sert ces ``pom`` (adresse → contenu) ; 404 pour les autres."""
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        text = poms.get(str(request.url))
+        return httpx.Response(404) if text is None else httpx.Response(200, text=text)
+
+    respx_mock.routes["poms"].side_effect = respond
 
 
 def serve(respx_mock: respx.MockRouter, url: str, content: bytes) -> respx.Route:
@@ -231,3 +253,57 @@ def test_the_real_repositories(lookup: Lookup) -> None:
     assert isinstance(plugin, PackageInfo), plugin
     assert plugin.get("2.6.6") is not None
     assert isinstance(missing, PackageNotFound)
+
+
+RELOCATED = """<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>mysql</groupId>
+  <artifactId>mysql-connector-java</artifactId>
+  <version>8.0.33</version>
+  <distributionManagement>
+    <relocation>
+      <groupId>com.mysql</groupId>
+      <artifactId>mysql-connector-j</artifactId>
+      <message>MySQL Connector/J artifacts moved to reverse-DNS compliant Maven 2+
+        coordinates.</message>
+    </relocation>
+  </distributionManagement>
+</project>
+"""
+
+
+def test_relocation() -> None:
+    assert relocation(RELOCATED) == (
+        "com.mysql:mysql-connector-j : MySQL Connector/J artifacts moved to reverse-DNS "
+        "compliant Maven 2+ coordinates."
+    )
+    same_group = "<project><groupId>g</groupId><artifactId>a</artifactId><distributionManagement>"
+    same_group += "<relocation><artifactId>b</artifactId><version>2.0</version></relocation>"
+    same_group += "</distributionManagement></project>"
+    assert relocation(same_group) == "g:b:2.0"
+    assert relocation("<project><groupId>g</groupId></project>") is None
+    assert relocation("pas du xml") is None
+
+
+def test_a_relocated_artifact_is_deprecated(respx_mock: respx.MockRouter, lookup: Lookup) -> None:
+    """mysql:mysql-connector-java (vérifié le 2026-11-02 : le pom de 8.0.33 a une relocation)."""
+    serve(respx_mock, f"{CENTRAL}/org/demo/demo/maven-metadata.xml", METADATA)
+    serve_poms(respx_mock, {f"{CENTRAL}/org/demo/demo/1.10/demo-1.10.pom": RELOCATED})
+    info = info_of(lookup, "org.demo:demo")
+    assert info.latest == "1.10"
+    assert info.deprecated == (
+        "déplacé vers com.mysql:mysql-connector-j : MySQL Connector/J artifacts moved to "
+        "reverse-DNS compliant Maven 2+ coordinates."
+    )
+
+
+def test_the_pom_is_asked_once_and_kept(
+    respx_mock: respx.MockRouter, lookup: Lookup, cache: Cache
+) -> None:
+    serve(respx_mock, f"{CENTRAL}/org/demo/demo/maven-metadata.xml", METADATA)
+    serve_poms(respx_mock, {f"{CENTRAL}/org/demo/demo/1.10/demo-1.10.pom": RELOCATED})
+    info_of(lookup, "org.demo:demo")
+    assert respx_mock.routes["poms"].call_count == 1
+    # Hors ligne, depuis le cache.
+    [info] = lookup(Maven, "org.demo:demo", offline=True)
+    assert info.deprecated is not None

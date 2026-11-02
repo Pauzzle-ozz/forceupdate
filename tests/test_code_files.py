@@ -288,3 +288,18 @@ def test_scan_json_and_markdown(recorded: Routes, scripts: Path, tmp_path: Path)
     text = markdown.render(analyze(scripts / "pep723.py"))
     assert "tient lieu de manifeste" in text
     assert "- 1 version non fixée" in text
+
+
+def test_a_local_namespace_package_is_not_a_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recorded: object
+) -> None:
+    """E34 : un dossier voisin sans ``__init__.py`` (PEP 420) est un module du projet."""
+    monkeypatch.setattr(local, "_home", lambda: tmp_path.resolve())
+    folder = tmp_path / "outil"
+    (folder / "monlib").mkdir(parents=True)
+    (folder / "monlib" / "aides.py").write_text("X = 1\n", encoding="utf-8")
+    script = folder / "app.py"
+    script.write_text("import monlib.aides\nimport requests\n", encoding="utf-8")
+    report = analyze(script)
+    (project,) = report.projects
+    assert [d.name for d in project.dependencies] == ["requests"]

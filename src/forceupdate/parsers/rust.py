@@ -28,7 +28,8 @@ des préfixes de chemin, comme pour Cargo.
 
 Une dépendance ``git`` ou ``path`` (même avec une ``version``, Cargo prend le chemin), ou d'un
 autre registre (``registry = "…"``) est « non vérifiable », avec la raison. Le lockfile le dit
-aussi : la source d'un paquet remplacé par ``[patch]`` est un dépôt git ou un chemin.
+aussi : la source d'un paquet remplacé par ``[patch]`` est un dépôt git ou un chemin. Celle d'un
+autre registre, l'aiguillage (``routing.cargo``, E34) sait la demander à ce registre.
 
 Lockfile lu : ``Cargo.lock``, formats 1 à 4. Chaque ``[[package]]`` dit ce qu'il requiert
 (``dependencies``, ``"nom"`` ou ``"nom version"`` quand plusieurs versions sont figées) : on
@@ -86,6 +87,7 @@ CRATES_IO_SOURCES = frozenset(
 l'index « sparse »."""
 
 REASON_OTHER_REGISTRY = "vient d'un autre registre que crates.io"
+_NAMED_REGISTRY = re.compile(r"^vient du registre « (?P<name>[^»]+) », pas de crates\.io$")
 
 SCOPES = (*SCOPE_ORDER, Scope.BUILD)
 """Le scope d'une transitive : le premier, dans cet ordre, des directes qui la tirent. Les
@@ -188,10 +190,22 @@ def _reason(table: Mapping[str, Any]) -> str | None:
         return REASON_LOCAL
     registry = table.get("registry")
     if isinstance(registry, str) and registry != "crates-io":
-        return f"vient du registre « {registry} », pas de crates.io"
+        return _registry_reason(registry)
     if "registry-index" in table:
         return REASON_OTHER_REGISTRY
     return None
+
+
+def _registry_reason(registry: str) -> str:
+    return f"vient du registre « {registry} », pas de crates.io"
+
+
+def registry_of(reason: str | None) -> str | None:
+    """Le nom du registre d'une dépendance ``registry = "…"``, d'après sa raison « non
+    vérifiable » ; ``None`` sinon. L'aiguillage (``routing.cargo``, E34) la demande alors à ce
+    registre."""
+    match = _NAMED_REGISTRY.match(reason or "")
+    return match.group("name") if match else None
 
 
 @dataclass(frozen=True)

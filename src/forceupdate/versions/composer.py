@@ -34,7 +34,8 @@ Les contraintes (``VersionParser::parseConstraints``) :
 Une contrainte accepte les pré-versions qu'encadrent ses bornes (``^1.2`` accepte ``1.5.0-beta1``)
 : c'est la stabilité qui les écarte, dans Composer comme ici (``candidates``, ``max_satisfying``).
 La stabilité minimale du projet (``minimum-stability``) n'est pas connue d'une contrainte : celle
-par défaut, ``stable``, est prise (voir ``parsers.php``).
+par défaut, ``stable``, est prise ; ``resolved`` choisit la version permise avec elle et
+``prefer-stable`` (E34, voir ``parsers.php``).
 
 ``str()`` d'une contrainte donne sa forme normalisée (``^1.2`` → ``>=1.2.0.0-dev <2.0.0.0-dev``).
 """
@@ -604,6 +605,62 @@ class ComposerVersions(VersionScheme[ComposerVersion]):
             if best is None or best[1] < version:
                 best = (text, version)
         return None if best is None else best[0]
+
+    def resolved(
+        self,
+        constraint: str,
+        versions: Iterable[str],
+        current: str | None = None,
+        *,
+        minimum_stability: str = "stable",
+        prefer_stable: bool = False,
+    ) -> str | None:
+        """La version que prend ``composer update`` pour une dépendance du ``composer.json``,
+        selon le ``minimum-stability`` et le ``prefer-stable`` du projet (E34, vérifié avec
+        Composer 2.11 sur twig/twig) : les versions de la stabilité permise au paquet
+        (``package_stability``) ; la plus haute, ou avec ``prefer-stable`` la plus stable, puis la
+        plus haute (``>=3.0`` en ``alpha`` : v4.0.0-alpha1 ; avec ``prefer-stable`` : v3.30.0 ;
+        ``^4.0`` en ``alpha`` avec ``prefer-stable`` : v4.0.0-alpha1). En ``stable``, ``chosen``."""
+        stability = package_stability(constraint, minimum_stability)
+        if stability == "stable":
+            return self.chosen(constraint, versions, current)
+        parsed = self.parse_constraint(constraint)
+        allowed = STABILITIES[stability]
+        best: tuple[tuple[int, ComposerVersion], str] | None = None
+        for text in versions:
+            try:
+                version = self.parse(text)
+            except InvalidVersion:
+                continue
+            rank = STABILITIES[version.stability]
+            if rank > allowed or not parsed.contains(version):
+                continue
+            key = (-rank if prefer_stable else 0, version)
+            if best is None or best[0] < key:
+                best = (key, text)
+        return None if best is None else best[1]
+
+
+def package_stability(constraint: str, minimum_stability: str = "stable") -> str:
+    """La stabilité permise à un paquet du ``composer.json`` (``RootPackageLoader::
+    extractStabilityFlags``) : un drapeau écrit l'emporte sur ``minimum-stability``, même
+    ``@stable`` (vérifié) ; une pré-version écrite (``^2.0-beta1``) seulement si elle est moins
+    stable que lui."""
+    parts = [part for member in _OR.split(constraint.strip()) for part in _AND.split(member)]
+    flags = [
+        _normalize_flag(match.group(1))
+        for part in parts
+        if (match := re.fullmatch(rf"[^@]*?@({_STABILITY_FLAG})", part, re.IGNORECASE))
+    ]
+    if flags:
+        return max(flags, key=lambda name: STABILITIES[name])
+    minimum = _normalize_flag(minimum_stability)
+    if minimum not in STABILITIES:
+        minimum = "stable"
+    inferred = _stability(constraint)
+    if inferred is not None and STABILITIES[inferred] > STABILITIES[minimum]:
+        return inferred
+    return minimum
 
 
 COMPOSER = ComposerVersions()

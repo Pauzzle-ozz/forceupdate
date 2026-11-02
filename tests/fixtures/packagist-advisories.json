@@ -1,0 +1,1110 @@
+{
+  "doctrine/cache": [
+    {
+      "advisoryId": "PKSA-5g3y-77s3-wsh1",
+      "affectedVersions": ">=1.0.0,<1.3.2|>=1.4.0,<1.4.2",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2015-5723",
+      "link": "https://www.doctrine-project.org/2015/08/31/security_misconfiguration_vulnerability_in_various_doctrine_projects.html",
+      "packageName": "doctrine/cache",
+      "remoteId": "doctrine/cache/CVE-2015-5723.yaml",
+      "reportedAt": "2015-08-31 12:37:47",
+      "severity": "high",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "doctrine/cache/CVE-2015-5723.yaml"
+        },
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-pw5c-xqf2-6xc2"
+        }
+      ],
+      "title": "Security Misconfiguration Vulnerability in various Doctrine projects"
+    }
+  ],
+  "guzzlehttp/guzzle": [
+    {
+      "advisoryId": "PKSA-gcrk-3vtt-1r14",
+      "affectedVersions": ">=8.0.0,<8.0.1|<7.15.2",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-69246",
+      "link": "https://github.com/advisories/GHSA-v5mv-p594-2x33",
+      "packageName": "guzzlehttp/guzzle",
+      "remoteId": "GHSA-v5mv-p594-2x33",
+      "reportedAt": "2026-08-03 21:07:26",
+      "severity": "high",
+      "source": "GitHub",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-v5mv-p594-2x33"
+        }
+      ],
+      "title": "Guzzle: Noncanonical host can bypass host-based checks"
+    },
+    {
+      "advisoryId": "PKSA-cnw1-2ytm-cgr8",
+      "affectedVersions": ">=8.0.0,<8.0.1|<7.15.2",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-69245",
+      "link": "https://github.com/advisories/GHSA-f7vp-7xgx-4w4r",
+      "packageName": "guzzlehttp/guzzle",
+      "remoteId": "GHSA-f7vp-7xgx-4w4r",
+      "reportedAt": "2026-08-03 21:05:26",
+      "severity": "medium",
+      "source": "GitHub",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-f7vp-7xgx-4w4r"
+        }
+      ],
+      "title": "Guzzle: Noncanonical cookie domain keeps subdomain scope"
+    },
+    {
+      "advisoryId": "PKSA-fy2t-3c5f-827y",
+      "affectedVersions": "<7.15.1",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-67354",
+      "link": "https://github.com/advisories/GHSA-h95v-h523-3mw8",
+      "packageName": "guzzlehttp/guzzle",
+      "remoteId": "GHSA-h95v-h523-3mw8",
+      "reportedAt": "2026-07-20 23:28:36",
+      "severity": "medium",
+      "source": "GitHub",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-h95v-h523-3mw8"
+        }
+      ],
+      "title": "Guzzle: URI fragments disclosed in redirect Referer headers"
+    },
+    {
+      "advisoryId": "PKSA-qxvb-2bpp-dnk6",
+      "affectedVersions": "<7.15.1",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-67355",
+      "link": "https://github.com/advisories/GHSA-wm3w-8rrp-j577",
+      "packageName": "guzzlehttp/guzzle",
+      "remoteId": "GHSA-wm3w-8rrp-j577",
+      "reportedAt": "2026-07-20 23:27:49",
+      "severity": "medium",
+      "source": "GitHub",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-wm3w-8rrp-j577"
+        }
+      ],
+      "title": "Guzzle: Host-only cookie scope is not preserved"
+    },
+    {
+      "advisoryId": "PKSA-bbs6-q5q9-f3t4",
+      "affectedVersions": "<7.15.1",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-67353",
+      "link": "https://github.com/advisories/GHSA-f283-ghqc-fg79",
+      "packageName": "guzzlehttp/guzzle",
+      "remoteId": "GHSA-f283-ghqc-fg79",
+      "reportedAt": "2026-07-20 23:27:02",
+      "severity": "medium",
+      "source": "GitHub",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-f283-ghqc-fg79"
+        }
+      ],
+      "title": "Guzzle: Unbounded response cookies risk denial of service"
+    },
+    {
+      "advisoryId": "PKSA-bcdd-5xc7-gwfb",
+      "affectedVersions": "<7.12.3",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-59883",
+      "link": "https://github.com/advisories/GHSA-g446-98w2-8p5w",
+      "packageName": "guzzlehttp/guzzle",
+      "remoteId": "GHSA-g446-98w2-8p5w",
+      "reportedAt": "2026-07-20 22:00:09",
+      "severity": "medium",
+      "source": "GitHub",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-g446-98w2-8p5w"
+        }
+      ],
+      "title": "Guzzle: Cookie Disclosure and Injection via IP-Address Domains"
+    },
+    {
+      "advisoryId": "PKSA-pwsk-hy21-4gby",
+      "affectedVersions": "<7.14.2",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-67339",
+      "link": "https://github.com/advisories/GHSA-94pj-82f3-465w",
+      "packageName": "guzzlehttp/guzzle",
+      "remoteId": "GHSA-94pj-82f3-465w",
+      "reportedAt": "2026-07-20 21:46:02",
+      "severity": "medium",
+      "source": "GitHub",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-94pj-82f3-465w"
+        }
+      ],
+      "title": "Guzzle: Proxy-Authorization headers can be sent to origin servers"
+    },
+    {
+      "advisoryId": "PKSA-93qv-9n9h-6k6p",
+      "affectedVersions": "<7.12.1",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-55767",
+      "link": "https://github.com/guzzle/guzzle/security/advisories/GHSA-cwxw-98qj-8qjx",
+      "packageName": "guzzlehttp/guzzle",
+      "remoteId": "guzzlehttp/guzzle/CVE-2026-55767.yaml",
+      "reportedAt": "2026-06-18 14:12:49",
+      "severity": "medium",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-cwxw-98qj-8qjx"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "guzzlehttp/guzzle/CVE-2026-55767.yaml"
+        }
+      ],
+      "title": "Dot-only cookie domains match all hosts"
+    },
+    {
+      "advisoryId": "PKSA-k22t-f949-t9g6",
+      "affectedVersions": "<7.12.1",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-55568",
+      "link": "https://github.com/guzzle/guzzle/security/advisories/GHSA-wpwq-4j6v-78m3",
+      "packageName": "guzzlehttp/guzzle",
+      "remoteId": "guzzlehttp/guzzle/CVE-2026-55568.yaml",
+      "reportedAt": "2026-06-18 14:12:49",
+      "severity": "medium",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-wpwq-4j6v-78m3"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "guzzlehttp/guzzle/CVE-2026-55568.yaml"
+        }
+      ],
+      "title": "Silent HTTPS proxy downgrade to cleartext"
+    },
+    {
+      "advisoryId": "PKSA-yfw5-9gnj-n2c7",
+      "affectedVersions": ">=7,<7.4.5|>=4,<6.5.8",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2022-31091",
+      "link": "https://github.com/guzzle/guzzle/security/advisories/GHSA-q559-8m2m-g699",
+      "packageName": "guzzlehttp/guzzle",
+      "remoteId": "guzzlehttp/guzzle/CVE-2022-31091.yaml",
+      "reportedAt": "2022-06-20 22:16:07",
+      "severity": "high",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-q559-8m2m-g699"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "guzzlehttp/guzzle/CVE-2022-31091.yaml"
+        }
+      ],
+      "title": "Change in port should be considered a change in origin"
+    },
+    {
+      "advisoryId": "PKSA-k1b4-kshy-xgbh",
+      "affectedVersions": ">=7,<7.4.5|>=4,<6.5.8",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2022-31090",
+      "link": "https://github.com/guzzle/guzzle/security/advisories/GHSA-25mq-v84q-4j7r",
+      "packageName": "guzzlehttp/guzzle",
+      "remoteId": "guzzlehttp/guzzle/CVE-2022-31090.yaml",
+      "reportedAt": "2022-06-20 22:16:07",
+      "severity": "high",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-25mq-v84q-4j7r"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "guzzlehttp/guzzle/CVE-2022-31090.yaml"
+        }
+      ],
+      "title": "CURLOPT_HTTPAUTH option not cleared on change of origin"
+    },
+    {
+      "advisoryId": "PKSA-2z36-j4q9-rsfy",
+      "affectedVersions": ">=7,<7.4.4|>=4,<6.5.7",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2022-31043",
+      "link": "https://github.com/guzzle/guzzle/security/advisories/GHSA-w248-ffj2-4v5q",
+      "packageName": "guzzlehttp/guzzle",
+      "remoteId": "guzzlehttp/guzzle/CVE-2022-31043.yaml",
+      "reportedAt": "2022-06-09 21:36:50",
+      "severity": "high",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-w248-ffj2-4v5q"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "guzzlehttp/guzzle/CVE-2022-31043.yaml"
+        }
+      ],
+      "title": "Fix failure to strip Authorization header on HTTP downgrade"
+    },
+    {
+      "advisoryId": "PKSA-fvw5-9t6n-nwvr",
+      "affectedVersions": ">=7,<7.4.4|>=4,<6.5.7",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2022-31042",
+      "link": "https://github.com/guzzle/guzzle/security/advisories/GHSA-f2wf-25xc-69c9",
+      "packageName": "guzzlehttp/guzzle",
+      "remoteId": "guzzlehttp/guzzle/CVE-2022-31042.yaml",
+      "reportedAt": "2022-06-09 21:36:50",
+      "severity": "high",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-f2wf-25xc-69c9"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "guzzlehttp/guzzle/CVE-2022-31042.yaml"
+        }
+      ],
+      "title": "Failure to strip the Cookie header on change in host or HTTP downgrade"
+    },
+    {
+      "advisoryId": "PKSA-6d8m-6kgw-18zr",
+      "affectedVersions": ">=7,<7.4.3|>=4,<6.5.6",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2022-29248",
+      "link": "https://github.com/guzzle/guzzle/security/advisories/GHSA-cwmx-hcrq-mhc3",
+      "packageName": "guzzlehttp/guzzle",
+      "remoteId": "guzzlehttp/guzzle/CVE-2022-29248.yaml",
+      "reportedAt": "2022-05-25 13:19:12",
+      "severity": "high",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-cwmx-hcrq-mhc3"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "guzzlehttp/guzzle/CVE-2022-29248.yaml"
+        }
+      ],
+      "title": "Cross-domain cookie leakage"
+    },
+    {
+      "advisoryId": "PKSA-stmn-hvzq-wph6",
+      "affectedVersions": ">=6,<6.2.1|>=4.0.0-rc2,<4.2.4|>=5,<5.3.1",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2016-5385",
+      "link": "https://github.com/guzzle/guzzle/releases/tag/6.2.1",
+      "packageName": "guzzlehttp/guzzle",
+      "remoteId": "guzzlehttp/guzzle/CVE-2016-5385.yaml",
+      "reportedAt": "2016-07-15 17:44:18",
+      "severity": "high",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-m6ch-gg5f-wxx3"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "guzzlehttp/guzzle/CVE-2016-5385.yaml"
+        }
+      ],
+      "title": "HTTP Proxy header vulnerability"
+    }
+  ],
+  "guzzlehttp/promises": [],
+  "guzzlehttp/psr7": [
+    {
+      "advisoryId": "PKSA-vznr-tgp9-fd7d",
+      "affectedVersions": "<2.12.3",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-59882",
+      "link": "https://github.com/advisories/GHSA-c2w2-prh8-qm98",
+      "packageName": "guzzlehttp/psr7",
+      "remoteId": "GHSA-c2w2-prh8-qm98",
+      "reportedAt": "2026-07-21 18:35:25",
+      "severity": "medium",
+      "source": "GitHub",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-c2w2-prh8-qm98"
+        }
+      ],
+      "title": "guzzlehttp/psr7: Host Confusion via Weak URI Host Validation"
+    },
+    {
+      "advisoryId": "PKSA-7qs6-zvnz-h66r",
+      "affectedVersions": "<2.12.1",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-55766",
+      "link": "https://github.com/guzzle/psr7/security/advisories/GHSA-vm85-hxw5-5432",
+      "packageName": "guzzlehttp/psr7",
+      "remoteId": "guzzlehttp/psr7/CVE-2026-55766.yaml",
+      "reportedAt": "2026-06-18 09:49:37",
+      "severity": "medium",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-vm85-hxw5-5432"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "guzzlehttp/psr7/CVE-2026-55766.yaml"
+        }
+      ],
+      "title": "CRLF injection in HTTP start-line serialization"
+    },
+    {
+      "advisoryId": "PKSA-gm5x-j3mz-71n9",
+      "affectedVersions": "<2.10.2",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-49214",
+      "link": "https://github.com/guzzle/psr7/security/advisories/GHSA-hq7v-mx3g-29hw",
+      "packageName": "guzzlehttp/psr7",
+      "remoteId": "guzzlehttp/psr7/CVE-2026-49214.yaml",
+      "reportedAt": "2026-05-25 22:58:15",
+      "severity": "medium",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-hq7v-mx3g-29hw"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "guzzlehttp/psr7/CVE-2026-49214.yaml"
+        }
+      ],
+      "title": "CRLF injection via URI host component"
+    },
+    {
+      "advisoryId": "PKSA-jj5t-2zs1-dcfm",
+      "affectedVersions": "<2.10.2",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-48998",
+      "link": "https://github.com/guzzle/psr7/security/advisories/GHSA-34xg-wgjx-8xph",
+      "packageName": "guzzlehttp/psr7",
+      "remoteId": "guzzlehttp/psr7/CVE-2026-48998.yaml",
+      "reportedAt": "2026-05-25 22:58:15",
+      "severity": "medium",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-34xg-wgjx-8xph"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "guzzlehttp/psr7/CVE-2026-48998.yaml"
+        }
+      ],
+      "title": "Host confusion via authority reinterpretation"
+    },
+    {
+      "advisoryId": "PKSA-hn62-zkx4-1y5q",
+      "affectedVersions": ">=2,<2.4.5|<1.9.1",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2023-29197",
+      "link": "https://github.com/guzzle/psr7/security/advisories/GHSA-wxmh-65f7-jcvw",
+      "packageName": "guzzlehttp/psr7",
+      "remoteId": "guzzlehttp/psr7/CVE-2023-29197.yaml",
+      "reportedAt": "2023-04-17 16:00:37",
+      "severity": "medium",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-wxmh-65f7-jcvw"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "guzzlehttp/psr7/CVE-2023-29197.yaml"
+        }
+      ],
+      "title": "Improper header validation"
+    },
+    {
+      "advisoryId": "PKSA-gvzg-s447-b5b5",
+      "affectedVersions": ">=2,<2.1.1|<1.8.4",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2022-24775",
+      "link": "https://github.com/guzzle/psr7/security/advisories/GHSA-q7rv-6hp3-vh96",
+      "packageName": "guzzlehttp/psr7",
+      "remoteId": "guzzlehttp/psr7/CVE-2022-24775.yaml",
+      "reportedAt": "2022-03-20 13:44:44",
+      "severity": "medium",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-q7rv-6hp3-vh96"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "guzzlehttp/psr7/CVE-2022-24775.yaml"
+        }
+      ],
+      "title": "Inproper parsing of HTTP headers"
+    }
+  ],
+  "monolog/monolog": [
+    {
+      "advisoryId": "PKSA-dmw8-jd8k-q3c6",
+      "affectedVersions": ">=1.8.0,<1.12.0",
+      "composerRepository": "https://packagist.org",
+      "cve": null,
+      "link": "https://github.com/Seldaek/monolog/pull/448#issuecomment-68208704",
+      "packageName": "monolog/monolog",
+      "remoteId": "monolog/monolog/2014-12-29-1.yaml",
+      "reportedAt": "2014-12-29 00:00:00",
+      "severity": "low",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-f57v-q966-7fh6"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "monolog/monolog/2014-12-29-1.yaml"
+        }
+      ],
+      "title": "Header injection in NativeMailerHandler"
+    }
+  ],
+  "php-http/message-factory": [],
+  "psr/http-client": [],
+  "psr/http-factory": [],
+  "psr/http-message": [],
+  "psr/log": [],
+  "ralouphie/getallheaders": [],
+  "symfony/console": [],
+  "symfony/deprecation-contracts": [],
+  "symfony/polyfill-ctype": [],
+  "symfony/polyfill-intl-grapheme": [],
+  "symfony/polyfill-intl-normalizer": [],
+  "symfony/polyfill-mbstring": [],
+  "symfony/service-contracts": [],
+  "symfony/string": [],
+  "twig/twig": [
+    {
+      "advisoryId": "PKSA-8zx5-v2nz-58pb",
+      "affectedVersions": "<=3.26.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-49981",
+      "link": "https://github.com/advisories/GHSA-529h-vh3j-85hq",
+      "packageName": "twig/twig",
+      "remoteId": "GHSA-529h-vh3j-85hq",
+      "reportedAt": "2026-07-01 18:55:49",
+      "severity": "high",
+      "source": "GitHub",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-529h-vh3j-85hq"
+        }
+      ],
+      "title": "Twig: Sandbox filter, tag and function allow-list bypass when sandbox state changes between renders for a cached `Template`"
+    },
+    {
+      "advisoryId": "PKSA-fbvq-z33h-r2np",
+      "affectedVersions": ">=1.0.0,<2.0.0|>=2.0.0,<3.0.0|>=3.0.0,<3.27.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-48808",
+      "link": "https://symfony.com/blog/cve-2026-48808-sandbox-property-allowlist-bypass-via-the-column-filter-under-sourcepolicyinterface",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2026-48808.yaml",
+      "reportedAt": "2026-05-27 15:00:00",
+      "severity": "medium",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-h8vq-8gpg-mhcg"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2026-48808.yaml"
+        }
+      ],
+      "title": "Sandbox property allowlist bypass via the `column` filter under `SourcePolicyInterface`"
+    },
+    {
+      "advisoryId": "PKSA-g9zw-qxh8-pq8w",
+      "affectedVersions": ">=1.0.0,<2.0.0|>=2.0.0,<3.0.0|>=3.0.0,<3.27.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-48805",
+      "link": "https://symfony.com/blog/cve-2026-48805-sandbox-state-regression-in-deprecated-internal-wrappers-in-src-resources-core-php",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2026-48805.yaml",
+      "reportedAt": "2026-05-27 15:00:00",
+      "severity": "low",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-p42q-9prx-q5wq"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2026-48805.yaml"
+        }
+      ],
+      "title": "Sandbox state regression in deprecated internal wrappers in `src/Resources/core.php`"
+    },
+    {
+      "advisoryId": "PKSA-yd6k-t2gh-1m43",
+      "affectedVersions": ">=1.0.0,<2.0.0|>=2.0.0,<3.0.0|>=3.0.0,<3.27.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-46636",
+      "link": "https://symfony.com/blog/cve-2026-46636-sandbox-filter-tag-and-function-allow-list-bypass-when-sandbox-state-changes-between-renders",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2026-46636.yaml",
+      "reportedAt": "2026-05-27 15:00:00",
+      "severity": null,
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2026-46636.yaml"
+        }
+      ],
+      "title": "Sandbox filter, tag and function allow-list bypass when sandbox state changes between renders"
+    },
+    {
+      "advisoryId": "PKSA-1tmc-rt7x-12w6",
+      "affectedVersions": ">=1.0.0,<2.0.0|>=2.0.0,<3.0.0|>=3.0.0,<3.27.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-48806",
+      "link": "https://symfony.com/blog/cve-2026-48806-sandbox-tostring-policy-bypass-via-dynamic-mapping-keys",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2026-48806.yaml",
+      "reportedAt": "2026-05-27 15:00:00",
+      "severity": "medium",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-5v5v-ww74-355v"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2026-48806.yaml"
+        }
+      ],
+      "title": "Sandbox `__toString()` policy bypass via dynamic mapping keys"
+    },
+    {
+      "advisoryId": "PKSA-xx6c-6d96-db2w",
+      "affectedVersions": ">=1.0.0,<2.0.0|>=2.0.0,<3.0.0|>=3.0.0,<3.27.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-48807",
+      "link": "https://symfony.com/blog/cve-2026-48807-sandbox-tostring-policy-bypass-via-traversable-in-join-replace-and-in-not-in-operators",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2026-48807.yaml",
+      "reportedAt": "2026-05-27 15:00:00",
+      "severity": "medium",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-8x9c-rmqh-456c"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2026-48807.yaml"
+        }
+      ],
+      "title": "Sandbox `__toString()` policy bypass via `Traversable` in `join`/`replace` and `in`/`not in` operators"
+    },
+    {
+      "advisoryId": "PKSA-5k7f-wvjj-jrgw",
+      "affectedVersions": ">=3.15.0,<3.26.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-46640",
+      "link": "https://symfony.com/cve-2026-46640",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2026-46640.yaml",
+      "reportedAt": "2026-05-20 08:00:00",
+      "severity": "high",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-45vw-wh46-2vx8"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2026-46640.yaml"
+        }
+      ],
+      "title": "Arbitrary PHP code execution via `_self.(<string>)` macro-reference compilation"
+    },
+    {
+      "advisoryId": "PKSA-sjvz-tbbr-vwth",
+      "affectedVersions": ">=1.0.0,<2.0.0|>=2.0.0,<3.0.0|>=3.0.0,<3.26.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-46628",
+      "link": "https://symfony.com/cve-2026-46628",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2026-46628.yaml",
+      "reportedAt": "2026-05-20 08:00:00",
+      "severity": "low",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-4j38-f5cw-54h7"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2026-46628.yaml"
+        }
+      ],
+      "title": "The `spaceless` filter implicitly marks its output as safe"
+    },
+    {
+      "advisoryId": "PKSA-h8hf-ytnd-5t9q",
+      "affectedVersions": ">=1.0.0,<2.0.0|>=2.0.0,<3.0.0|>=3.0.0,<3.26.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-46633",
+      "link": "https://symfony.com/cve-2026-46633",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2026-46633.yaml",
+      "reportedAt": "2026-05-20 08:00:00",
+      "severity": "critical",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-7p85-w9px-jpjp"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2026-46633.yaml"
+        }
+      ],
+      "title": "PHP code injection via `{% use %}` template name"
+    },
+    {
+      "advisoryId": "PKSA-wwb1-81rc-pd65",
+      "affectedVersions": ">=3.0.0,<3.26.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-47730",
+      "link": "https://symfony.com/cve-2026-47730",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2026-47730.yaml",
+      "reportedAt": "2026-05-20 08:00:00",
+      "severity": "low",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-2g2g-8p8h-fgwm"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2026-47730.yaml"
+        }
+      ],
+      "title": "XSS in profiler HtmlDumper via unescaped template and profile names"
+    },
+    {
+      "advisoryId": "PKSA-hgmw-wn4d-hpcy",
+      "affectedVersions": ">=3.24.0,<3.26.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-46639",
+      "link": "https://symfony.com/cve-2026-46639",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2026-46639.yaml",
+      "reportedAt": "2026-05-20 08:00:00",
+      "severity": "high",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-mm6w-gr99-p3jj"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2026-46639.yaml"
+        }
+      ],
+      "title": "Sandbox property and method bypass via object-destructuring assignment"
+    },
+    {
+      "advisoryId": "PKSA-kvv6-36cr-fkzb",
+      "affectedVersions": ">=1.0.0,<2.0.0|>=2.0.0,<3.0.0|>=3.0.0,<3.26.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-46627",
+      "link": "https://symfony.com/cve-2026-46627",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2026-46627.yaml",
+      "reportedAt": "2026-05-20 08:00:00",
+      "severity": null,
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2026-46627.yaml"
+        }
+      ],
+      "title": "Sandbox does not protect against resource exhaustion"
+    },
+    {
+      "advisoryId": "PKSA-n14z-jjjg-g8vd",
+      "affectedVersions": ">=1.0.0,<2.0.0|>=2.0.0,<3.0.0|>=3.0.0,<3.26.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-46635",
+      "link": "https://symfony.com/cve-2026-46635",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2026-46635.yaml",
+      "reportedAt": "2026-05-20 08:00:00",
+      "severity": "low",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-vcc8-phrv-43wj"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2026-46635.yaml"
+        }
+      ],
+      "title": "Sandbox property allowlist bypass via the `column` filter (array_column on objects)"
+    },
+    {
+      "advisoryId": "PKSA-3mcc-k66d-pydb",
+      "affectedVersions": ">=1.0.0,<2.0.0|>=2.0.0,<3.0.0|>=3.0.0,<3.26.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-46638",
+      "link": "https://symfony.com/cve-2026-46638",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2026-46638.yaml",
+      "reportedAt": "2026-05-20 08:00:00",
+      "severity": "medium",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-7fxw-r6jv-74c8"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2026-46638.yaml"
+        }
+      ],
+      "title": "`{% sandbox %}{% include %}` skips checkSecurity() on cached templates (incomplete fix for CVE-2024-45411)"
+    },
+    {
+      "advisoryId": "PKSA-gw7n-z4yx-7xjt",
+      "affectedVersions": ">=2.16.0,<3.0.0|>=3.9.0,<3.26.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-24425",
+      "link": "https://symfony.com/cve-2026-24425",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2026-24425.yaml",
+      "reportedAt": "2026-05-20 08:00:00",
+      "severity": "high",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-2q52-x2ff-qgfr"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2026-24425.yaml"
+        }
+      ],
+      "title": "Possible sandbox bypass when using a source policy"
+    },
+    {
+      "advisoryId": "PKSA-dpx1-78wg-1kqs",
+      "affectedVersions": ">=1.0.0,<2.0.0|>=2.0.0,<3.0.0|>=3.0.0,<3.26.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-47732",
+      "link": "https://symfony.com/cve-2026-47732",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2026-47732.yaml",
+      "reportedAt": "2026-05-20 08:00:00",
+      "severity": "high",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-pr2w-4gpj-cpq4"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2026-47732.yaml"
+        }
+      ],
+      "title": "Sandbox: multiple `__toString()` policy bypasses via unguarded string coercion points"
+    },
+    {
+      "advisoryId": "PKSA-21g2-dzjv-sky5",
+      "affectedVersions": ">=3.9.0,<3.26.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2026-46634",
+      "link": "https://symfony.com/cve-2026-46634",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2026-46634.yaml",
+      "reportedAt": "2026-05-20 08:00:00",
+      "severity": "medium",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-24x9-r6q4-q93w"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2026-46634.yaml"
+        }
+      ],
+      "title": "`template_from_string()` escapes a SourcePolicy-driven sandbox via synthesized template name"
+    },
+    {
+      "advisoryId": "PKSA-v3kg-5xkr-pykw",
+      "affectedVersions": ">=3.16.0,<3.19.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2025-24374",
+      "link": "https://symfony.com/blog/twig-cve-2025-24374-missing-output-escaping-for-the-null-coalesce-operator",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2025-24374.yaml",
+      "reportedAt": "2025-01-29 06:52:00",
+      "severity": "medium",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-3xg3-cgvq-2xwr"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2025-24374.yaml"
+        }
+      ],
+      "title": "Missing output escaping for the null coalesce operator"
+    },
+    {
+      "advisoryId": "PKSA-yhcn-xrg3-68b1",
+      "affectedVersions": ">=1.0.0,<2.0.0|>=2.0.0,<3.0.0|>=3.0.0,<3.11.2|>=3.12.0,<3.14.1",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2024-51754",
+      "link": "https://symfony.com/blog/cve-2024-51754-unguarded-calls-to-tostring-in-a-sandbox-when-an-object-is-in-an-array-or-an-argument-list",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2024-51754.yaml",
+      "reportedAt": "2024-11-06 08:00:00",
+      "severity": "low",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-6377-hfv9-hqf6"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2024-51754.yaml"
+        }
+      ],
+      "title": "Unguarded calls to __toString() when nesting an object into an array"
+    },
+    {
+      "advisoryId": "PKSA-2wrf-1xmk-1pky",
+      "affectedVersions": ">=1.0.0,<2.0.0|>=2.0.0,<3.0.0|>=3.0.0,<3.11.2|>=3.12.0,<3.14.1",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2024-51755",
+      "link": "https://symfony.com/blog/cve-2024-51755-unguarded-calls-to-isset-and-to-array-accesses-in-a-sandbox",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2024-51755.yaml",
+      "reportedAt": "2024-11-06 08:00:00",
+      "severity": "low",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-jjxq-ff2g-95vh"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2024-51755.yaml"
+        }
+      ],
+      "title": "Unguarded calls to __isset() and to array-accesses when the sandbox is enabled"
+    },
+    {
+      "advisoryId": "PKSA-6319-ffpf-gx66",
+      "affectedVersions": ">=1.0.0,<1.44.7|>=2.0.0,<2.16.0|>=3.0.0,<3.11.0|>=3.12.0,<3.14.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2024-45411",
+      "link": "https://symfony.com/blog/twig-security-release-possible-sandbox-bypass",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2024-45411.yaml",
+      "reportedAt": "2024-09-09 08:51:06",
+      "severity": "medium",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-6j75-5wfj-gh66"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2024-45411.yaml"
+        }
+      ],
+      "title": "Possible sandbox bypass"
+    },
+    {
+      "advisoryId": "PKSA-n7sg-8f52-pqtf",
+      "affectedVersions": ">=1.0.0,<1.44.7|>=2.0.0,<2.15.3|>=3.0.0,<3.4.3",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2022-39261",
+      "link": "https://symfony.com/blog/twig-security-release-possibility-to-load-a-template-outside-a-configured-directory-when-using-the-filesystem-loader",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2022-39261.yaml",
+      "reportedAt": "2022-09-28 10:36:08",
+      "severity": "high",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-52m2-vc4m-jj33"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2022-39261.yaml"
+        }
+      ],
+      "title": "Possibility to load a template outside a configured directory when using the filesystem loader"
+    },
+    {
+      "advisoryId": "PKSA-8kk8-h2xr-h5nx",
+      "affectedVersions": ">=2.0.0,<2.14.11|>=3.0.0,<3.3.8",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2022-23614",
+      "link": "https://symfony.com/blog/twig-security-release-disallow-non-closures-in-the-sort-filter",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2022-23614.yaml",
+      "reportedAt": "2022-02-04 06:52:21",
+      "severity": "high",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-5mv2-rx3q-4w2v"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2022-23614.yaml"
+        }
+      ],
+      "title": "Disallow non closures in the sort filter"
+    },
+    {
+      "advisoryId": "PKSA-6cvh-gt46-wq7q",
+      "affectedVersions": "<1.38.0|>=2.0.0,<2.7.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2019-9942",
+      "link": "https://symfony.com/blog/twig-sandbox-information-disclosure",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2019-9942.yaml",
+      "reportedAt": "2019-03-12 12:35:01",
+      "severity": "low",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-vxrc-68xx-x48g"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2019-9942.yaml"
+        }
+      ],
+      "title": "Sandbox Information Disclosure"
+    },
+    {
+      "advisoryId": "PKSA-19rw-dqx2-75hc",
+      "affectedVersions": "<1.20.0",
+      "composerRepository": "https://packagist.org",
+      "cve": "CVE-2015-7809",
+      "link": "https://symfony.com/blog/security-release-twig-1-20-0",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/CVE-2015-7809.yaml",
+      "reportedAt": "2015-08-12 15:53:50",
+      "severity": "high",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-xw83-pwrm-9j74"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/CVE-2015-7809.yaml"
+        }
+      ],
+      "title": "Remote code execution in templates"
+    },
+    {
+      "advisoryId": "PKSA-g1zx-twcw-9z6k",
+      "affectedVersions": ">=1.0.0,<1.12.3",
+      "composerRepository": "https://packagist.org",
+      "cve": null,
+      "link": "http://blog.twig.sensiolabs.org/post/47461911874/security-release-twig-1-12-3-released",
+      "packageName": "twig/twig",
+      "remoteId": "twig/twig/2013-04-08.yaml",
+      "reportedAt": "2013-04-08 00:00:00",
+      "severity": "medium",
+      "source": "FriendsOfPHP/security-advisories",
+      "sources": [
+        {
+          "name": "GitHub",
+          "remoteId": "GHSA-7cvr-xhm5-x998"
+        },
+        {
+          "name": "FriendsOfPHP/security-advisories",
+          "remoteId": "twig/twig/2013-04-08.yaml"
+        }
+      ],
+      "title": "Vulnerability in the filesystem loader"
+    }
+  ]
+}

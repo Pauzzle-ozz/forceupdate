@@ -121,6 +121,10 @@ class LocalSource(Source):
             paths = [self._file, *lockfile_candidates(self._file)]
         return sorted(file for path in paths if (file := _stat_file(self.root, path)) is not None)
 
+    def is_directory(self, path: str) -> bool:
+        full = (self.root / path).resolve()
+        return full.is_relative_to(self.root) and full.is_dir()
+
     def read_text(self, path: str) -> str | None:
         """Le contenu de ``path``, relatif à ``root``.
 

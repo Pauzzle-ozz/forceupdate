@@ -27,10 +27,14 @@ READ_ALONE: dict[str, Ecosystem] = {
     ".cts": Ecosystem.NPM,
     ".tsx": Ecosystem.NPM,
     ".go": Ecosystem.GO,
+    ".ipynb": Ecosystem.PYPI,
+    ".vue": Ecosystem.NPM,
+    ".svelte": Ecosystem.NPM,
 }
 """Les extensions des fichiers dont forceupdate lit les imports, sans projet autour, et leur
 écosystème. Comparées sans tenir compte de la casse. Pas les ``.pyi`` (des annotations de
-types), ni les ``.vue`` et ``.svelte`` (du gabarit autour du script)."""
+types). Un carnet Jupyter (``.ipynb``) par ses cellules de code, un ``.vue`` ou un ``.svelte`` par
+ses ``<script>`` (E34)."""
 
 
 def code_language(path: str | PurePath) -> str | None:

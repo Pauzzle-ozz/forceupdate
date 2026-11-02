@@ -4730,6 +4730,13 @@
             },
             "type": "array",
             "title": "Runtimes"
+          },
+          "resolution": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Resolution"
           }
         },
         "type": "object",
@@ -4744,7 +4751,8 @@
           "updates",
           "notices",
           "runtime_files",
-          "runtimes"
+          "runtimes",
+          "resolution"
         ],
         "title": "Project",
         "description": "Un projet : un dossier qui contient au moins un manifeste ou un lockfile.\n\nUn monorepo en donne plusieurs (``backend/`` en Python, ``frontend/`` en npm)."

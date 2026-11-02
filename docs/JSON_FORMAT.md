@@ -102,8 +102,9 @@ Un dossier qui contient au moins un manifeste ou un lockfile.
 | `findings` | liste de [constats](#constat) | **du plus grave au moins grave** (voir [l'ordre](#ordre-des-constats)) |
 | `updates` | liste de [mises à jour](#mise-à-jour) | une par paquet à mettre à jour, dans l'ordre des constats ; `[]` si les dépendances n'ont pas été vérifiées |
 | `notices` | liste de [remarques](#remarque) | ce que l'analyse n'a pas pu lire, ou pas pu vérifier |
-| `runtime_files` | liste de chemins | les fichiers qui disent la version d'un runtime sans être des manifestes : `.python-version`, `runtime.txt`, `.nvmrc`, `.node-version`, `.ruby-version`, `.tool-versions`, `global.json` (le plus proche de chaque nom, dans son dossier ou au-dessus), et les `Dockerfile` |
+| `runtime_files` | liste de chemins | les fichiers qui disent la version d'un runtime sans être des manifestes : `.python-version`, `runtime.txt`, `.nvmrc`, `.node-version`, `.ruby-version`, `.tool-versions`, `global.json`, `rust-toolchain.toml`, `rust-toolchain` (le plus proche de chaque nom, dans son dossier ou au-dessus), et les `Dockerfile` |
 | `runtimes` | liste de [runtimes](#runtime) | ses runtimes et leur version, lus dans ses manifestes et dans `runtime_files` (E27) |
+| `resolution` | objet (chaîne → chaîne) | les réglages du projet qui changent la version que choisit son outil, tels qu'écrits (E34) : `minimum-stability` et `prefer-stable` de `composer.json` (`{"minimum-stability": "beta", "prefer-stable": "true"}`) ; `{}` sans réglage |
 
 ## Runtime
 
@@ -114,7 +115,7 @@ npm, `require.php` de Packagist, `ruby` de RubyGems, `requires-python` de PyPI).
 
 | Champ | Type | Sens |
 |---|---|---|
-| `product` | chaîne | son nom chez [endoflife.date](https://endoflife.date) : `python`, `nodejs`, `go`, `ruby`, `php`, `eclipse-temurin` (Java), `amazon-corretto`, `azul-zulu`, `dotnet` (.NET, .NET Core), `dotnetfx` (.NET Framework) |
+| `product` | chaîne | son nom chez [endoflife.date](https://endoflife.date) : `python`, `nodejs`, `go`, `ruby`, `php`, `eclipse-temurin` (Java), `amazon-corretto`, `azul-zulu`, `dotnet` (.NET, .NET Core), `dotnetfx` (.NET Framework), `rust` (E34 : le `rust-version` d'un `Cargo.toml`, le canal d'un `rust-toolchain.toml` ; sans constat de fin de vie) |
 | `version` | chaîne | la version lue, réduite à ses nombres : `3.8`, `16.20.2`, `17`, `8.0` |
 | `approximate` | booléen | `true` pour la borne basse d'une contrainte (`requires-python = ">=3.8"`, `engines.node`, `require.php`, la directive `go`, `maven.compiler.release`) : le projet accepte cette version et les suivantes ; `false` pour une version choisie (`.python-version`, `.nvmrc`, `config.platform.php`, `TargetFramework`, un `FROM`) |
 | `file` | chemin | le fichier où elle est lue |
@@ -610,7 +611,8 @@ chaque constat, abrégée ici) :
       ],
       "notices": [],
       "runtime_files": [],
-      "runtimes": []
+      "runtimes": [],
+      "resolution": {}
     }
   ],
   "ignored_manifests": [],

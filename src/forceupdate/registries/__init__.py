@@ -31,7 +31,7 @@ from forceupdate.registries.npm import Npm
 from forceupdate.registries.nuget import NuGet, NuGetFeed
 from forceupdate.registries.packagist import Packagist
 from forceupdate.registries.pypi import PyPI, SimpleIndex
-from forceupdate.registries.rubygems import RubyGems
+from forceupdate.registries.rubygems import GemServer, RubyGems
 
 __all__ = [
     "AccessRefused",
@@ -81,6 +81,8 @@ _DECLARED: dict[tuple[Ecosystem, str], type[Registry]] = {
     (Ecosystem.PACKAGIST, "composer"): ComposerRepository,
     (Ecosystem.NUGET, ""): NuGetFeed,
     (Ecosystem.PYPI, ""): SimpleIndex,
+    (Ecosystem.RUBYGEMS, ""): GemServer,
+    (Ecosystem.CRATES_IO, ""): Crates,
 }
 """Les clients d'un registre déclaré (E33), par écosystème et sorte (``routing.Declared.kind``)."""
 

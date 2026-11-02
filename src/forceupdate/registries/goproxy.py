@@ -24,7 +24,8 @@ Ce qu'on en tire, comme ``go`` (référence des modules, « Version queries », 
   ``go.mod`` de cette dernière version, retraits ignorés. Une version retirée l'est avec sa
   raison ; la dernière proposée est la plus haute non retirée ;
 - **une majeure plus récente** a un autre chemin (``…/v5``, ``gopkg.in/yaml.v3``) : on demande la
-  liste du chemin de la majeure suivante, tant qu'il y en a une. Sa dernière version est ajoutée
+  liste du chemin de chaque majeure qui n'a que des ``+incompatible`` (E34), puis de la majeure
+  suivante, tant qu'il y en a une. Sa dernière version est ajoutée
   aux versions du module (``VersionScheme.moved`` dit où elle est publiée) et devient la
   « dernière » : elle est proposée, jamais appliquée seule (``update.planner``). Une requête de
   plus par module (souvent un 404).
@@ -183,27 +184,47 @@ class GoProxy(Registry):
     async def _newer_major(self, name: str, listed: list[str]) -> str | None:
         """La dernière version de la plus haute majeure publiée sous un autre chemin que
         ``name`` (``…/v5``) ; ``None`` s'il n'y en a pas. Une majeure qui n'a que des
-        pré-versions n'est pas encore publiée."""
-        majors = []
+        pré-versions n'est pas encore publiée.
+
+        Les majeures qui n'ont que des ``+incompatible`` sous ``name`` sont aussi cherchées sous
+        leur chemin (E34 : blackfriday v2.0.0+incompatible, et v2.1.0 sous ``…/v2``), une requête
+        par majeure ; puis les suivantes, tant qu'il y en a une."""
+        own = path_major(name) or 1
+        majors = set()
         for version in listed:
             try:
-                majors.append(GO.parse(version).major)
+                majors.add(GO.parse(version).major)
             except InvalidVersion:
                 continue
-        major = max([path_major(name) or 1, *majors]) + 1
         found = None
-        for _ in range(MAX_MAJOR_PROBES):
-            path = module_path(name, major)
-            response = await self._get(self._path(path, "@v/list"), path, found=True)
-            if response is None:
-                break
-            versions = [line.strip() for line in response.content.decode().splitlines()]
-            latest = latest_of([v for v in versions if v and INCOMPATIBLE not in v])
-            if latest is None or GO.is_prerelease(latest):
+        probes = 0
+        for major in sorted(m for m in majors if m > own):
+            if probes >= MAX_MAJOR_PROBES:
+                return found
+            probes += 1
+            found = await self._major_latest(name, major) or found
+        major = max([own, *majors]) + 1
+        while probes < MAX_MAJOR_PROBES:
+            probes += 1
+            latest = await self._major_latest(name, major)
+            if latest is None:
                 break
             found = latest
             major += 1
         return found
+
+    async def _major_latest(self, name: str, major: int) -> str | None:
+        """La dernière version publiée sous le chemin de la majeure ``major`` de ``name`` ;
+        ``None`` s'il n'existe pas, ou n'a que des pré-versions."""
+        path = module_path(name, major)
+        response = await self._get(self._path(path, "@v/list"), path, found=True)
+        if response is None:
+            return None
+        versions = [line.strip() for line in response.content.decode().splitlines()]
+        latest = latest_of([v for v in versions if v and INCOMPATIBLE not in v])
+        if latest is None or GO.is_prerelease(latest):
+            return None
+        return latest
 
 
 def _retracted(version: str, retracts: list[Retraction]) -> str | None:

@@ -20,7 +20,13 @@ from forceupdate import versions
 from forceupdate.models import Ecosystem, Gap
 from forceupdate.registries.packagist import expand
 from forceupdate.versions import InvalidConstraint, InvalidVersion
-from forceupdate.versions.composer import COMPOSER, is_branch, normalize, parse_stability
+from forceupdate.versions.composer import (
+    COMPOSER,
+    is_branch,
+    normalize,
+    package_stability,
+    parse_stability,
+)
 
 PACKAGIST = Path(__file__).parent / "fixtures" / "packagist"
 
@@ -410,3 +416,47 @@ def published(package: str) -> list[str]:
 def test_the_same_choice_as_composer(case: tuple[str, str], chosen: str | None) -> None:
     package, constraint = case
     assert COMPOSER.max_satisfying(constraint, published(package)) == chosen
+
+
+STABILITY_CHOICES = {
+    # (contrainte, minimum-stability, prefer-stable) : ce que prend « composer update » (Composer
+    # 2.11, vérifié le 2026-11-02 sur twig/twig, quand v4.0.0-alpha1 et v3.30.0 étaient les plus
+    # hautes).
+    (">=3.0", "alpha", False): "v4.0.0-alpha1",
+    (">=3.0", "alpha", True): "v3.30.0",
+    ("^4.0", "stable", False): None,
+    ("^4.0", "alpha", True): "v4.0.0-alpha1",
+    (">=3.0@alpha", "stable", True): "v3.30.0",
+    (">=3.0@alpha", "stable", False): "v4.0.0-alpha1",
+    (">=3.0@stable", "alpha", False): "v3.30.0",
+}
+
+
+@pytest.mark.parametrize(("case", "chosen"), STABILITY_CHOICES.items())
+def test_minimum_stability_and_prefer_stable_like_composer(
+    case: tuple[str, str, bool], chosen: str | None
+) -> None:
+    constraint, minimum, prefer = case
+    found = COMPOSER.resolved(
+        constraint, published("twig/twig"), minimum_stability=minimum, prefer_stable=prefer
+    )
+    assert found == chosen
+
+
+@pytest.mark.parametrize(
+    ("constraint", "minimum", "stability"),
+    [
+        ("^1.0", "stable", "stable"),
+        ("^1.0", "beta", "beta"),
+        ("^1.0@dev", "stable", "dev"),
+        ("^1.0@stable", "dev", "stable"),
+        ("^2.0-beta1", "stable", "beta"),
+        ("^2.0-beta1", "dev", "dev"),
+        ("^1.0@beta || ^2.0@alpha", "stable", "alpha"),
+        ("^1.0", "nonsense", "stable"),
+        ("^1.0", "RC", "RC"),
+        ("^1.0", "rc", "RC"),
+    ],
+)
+def test_package_stability(constraint: str, minimum: str, stability: str) -> None:
+    assert package_stability(constraint, minimum) == stability

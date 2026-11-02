@@ -103,6 +103,33 @@ def test_chi(recorded: Routes, lookup: Lookup) -> None:
     assert not any(v.yanked for v in info.versions)
 
 
+def test_a_major_with_incompatible_versions_is_also_looked_for_under_its_path(
+    recorded: Routes, lookup: Lookup
+) -> None:
+    """blackfriday : v2.0.0+incompatible sous son chemin, puis v2.1.0 sous ``…/v2`` (E34)."""
+    info = info_of(lookup, "github.com/russross/blackfriday")
+    assert info.latest == "v2.1.0"
+    assert [v.version for v in info.versions][-2:] == ["v2.0.0+incompatible", "v2.1.0"]
+
+
+def test_each_incompatible_major_then_the_next_ones(
+    respx_mock: respx.MockRouter, lookup: Lookup
+) -> None:
+    """v2 et v3 n'ont que des +incompatible : leurs chemins sont demandés (v3 n'en a pas), puis
+    v4, v5…, tant qu'il y en a une."""
+    serve(
+        respx_mock,
+        "example.com/m",
+        ["v1.0.0", "v2.0.0+incompatible", "v3.0.0+incompatible"],
+        majors={"example.com/m/v2": ["v2.1.0"], "example.com/m/v4": ["v4.0.0"]},
+    )
+    info = info_of(lookup, "example.com/m")
+    assert info.latest == "v4.0.0"
+    asked = [str(call.request.url) for call in respx_mock.calls]
+    for path in ("m/v2/@v/list", "m/v3/@v/list", "m/v4/@v/list", "m/v5/@v/list"):
+        assert any(url.endswith(path) for url in asked)
+
+
 def test_jwt_v4_retracts_a_version(recorded: Routes, lookup: Lookup) -> None:
     info = info_of(lookup, "github.com/golang-jwt/jwt/v4")
     retracted = info.get("v4.4.0")

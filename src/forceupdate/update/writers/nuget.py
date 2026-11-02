@@ -19,6 +19,7 @@ from forceupdate.parsers.base import ParseError, ReadText
 from forceupdate.parsers.json_spans import BOM
 from forceupdate.parsers.nuget import (
     BUILD_PROPS,
+    BUILD_TARGETS,
     CENTRAL,
     GLOBAL_JSON,
     PACKAGES_CONFIG,
@@ -221,6 +222,7 @@ leur nom."""
 
 __all__ = [
     "BUILD_PROPS",
+    "BUILD_TARGETS",
     "GLOBAL_JSON",
     "PINNING",
     "READERS",

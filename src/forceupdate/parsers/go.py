@@ -32,7 +32,10 @@ requiert d'un autre membre est pris dans le workspace : non vérifiable. Un ``re
 ``go.work`` l'emporte sur ceux des modules ; sa version se réécrit dans ``go.work``, sans rien
 régénérer : ``go mod tidy`` ignore le workspace, et le prochain ``go build`` du workspace complète
 ``go.work.sum``. Dans un workspace, ``go`` construit avec la plus haute des versions que demandent
-ses membres : celle d'un ``go.mod`` peut être plus basse.
+ses membres (la sélection minimale, vérifiée avec Go 1.27 : ``golang.org/x/text`` v0.3.0 dans le
+``go.mod`` d'un membre, v0.14.0 dans celui d'un autre, ``go list -m`` donne v0.14.0 aux deux) :
+c'est celle-là qui est installée (E34), et une remarque le dit. Les ``go.mod`` des dépendances,
+que ``go`` lit aussi, ne le sont pas : la version d'une indirecte peut être plus haute encore.
 
 Repris de ``reference/argos_sca_parsers.py`` (L857-892), puis réécrit : un vrai lexer à la place
 des expressions régulières, ``Dependency`` au lieu de ``SCAComponent``, emplacements, ``//
@@ -45,13 +48,15 @@ import ast
 import dataclasses
 import logging
 import re
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from forceupdate.detect.manifests import match_dependency_file
 from forceupdate.models import Dependency, Ecosystem, Location, Notice, Project
 from forceupdate.parsers.base import REASON_LOCAL, REASON_WORKSPACE, ParseError, ReadText
 from forceupdate.parsers.lockfiles import LockedPackage, Lockfile, dirname, join
+from forceupdate.versions import InvalidVersion
+from forceupdate.versions.go import GO
 
 logger = logging.getLogger(__name__)
 
@@ -417,6 +422,8 @@ class _Context:
     workspace: GoMod | None = None
     members: frozenset[str] = frozenset()
     """Les chemins des modules du workspace."""
+    built: Mapping[str, str] = field(default_factory=dict)
+    """Dans un workspace : la plus haute version que demandent ses membres, par module."""
 
 
 def _dependencies(parsed: GoMod, context: _Context) -> list[Dependency]:
@@ -449,6 +456,9 @@ def _dependency(parsed: GoMod, requirement: Requirement, context: _Context) -> D
             base, installed=None, lockfile=None, excluded=(), unverifiable_reason=REASON_WORKSPACE
         )
     if replacement is None:
+        built = context.built.get(requirement.path)
+        if built is not None and _higher(built, requirement.version):
+            return dataclasses.replace(base, installed=built)
         return base
     assert replacement.new_version is not None
     in_workspace = context.workspace is not None and replacement.file == context.workspace.path
@@ -517,14 +527,31 @@ def parse_project(project: Project, read_text: ReadText) -> None:
         return
     project.notices.extend(parsed.notices)
     workspace = _workspace(project.path, read_text)
-    members = _members(workspace, read_text) if workspace is not None else frozenset()
+    members, built = _members(workspace, read_text) if workspace is not None else (frozenset(), {})
     context = _Context(
         lockfile=join(project.path, LOCKFILE),
         workspace=workspace,
         members=members - {parsed.module},
+        built=built,
     )
     dependencies = _dependencies(parsed, context)
     project.dependencies.extend(dependencies)
+    raised = [d for d in dependencies if d.installed is not None and d.installed != d.constraint]
+    raised = [d for d in raised if d.file == manifest]
+    if raised and workspace is not None:
+        shown = ", ".join(f"{d.name} {d.installed}" for d in raised[:3])
+        more = f" et {len(raised) - 3} autres" if len(raised) > 3 else ""
+        project.notices.append(
+            Notice(
+                file=manifest,
+                message=(
+                    f"Dans le workspace {workspace.path}, go construit {len(raised)} "
+                    f"module{'s' if len(raised) > 1 else ''} dans une version plus haute que "
+                    f"celle de go.mod, demandée par un autre membre : {shown}{more}. C'est elle "
+                    "qui est vérifiée."
+                ),
+            )
+        )
     if dependencies and not parsed.pruned:
         written = f"go {parsed.go}" if parsed.go else "sans directive go"
         project.notices.append(
@@ -562,9 +589,12 @@ def _workspace(directory: str, read_text: ReadText) -> GoMod | None:
     return None
 
 
-def _members(workspace: GoMod, read_text: ReadText) -> frozenset[str]:
-    """Les chemins des modules du workspace, lus dans le ``go.mod`` de chaque dossier ``use``."""
+def _members(workspace: GoMod, read_text: ReadText) -> tuple[frozenset[str], dict[str, str]]:
+    """Les chemins des modules du workspace, lus dans le ``go.mod`` de chaque dossier ``use``, et
+    la plus haute version que demandent leurs ``require``, par module (la sélection minimale de
+    ``go`` sur les ``go.mod`` des membres)."""
     found = set()
+    built: dict[str, str] = {}
     root = dirname(workspace.path)
     for use in workspace.uses:
         folder = _normalize(join(root, use))
@@ -574,12 +604,23 @@ def _members(workspace: GoMod, read_text: ReadText) -> frozenset[str]:
         if content is None:
             continue
         try:
-            module = parse_go_mod_file(join(folder, MANIFEST), content).module
+            parsed = parse_go_mod_file(join(folder, MANIFEST), content)
         except ParseError:
             continue
-        if module is not None:
-            found.add(module)
-    return frozenset(found)
+        if parsed.module is not None:
+            found.add(parsed.module)
+        for requirement in parsed.requires:
+            known = built.get(requirement.path)
+            if known is None or _higher(requirement.version, known):
+                built[requirement.path] = requirement.version
+    return frozenset(found), built
+
+
+def _higher(version: str, than: str) -> bool:
+    try:
+        return GO.compare(version, than) > 0
+    except InvalidVersion:
+        return False
 
 
 def _ancestors(directory: str) -> list[str]:

@@ -247,10 +247,16 @@ class TestComposerJson:
         if noticed:
             assert messages == [
                 f"minimum-stability « {stability} » sans prefer-stable : Composer peut choisir "
-                "des pré-versions ; forceupdate ne propose que des versions stables."
+                "des pré-versions, et la version permise le suit ; forceupdate ne propose que "
+                "des versions stables."
             ]
         else:
             assert messages == []
+        # E34 : les réglages vont au projet, pour la version permise.
+        expected = {"minimum-stability": stability}
+        if prefer_stable is not None:
+            expected["prefer-stable"] = "true" if prefer_stable else "false"
+        assert project.resolution == expected
 
 
 # ---------------------------------------------------------------------------

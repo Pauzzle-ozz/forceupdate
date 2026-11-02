@@ -525,6 +525,10 @@ class Project:
     runtimes: list[Runtime] = field(default_factory=list)
     """Ses runtimes et leur version, lus dans ses manifestes et dans ``runtime_files``
     (``parsers.runtimes``)."""
+    resolution: dict[str, str] = field(default_factory=dict)
+    """Les réglages du projet qui changent la version que choisit son outil, tels qu'écrits
+    (E34) : ``minimum-stability`` et ``prefer-stable`` de ``composer.json`` (``{"minimum-stability":
+    "beta", "prefer-stable": "true"}``). Vide sans réglage."""
 
 
 class CodeReading(enum.StrEnum):

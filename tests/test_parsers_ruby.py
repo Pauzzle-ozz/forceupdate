@@ -253,7 +253,7 @@ class TestParseGemfile:
             "end\n"
             'gem "puma"\n'
         )
-        reader = parsers.ruby._parse_gemfile("Gemfile", text)
+        reader = parsers.ruby.read_gemfile("Gemfile", text)
         assert [d.name for d in reader.dependencies] == [
             "rails",
             "listen",
@@ -289,7 +289,7 @@ class TestParseGemfile:
             "end\n"
             'gem "pg", platforms: :ruby\n'
         )
-        reader = parsers.ruby._parse_gemfile("Gemfile", text)
+        reader = parsers.ruby.read_gemfile("Gemfile", text)
         assert [(d.name, d.scope) for d in reader.dependencies] == [
             ("rspec", DEV),
             ("rails", RUNTIME),
@@ -307,7 +307,7 @@ class TestParseGemfile:
             'gem "helper", path: "./helper/"\n'
             'path "gems" do\n  gem "x"\nend\n'
         )
-        reader = parsers.ruby._parse_gemfile("Gemfile", text)
+        reader = parsers.ruby.read_gemfile("Gemfile", text)
         assert [(g.path, g.name, g.development_group) for g in reader.gemspecs] == [
             (".", None, "development"),
             ("engines/admin", "admin", "test"),

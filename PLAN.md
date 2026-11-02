@@ -127,7 +127,7 @@ Statuts : `à faire`, `en cours`, `fait`.
 | E31 | H | Forges : robustesse | fait |
 | E32 | H | Mise à jour : le npm du projet, Python, NuGet, Go | fait |
 | E33 | H | Registres et dépôts privés | fait |
-| E34 | H | Compléments d'analyse | à faire |
+| E34 | H | Compléments d'analyse | fait |
 | E35 | H | Documentation, packaging, CI | à faire |
 | E36 | H | Recette finale | à faire |
 
@@ -3225,21 +3225,21 @@ public.
 
 ### E34 — Compléments d'analyse
 
-- [ ] Depuis E33 (registres privés) :
+- [x] Depuis E33 (registres privés) :
   - Ruby : la source globale d'un `Gemfile` et ses blocs `source "…" do` : demander ce serveur (son
     index compact, `/info/{gem}`) avec les identifiants de Bundler (`BUNDLE_<HÔTE>` de
     l'environnement, `~/.bundle/config`), au lieu de « non vérifié » ;
   - Rust : `registry = "…"` (`.cargo/config.toml` du projet et de la personne, `[registries]`,
     l'index « sparse », `credentials.toml`), au lieu de « non vérifiable ».
 
-- [ ] Depuis E21 (Rust) : la version « permise » d'une contrainte Cargo est la plus haute qu'elle accepte ; le résolveur 3 (édition 2024, `resolver = "3"`) préfère celles dont le `rust-version` convient au projet (celui de `[package]`, sinon la version de `rustc`) : l'index donne `rust_version` de chaque version, le prendre en compte.
-- [ ] Depuis E22 (Go) :
+- [x] Depuis E21 (Rust) : la version « permise » d'une contrainte Cargo est la plus haute qu'elle accepte ; le résolveur 3 (édition 2024, `resolver = "3"`) préfère celles dont le `rust-version` convient au projet (celui de `[package]`, sinon la version de `rustc`) : l'index donne `rust_version` de chaque version, le prendre en compte.
+- [x] Depuis E22 (Go) :
   - dans un workspace `go.work`, la version construite est la plus haute que demandent ses membres : la calculer (sélection minimale sur leurs `go.mod`) au lieu de garder celle du `go.mod` du membre ;
   - la majeure suivante d'un module qui a des `+incompatible` de la même majeure sous un chemin `/vN` (v2.0.0+incompatible et `…/v2`) : chercher aussi ces chemins, au prix d'une requête par majeure.
-- [ ] Depuis E23 (PHP) :
+- [x] Depuis E23 (PHP) :
   - les avis de la base FriendsOfPHP qui manquent à OSV ne sont pas vus (twig 3.4.1 : 15 failles sur les 17 de `composer audit`) : lire aussi ceux de Packagist (`security-advisories` des métadonnées `p2`, détail par `https://packagist.org/api/security-advisories/`), réunis à ceux d'OSV par leurs CVE ;
   - `prefer-stable` et `minimum-stability` du projet : les passer à la version permise (aujourd'hui, seulement les stables ou un drapeau de la contrainte).
-- [ ] Depuis E25 (Java) :
+- [x] Depuis E25 (Java) :
   - une version gérée par un parent ou un BOM distant (Spring Boot) est « non vérifiable » : lire le
     `pom` du parent ou du BOM (`…/{version}/{artefact}-{version}.pom`) pour connaître la version qu'il
     impose, et la vérifier (la mise à jour reste celle du parent ou du BOM) ;
@@ -3252,12 +3252,12 @@ public.
   - un constat de faille cite la version corrigée d'OSV même d'une autre variante (Guava :
     `32.0.0-android` pour qui a `-jre`) ; citer celle de la variante utilisée (la plus petite
     publiée qui n'est plus concernée).
-- [ ] Depuis E26 (.NET) : `Directory.Build.targets` (`PackageReference Update=`).
-- [ ] Depuis E27 (fins de vie) :
+- [x] Depuis E26 (.NET) : `Directory.Build.targets` (`PackageReference Update=`).
+- [x] Depuis E27 (fins de vie) :
   - ce qui n'est pas lu : les images Docker non officielles (`bitnami/…`, `openjdk`, dépréciée), `mise.toml`, le `required_ruby_version` d'un `.gemspec`, un `TargetFramework` défini sous condition, le Java réel de la machine (un `pom.xml` se juge d'après Eclipse Temurin) ;
   - `checks.eol.FRAMEWORKS` et `parsers.runtimes.NODE_CODENAMES` se tiennent à la main : un test `network` qui compare la table aux `purl` d'endoflife.date (`/api/v1/products/full`) et dit les produits nouveaux, et les noms des LTS de Node.js à ceux de `nodejs.org/dist/index.json` (« Lithium » pour la 26, ajouté à E32) ; de même `update.project_npm.NODE_NPM` (la majeure de npm livrée avec chaque ligne de Node, relevée à E32) ;
   - depuis E32 : les workflows de GitHub Actions ne donnent que Node (`actions/setup-node`, `container`) ; lire aussi `actions/setup-python`, `setup-go`, `setup-java` (et sa `distribution`), `setup-dotnet`, `ruby/setup-ruby`, `shivammathur/setup-php` (leur version dans la `matrix`), pour les fins de vie et les versions écartées (lus aujourd'hui pour un projet npm seulement : les lire pour tous coûte une requête par workflow à la source d'une forge, à peser).
-- [ ] Depuis E28 (fichier de code isolé) :
+- [x] Depuis E28 (fichier de code isolé) :
   - les imports `npm:` et `jsr:` de Deno (avec leur version : un vrai manifeste), les alias de
     `tsconfig.json` (`paths`, `baseUrl` : `src/x` n'est pas le paquet `src`) ;
   - les imports d'un `.ipynb` (ses cellules de code), d'un `.vue` ou d'un `.svelte` (son
@@ -3270,6 +3270,164 @@ public.
 
 **Fini quand** : chaque case a ses tests et a été vérifiée en vrai ; les limites qui restent sont
 écrites, pour la documentation (E35).
+
+**Notes** (session 34) :
+
+- **Commit d'abord** : E33 commitée (`598468e`), avec l'accord de l'utilisateur. **Découpage
+  proposé, refusé** : l'utilisateur a voulu E34 entière en une session (« 1 étape, fais tout d'un
+  coup ») ; la documentation et la recette restent E35 et E36.
+- **Vérifié en vrai** avant d'écrire (2026-11-02 et 03, dans le scratchpad, dossiers personnels
+  factices) :
+  - **Bundler 4.0.20** avec un serveur de gems local à index compact qui exige un identifiant :
+    `/versions` puis `/info/{gem}` à chaque source ; une gem d'un bloc `source … do` demandée à ce
+    serveur seul, même s'il ne l'a pas ; Bundler 4 refuse deux sources globales ; les identifiants
+    (`bundle config set --global`) : la clé de l'adresse exacte (`BUNDLE_HTTP://127__0__0__1:8808/
+    PRIVATE/`), sinon celle de l'hôte (`BUNDLE_127__0__0__1`, tous les ports), ceux écrits dans
+    l'adresse du `Gemfile` d'abord ; l'ordre : `.bundle/config` du projet, l'environnement,
+    `~/.bundle/config` ; un miroir (`mirror.https://rubygems.org`) remplace la source, le lockfile
+    garde `remote: https://rubygems.org/` ; RubyGems relit une valeur telle quelle entre ses
+    guillemets, coupée à un `#` ;
+  - **cargo 1.99.1** avec un registre « sparse » local qui exige un jeton : `config.json` sans
+    jeton, 401, puis `Authorization: <jeton>` (sans « Bearer ») ; Cargo 1.99 exige le fournisseur
+    `cargo:token` (`[registry] global-credential-providers`) ; `CARGO_REGISTRIES_<NOM>_INDEX` ;
+    `replace-with` vers un registre de `[registries]` (avec son jeton) ou une `[source.x] registry`
+    (sans : Cargo refuse d'y envoyer un jeton) ; le lockfile garde la source de crates.io ; **le
+    résolveur 3** (`resolver = "3"`, édition 2024) préfère les versions dont le `rust_version`
+    convient au `rust-version` du projet et se replie sur la plus haute sinon ; le résolveur 2
+    l'ignore, sauf `[resolver] incompatible-rust-versions = "fallback"` ; l'édition 2024 exige
+    `rust-version` ≥ 1.85 ; `rust-version.workspace = true` suivi ;
+  - **Go 1.27.3** : dans un `go.work`, un membre est construit avec la version d'un autre
+    (`golang.org/x/text` v0.3.0 et v0.14.0 : v0.14.0 pour les deux ; v0.3.0 avec `GOWORK=off`) ; le
+    vrai proxy : `github.com/russross/blackfriday` a `v2.0.0+incompatible` et v2.1.0 sous `…/v2`
+    (`/v3` : 404) ;
+  - **Composer 2.11.0** : `composer audit` sur twig 3.4.1 dit 17 failles ; OSV en connaît
+    maintenant 15 (2 à E23) ; les deux autres (CVE-2026-46627, CVE-2026-46636) n'ont pour source que
+    FriendsOfPHP ; l'API de Packagist (`api/security-advisories/?packages[]=`) et le
+    `security-advisories` des métadonnées `p2` ; huit choix de `composer update` selon
+    `minimum-stability`, `prefer-stable` et les drapeaux (`>=3.0` en `alpha` : v4.0.0-alpha1 ; avec
+    `prefer-stable` : v3.30.0 ; `^4.0` en `stable` : refusé ; `>=3.0@stable` en `alpha` : v3.30.0 ;
+    en `dev` : la branche `4.x-dev`) ;
+  - **Maven Central** : le `pom` de mysql-connector-java 8.0.33 (et 8.0.32) a une `<relocation>`
+    vers `com.mysql:mysql-connector-j`, avec un `<message>` ; spring-boot-starter-parent 3.2.0 →
+    spring-boot-dependencies 3.2.0 (39 BOM importés, `jackson-bom` par `${jackson-bom.version}`,
+    lui-même fils de `jackson-parent` 2.15) ; **Maven et Gradle ne sont pas installés** (choix de
+    l'utilisateur) : `gradle.lockfile`, les versions riches et `versionCatalogs` d'après la
+    documentation de Gradle (« Locking dependency versions », « Declaring Rich Versions »,
+    « Version Catalogs ») ;
+  - **SDK .NET 10.0.403** (`dotnet restore`, `project.assets.json`) : un `PackageReference
+    Update=` de `Directory.Build.targets` l'emporte sur la version du projet ; celui de
+    `Directory.Build.props` est sans effet (lu avant le projet) ; une propriété de
+    `Directory.Build.targets` vaut pour les versions du projet et l'emporte ; un `Include` de
+    `.targets` ajoute la référence ;
+  - **endoflife.date** : Rust y est (chaque version suivie six semaines) ; `/api/v1/products/full`
+    (489 produits, 204 à `purl`) ; nodejs.org/dist/index.json (`lts`, `npm`) ;
+  - **uv 0.10.11** : `exclude-newer` (horodatage, date, durée, durée ISO 8601) ; `uv lock` sous
+    `exclude-newer = "2024-01-01T00:00:00Z"` prend requests 2.31.0.
+- **Organisation** :
+  - `routing/ruby.py` (réécrit : `BundlerSettings`, `parse_settings`, `settings_key`, miroirs,
+    identifiants) ; `parsers/ruby.py` : `read_gemfile`, `Gemfile.sources` et `global_sources`,
+    `GemfileLock.remotes` ; `registries/rubygems.py` : `GemServer` (l'index compact d'un serveur
+    déclaré ; sans `/versions`, « non concluant ») ;
+  - `routing/cargo.py` (ajouté : `CargoConfig`, `[registries]`, `[source.crates-io] replace-with`,
+    `credentials.toml`, `CARGO_HOME`) ; `parsers/rust.py` : `registry_of` ; `registries/crates.py` :
+    `rust_version` ; `parsers/runtimes.py` : le runtime `rust` (`rust-version`, `rust-toolchain`) ;
+    `checks/runtimes.py`, `checks/outdated.py` (le repli de Cargo) ; `checks/eol.py` :
+    `WITHOUT_LIFECYCLE` ; le format du cache des versions passe à 3 ;
+  - `parsers/go.py` : la version construite dans un workspace (`_members`, `built`) ;
+    `registries/goproxy.py` : `_major_latest`, chaque majeure à `+incompatible` ;
+  - `advisories/packagist.py` (ajouté : `PackagistAdvisories`, `parse_advisory`, `ranges`) ;
+    `advisories/osv.py` : `Advisory.link` ; `versions/composer.py` : `resolved`,
+    `package_stability` ; `models.Project.resolution` (ajouté au format JSON et à l'API :
+    `openapi.json`, `schema.d.ts`) ;
+  - `managed.py` (ajouté : les versions gérées par un parent ou un BOM distant) ;
+    `registries/maven.py` : `pom`, `pom_url`, `relocation`, `_complete` ; `net/cache.py` :
+    `CacheKind.FILES` (7 jours) ; `engine.check(…, read_text=)` ; `parsers/gradle.py` : versions
+    riches, `SETTINGS`, `_other_catalogs`, `read_lockfile`, `_with_locks` ; `checks/vulns.py` :
+    `_variant_fix` ;
+  - `parsers/nuget.py` : `BUILD_TARGETS`, `_updated` (les `Update=` dans l'ordre de MSBuild),
+    `target_frameworks` sous condition ;
+  - `parsers/runtimes.py` : images (`openjdk`, `bitnami/…`, `cimg/…`, `circleci/…`,
+    `devcontainers`, copies de la bibliothèque), `_mise`, `required_ruby_version`, `_SETUPS` ;
+    `detect/manifests.py` : `settings.gradle(.kts)`, `mise.toml`, `rust-toolchain(.toml)` ;
+  - `parsers/code.py` : `notebook_imports`, `component_scripts`, `_deno`, `_TsConfig`, `_jsonc`,
+    `without_local_namespaces` ; `parsers/imports.py` : `visit_Call` (importlib) ;
+    `detect/code.py` : `.ipynb`, `.vue`, `.svelte` ; `sources/base.py` : `Source.is_directory` ;
+    `parsers/python.py` : `exclude_newer_cutoff`, `_exclude_newer` ; `engine._without_newer` ;
+  - front : « Rust » dans `RUNTIME_LABEL` (avec le skill `ui-ux-pro-max`).
+- **Tranché** :
+  - **Ruby** : une gem d'un bloc, d'une option `source:` ou d'une autre section `GEM` du lockfile
+    que celle de la source globale est privée par son nom (jamais rubygems.org ni OSV) ; une source
+    globale qui n'est pas rubygems.org (ou un miroir) la remplace, avec OSV ; un identifiant par
+    hôte vaut pour tous les ports, comme Bundler, en https (ou vers la machine elle-même) ;
+  - **Cargo** : un jeton est rattaché à un nom de registre ; celui de la personne ne part que vers
+    l'adresse que donne à ce nom un fichier de la personne (son `config.toml`,
+    `CARGO_REGISTRIES_<NOM>_INDEX`) ; un index git n'est pas lu ; des fichiers locaux à la place de
+    crates.io (`cargo vendor`) : crates.io est demandé ;
+  - **`rust-version`** : une version qu'il ne fait pas tourner n'est jamais proposée (quel que soit
+    le résolveur : la promesse du projet), et la version permise se replie sur la plus haute comme
+    le résolveur 3 ; sous le résolveur 2, cargo prendrait la plus haute (dit dans
+    `checks.runtimes`) ; Rust n'a pas de constat de fin de vie (une version suivie six semaines) ;
+  - **Go** : la version permise ne descend jamais sous la version construite (un workspace, ou les
+    verrous de Gradle) ;
+  - **Packagist** : ses avis sont ajoutés à ceux d'OSV et réunis par leurs identifiants (CVE,
+    GHSA) ; un paquet privé n'y est jamais envoyé ; une erreur laisse ceux d'OSV et le dit ;
+  - **`minimum-stability`** : la version permise suit Composer ; forceupdate ne propose toujours
+    que des versions stables ;
+  - **Maven** : une version gérée hors du dépôt devient vérifiable, sa mise à jour « à la main »
+    (celle du parent ou du BOM) ; `<relocation>` est une dépréciation ; la version corrigée est
+    celle de la variante utilisée (et une version Maven non publiée, `33.7.2` de Guava, devient
+    `33.7.2-jre`) ;
+  - **Gradle** : les verrous donnent les versions installées et les indirectes, jamais régénérés
+    (Gradle n'est jamais lancé : une remarque le dit) ;
+  - **les workflows de GitHub** sont lus pour tous les projets (une requête de plus par workflow à
+    la source d'une forge) ;
+  - **un `jsr:`** est non vérifiable (forceupdate ne lit pas le registre JSR) ; un `npm:` est le
+    paquet npm, sa contrainte à réécrire à la main ;
+  - **`exclude-newer`** : les versions publiées après ne sont pas proposées (y compris pour corriger
+    une faille), une remarque le dit ; un paquet qu'un projet sans ce réglage utilise aussi garde
+    toutes ses versions.
+- **Trouvé** :
+  - `routing.apply` efface la raison d'une dépendance rattachée avant que le moteur ne redemande sa
+    route : l'aiguillage de Cargo, qui la lisait, l'envoyait à crates.io (corrigé : lu à la lecture
+    du projet, comme Python) ;
+  - `record.py` n'avait pas suivi E33 (`_Recording.get` sans `auth=`) ;
+  - respx remplace une route au même motif (un test qui voulait un 503 prenait la réponse
+    enregistrée) ;
+  - trois heredocs ont encore abîmé des `\\n` (CLAUDE.md le dit) : les scripts passent par l'outil
+    d'écriture.
+- **Tests** : `test_routing_ruby.py` (22), `test_routing_cargo.py` (14), `test_rust_version.py`
+  (5), `test_advisories_packagist.py` (8), `test_managed.py` (4), `test_exclude_newer.py` (13),
+  `test_tables_network.py` (5 réseau), et dans `test_parsers_go.py`, `test_registries_goproxy.py`,
+  `test_php_projects.py`, `test_versions_composer.py`, `test_parsers_php.py`,
+  `test_registries_maven.py`, `test_java_projects.py`, `test_parsers_gradle.py`,
+  `test_parsers_nuget.py`, `test_parsers_runtimes.py`, `test_parsers_code.py`,
+  `test_code_files.py`, `test_routing_maven.py` ; réponses enregistrées : `maven/poms/` (22 `pom`,
+  `record.py maven-poms`), `packagist-advisories.json` (`record.py packagist-advisories`),
+  blackfriday (proxy Go), jackson-databind et maven-surefire-plugin (Maven), deux versions de plus
+  dans `osv/queries.json` (`OSV_EXTRA`) ; Vitest : « Rust » (`lib/report.test.ts`).
+- **Vérifié à la main** (`forceupdate scan`, vrais registres sauf les privés, servis en local) :
+  Ruby (deux gems demandées à leur serveur avec l'identifiant de `~/.bundle/config`, aucun secret
+  dans le rapport) ; Rust (le jeton refusé sans déclaration de la personne, envoyé avec) ; Go (le
+  workspace, blackfriday) ; twig 3.4.1 (les 17 CVE de `composer audit`) ; Spring Boot 3.2.0
+  (jackson-databind 2.15.3 et ses failles, le starter et le plugin en 3.2.0, mysql-connector-java
+  déplacé) ; Gradle (le plugin de `settings.gradle.kts`, le catalogue `deps`, guava d'après les
+  verrous) ; .NET (les versions de `dotnet restore`) ; un carnet, un `main.ts` de Deno, uv et
+  `exclude-newer` (2.31.0, comme `uv lock`) ; les tests réseau des tables.
+- **Limites** (pour la doc, E35) : Ruby, un serveur sans index compact (seulement
+  `/api/v1/dependencies`) est « non concluant », `BUNDLE_APP_CONFIG` relatif lu dans le projet, la
+  sonde d'un miroir (`fallback_timeout`) ignorée ; Rust, les jetons des autres fournisseurs
+  (`cargo:wincred`, `cargo:libsecret`…), un index git, `[resolver] incompatible-rust-versions` et
+  la version de `rustc` sans `rust-version` ni `rust-toolchain` (forceupdate ne lance pas rustc) ;
+  Go, les `go.mod` des dépendances (une indirecte peut être construite plus haut encore) ; PHP,
+  les branches (`dev-main`, `4.x-dev`) que Composer prend en `dev` ; Maven, `${project.version}`
+  d'un BOM importé est celle du BOM, les profils d'un `pom` distant (jamais lus, même actifs par défaut),
+  120 `pom` au plus par analyse ; Gradle, les verrous `buildscript-gradle.lockfile` et `gradle/dependency-locks/`, les
+  accesseurs des autres catalogues dans les scripts (leurs entrées sont `runtime`), les constantes
+  de `buildSrc`, un catalogue publié ; .NET, un `Update="@(…)"` ; fins de vie, le Java réel de la
+  machine (un `pom.xml` se juge d'après Eclipse Temurin), un `openjdk` lu comme Temurin, une date
+  d'`exclude-newer` lue en UTC (uv prend le fuseau de la machine) ; code, `extends` d'un
+  `tsconfig.json`, un `import_module` d'un nom calculé, `top_level.txt` de `IMPORT_PACKAGES` pas
+  vérifié.
 
 ### E35 — Documentation, packaging, CI
 
@@ -3294,6 +3452,16 @@ public.
     versions écartées) ; les `requirements.txt` générés (ce qui les reconnaît, comment ils sont
     refaits ; `poetry export` et son plugin) ; une ligne à `--hash` ; l'indirecte NuGet ajoutée au
     projet (et l'épinglage transitif) ; `go mod vendor` ; Composer 2.9 ; les limites des notes de E32.
+  - Depuis E33 et E34 : dans `docs/USAGE.md`, « Registres et dépôts privés » (par écosystème : ce
+    qui est lu, où sont les identifiants, la règle des identifiants rattachés à un nom — Maven,
+    NuGet, uv, Cargo —, « privé : non vérifié ») ; les serveurs de gems et Bundler, les registres
+    de Cargo ; `rust-version` et le résolveur 3 ; la version construite d'un workspace Go ; les
+    avis de Packagist ; `minimum-stability` ; les versions gérées par un parent ou un BOM distant
+    (« à la main »), `<relocation>`, `gradle.lockfile`, `settings.gradle(.kts)`, les versions
+    riches ; `Directory.Build.targets` ; les images, `mise.toml`, les actions `setup-*` ; les
+    fichiers de code (carnets, `.vue`, `.svelte`, Deno, `tsconfig.json`, `importlib`,
+    `exclude-newer`) ; les limites des notes de E33 et de E34 ; `Project.resolution` dans
+    `docs/JSON_FORMAT.md` (fait à E34).
 - [ ] Depuis E20 : dans `docs/FORGES.md`, Bitbucket : enregistrer son propre « OAuth client » (Workspace settings → OAuth clients ; « Authorization code » et « Refresh token », jamais « Client credentials » ; Account Read et Email, Repositories et Pull requests en écriture ; adresse de retour `http://127.0.0.1/oauth/bitbucket/callback`) et le passer par `FORCEUPDATE_BITBUCKET_CLIENT_ID` / `…_SECRET` ; le token d'API Atlassian (`id.atlassian.com`, application Bitbucket, ses six portées), les app passwords qui ne marchent plus ; pas de révocation (« Retirer l'accès » dans `bitbucket.org/account/settings/app-authorizations/`) ; pas d'adresse `noreply` (l'adresse principale du compte signe les commits) ; Bitbucket Data Center hors V1.
 - [ ] Depuis E18 : dans `docs/FORGES.md`, ce que fait une PR (branche `forceupdate/dependencies` remplacée à chaque envoi, un commit au nom du compte avec son adresse `noreply`, marqué `Generated-by: forceupdate` ; jamais par-dessus le commit d'un autre ; ce que dit la description ; un lockfile dont l'outil manque sur l'ordinateur) et qu'il faut git ; dans le README, une capture de l'écran 8 et d'une PR.
 - [ ] Depuis E31 : dans `docs/FORGES.md` :
@@ -3399,3 +3567,4 @@ En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.
 | 31 | 2026-11-02 | E31 | Fait. Commit de E30 d'abord (`a4f500a`, accord de l'utilisateur). Trois décisions de l'utilisateur : le trousseau sous Linux, la doc seulement ; une PR fermée sans fusion, le demander au récapitulatif ; l'arrêt pendant un envoi, tout de suite. Vérifié en vrai : `insteadOf` (configuration globale de test : détourne une adresse en argument, neutralisé par une règle vers elle-même, `pushInsteadOf` à part, l'adresse exacte gagne à égalité), les sous-modules dans l'arborescence (GitHub, GitLab : `type: commit`), le coût du `fetch` (cpython : 0,9 s et 480 Ko quand la branche part du `main` actuel, 2,4 s et 20 Mo à 300 commits), la spécification de Bitbucket (rien sur la durée d'un refresh token ; permission effective), keyring sans backend ; 662 clones d'analyses laissés dans le dossier temporaire (objets git en lecture seule). `web/workdirs.py` (le dossier du serveur, verrouillé, balayé au démarrage), `Forge.cancel` et `cancel` jusqu'à git, `processes.run` qui ne lance rien si l'arrêt est demandé, `Forge.closed_request` et l'écran 8 (badge, date, lien), le helper git qui ne donne le token qu'à l'hôte, `insteadOf` neutralisé, `Tree.submodules` et `ForgeSource.notices`, le `fetch` de Bitbucket sauté quand il est inutile. Huitième garde-fou des tests (`server_temp`). Trouvé : une course à l'arrêt (le nettoyage d'un clone et celui du dossier du serveur), le lien dans une phrase refusé par axe-core. Vérifié avec les vrais comptes, en lecture seule (PR #1 et MR !1 pas touchées). 4 789 tests Python verts (plus 21 réseau), 164 Vitest, 71 Playwright. |
 | 32 | 2026-11-02 | E32 | Fait. E31 déjà commitée (`44d5183`). Vérifié en vrai, dans le scratchpad : la table Node → npm (nodejs.org : Node 22 → npm 10, Node 24 et 26 → npm 11 ; la LTS 26 s'appelle « Lithium »), `npx -y npm@10` (npm 6 et 7 réécriraient le lockfile dans un format plus ancien), `npm ci --dry-run` qui relit vraiment, pnpm 12 et corepack qui suivent `packageManager`, les en-têtes de `uv export`, `pip-compile`, PDM (Poetry n'en écrit pas), `dotnet restore` après une `PackageVersion` épinglée ou une `PackageReference` ajoutée, `go mod vendor`, Composer 2.9.8 (qui ignore `COMPOSER_POLICY_ADVISORIES_BLOCK`), le workspace npm (trois formes de version forcée). L'élagage de npm 11 n'a pas pu être recréé ; npm 11 et 10 se disputent les `"peer": true` (le témoin du test `network`). `update/project_npm.py` (le npm qu'attend le projet), la CI comme runtime (`parsers/runtimes.ci`), `Job.extra` : une case cochée d'office (le npm du projet par `npx`, relu par son `npm ci --dry-run` ; `go mod vendor`, `vendor/` remis sur un échec), décochée par l'écran 5 (`declined`) ou `--no-extras`, toujours faite pour une PR ; les `requirements.txt` générés en lockfiles (refaits après le leur : `uv export`, `pdm export`, `poetry export`), `Dependency.manual` (`--hash`), l'indirecte NuGet ajoutée au projet (`EditKind.REFERENCE`, une réécriture qui insère, relue), Composer 2.9 dit, `$x` des versions forcées npm. Écrans 5 et 8 (avec le skill `ui-ux-pro-max`), mini-projet `exports` fait par les vrais outils. Critère de fin vérifié : une copie à CI en Node 22, mise à jour avec le npm 11 de la machine, donne un lockfile que le vrai `npm@10 ci` accepte. 4 864 tests Python verts (plus 23 réseau), 167 Vitest, 72 Playwright. Pas encore commitée. |
 | 33 | 2026-11-02 | E33 | Fait. Commit de E32 d'abord (`41f2fc8`, accord de l'utilisateur). Décidé avec lui : les identifiants des registres privés sont lus dans les fichiers de la personne et ne partent que vers l'hôte exact (https, ou la machine elle-même), jamais dans le cache, un rapport, un journal, l'API ni le navigateur ; les variables d'un fichier du projet ne sont jamais développées. Vérifié en vrai : `go env -w` et `GOENV`, le proxy public qui va chercher un module chez son hôte, `npm config`, un dépôt Composer local (Composer demande aussi Packagist), `dotnet nuget list source` et `<clear />`, uv et un index local à identifiants ; Maven et Gradle d'après leur documentation. `userfiles.py`, `net/auth.py` (un identifiant lié à son adresse ; `HttpClient` suit les redirections sans lui vers une autre origine), `routing/` (npm et `.yarnrc.yml`, Go, `.netrc`, Composer, NuGet, Python, Maven et Gradle, Ruby), `ComposerRepository`, `NuGetFeed`, `SimpleIndex` (JSON ou HTML) ; un paquet privé par son nom n'est jamais demandé au registre public ni à OSV ; un refus arrête la chaîne. Neuvième garde-fou des tests (`user_files`). Ajouté en route : la source globale d'un `Gemfile` (non vérifiée) ; à E34 : Ruby et Rust privés. Vérifié à la main : `forceupdate scan` contre six registres privés locaux, chacun avec son identifiant, aucun secret dans le rapport. Interface inchangée. 4987 tests Python verts (plus 23 réseau ; ceux des registres relancés), 167 Vitest, 72 Playwright. |
+| 34 | 2026-11-03 | E34 | Fait. Commit de E33 d'abord (`598468e`, accord de l'utilisateur) ; découpage proposé, refusé : E34 entière en une session. Vérifié en vrai : Bundler 4.0.20 et un serveur de gems local à identifiant (index compact, clés de `bundle config`, miroir), cargo 1.99.1 et un registre « sparse » local à jeton (`credentials.toml`, `replace-with`, résolveur 3 et `rust-version`), Go 1.27.3 (`go.work`), le proxy (blackfriday), `composer audit` (twig 3.4.1 : 17 failles, 15 chez OSV) et huit choix de `minimum-stability`, Maven Central (`<relocation>`, Spring Boot), le SDK .NET (`Directory.Build.targets`), endoflife.date et nodejs.org, uv (`exclude-newer`) ; Maven et Gradle d'après leur documentation. `routing/ruby.py` (réécrit), `routing/cargo.py`, `GemServer`, le runtime `rust` (sans fin de vie), la version construite d'un workspace Go, chaque majeure à `+incompatible`, `advisories/packagist.py`, `ComposerVersions.resolved` et `Project.resolution` (format JSON et API), `managed.py` (parent et BOM distants, « à la main »), `Maven.pom` et `CacheKind.FILES`, `gradle.lockfile`, `settings.gradle(.kts)`, versions riches, la variante de Guava, `Update=` de MSBuild, images, `mise.toml`, `required_ruby_version`, `setup-*`, les tests `network` des tables, carnets, `.vue`, `.svelte`, Deno, `tsconfig.json`, `importlib`, espace de noms local, `exclude-newer` ; « Rust » au front. Trouvé : l'aiguillage de Cargo lisait une raison que `routing.apply` efface (il renvoyait à crates.io). 5 103 tests Python verts (plus 28 réseau), 168 Vitest, 72 Playwright. Pas encore commitée. |

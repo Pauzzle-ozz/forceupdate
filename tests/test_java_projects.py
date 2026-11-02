@@ -102,7 +102,7 @@ def test_the_gradle_mini_project() -> None:
     assert sorted(projects) == [".", "app"]
     root = projects["."]
     assert (root.manifests, root.lockfiles, root.notices) == (
-        ["build.gradle.kts", "gradle/libs.versions.toml"],
+        ["build.gradle.kts", "gradle/libs.versions.toml", "settings.gradle.kts"],
         [],
         [],
     )
@@ -166,14 +166,31 @@ def test_findings_of_the_maven_mini_project(recorded: Routes) -> None:
     assert ("CVE-2022-42889", "1.10.0") in vulnerabilities(
         projects["lib"], "org.apache.commons:commons-text"
     )
+    # OSV écrit « fixed: 32.0.0-android » : à qui a -jre, la plus petite -jre qui n'est plus
+    # concernée (E34).
+    guava = vulnerabilities(projects["lib"], "com.google.guava:guava")
+    assert guava and all(fixed is None or fixed.endswith("-jre") for _, fixed in guava)
+    assert ("CVE-2023-2976", "32.0.0-jre") in guava
     unverifiable = [
         f.message for f in projects["app"].findings if f.kind is FindingKind.UNVERIFIABLE
     ]
-    assert unverifiable == [
-        f"Non vérifiable : {REASON_MODULE}.",
-        "Non vérifiable : version gérée par un BOM importé (com.fasterxml.jackson:jackson-bom).",
-        "Non vérifiable : version gérée par le parent org.apache:apache (hors du dépôt).",
-    ]
+    assert unverifiable == [f"Non vérifiable : {REASON_MODULE}."]
+    # E34 : les versions gérées hors du dépôt, lues dans le pom du BOM et du parent distants.
+    app = {d.name: d for d in projects["app"].dependencies}
+    databind = app["com.fasterxml.jackson.core:jackson-databind"]
+    assert (databind.installed, databind.location) == ("2.13.0", None)
+    assert databind.manual == (
+        "version gérée par le BOM com.fasterxml.jackson:jackson-bom:2.13.0 : la changer avec lui, "
+        "ou écrire la <version> voulue"
+    )
+    assert vulnerabilities(projects["app"], "com.fasterxml.jackson.core:jackson-databind")
+    surefire = app["org.apache.maven.plugins:maven-surefire-plugin"]
+    assert surefire.installed == "2.22.0"
+    assert surefire.manual is not None and "le parent org.apache:apache:23" in surefire.manual
+    # Sa mise à jour est celle du BOM : à la main, jamais cochée d'office.
+    update = next(u for u in projects["app"].updates if u.name == databind.name)
+    assert update.selected is None
+    assert all(option.manual for option in update.options)
 
 
 def test_plan_of_the_maven_mini_project(recorded: Routes) -> None:

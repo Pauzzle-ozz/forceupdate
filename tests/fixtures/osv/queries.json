@@ -79,6 +79,70 @@
     ]
   },
   "Maven/androidx.annotation:annotation@1.3.0": {},
+  "Maven/com.fasterxml.jackson.core:jackson-databind@2.13.0": {
+    "vulns": [
+      {
+        "id": "GHSA-3wrr-7qpf-2prh",
+        "modified": "2026-09-10T03:50:55.377810Z"
+      },
+      {
+        "id": "GHSA-3x8x-79m2-3w2w",
+        "modified": "2026-09-10T03:49:52.469168Z"
+      },
+      {
+        "id": "GHSA-57j2-w4cx-62h2",
+        "modified": "2026-09-10T03:49:13.050028Z"
+      },
+      {
+        "id": "GHSA-5gvw-p9qm-jgwh",
+        "modified": "2026-10-19T19:45:04.650428Z"
+      },
+      {
+        "id": "GHSA-5jmj-h7xm-6q6v",
+        "modified": "2026-09-10T03:51:08.069993Z"
+      },
+      {
+        "id": "GHSA-cxp5-3px4-pw24",
+        "modified": "2026-09-30T15:46:18.051343Z"
+      },
+      {
+        "id": "GHSA-gx83-3vf8-gh7j",
+        "modified": "2026-09-28T21:00:05.608227Z"
+      },
+      {
+        "id": "GHSA-hgj6-7826-r7m5",
+        "modified": "2026-09-10T03:50:49.909813Z"
+      },
+      {
+        "id": "GHSA-j3rv-43j4-c7qm",
+        "modified": "2026-10-28T10:56:49.472327Z"
+      },
+      {
+        "id": "GHSA-jjjh-jjxp-wpff",
+        "modified": "2026-09-10T03:49:49.858752Z"
+      },
+      {
+        "id": "GHSA-rgv9-q543-rqg4",
+        "modified": "2026-09-10T03:49:46.655422Z"
+      },
+      {
+        "id": "GHSA-rmj7-2vxq-3g9f",
+        "modified": "2026-09-11T15:45:08.499771Z"
+      },
+      {
+        "id": "GHSA-vvgp-rfg2-7rr6",
+        "modified": "2026-09-28T20:30:05.324367Z"
+      },
+      {
+        "id": "GHSA-wjgm-6hv5-3cvf",
+        "modified": "2026-09-28T20:30:05.331167Z"
+      },
+      {
+        "id": "GHSA-wv8q-qhhj-9h54",
+        "modified": "2026-09-30T15:46:18.451708Z"
+      }
+    ]
+  },
   "Maven/com.fasterxml.jackson:jackson-bom@2.13.0": {},
   "Maven/com.github.ben-manes.versions@0.42.0": {},
   "Maven/com.google.guava:guava@30.1-jre": {
@@ -184,6 +248,7 @@
     ]
   },
   "Maven/org.apache.maven.plugins:maven-compiler-plugin@3.8.1": {},
+  "Maven/org.apache.maven.plugins:maven-surefire-plugin@2.22.0": {},
   "Maven/org.apache.maven.plugins:maven-war-plugin@3.3.2": {},
   "Maven/org.apache:apache@23": {},
   "Maven/org.mockito:mockito-core@4.0.0": {},

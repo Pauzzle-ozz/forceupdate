@@ -7,6 +7,7 @@ import {
   filterRows,
   highest,
   rows,
+  runtimeLines,
   selectedCount,
   shownOption,
   sortRows,
@@ -104,5 +105,25 @@ describe('les lignes du rapport', () => {
   it('prend la gravité la plus haute', () => {
     expect(highest(['low', 'critical', 'medium'])).toBe('critical')
     expect(highest([])).toBeNull()
+  })
+})
+
+describe("les runtimes d'un projet", () => {
+  it("Rust a son nom (E34 : le rust-version d'un Cargo.toml)", () => {
+    const project = {
+      ...VULNERABLE.projects[0],
+      runtimes: [
+        {
+          product: 'rust',
+          version: '1.70',
+          approximate: true,
+          file: 'Cargo.toml',
+          source: 'rust-version = "1.70"',
+        },
+      ],
+    }
+    expect(runtimeLines(project)).toEqual([
+      { label: 'Rust', version: '1.70', approximate: true, files: ['Cargo.toml'] },
+    ])
   })
 })

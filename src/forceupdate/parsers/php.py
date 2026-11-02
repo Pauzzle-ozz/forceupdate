@@ -23,8 +23,11 @@ Mis de côté :
 
 ``conflict`` donne les versions que le projet refuse : ``Dependency.excluded`` (des
 contraintes), jamais proposées. ``minimum-stability`` (``stable`` par défaut) et ``prefer-stable``
-: forceupdate ne propose que des versions stables ; une stabilité plus basse sans
-``prefer-stable`` donne une remarque (Composer peut alors choisir une pré-version).
+vont dans ``Project.resolution`` : la version permise les suit, comme ``composer update`` (E34,
+``versions.composer.ComposerVersions.resolved``) ; forceupdate ne propose que des versions
+stables, et une stabilité plus basse sans ``prefer-stable`` donne une remarque (Composer peut alors
+choisir une pré-version). Les branches (``dev-main``, ``4.x-dev``), que Composer prend en ``dev``,
+ne sont pas lues.
 
 Lockfile lu : ``composer.lock``, ``packages`` et ``packages-dev`` (``dev``), la version telle
 qu'écrite (``v5.4.10`` pour Symfony), et ce que chaque paquet requiert (``require``) : on suit le
@@ -45,7 +48,7 @@ import json
 import logging
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from forceupdate.detect.manifests import match_dependency_file
@@ -134,6 +137,8 @@ class ComposerJson:
     other_repositories: bool
     """``repositories`` déclare un dépôt qui n'est ni Packagist ni un miroir (``vcs``,
     ``package``, ``artifact``…)."""
+    resolution: dict[str, str] = field(default_factory=dict)
+    """``minimum-stability`` et ``prefer-stable`` quand ils sont écrits (``Project.resolution``)."""
 
 
 def parse_composer_json(path: str, content: str) -> list[Dependency]:
@@ -176,7 +181,12 @@ def _parse_composer_json(path: str, content: str) -> ComposerJson:
                     excluded=conflicts.get(name, ()),
                 )
             )
+    resolution: dict[str, str] = {}
     stability = data.get("minimum-stability")
+    if isinstance(stability, str) and stability.lower() in {s.lower() for s in STABILITIES}:
+        resolution["minimum-stability"] = stability
+    if isinstance(data.get("prefer-stable"), bool):
+        resolution["prefer-stable"] = "true" if data["prefer-stable"] else "false"
     if (
         isinstance(stability, str)
         and stability.lower() in {s.lower() for s in STABILITIES}
@@ -188,7 +198,8 @@ def _parse_composer_json(path: str, content: str) -> ComposerJson:
                 file=path,
                 message=(
                     f"minimum-stability « {stability} » sans prefer-stable : Composer peut choisir "
-                    "des pré-versions ; forceupdate ne propose que des versions stables."
+                    "des pré-versions, et la version permise le suit ; forceupdate ne propose que "
+                    "des versions stables."
                 ),
             )
         )
@@ -197,6 +208,7 @@ def _parse_composer_json(path: str, content: str) -> ComposerJson:
         notices=notices,
         conflicts=conflicts,
         other_repositories=bool(_repository_types(data.get("repositories")) & _OTHER_REPOSITORIES),
+        resolution=resolution,
     )
 
 
@@ -352,6 +364,8 @@ class _ProjectParser:
         found.sort(key=lambda d: (d.name, COMPOSER.sort_key(d.installed or "")))
         self.project.dependencies.extend(directs + found)
         self.project.notices.extend(self.notices)
+        if manifest is not None:
+            self.project.resolution.update(manifest.resolution)
 
     def _read(self, path: str) -> str | None:
         try:

@@ -23,7 +23,10 @@ Ce qu'on en tire :
 - **la dernière stable** : la plus haute des versions non retirées, pré-versions exclues, comme
   la « max stable version » de crates.io ;
 - crates.io n'a pas de dépréciation : un crate dont toutes les versions sont retirées est dit
-  retiré du registre.
+  retiré du registre ;
+- la plus ancienne version de Rust qu'accepte chaque version (``rust_version``, E34) : le
+  résolveur 3 de Cargo écarte celles que le ``rust-version`` du projet ne fait pas tourner
+  (``checks.runtimes``).
 
 Les noms ne sont pas normalisés : Cargo demande le nom exact (``serde_json``, pas
 ``serde-json``) ; seul le chemin de l'index l'écrit en minuscules.
@@ -53,6 +56,10 @@ def index_path(name: str) -> str:
     if len(lowered) == 3:
         return f"3/{lowered[0]}/{lowered}"
     return f"{lowered[:2]}/{lowered[2:4]}/{lowered}"
+
+
+def _rust_version(value: object) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 class Crates(Registry):
@@ -86,6 +93,7 @@ class Crates(Registry):
                     version=version,
                     published=parse_time(entry.get("pubtime")),
                     yanked=entry.get("yanked") is True,
+                    requires_runtime=_rust_version(entry.get("rust_version")),
                 )
             )
         versions = sorted_versions(self.ecosystem, found)

@@ -77,6 +77,12 @@ def nexus(status: int = 200) -> Iterator[dict[str, respx.Route]]:
         yield {**routes, **extra}
 
 
+def metadata_calls(route: respx.Route) -> int:
+    """Les requêtes de ``maven-metadata.xml`` d'une route, sans celles du ``pom`` de la dernière
+    version (sa relocation, E34)."""
+    return sum(1 for call in route.calls if not call.request.url.path.endswith(".pom"))
+
+
 def analyze(root: Path) -> Report:
     async def main() -> Report:
         async with HttpClient(sleep=no_sleep) as http:
@@ -108,7 +114,11 @@ def test_pom_repositories_come_before_central(make_tree: MakeTree) -> None:
         report = analyze(root)
     assert routes["releases"].call_count == 1
     assert routes["central-billing"].call_count == 0
-    assert routes["releases-other"].call_count == 1  # junit : pas sur Nexus, puis Central
+    # junit : pas sur Nexus, puis Central ; et le pom de la dernière version de billing, pour sa
+    # relocation (E34), demandé au même dépôt.
+    assert routes["releases-other"].call_count == 2
+    asked = [call.request.url.path for call in routes["releases-other"].calls]
+    assert any(path.endswith(".pom") for path in asked)
     assert routes["maven:junit:junit"].call_count == 1
     assert "com.acme:billing" in osv_names(routes)  # pas privé par son nom
     ((kind, message),) = findings(report, "com.acme:billing")
@@ -153,7 +163,7 @@ def test_a_mirror_with_its_server_credentials(make_tree: MakeTree, user_files: U
     assert routes["mirror"].calls.last.request.headers["authorization"] == "Basic am86cHc="
     assert routes["releases"].call_count == 0  # le miroir remplace tout
     assert routes["maven:junit:junit"].call_count == 0
-    assert routes["mirror-other"].call_count == 1
+    assert metadata_calls(routes["mirror-other"]) == 1
     (project,) = report.projects
     assert not any("« corp »" in n.message for n in project.notices)
 
@@ -303,7 +313,7 @@ dependencies {{
     with nexus() as routes:
         analyze(root)
     assert routes["releases"].call_count == 1
-    assert routes["releases-other"].call_count == 0  # junit ne lui est pas demandé
+    assert metadata_calls(routes["releases-other"]) == 0  # junit ne lui est pas demandé
     assert "com.acme:billing" not in osv_names(routes)
     assert "junit:junit" in osv_names(routes)
 

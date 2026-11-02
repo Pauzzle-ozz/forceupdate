@@ -8,7 +8,16 @@ lus par ``xml.parsers.expat`` (``parsers.xml_spans``) et ``json``. MSBuild n'est
   ou en élément ``<Version>``) et ses ``<PropertyGroup>``. Avant lui, comme MSBuild, le
   ``Directory.Build.props`` le plus proche (dans son dossier ou au-dessus, et celui qu'il importe
   plus haut par ``GetPathOfFileAbove``), puis le ``Directory.Packages.props`` le plus proche : leurs
-  propriétés et leurs ``PackageReference`` valent pour le projet ;
+  propriétés et leurs ``PackageReference`` valent pour le projet ; après lui, le
+  ``Directory.Build.targets`` le plus proche (et ceux qu'il importe), E34 ;
+- ``<PackageReference Update="x" Version="…" />`` (E34, vérifié avec le SDK .NET 10.0.403 :
+  ``dotnet restore`` et ``project.assets.json``) : change la version des références de ``x`` lues
+  **avant** lui, dans l'ordre de MSBuild (``Directory.Build.props``, le projet, puis
+  ``Directory.Build.targets``). Dans ``Directory.Build.targets``, il l'emporte sur celle du projet ;
+  dans ``Directory.Build.props``, lu avant les références du projet, il est sans effet (une
+  remarque le dit). Les propriétés de ``Directory.Build.targets`` valent aussi pour les versions du
+  projet (MSBuild lit toutes les propriétés avant les références), et l'emportent sur les siennes ;
+  un ``Include`` de ``Directory.Build.targets`` ajoute la référence à chaque projet ;
 - la gestion centrale (``ManagePackageVersionsCentrally`` à ``true``) : une ``PackageReference``
   sans version prend celle de ``<PackageVersion Include="x" Version="…" />``, sauf
   ``VersionOverride`` ; ``<GlobalPackageReference>`` vaut pour tous les projets. Le projet du
@@ -76,6 +85,7 @@ from forceupdate.versions.nuget import NUGET
 
 CENTRAL = "Directory.Packages.props"
 BUILD_PROPS = "Directory.Build.props"
+BUILD_TARGETS = "Directory.Build.targets"
 PACKAGES_CONFIG = "packages.config"
 LOCKFILE = "packages.lock.json"
 GLOBAL_JSON = "global.json"
@@ -132,7 +142,7 @@ class Item:
     """Un ``PackageReference``, un ``PackageVersion`` ou un ``GlobalPackageReference``."""
 
     kind: str
-    """``reference``, ``central`` ou ``global``."""
+    """``reference``, ``central``, ``global``, ou ``update`` (``PackageReference Update=``, E34)."""
     name: str
     file: str
     version: str | None
@@ -174,7 +184,8 @@ class MsBuildFile:
     imports: tuple[str, ...]
     """Les ``Project`` de ses ``<Import>``."""
     updates: tuple[str, ...] = ()
-    """Les ``PackageReference Update="…"`` : pas lues."""
+    """Les noms de ses ``PackageReference Update="…"`` (leurs ``Item`` de sorte ``update`` sont dans
+    ``items``)."""
     sdks: tuple[SdkReference, ...] = ()
     """Ses SDK de projet (E27)."""
     end_line: int = 0
@@ -319,11 +330,12 @@ class _Found:
         if kind is None:
             return
         include = element.attributes.get("Include")
-        if include is None:
-            update = element.attributes.get("Update")
-            if update and kind == "reference":
-                self.updates.append(update)
+        update = element.attributes.get("Update") if include is None else None
+        if include is None and not (update and kind == "reference"):
             return
+        if update is not None:
+            self.updates.append(update)
+            kind, include = "update", update
         version, location = _attribute(element, "Version")
         override, override_location = _attribute(element, "VersionOverride")
         private, _ = _attribute(element, "PrivateAssets")
@@ -498,7 +510,8 @@ class _Evaluation:
     def __init__(self, loader: _Loader, path: str, own: MsBuildFile) -> None:
         directory = dirname(path)
         before = [*loader.chain(directory, BUILD_PROPS), *loader.chain(directory, CENTRAL)]
-        self.files = [f for f in before if f.path != path] + [own]
+        after = [f for f in loader.chain(directory, BUILD_TARGETS) if f.path != path]
+        self.files = [f for f in before if f.path != path] + [own] + after
         self.own = own
         self.properties = Properties(p for f in self.files for p in f.properties)
         self.centrally = (self.properties.value("ManagePackageVersionsCentrally") or "").strip()
@@ -506,7 +519,7 @@ class _Evaluation:
         self.central: dict[str, list[Item]] = {}
         for item in (i for f in self.files for i in f.items if i.kind == "central"):
             self.central.setdefault(item.name.lower(), []).append(item)
-        self.references = [i for f in self.files for i in f.items if i.kind == "reference"]
+        self.references, self.ineffective = _updated(self.files)
         self.globals = [i for f in self.files for i in f.items if i.kind == "global"]
         test = (self.properties.value("IsTestProject") or "").strip().lower() == "true"
         self.tests = test or any(i.name.lower() == TEST_SDK for i in self.references)
@@ -579,6 +592,41 @@ class _Evaluation:
             file=item.file,
             unverifiable_reason=reason,
         )
+
+
+def _updated(files: Sequence[MsBuildFile]) -> tuple[list[Item], list[Item]]:
+    """Les ``PackageReference`` de ``files`` (dans l'ordre de MSBuild), avec les ``Update=`` qui
+    les suivent appliqués ; et les ``Update=`` qui ne changent rien (aucune référence de ce nom lue
+    avant eux). Un ``Update`` qui n'est pas un nom (``@(…)``, ``*``) n'est pas suivi."""
+    references: list[Item] = []
+    ineffective: list[Item] = []
+    for file in files:
+        for item in file.items:
+            if item.kind == "reference":
+                references.append(item)
+                continue
+            if item.kind != "update" or any(c in item.name for c in "@*$%"):
+                continue
+            matched = False
+            for index, reference in enumerate(references):
+                if reference.name.lower() != item.name.lower():
+                    continue
+                matched = True
+                changes: dict[str, object] = {}
+                if item.version is not None:
+                    changes.update(version=item.version, location=item.location, file=item.file)
+                if item.override is not None:
+                    changes.update(
+                        override=item.override,
+                        override_location=item.override_location,
+                        file=item.file,
+                    )
+                if item.private:
+                    changes["private"] = True
+                references[index] = dataclasses.replace(reference, **changes)  # type: ignore[arg-type]
+            if not matched:
+                ineffective.append(item)
+    return references, ineffective
 
 
 def _used(constraint: str) -> str | None:
@@ -784,8 +832,8 @@ def target_frameworks(project: Project, read_text: ReadText) -> list[TargetFrame
     """Les frameworks cibles des projets MSBuild de ``project``, leurs propriétés résolues comme
     pour les versions (``Directory.Build.props`` compris) : la première de
     ``FRAMEWORK_PROPERTIES`` qui a une valeur (avec ``TargetFramework``, MSBuild construit pour lui
-    seul, même si ``TargetFrameworks`` est défini). Une propriété sous condition, ou calculée,
-    n'est pas lue."""
+    seul, même si ``TargetFrameworks`` est défini). Une propriété sous condition donne chacune de
+    ses valeurs écrites (E34) ; une propriété calculée n'est pas lue."""
     loader = _Loader(read_text, [])
     found = []
     for path in sorted(p for p in project.manifests if _pattern(p) in PROJECTS):
@@ -796,6 +844,24 @@ def target_frameworks(project: Project, read_text: ReadText) -> list[TargetFrame
         for name in FRAMEWORK_PROPERTIES:
             definition = properties.get(name)
             value = properties.value(name)
+            if isinstance(definition, str):
+                # Sous condition (E34) : chacune des valeurs écrites, sans évaluer la condition.
+                written = [
+                    p for p in properties.by_name.get(name.lower(), []) if "$" not in p.value
+                ]
+                for item in written:
+                    for framework in item.value.split(";"):
+                        if framework.strip():
+                            found.append(
+                                TargetFramework(
+                                    value=framework.strip(),
+                                    file=item.file,
+                                    written=f"<{item.name} Condition=…>{item.value}</{item.name}>",
+                                )
+                            )
+                if written:
+                    break
+                continue
             if not isinstance(definition, Property) or not value:
                 continue
             written = f"<{definition.name}>{definition.value}</{definition.name}>"
@@ -876,6 +942,8 @@ class _ProjectParser:
         """Les versions centrales des évaluations : celles des ``CentralTransitive``."""
         self.conditional: set[str] = set()
         """Les fichiers dont les références conditionnelles ont déjà leur remarque."""
+        self.ineffective: set[tuple[str, str]] = set()
+        """Les ``Update=`` sans effet qui ont déjà leur remarque (fichier, nom)."""
         self.tests = False
         """Un projet de tests : ce que tirent ses projets référencés est de développement."""
 
@@ -965,10 +1033,17 @@ class _ProjectParser:
         for name, versions in evaluation.central_versions().items():
             self.central.setdefault(name, versions)
         self._conditions(evaluation)
-        if own.updates:
-            names = ", ".join(dict.fromkeys(own.updates))
-            message = f"PackageReference Update=… pas lues ({names})."
-            self.notices.append(Notice(file=path, message=message))
+        for item in evaluation.ineffective:
+            key = (item.file, item.name.lower())
+            if key in self.ineffective:
+                continue
+            self.ineffective.add(key)
+            message = (
+                f'PackageReference Update="{item.name}" sans effet : aucune référence de ce nom '
+                "n'est lue avant lui (MSBuild lit Directory.Build.props avant le projet, "
+                "Directory.Build.targets après)."
+            )
+            self.notices.append(Notice(file=item.file, message=message))
         return evaluation
 
     def _conditions(self, evaluation: _Evaluation) -> None:

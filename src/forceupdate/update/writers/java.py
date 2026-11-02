@@ -70,6 +70,8 @@ READERS: dict[str, Reader] = {
     "pom.xml": read_pom_xml,
     "build.gradle": read_build_script,
     "build.gradle.kts": read_build_script,
+    "settings.gradle": read_build_script,
+    "settings.gradle.kts": read_build_script,
     "gradle/libs.versions.toml": read_version_catalog,
 }
 """Le parseur qui relit chaque manifeste, par motif reconnu (``detect.manifests``) ;

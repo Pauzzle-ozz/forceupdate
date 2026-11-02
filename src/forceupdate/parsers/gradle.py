@@ -26,7 +26,17 @@ version est celle du catalogue, vérifiée une fois.
 - ``implementation group: 'g', name: 'a', version: 'v'`` (Groovy), ``implementation(group = "g",
   name = "a", version = "v")`` (Kotlin) ;
 - dans ``plugins { }`` : ``id("x") version "v"``, ``id 'x' version 'v'``, ``kotlin("jvm") version
-  "v"`` (l'``id`` ``org.jetbrains.kotlin.jvm``) ; ``classpath("g:a:v")`` dans ``buildscript``.
+  "v"`` (l'``id`` ``org.jetbrains.kotlin.jvm``) ; ``classpath("g:a:v")`` dans ``buildscript`` ;
+- une version riche (E34) : ``implementation("g:a") { version { strictly("1.7.36") } }``, la
+  première de ``strictly``, ``require``, ``prefer``, comme dans le catalogue.
+
+**``settings.gradle(.kts)``** (E34) : ses ``plugins { }`` et ceux de ``pluginManagement``, lus comme
+ceux d'un script ; les autres catalogues de ``dependencyResolutionManagement { versionCatalogs {
+create("deps") { from(files("gradle/deps.versions.toml")) } } }`` (Groovy : ``deps { from(…) }``),
+lus comme ``libs.versions.toml`` (le scope de leurs entrées est ``runtime`` : seul ``libs.`` est
+suivi dans les scripts) ; un catalogue publié (``from("g:a:v")``) n'est pas lu (une remarque).
+``buildSrc`` est un build à part : son ``build.gradle(.kts)`` est un projet ; les constantes de ses
+sources Kotlin ou Groovy (``object Versions { … }``) ne sont pas lues.
 
 La configuration donne le scope : ``test…`` et ``androidTest…`` : ``dev`` ; ``classpath``,
 ``annotationProcessor``, ``kapt``, ``ksp`` : ``build`` ; ``runtime`` sinon.
@@ -41,10 +51,14 @@ qui monte pour toutes les dépendances qui la citent. Une variable introuvable, 
 
 **La version utilisée** : une version nue est celle que demande le script (« require ») ; Gradle
 peut en prendre une plus haute si une autre dépendance l'exige. Sans lockfile, c'est
-``Dependency.installed``. Les verrous de Gradle (``gradle.lockfile``) ne sont ni lus ni régénérés :
-une remarque le dit.
+``Dependency.installed``. **Les verrous de Gradle** (``gradle.lockfile`` du projet, E34) : les
+lignes ``groupe:artefact:version=configurations`` donnent la version installée des directes, et
+les indirectes (leur scope d'après leurs configurations : ``test…`` → ``dev``). forceupdate ne les
+régénère pas (Gradle exécute les scripts du projet, et n'est jamais lancé) : une remarque dit de
+les refaire après une mise à jour (``gradle dependencies --write-locks``), sinon le build échoue.
 """
 
+import dataclasses
 import functools
 import posixpath
 import re
@@ -62,6 +76,7 @@ from forceupdate.versions.maven import MAVEN
 
 CATALOG = "gradle/libs.versions.toml"
 SCRIPTS = ("build.gradle", "build.gradle.kts")
+SETTINGS = ("settings.gradle", "settings.gradle.kts")
 PROPERTIES = "gradle.properties"
 LOCKFILE = "gradle.lockfile"
 
@@ -457,7 +472,56 @@ class _ScriptReader:
         configuration = self.tokens[index].value
         scope = configuration_scope(configuration)
         arguments, end = self._arguments(index + 1)
-        named = {}
+        before = len(self.notations)
+        end = self._read_arguments(arguments, scope, end)
+        if self._is(end, "op", "{") and len(self.notations) == before + 1:
+            last = self.notations[-1]
+            rich = self._rich_version(end)
+            if last.version is None and last.reason is None and rich is not None:
+                self.notations[-1] = dataclasses.replace(
+                    last,
+                    version=rich.value,
+                    location=(
+                        Location(line=rich.line, column=rich.column, end_column=rich.end_column)
+                        if rich.plain and "$" not in rich.value
+                        else None
+                    ),
+                    interpolates=rich.interpolates,
+                )
+        return end
+
+    def _rich_version(self, start: int) -> Token | None:
+        """La version riche du bloc qui commence à ``start`` (``{ version { strictly("v") }
+        }``) : la première de ``strictly``, ``require``, ``prefer`` ; ``None`` sans."""
+        depth = 0
+        found: dict[str, Token] = {}
+        in_version = 0
+        index = start
+        while index < len(self.tokens):
+            token = self.tokens[index]
+            if token.kind == "op" and token.value == "{":
+                depth += 1
+                if self._is(index - 1, "ident", "version"):
+                    in_version = depth
+            elif token.kind == "op" and token.value == "}":
+                if depth == in_version:
+                    in_version = 0
+                depth -= 1
+                if depth == 0:
+                    break
+            elif in_version and token.kind == "ident" and token.value in _RICH:
+                value = (
+                    self.tokens[index + 2]
+                    if self._is(index + 1, "op", "(")
+                    else self._at(index + 1)
+                )
+                if value is not None and value.kind == "string":
+                    found.setdefault(token.value, value)
+            index += 1
+        return next((found[key] for key in _RICH if key in found), None)
+
+    def _read_arguments(self, arguments: list[list[Token]], scope: Scope, end: int) -> int:
+        named: dict[str, list[Token]] = {}
         for argument in arguments:
             if len(argument) >= 3 and argument[0].kind == "ident" and argument[1].kind == "op" and (
                 argument[1].value in ":="
@@ -842,9 +906,15 @@ def parse_gradle_project(
     scripts = [
         script
         for path in manifests
-        if posixpath.basename(path) in SCRIPTS
+        if posixpath.basename(path) in (*SCRIPTS, *SETTINGS)
         and (script := _load_script(path, read_text, notices)) is not None
     ]
+    for path in manifests:
+        if posixpath.basename(path) in SETTINGS:
+            for other in _other_catalogs(path, read_text, notices):
+                loaded = _load_catalog(other, read_text, notices)
+                if loaded is not None and other != catalog_path:
+                    found.extend(catalog_dependencies(loaded, {}))
     if catalog is not None:
         scopes = _usage_scopes(catalog, directory, scripts, read_text, project_dirs)
         found.extend(catalog_dependencies(catalog, scopes))
@@ -869,15 +939,115 @@ def parse_gradle_project(
     except ValueError:
         locked = None
     if locked is not None:
+        found = _with_locks(found, read_lockfile(locked), lockfile)
         notices.append(
             Notice(
                 file=lockfile,
                 message=(
-                    "verrous de Gradle : ni lus ni régénérés par forceupdate. Après une mise à "
-                    "jour, les refaire (gradle dependencies --write-locks)."
+                    "verrous de Gradle : lus pour les versions installées, mais pas régénérés "
+                    "(Gradle exécute les scripts du projet, forceupdate ne le lance jamais). "
+                    "Après une mise à jour, les refaire (gradle dependencies --write-locks), "
+                    "sinon le build échoue."
                 ),
             )
         )
+    return found
+
+
+def read_lockfile(content: str) -> dict[str, tuple[str, tuple[str, ...]]]:
+    """Un ``gradle.lockfile`` : ``groupe:artefact`` → (version, configurations). Les lignes
+    ``groupe:artefact:version=configurations`` ; ``empty=…`` et les commentaires sont sautés."""
+    found = {}
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        coordinates, _, configurations = line.partition("=")
+        parts = coordinates.split(":")
+        if len(parts) < 3 or not all(parts[:3]):
+            continue
+        names = tuple(c.strip() for c in configurations.split(",") if c.strip())
+        found[f"{parts[0]}:{parts[1]}"] = (parts[2], names)
+    return found
+
+
+def _locked_scope(configurations: Sequence[str]) -> Scope:
+    """Le scope d'une indirecte d'après ses configurations : seulement des tests, ``dev`` ;
+    seulement le build (``kapt``, ``annotationProcessor``…), ``build`` ; ``runtime`` sinon."""
+    scopes = {_classpath_scope(name) for name in configurations}
+    if scopes == {Scope.DEV}:
+        return Scope.DEV
+    if scopes == {Scope.BUILD}:
+        return Scope.BUILD
+    return Scope.RUNTIME
+
+
+def _classpath_scope(configuration: str) -> Scope:
+    base = re.sub(r"(CompileClasspath|RuntimeClasspath|Classpath)$", "", configuration)
+    return configuration_scope(base or "implementation")
+
+
+def _with_locks(
+    found: list[Dependency], locks: dict[str, tuple[str, tuple[str, ...]]], lockfile: str
+) -> list[Dependency]:
+    """Les directes avec leur version des verrous, puis les indirectes des verrous. Pas de
+    ``Dependency.lockfile`` : forceupdate ne sait pas les régénérer."""
+    directs = []
+    for dependency in found:
+        lock = locks.get(dependency.name)
+        if lock is not None and dependency.unverifiable_reason is None:
+            dependency = dataclasses.replace(dependency, installed=lock[0])
+        directs.append(dependency)
+    names = {d.name for d in found}
+    indirects = [
+        Dependency(
+            ecosystem=Ecosystem.MAVEN,
+            name=name,
+            installed=version,
+            direct=False,
+            scope=_locked_scope(configurations),
+            file=lockfile,
+        )
+        for name, (version, configurations) in sorted(locks.items())
+        if name not in names
+    ]
+    return directs + indirects
+
+
+_CATALOG_FROM = re.compile(
+    r"""(?:create\s*\(\s*["'](?P<created>[\w-]+)["']\s*\)|(?P<named>[\w-]+))\s*\{\s*"""
+    r"""from\s*\(?\s*(?:files\s*\(\s*["'](?P<file>[^"']+)["']|["'](?P<published>[^"']+)["'])"""
+)
+
+
+def _other_catalogs(settings: str, read_text: ReadText, notices: list[Notice]) -> list[str]:
+    """Les catalogues que déclare ``settings`` (``versionCatalogs``), leurs chemins dans la
+    source ; une remarque pour un catalogue publié, qui n'est pas lu."""
+    try:
+        content = read_text(settings)
+    except ValueError:
+        content = None
+    if not content or "versionCatalogs" not in content:
+        return []
+    block = content[content.index("versionCatalogs") :]
+    folder = posixpath.dirname(settings)
+    found = []
+    for match in _CATALOG_FROM.finditer(block):
+        name = match.group("created") or match.group("named")
+        if match.group("published"):
+            notices.append(
+                Notice(
+                    file=settings,
+                    message=(
+                        f"catalogue « {name} » publié ({match.group('published')}) : pas lu par "
+                        "forceupdate."
+                    ),
+                )
+            )
+            continue
+        path = posixpath.normpath(posixpath.join(folder, match.group("file")))
+        if not path.startswith(".."):
+            found.append(path)
     return found
 
 

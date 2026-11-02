@@ -244,6 +244,8 @@ DEPENDENCY_MANIFESTS: dict[str, Ecosystem] = {
     "pom.xml": Ecosystem.MAVEN,
     "build.gradle": Ecosystem.MAVEN,
     "build.gradle.kts": Ecosystem.MAVEN,
+    "settings.gradle": Ecosystem.MAVEN,
+    "settings.gradle.kts": Ecosystem.MAVEN,
     "gradle/libs.versions.toml": Ecosystem.MAVEN,
     # .NET
     "*.csproj": Ecosystem.NUGET,
@@ -321,10 +323,15 @@ VERSION_FILES = (
     ".ruby-version",
     ".tool-versions",
     "global.json",
+    "rust-toolchain.toml",
+    "rust-toolchain",
+    "mise.toml",
+    ".mise.toml",
 )
 """Les fichiers qui disent la version d'un runtime (E27) : pyenv et uv, Heroku, nvm, nodenv,
-rbenv, asdf et mise, le SDK .NET. Ces outils les cherchent dans le dossier courant puis au-dessus :
-un projet prend le plus proche de chaque nom, dans son dossier ou au-dessus."""
+rbenv, asdf et mise (``.tool-versions``, et ``mise.toml`` depuis E34), le SDK .NET, rustup
+(E34). Ces outils les cherchent dans le dossier courant
+puis au-dessus : un projet prend le plus proche de chaque nom, dans son dossier ou au-dessus."""
 
 DOCKERFILES = ("Dockerfile", "Dockerfile.*", "*.Dockerfile", "Containerfile")
 """Les ``Dockerfile`` (``FROM python:3.8-slim``). Comparés sans tenir compte de la casse. Un

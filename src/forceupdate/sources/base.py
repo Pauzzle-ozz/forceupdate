@@ -67,3 +67,8 @@ class Source(ABC):
     @abstractmethod
     def read_text(self, path: str) -> str | None:
         """Le contenu d'un fichier de la source, ou ``None`` s'il est illisible ou trop gros."""
+
+    def is_directory(self, path: str) -> bool:
+        """Vrai si ``path`` est un dossier de la source (E34 : un paquet d'espace de noms posé à
+        côté d'un fichier de code seul) ; faux par défaut, quand on ne sait pas."""
+        return False

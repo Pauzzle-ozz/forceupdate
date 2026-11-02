@@ -15,9 +15,9 @@ autres noms que connaît Bundler, sont lus de même. Ce qui est lu :
 - d'où vient la gem : ``git:``, ``github:``, ``gist:``, ``bitbucket:``, une source ``git_source``
   du ``Gemfile``, ou un bloc ``git``/``github`` : « dépendance git » ; ``path:`` ou un bloc
   ``path`` : « chemin local » ; ``source:`` ou un bloc ``source "…" do`` vers un autre serveur
-  que rubygems.org : non vérifiable aussi. La source globale (``source "https://…"`` sans bloc)
-  n'est pas distinguée : un miroir ou un serveur privé est cherché sur rubygems.org, où une gem
-  privée est introuvable ;
+  que rubygems.org : « vient d'un autre serveur », que l'aiguillage (``routing.ruby``, E34) sait
+  demander à ce serveur. L'adresse de chaque source est gardée (``Gemfile.sources``), et celle de
+  la source globale (``source "https://…"`` sans bloc : ``Gemfile.global_sources``) ;
 - ``platforms`` (bloc ou option) : une gem que le ``Gemfile.lock`` n'installe sur aucune de ses
   plateformes (``platforms: :jruby`` pour un projet Linux) est non vérifiable ;
 - ``gemspec`` : les dépendances du ``.gemspec`` du dossier (``add_dependency`` et
@@ -54,7 +54,7 @@ import functools
 import logging
 import posixpath
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
@@ -307,6 +307,12 @@ class Gemfile:
     paths: tuple[str, ...] = ()
     """Les dossiers des gems locales : ``path:``, les blocs ``path``, ``gemspec path:``. Relatifs
     au dossier du ``Gemfile``."""
+    sources: Mapping[str, str] = field(default_factory=dict)
+    """La source des gems d'un bloc ``source "…" do`` ou d'une option ``source:`` : nom → adresse,
+    telle qu'écrite (rubygems.org compris)."""
+    global_sources: tuple[str, ...] = ()
+    """Les sources globales (``source "…"`` sans bloc), dans l'ordre : Bundler 4 n'en accepte
+    qu'une."""
 
 
 @dataclass
@@ -317,6 +323,8 @@ class _Block:
     optional: bool = False
     reason: str | None = None
     line: int = 0
+    url: str | None = None
+    """L'adresse d'un bloc ``source "…" do``."""
 
 
 @dataclass
@@ -331,6 +339,8 @@ class _GemfileReader:
     unwritten: set[int] = field(default_factory=set)
     warned: set[int] = field(default_factory=set)
     paths: list[str] = field(default_factory=list)
+    sources: dict[str, str] = field(default_factory=dict)
+    global_sources: list[str] = field(default_factory=list)
 
     def read(self, content: str) -> Gemfile:
         for statement in statements(content):
@@ -342,6 +352,8 @@ class _GemfileReader:
             platform_restricted=frozenset(self.restricted),
             unwritten=frozenset(self.unwritten),
             paths=tuple(dict.fromkeys(self.paths)),
+            sources=self.sources,
+            global_sources=tuple(self.global_sources),
         )
 
     def note(self, line: int, message: str) -> None:
@@ -372,6 +384,9 @@ class _GemfileReader:
             elif name == "path" and arguments and not arguments[0].key:
                 self.paths += arguments[0].values() or []
             block = self.block(name, arguments, head.line)
+            opens = any(_is(t, "ident", "do") or _is(t, "op", "{") for t in tokens)
+            if name == "source" and balance <= 0 and block.url is not None and not opens:
+                self.global_sources.append(block.url)
         if balance > 0:
             self.stack += [block] * balance
         else:
@@ -393,7 +408,8 @@ class _GemfileReader:
             if "type" in options:
                 return _Block("source", reason=REASON_PLUGIN, line=line)
             other = url is None or not is_rubygems(url[0])
-            return _Block("source", reason=REASON_OTHER_SOURCE if other else None, line=line)
+            reason = REASON_OTHER_SOURCE if other else None
+            return _Block("source", reason=reason, line=line, url=url[0].strip() if url else None)
         if name == "path":
             return _Block("source", reason=REASON_LOCAL, line=line)
         if name in ("git", "github"):
@@ -427,15 +443,20 @@ class _GemfileReader:
             scope = Scope.OPTIONAL
         else:
             scope = Scope.RUNTIME
-        reason = next((b.reason for b in reversed(self.stack) if b.kind == "source"), None)
+        block = next((b for b in reversed(self.stack) if b.kind == "source"), None)
+        reason = block.reason if block is not None else None
+        source = block.url if block is not None else None
         if self.git_keys & options.keys():
-            reason = REASON_GIT
+            reason, source = REASON_GIT, None
         elif "path" in options:
-            reason = REASON_LOCAL
+            reason, source = REASON_LOCAL, None
             self.paths += options["path"].values() or []
         elif "source" in options:
             url = options["source"].values()
             reason = None if url and is_rubygems(url[0]) else REASON_OTHER_SOURCE
+            source = url[0].strip() if url else None
+        if source is not None:
+            self.sources.setdefault(name, source)
         condition = next((b for b in reversed(self.stack) if b.kind == "condition"), None)
         if modifier is not None:
             self.note(
@@ -481,10 +502,11 @@ class _GemfileReader:
 
 def parse_gemfile(path: str, content: str) -> list[Dependency]:
     """Les gems d'un ``Gemfile``, dans l'ordre où il les déclare (sans celles de ``gemspec``)."""
-    return _parse_gemfile(path, content).dependencies
+    return read_gemfile(path, content).dependencies
 
 
-def _parse_gemfile(path: str, content: str) -> Gemfile:
+def read_gemfile(path: str, content: str) -> Gemfile:
+    """Un ``Gemfile`` lu : ses gems, et d'où chacune vient (``sources``, ``global_sources``)."""
     return _GemfileReader(path).read(content)
 
 
@@ -602,6 +624,8 @@ class GemfileLock:
     platforms: tuple[str, ...] = ()
     bundled_with: str | None = None
     ruby_version: str | None = None
+    remotes: Mapping[str, str] = field(default_factory=dict)
+    """Le serveur de chaque gem d'une section ``GEM`` (son premier ``remote:``) : nom → adresse."""
 
     def packages(self, name: str) -> list[LockedPackage]:
         return self._by_name.get(name, [])
@@ -679,6 +703,12 @@ def _parse_lock_once(path: str, content: str) -> GemfileLock:
         elif mode == "RUBY VERSION":
             ruby_version = line.strip()
     gems = [s for s in sections if s.kind == "GEM"]
+    remotes = {
+        name: section.remotes[0]
+        for section in gems
+        if section.remotes
+        for name, _, _ in section.specs
+    }
     packages = []
     for section in sections:
         reason = _source_reason(section, len(gems))
@@ -703,6 +733,7 @@ def _parse_lock_once(path: str, content: str) -> GemfileLock:
         platforms=tuple(platforms),
         bundled_with=bundled_with,
         ruby_version=ruby_version,
+        remotes=remotes,
     )
 
 
@@ -792,7 +823,7 @@ class _ProjectParser:
         content = self._read(self.manifest_path)
         if content is None:
             return None
-        parsed = _parse_gemfile(self.manifest_path, content)
+        parsed = read_gemfile(self.manifest_path, content)
         self.notices.extend(parsed.notices)
         return parsed
 
@@ -852,7 +883,7 @@ class _ProjectParser:
             content = None
         if content is None:
             return False
-        paths = _parse_gemfile(gemfile, content).paths
+        paths = read_gemfile(gemfile, content).paths
         return any(_normalize(join(root, path)) == self.project.path for path in paths)
 
     def _lockfile(self) -> GemfileLock | None:

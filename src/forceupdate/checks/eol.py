@@ -146,8 +146,14 @@ FRAMEWORKS: tuple[tuple[Ecosystem, str, str], ...] = (
     (Ecosystem.NPM, "@strapi/strapi", "strapi"),
     (Ecosystem.NPM, "@adonisjs/core", "adonisjs"),
     (Ecosystem.NPM, "eslint", "eslint"),
+    # E34 : les produits nouveaux d'endoflife.date (le test réseau des tables).
+    (Ecosystem.NPM, "protractor", "protractor"),
+    (Ecosystem.NPM, "@fortawesome/fontawesome-svg-core", "font-awesome"),
+    (Ecosystem.NPM, "@fortawesome/fontawesome-free", "font-awesome"),
     # PHP
     (Ecosystem.PACKAGIST, "laravel/framework", "laravel"),
+    (Ecosystem.PACKAGIST, "behat/behat", "behat"),
+    (Ecosystem.PACKAGIST, "sylius/sylius", "sylius"),
     *((Ecosystem.PACKAGIST, f"symfony/{name}", "symfony") for name in _SYMFONY),
     (Ecosystem.PACKAGIST, "drupal/core", "drupal"),
     (Ecosystem.PACKAGIST, "drupal/core-recommended", "drupal"),
@@ -211,11 +217,20 @@ def framework(dependency: Dependency) -> str | None:
     return None
 
 
+WITHOUT_LIFECYCLE = frozenset({"rust"})
+"""Les runtimes lus dont la fin de vie n'est pas jugée : Rust (E34) ne suit une version que six
+semaines, jusqu'à la suivante (endoflife.date le dit), et son ``rust-version`` est la plus ancienne
+que le projet promet de faire tourner, pas celle qui tourne. Il sert aux versions écartées
+(``checks.runtimes``)."""
+
+
 def selected_runtimes(runtimes: Iterable[Runtime]) -> list[Runtime]:
     """Les runtimes à vérifier : pour chaque produit, les versions choisies s'il y en a, sinon
-    les bornes basses ; un par version (le premier lu)."""
+    les bornes basses ; un par version (le premier lu). Pas ceux de ``WITHOUT_LIFECYCLE``."""
     by_product: dict[str, list[Runtime]] = {}
     for runtime in runtimes:
+        if runtime.product in WITHOUT_LIFECYCLE:
+            continue
         by_product.setdefault(runtime.product, []).append(runtime)
     kept = []
     for found in by_product.values():

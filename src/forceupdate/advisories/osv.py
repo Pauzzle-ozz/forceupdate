@@ -127,10 +127,14 @@ class Advisory:
     unavailable: str | None = None
     """Pourquoi l'avis complet n'a pas pu être lu (réseau, hors ligne…) ; ``None`` s'il l'a
     été. Un avis indisponible reste une faille : on n'en connaît que l'identifiant."""
+    link: str | None = None
+    """La page de l'avis quand il ne vient pas d'OSV (un avis de Packagist, E34)."""
 
     @property
     def url(self) -> str:
-        """La page de l'avis sur osv.dev."""
+        """La page de l'avis : sur osv.dev, ou celle que donne sa base (``link``)."""
+        if self.link is not None:
+            return self.link
         return f"https://osv.dev/vulnerability/{quote(self.id, safe='')}"
 
     def fixed_in(self, ecosystem: Ecosystem, name: str, version: str) -> str | None:

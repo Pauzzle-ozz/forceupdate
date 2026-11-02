@@ -49,15 +49,18 @@ def selected(dependency: Dependency, options: ScanOptions) -> bool:
 
 
 def check_dependency(
-    dependency: Dependency, info: PackageInfo, refused: Mapping[str, Refusal] | None = None
+    dependency: Dependency,
+    info: PackageInfo,
+    refused: Mapping[str, Refusal] | None = None,
+    resolution: Mapping[str, str] | None = None,
 ) -> list[Finding]:
     """Les constats de ``dependency``, vérifiable, d'après ``info``, ce que son registre en
     dit : déprécié, retiré, plus récente. Une liste vide si elle est à jour. ``refused`` : les
     versions que le runtime du projet ne fait pas tourner (``runtimes.refused``), jamais
-    proposées."""
+    proposées. ``resolution`` : les réglages de l'outil du projet (``Project.resolution``)."""
     current = current_version(dependency)
     refused = refused or {}
     return [
         *deprecated.check(dependency, info, current, refused),
-        *outdated.check(dependency, info, current, refused),
+        *outdated.check(dependency, info, current, refused, resolution or {}),
     ]
