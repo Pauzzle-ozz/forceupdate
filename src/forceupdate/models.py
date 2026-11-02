@@ -471,7 +471,8 @@ class Language:
 
 @dataclass(frozen=True, kw_only=True)
 class Notice:
-    """Une remarque sur un fichier d'un projet : non lu, illisible, mal formé…
+    """Une remarque sur un fichier d'un projet : non lu, illisible, mal formé… ; ou sur la
+    source (``Report.notices``).
 
     Ce n'est pas un constat sur une dépendance : c'est ce que l'analyse n'a pas pu
     faire, pour que le rapport ne passe rien sous silence.
@@ -615,6 +616,10 @@ class Report:
     ignored_manifests: list[str] = field(default_factory=list)
     """Manifestes et lockfiles écartés : rangés dans un dossier de tests, de fixtures ou
     d'exemples, ce ne sont pas de vrais projets (voir ``detect.manifests.is_test_path``)."""
+    notices: list[Notice] = field(default_factory=list)
+    """Les remarques sur la source elle-même, pas sur un projet (E30) : ce qu'elle n'a pas pu
+    lister (trop de fichiers, un sous-module git non initialisé), ou trop de fichiers de
+    dépendances. ``Notice.file`` est un dossier (``.`` pour la racine)."""
     code: CodeFile | None = None
     """Le fichier de code choisi, et comment il est analysé (E28) ; ``None`` pour un dossier,
     un manifeste, un lockfile ou un dépôt."""

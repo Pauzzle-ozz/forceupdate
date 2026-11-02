@@ -54,6 +54,11 @@ def render(report: Report) -> str:
                     "Hors ligne : données des registres et d'OSV prises dans le cache, la plus"
                     f" ancienne du {format_date(report.oldest_data)}."
                 )
+    if report.notices:
+        lines += ["", "## Remarques sur la source", ""]
+        lines += [
+            f"- `{code(notice.file)}` : {escape(notice.message)}" for notice in report.notices
+        ]
     if report.options is not None:
         lines += ["", "## Résumé", "", *_summary(summarize(report))]
         if not report.options.dev:

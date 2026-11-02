@@ -315,6 +315,27 @@ chaque fois) :
   avis d'OSV citent souvent chaque majeure du module : une faille peut n'être corrigée que sous
   une autre (chi v1 : seulement dans `…/chi/v5`).
 - **Windows** : `npm` s'appelle `npm.cmd`. Toujours passer par `shutil.which`.
+- **Un lanceur Windows en lance un autre** (vérifié à E30) : `npm.CMD` (`cmd.exe`, puis node),
+  le `git.exe` de `Git\cmd`, `bundle.bat`, `composer.bat`. `subprocess.run(timeout=)` ne tue
+  que le lanceur ; avec la sortie capturée, il attend même la fin du petit-enfant, qui tient
+  les tuyaux (un délai de 3 s rendu après 25,8 s). Tout outil passe par `processes.run`, qui
+  tue tout l'arbre (`taskkill /F /T` ; ailleurs, une session et `killpg`).
+- **Encodages** (vérifié à E30) : `pip freeze > requirements.txt` sous PowerShell 5.1 écrit de
+  l'UTF-16 avec BOM ; Visual Studio et le Bloc-notes, un BOM UTF-8, que `tomllib`, les
+  `requirements` et `go.mod` refusent. La lecture suit le BOM et le retire (il ne compte pas
+  dans les colonnes) ; la réécriture le garde, et refuse l'UTF-16 en le disant. Un octet qui
+  n'est pas de l'UTF-8 (un commentaire en cp1252) devient `\ufffd`, le reste se lit.
+- **Jonctions et sous-modules** (vérifié à E30) : une jonction Windows (`mklink /J`) est un
+  dossier pour `lstat` ; `os.walk` y entre, et `git ls-files` liste ce qu'elle contient,
+  même hors du dépôt. Dans un sous-module non initialisé (un dossier vide), git répond
+  `./` : la liste y entrait sans fin (`RecursionError`).
+- **Réseau d'entreprise** (vérifié à E30, httpx 0.28.1) : httpx se fie à `certifi`, pas au
+  magasin du système, et `SSL_CERT_FILE` *remplace* `certifi` (pypi.org refusé). D'où
+  `truststore`, et `SSL_CERT_FILE` ajouté au magasin. Le proxy de `HTTPS_PROXY` est suivi
+  (`NO_PROXY` aussi) ; celui des réglages de Windows (WinINet, PAC), non, comme pour uv.
+- **Ctrl+Break sous Windows** (vérifié à E30, uvicorn 0.54) : uvicorn arrête le serveur, puis
+  renvoie le signal au gestionnaire d'avant : celui du runtime C sort en code 3. Le serveur
+  traite Ctrl+Break comme Ctrl+C.
 
 - **Un import n'est pas un nom de paquet** (E28) : `import yaml` vient de `PyYAML`,
   `import cv2` d'`opencv-python` (une table, pour les cas courants) ; sous un espace de noms

@@ -107,13 +107,14 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from forceupdate import engine, parsers, versions
-from forceupdate.detect.manifests import ecosystem_for_manifest
+from forceupdate import engine, parsers, processes, versions
+from forceupdate.detect.manifests import decode_text, ecosystem_for_manifest
 from forceupdate.models import (
     Dependency,
     Ecosystem,
@@ -1114,6 +1115,7 @@ def regenerate(
     jobs: Sequence[Job],
     *,
     on_event: Callable[[Event], None] | None = None,
+    cancel: threading.Event | None = None,
 ) -> tuple[Regenerated, ...]:
     """Régénère les lockfiles de ``jobs`` (``plan``), une fois les fichiers de ``changes``
     écrits (``writers.write``), puis relit le projet. ``report`` est l'analyse d'avant.
@@ -1122,7 +1124,12 @@ def regenerate(
     fichiers sont remis comme avant (``Regenerated.restored``). Dans l'ordre de ``jobs``.
 
     ``on_event`` reçoit un ``Event`` ``REGENERATING`` avant chaque outil lancé : l'interface
-    montre ainsi lequel tourne (un outil peut tourner plusieurs minutes)."""
+    montre ainsi lequel tourne (un outil peut tourner plusieurs minutes).
+
+    Interrompue (Ctrl+C, ou ``cancel`` levé : l'outil en cours est tué, ``processes``), elle
+    remet comme avant les fichiers du groupe en cours, et les manifestes réécrits des groupes
+    qui n'ont pas encore tourné ; ceux des groupes finis restent, avec leurs lockfiles. Puis
+    l'interruption remonte (``KeyboardInterrupt``, ``processes.Interrupted``)."""
     total = sum(1 for job in jobs if job.program is not None)
     if not total:
         return tuple(Regenerated(job=job, status=LockStatus.TOOL_MISSING) for job in jobs)
@@ -1136,17 +1143,25 @@ def regenerate(
             on_event(event)
 
     written = {change.path: change for change in changes.files}
-    current = {project.path: project for project in engine.inventory(source).projects}
+    groups = _groups(jobs)
+    try:
+        current = {project.path: project for project in engine.inventory(source).projects}
+    except BaseException:  # Ctrl+C
+        _undo_written(source.root, written, groups)
+        raise
     outcome: dict[str, Regenerated] = {}
     locks_before: dict[str, str | None] = {}
-    for group in _groups(jobs):
+    for index, group in enumerate(groups):
         saved = _snapshot(source.root, report, group)
         for job in group:
             locks_before[job.lockfile] = _read_quietly(source.read_text, _versions_path(job))
         try:
-            failure = _run_group(source, group, current, outcome, announce)
-        except BaseException:  # Ctrl-C : rien ne doit rester à moitié fait
+            if cancel is not None and cancel.is_set():
+                raise processes.Interrupted("mise à jour arrêtée")
+            failure = _run_group(source, group, current, outcome, announce, cancel)
+        except BaseException:  # Ctrl+C, arrêt : rien ne doit rester à moitié fait
             _restore(source.root, saved, written, group)
+            _undo_written(source.root, written, groups[index + 1 :])
             raise
         if failure is not None:
             failed, message = failure
@@ -1173,6 +1188,7 @@ def _run_group(
     current: Mapping[str, Project],
     outcome: dict[str, Regenerated],
     announce: Callable[[Job], None],
+    cancel: threading.Event | None,
 ) -> tuple[Job, str] | None:
     """Régénère les lockfiles du groupe, dans l'ordre, jusqu'au premier qui échoue : rend
     celui-là et son erreur. ``announce`` est appelé avant chaque outil lancé."""
@@ -1181,7 +1197,7 @@ def _run_group(
             outcome[job.lockfile] = Regenerated(job=job, status=LockStatus.TOOL_MISSING)
             continue
         announce(job)
-        context = _Context(source, job, current)
+        context = _Context(source, job, current, cancel)
         try:
             _DRIVERS[job.kind].run(context)
         except _Failed as failed:
@@ -1256,6 +1272,24 @@ def _restore(
             continue
         restored.append(path)
     return tuple(sorted(restored))
+
+
+def _undo_written(
+    root: Path, written: Mapping[str, FileChange], groups: Sequence[Sequence[Job]]
+) -> None:
+    """Remet comme avant leur réécriture les manifestes que lisent les outils de ``groups``, qui
+    n'ont pas tourné : un manifeste réécrit sans son lockfile serait à moitié fait. Un fichier
+    changé depuis (par quelqu'un d'autre) est laissé."""
+    inputs = {path for group in groups for job in group for path in job.inputs}
+    for path in sorted(inputs & written.keys()):
+        change = written[path]
+        full = root / path
+        try:
+            if full.read_bytes() != change.after.encode("utf-8"):
+                continue
+            writers.replace_file(full, change.before.encode("utf-8"))
+        except OSError as err:
+            logger.warning("%s n'a pas pu être remis comme avant : %s", path, err)
 
 
 # -- relire ---------------------------------------------------------------------
@@ -1426,8 +1460,9 @@ def _which(program: str) -> str | None:
 
 
 def _spawn(command: list[str], **options: Any) -> subprocess.CompletedProcess[bytes]:
-    """``subprocess.run``, sans shell. Les tests le remplacent."""
-    return subprocess.run(command, shell=False, **options)
+    """``processes.run`` : sans shell, et tout l'arbre de l'outil tué à son délai. Les tests le
+    remplacent."""
+    return processes.run(command, **options)
 
 
 def _environment() -> dict[str, str]:
@@ -1443,12 +1478,20 @@ def _decode(data: bytes) -> str:
 class _Context:
     """Ce dont un outil a besoin pour régénérer un lockfile."""
 
-    def __init__(self, source: LocalSource, job: Job, current: Mapping[str, Project]) -> None:
+    def __init__(
+        self,
+        source: LocalSource,
+        job: Job,
+        current: Mapping[str, Project],
+        cancel: threading.Event | None = None,
+    ) -> None:
         self.source = source
         self.root = source.root
         self.job = job
         self.current = current
         """Les projets relus après la réécriture des manifestes : les emplacements des pins."""
+        self.cancel = cancel
+        """Levé, l'outil en cours est tué (``processes.run``) : l'arrêt du serveur."""
         self.warnings: list[str] = []
         self.env: dict[str, str] = {}
         """Ce que l'outil reçoit en plus de ``_environment()`` (Cargo : ``_cargo_environment``)."""
@@ -1473,6 +1516,7 @@ class _Context:
                 capture_output=True,
                 timeout=self.job.timeout,
                 check=False,
+                cancel=self.cancel,
             )
         except subprocess.TimeoutExpired as err:
             raise _Failed(f"« {shown} » n'a pas fini en {self.job.timeout:.0f} s.") from err
@@ -1940,8 +1984,8 @@ class _Go(_Driver):
 def _go_lines(path: Path) -> list[tuple[str, str | None]]:
     """Les directives ``go`` et ``toolchain`` du ``go.mod`` ``path``, telles qu'écrites."""
     try:
-        parsed = go.parse_go_mod_file(path.name, path.read_bytes().decode("utf-8"))
-    except (OSError, UnicodeDecodeError, ParseError):
+        parsed = go.parse_go_mod_file(path.name, decode_text(path.read_bytes()))
+    except (OSError, ParseError):
         return [("go", None), ("toolchain", None)]
     return [("go", parsed.go), ("toolchain", parsed.toolchain)]
 

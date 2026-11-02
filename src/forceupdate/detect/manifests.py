@@ -16,6 +16,7 @@ adapté : des motifs au lieu de noms exacts, les lockfiles séparés des manifes
 des chemins relatifs au lieu de ``Path``, ``logging`` au lieu de ``loguru``.
 """
 
+import codecs
 import fnmatch
 import logging
 from collections import defaultdict
@@ -23,7 +24,7 @@ from collections.abc import Iterable
 from pathlib import Path, PurePath
 from typing import NamedTuple
 
-from forceupdate.models import Ecosystem, Project
+from forceupdate.models import Ecosystem, Notice, Project
 
 logger = logging.getLogger(__name__)
 
@@ -169,18 +170,51 @@ def is_test_path(path: str | PurePath) -> bool:
 
 
 def safe_read_text(path: Path, *, max_size: int = DEFAULT_MAX_FILE_SIZE) -> str | None:
-    """Lit un fichier en UTF-8, sans échouer : ``None`` s'il est trop gros ou illisible.
-
-    Les octets qui ne sont pas de l'UTF-8 valide deviennent ``\\ufffd``.
-    """
+    """Lit un fichier, sans échouer : ``None`` s'il est trop gros ou illisible. Le texte est
+    décodé par ``decode_text``."""
     try:
         if path.stat().st_size > max_size:
             logger.debug("fichier de plus de %d octets, ignoré : %s", max_size, path)
             return None
-        return path.read_text(encoding="utf-8", errors="replace")
+        data = path.read_bytes()
     except OSError as err:
         logger.debug("lecture impossible de %s : %s", path, err)
         return None
+    return decode_text(data)
+
+
+BOM = "\N{ZERO WIDTH NO-BREAK SPACE}"
+"""Le BOM, décodé."""
+
+_BOMS = (
+    # UTF-32 d'abord : son BOM petit-boutiste commence par celui d'UTF-16.
+    (codecs.BOM_UTF32_LE, "utf-32"),
+    (codecs.BOM_UTF32_BE, "utf-32"),
+    (codecs.BOM_UTF16_LE, "utf-16"),
+    (codecs.BOM_UTF16_BE, "utf-16"),
+    (codecs.BOM_UTF8, "utf-8-sig"),
+)
+
+
+def text_encoding(data: bytes) -> str:
+    """L'encodage d'un fichier d'après son BOM : ``utf-8-sig`` (UTF-8 avec BOM), ``utf-16``,
+    ``utf-32`` ; ``utf-8`` sans BOM."""
+    return next((encoding for bom, encoding in _BOMS if data.startswith(bom)), "utf-8")
+
+
+def decode_text(data: bytes) -> str:
+    """Le texte d'un fichier, comme le voient les parseurs.
+
+    - UTF-8 par défaut ; un BOM en tête dit UTF-16 ou UTF-32 (``>`` de PowerShell 5.1 écrit de
+      l'UTF-16 : un ``pip freeze > requirements.txt``) ;
+    - le BOM est retiré : il ne compte pas dans les colonnes de la ligne 1, comme dans un
+      éditeur (``tomllib``, les ``requirements`` et ``go.mod`` le refuseraient) ;
+    - ce qui ne se décode pas devient ``\\ufffd`` (un commentaire en cp1252 : le reste se lit) ;
+    - les fins de ligne ``\\r\\n`` et ``\\r`` deviennent ``\\n``, comme à la lecture d'un fichier
+      texte par Python.
+    """
+    text = data.decode(text_encoding(data), errors="replace")
+    return text.removeprefix(BOM).replace("\r\n", "\n").replace("\r", "\n")
 
 
 DEPENDENCY_MANIFESTS: dict[str, Ecosystem] = {
@@ -393,12 +427,13 @@ def discover_dependency_manifests(
     *,
     max_files: int = DEFAULT_MAX_FILES,
     include_test_paths: bool = True,
+    notices: list[Notice] | None = None,
 ) -> list[str]:
     """Les manifestes et lockfiles parmi ``paths``, des chemins POSIX relatifs, triés.
 
     Les dossiers de ``IGNORED_DIRS`` sont écartés ; ceux de tests aussi quand
     ``include_test_paths`` est faux (voir ``is_test_path``). Au-delà de
-    ``max_files`` fichiers trouvés, la liste est coupée.
+    ``max_files`` fichiers trouvés, la liste est coupée : une remarque le dit dans ``notices``.
     """
     collected: list[str] = []
     for path in paths:
@@ -408,6 +443,15 @@ def discover_dependency_manifests(
             continue
         if len(collected) >= max_files:
             logger.warning("limite de %d fichiers de dépendances atteinte", max_files)
+            if notices is not None:
+                count = f"{max_files:,}".replace(",", "\N{NO-BREAK SPACE}")
+                notices.append(
+                    Notice(
+                        file=".",
+                        message=f"plus de {count} fichiers de dépendances : seuls les {count} "
+                        "premiers sont lus, dans l'ordre des chemins.",
+                    )
+                )
             break
         collected.append(path)
     return sorted(collected)
@@ -455,6 +499,7 @@ def find_projects(
     *,
     include_tests: bool = False,
     max_files: int = DEFAULT_MAX_FILES,
+    notices: list[Notice] | None = None,
 ) -> tuple[list[Project], list[str]]:
     """Les projets d'une source, et les fichiers de dépendances écartés.
 
@@ -462,10 +507,11 @@ def find_projects(
     d'exemples ne fait pas un projet : ce sont des mini-projets de démonstration,
     souvent figés exprès sur de vieilles versions. Ils sont rendus à part. Chaque projet
     reçoit ses fichiers de runtime (``Project.runtime_files`` : ``VERSION_FILES``,
-    ``DOCKERFILES``).
+    ``DOCKERFILES``). Au-delà de ``max_files`` fichiers de dépendances, une remarque va dans
+    ``notices``.
     """
     paths = list(paths)
-    found = discover_dependency_manifests(paths, max_files=max_files)
+    found = discover_dependency_manifests(paths, max_files=max_files, notices=notices)
     ignored = [] if include_tests else [path for path in found if is_test_path(path)]
     skipped = set(ignored)
     projects = group_projects(path for path in found if path not in skipped)

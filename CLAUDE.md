@@ -77,6 +77,8 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │                             déposé sur la page (un vrai événement « drop ») ; settings.spec.ts : l'écran 9
 │                             (les réglages du serveur sont partagés : rien qui change les autres rapports)
 ├── src/forceupdate/        ← le code de l'outil (architecture cible : PLAN.md)
+│   ├── processes.py        ← lancer un outil (npm, uv, git, gh…) sans shell, et tuer tout son arbre à
+│   │                         son délai, à Ctrl+C ou à l'arrêt du serveur (E30 : taskkill /T, killpg)
 │   ├── config.py           ← la configuration d'un projet (E29) : forceupdate.toml ou [tool.forceupdate]
 │   │                         (ignore, exclude, include-tests, [selection]) ; les règles ignore
 │   ├── preferences.py      ← les réglages de la personne (E29) : forceupdate.toml de son dossier de
@@ -146,7 +148,8 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
     ├── fake_bitbucket.py   ← Bitbucket Cloud simulé (workspaces, droits, dépôts, arborescence en largeur,
     │                         fichiers, branches, commits propres, PR, OAuth : Basic, refresh token renouvelé)
     ├── fake_bundler.py     ← bundle lock simulé (FakeTools.handlers["bundle"]), comme le vrai Bundler 4.0
-    ├── fixtures/           ← réponses HTTP enregistrées (NuGet : compressées ; endoflife/ : endoflife.date) ;
+    ├── fixtures/           ← réponses HTTP enregistrées (NuGet : compressées ; endoflife/ : endoflife.date ;
+    │                         tls/ : une autorité de test, son certificat public seul) ;
     │                         record.py les ré-enregistre, RECORDED_ON : le jour des fins de vie des tests
     └── projects/           ← mini-projets par outil, lockfiles produits par les vrais outils ; eol/ : E27 ;
                               scripts/ : E28 (des fichiers de code seuls ; locked.py.lock de uv lock --script)
@@ -245,7 +248,7 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
 - Pour essayer les PR en vrai : le dépôt de test `Pauzzle-ozz/forceupdate-demo` (privé, créé à
   E18, copie de `tests/projects/vulnerable`) sur GitHub, le projet du même nom sur gitlab.com
   (privé, créé à E19) pour les MR, et `pauzzle/forceupdate-demo` sur Bitbucket (privé, créé à
-  E20 par l'utilisateur, workspace `pauzzle`) ; gardés pour la recette (E35) ; jamais un autre
+  E20 par l'utilisateur, workspace `pauzzle`) ; gardés pour la recette (E36) ; jamais un autre
   dépôt sans l'accord de l'utilisateur.
 - Un script qui prend un chemin d'API en argument (`/user/…`) sous Git Bash : `MSYS_NO_PATHCONV=1`,
   sinon Git Bash le réécrit en chemin Windows (`C:/Program Files/Git/user/…`).

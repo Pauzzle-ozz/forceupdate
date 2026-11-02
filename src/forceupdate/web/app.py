@@ -10,11 +10,12 @@ Le schéma OpenAPI n'est pas servi : il est exporté dans ``web/openapi.json``
 """
 
 import contextlib
+import signal
 import socket
 import threading
 import time
 import webbrowser
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -168,12 +169,30 @@ def serve(
     if browser:
         threading.Thread(target=_open_browser, args=(server, url), daemon=True).start()
     try:
-        server.run(sockets=[sock])
+        with _break_as_interrupt():
+            server.run(sockets=[sock])
     except KeyboardInterrupt:
         # Ctrl+C : uvicorn s'est déjà arrêté proprement, puis renvoie le signal reçu.
         pass
     finally:
         sock.close()
+
+
+@contextlib.contextmanager
+def _break_as_interrupt() -> Iterator[None]:
+    """Sous Windows, Ctrl+Break comme Ctrl+C. uvicorn arrête le serveur, remet le gestionnaire
+    d'avant, puis renvoie le signal : celui du runtime C pour ``SIGBREAK`` sort aussitôt, en
+    code 3, sans « Interface arrêtée. » (vérifié le 2026-11-02 avec uvicorn 0.54). Avec celui de
+    Ctrl+C, le signal renvoyé devient un ``KeyboardInterrupt``."""
+    sigbreak = getattr(signal, "SIGBREAK", None)
+    if sigbreak is None or threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    previous = signal.signal(sigbreak, signal.default_int_handler)
+    try:
+        yield
+    finally:
+        signal.signal(sigbreak, previous)
 
 
 def _bind(port: int) -> socket.socket:

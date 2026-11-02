@@ -5,6 +5,16 @@ Dans un dépôt git, la liste des fichiers vient de git (``git ls-files``) : ce 
 comme sur une forge. Hors de git, ou sans git installé, le dossier est parcouru en
 sautant ``IGNORED_DIRS`` ; un dépôt rangé dans ce dossier garde son ``.gitignore``.
 
+Robustesse (E30, vérifié le 2026-11-02 sous Windows) :
+
+- au plus ``MAX_FILES`` fichiers listés : au-delà (un dossier personnel, un disque entier), la
+  liste s'arrête et le rapport le dit (``Source.notices``) ;
+- ni les liens symboliques, ni les jonctions Windows (``mklink /J``) ne sont suivis. Une jonction
+  est un dossier pour ``lstat`` : ``os.walk`` y entre, et ``git ls-files`` liste ce qu'elle
+  contient comme des fichiers du dépôt, même hors de lui (``_is_junction``) ;
+- un sous-module git non initialisé est un dossier vide : il n'est pas analysé, le rapport le
+  dit. Dans ce dossier, git répond ``./`` (on y entrait sans fin, jusqu'au ``RecursionError``).
+
 Un manifeste ou un lockfile seul est analysé avec les lockfiles posés à côté de lui.
 
 Un fichier de code (E28 : ``app.py``, ``index.ts``…) l'est à travers son projet : on remonte les
@@ -25,6 +35,7 @@ import stat
 import subprocess
 from pathlib import Path
 
+from forceupdate import processes
 from forceupdate.detect.code import code_ecosystem
 from forceupdate.detect.manifests import (
     is_ignored_dir,
@@ -34,13 +45,16 @@ from forceupdate.detect.manifests import (
     max_read_size,
     safe_read_text,
 )
-from forceupdate.models import Ecosystem
+from forceupdate.models import Ecosystem, Notice
 from forceupdate.sources.base import ChosenCode, Source, SourceError, SourceFile
 
 logger = logging.getLogger(__name__)
 
 GIT_TIMEOUT = 60.0
 """Délai maximal de ``git ls-files``, en secondes."""
+MAX_FILES = 200_000
+"""Le nombre maximal de fichiers listés d'une source. Un gros dépôt en a moins (le noyau Linux,
+90 000) ; un dossier personnel ou un disque, bien plus."""
 
 
 class LocalSource(Source):
@@ -63,6 +77,7 @@ class LocalSource(Source):
         self.origin = resolved.as_posix()
         self._file: str | None = None
         self._code: ChosenCode | None = None
+        self._notices: list[Notice] = []
         if resolved.is_dir():
             self.root = resolved
         elif resolved.is_file():
@@ -87,9 +102,16 @@ class LocalSource(Source):
     def code_file(self) -> ChosenCode | None:
         return self._code
 
+    @property
+    def notices(self) -> list[Notice]:
+        return list(self._notices)
+
     def files(self) -> list[SourceFile]:
         if self._file is None or (self._code is not None and self._code.project is not None):
-            return sorted(_list_dir(self.root))
+            listing = _Listing(MAX_FILES)
+            listing.directory(self.root, "")
+            self._notices = listing.notices
+            return sorted(listing.files)
         if self._code is not None:
             paths = [self._file, f"{self._file}.lock"]
         else:
@@ -176,52 +198,124 @@ def _project_root(project: Path) -> Path:
     return project
 
 
-def _list_dir(directory: Path) -> list[SourceFile]:
-    """Les fichiers sous ``directory``, avec des chemins relatifs à lui."""
-    paths = _git_paths(directory)
-    if paths is None:
-        return _walk(directory)
-    files = []
-    for entry in paths:
-        path = entry.rstrip("/")
-        if is_ignored_path(path):
-            continue
-        try:
-            info = (directory / path).lstat()
-        except OSError:
-            continue  # suivi par git, mais supprimé du disque
-        if stat.S_ISREG(info.st_mode):
-            files.append(SourceFile(path, info.st_size))
-        elif stat.S_ISDIR(info.st_mode) and not is_ignored_dir(path.rsplit("/", 1)[-1]):
-            # Un dépôt dans le dépôt (sous-module, ou clone non ignoré) : git ne liste
-            # que son dossier, on lui demande ses fichiers.
-            files.extend(_prefixed(path, _list_dir(directory / path)))
-    return files
+class _Listing:
+    """Les fichiers d'une source en cours de liste : au plus ``limit``, et les remarques à faire
+    dans le rapport."""
 
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+        self.files: list[SourceFile] = []
+        self.notices: list[Notice] = []
+        self._full = False
+        self._junctions: dict[Path, bool] = {}
 
-def _walk(directory: Path) -> list[SourceFile]:
-    """Parcourt ``directory`` sans git, en sautant les dossiers ignorés et les liens."""
-    files = []
-    for current, dirs, names in os.walk(directory):
-        here = Path(current)
-        relative = here.relative_to(directory).as_posix()
-        prefix = "" if relative == "." else f"{relative}/"
-        kept = []
-        for name in dirs:
-            sub = here / name
-            if is_ignored_dir(name) or sub.is_symlink():
+    def directory(self, directory: Path, prefix: str) -> None:
+        """Ajoute les fichiers sous ``directory``, leurs chemins précédés de ``prefix`` (vide,
+        ou ``dossier/``) : ceux que liste git, sinon ceux du dossier."""
+        paths = _git_paths(directory)
+        if paths is None:
+            self._walk(directory, prefix)
+        else:
+            self._git(directory, prefix, paths)
+
+    def _git(self, directory: Path, prefix: str, paths: list[str]) -> None:
+        for entry in paths:
+            if self._full:
+                return
+            path = entry.rstrip("/")
+            if path in ("", ".") or is_ignored_path(path):
+                continue  # « ./ » : ce que répond git dans un sous-module vide
+            if self._in_junction(directory, (directory / path).parent):
                 continue
-            if (sub / ".git").exists():
-                # Un dépôt git rangé ici : il garde son propre .gitignore.
-                files.extend(_prefixed(prefix + name, _list_dir(sub)))
-            else:
-                kept.append(name)
-        dirs[:] = kept
-        for name in names:
-            file = _stat_file(directory, prefix + name)
-            if file is not None:
-                files.append(file)
-    return files
+            try:
+                info = (directory / path).lstat()
+            except OSError:
+                continue  # suivi par git, mais supprimé du disque
+            if stat.S_ISREG(info.st_mode):
+                self._add(SourceFile(prefix + path, info.st_size))
+            elif (
+                stat.S_ISDIR(info.st_mode)
+                and not is_ignored_dir(path.rsplit("/", 1)[-1])
+                and not _is_junction(directory / path)
+            ):
+                self._repository(directory / path, prefix + path, submodule=not entry.endswith("/"))
+
+    def _repository(self, directory: Path, path: str, *, submodule: bool) -> None:
+        """Un dépôt dans le dépôt (sous-module, ou clone non ignoré) : git ne liste que son
+        dossier, on lui demande ses fichiers. Un sous-module non initialisé n'en a pas."""
+        if (directory / ".git").exists():
+            self.directory(directory, f"{path}/")
+        elif submodule:
+            self.notices.append(
+                Notice(
+                    file=path,
+                    message="sous-module git non initialisé : pas analysé "
+                    "(git submodule update --init).",
+                )
+            )
+
+    def _walk(self, directory: Path, prefix: str) -> None:
+        """Parcourt ``directory`` sans git, en sautant les dossiers ignorés, les liens et les
+        jonctions."""
+        for current, dirs, names in os.walk(directory):
+            here = Path(current)
+            relative = here.relative_to(directory).as_posix()
+            inside = prefix if relative == "." else f"{prefix}{relative}/"
+            kept = []
+            for name in dirs:
+                sub = here / name
+                if is_ignored_dir(name) or sub.is_symlink() or _is_junction(sub):
+                    continue
+                if (sub / ".git").exists():
+                    # Un dépôt git rangé ici : il garde son propre .gitignore.
+                    self.directory(sub, f"{inside}{name}/")
+                else:
+                    kept.append(name)
+            dirs[:] = kept
+            for name in names:
+                file = _stat_file(here, name)
+                if file is not None:
+                    self._add(SourceFile(inside + name, file.size))
+            if self._full:
+                return
+
+    def _add(self, file: SourceFile) -> None:
+        """Ajoute ``file``, sauf une fois la limite atteinte : le rapport le dit."""
+        if self._full:
+            return
+        if len(self.files) >= self.limit:
+            self._full = True
+            count = f"{self.limit:,}".replace(",", "\N{NO-BREAK SPACE}")
+            self.notices.append(
+                Notice(
+                    file=".",
+                    message=f"plus de {count} fichiers : la liste s'arrête là, les projets "
+                    "des fichiers suivants ne sont pas analysés (choisir un dossier plus petit).",
+                )
+            )
+            return
+        self.files.append(file)
+
+    def _in_junction(self, root: Path, folder: Path) -> bool:
+        """Vrai si ``folder``, sous ``root``, est une jonction ou dans une jonction. Sous
+        Windows seulement ; chaque dossier n'est regardé qu'une fois."""
+        if os.name != "nt" or folder == root:
+            return False
+        found = self._junctions.get(folder)
+        if found is None:
+            found = self._in_junction(root, folder.parent) or _is_junction(folder)
+            self._junctions[folder] = found
+        return found
+
+
+def _is_junction(path: Path) -> bool:
+    """Vrai pour une jonction Windows (``mklink /J``). ``Path.is_junction`` n'existe qu'à partir
+    de Python 3.12."""
+    try:
+        info = path.lstat()
+    except OSError:
+        return False
+    return getattr(info, "st_reparse_tag", 0) == stat.IO_REPARSE_TAG_MOUNT_POINT
 
 
 def _git_paths(directory: Path) -> list[str] | None:
@@ -248,8 +342,8 @@ def _git_paths(directory: Path) -> list[str] | None:
     # Sans GIT_DIR & co, hérités par exemple d'un hook : git doit regarder ce dossier-ci.
     env = {key: value for key, value in os.environ.items() if not key.upper().startswith("GIT_")}
     try:
-        result = subprocess.run(
-            command, cwd=directory, env=env, capture_output=True, timeout=GIT_TIMEOUT, check=False
+        result = processes.run(
+            command, cwd=directory, env=env, capture_output=True, timeout=GIT_TIMEOUT
         )
     except (OSError, subprocess.TimeoutExpired) as err:
         logger.debug("git ls-files impossible dans %s : %s", directory, err)
@@ -267,7 +361,3 @@ def _stat_file(root: Path, path: str) -> SourceFile | None:
     except OSError:
         return None
     return SourceFile(path, info.st_size) if stat.S_ISREG(info.st_mode) else None
-
-
-def _prefixed(prefix: str, files: list[SourceFile]) -> list[SourceFile]:
-    return [SourceFile(f"{prefix}/{file.path}", file.size) for file in files]

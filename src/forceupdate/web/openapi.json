@@ -3317,6 +3317,13 @@
             "type": "array",
             "title": "Ignored Manifests"
           },
+          "notices": {
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            },
+            "type": "array",
+            "title": "Notices"
+          },
           "code": {
             "anyOf": [
               {
@@ -3388,6 +3395,7 @@
           "languages",
           "projects",
           "ignored_manifests",
+          "notices",
           "code",
           "config",
           "options",
@@ -4388,7 +4396,7 @@
           "message"
         ],
         "title": "Notice",
-        "description": "Une remarque sur un fichier d'un projet : non lu, illisible, mal formé…\n\nCe n'est pas un constat sur une dépendance : c'est ce que l'analyse n'a pas pu\nfaire, pour que le rapport ne passe rien sous silence."
+        "description": "Une remarque sur un fichier d'un projet : non lu, illisible, mal formé… ; ou sur la\nsource (``Report.notices``).\n\nCe n'est pas un constat sur une dépendance : c'est ce que l'analyse n'a pas pu\nfaire, pour que le rapport ne passe rien sous silence."
       },
       "Override": {
         "properties": {

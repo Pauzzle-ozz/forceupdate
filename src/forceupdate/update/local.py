@@ -12,6 +12,7 @@ Entre ``prepare`` et ``apply``, c'est le même ``Prepared`` qui passe : ``writer
 d'écrire un fichier qui a changé depuis le diff.
 """
 
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -83,10 +84,14 @@ def apply(
     prepared: Prepared,
     *,
     on_event: Callable[[Event], None] | None = None,
+    cancel: threading.Event | None = None,
 ) -> tuple[Regenerated, ...]:
     """Écrit les fichiers de ``prepared``, puis régénère ses lockfiles ; rend ce qu'il est
     advenu de chacun. Lève ``writers.WriteError`` sans rien écrire si un fichier a changé depuis
     ``prepare``.
+
+    Interrompue (Ctrl+C, ou ``cancel`` levé : l'arrêt du serveur), ce qui n'était pas fini est
+    remis comme avant (``writers.write``, ``lockfiles.regenerate``), puis l'interruption remonte.
 
     ``on_event`` reçoit les ``Event`` de la mise à jour : ``WRITTEN``, un ``REGENERATING`` par
     outil lancé, puis ``FINISHED``. Peut durer plusieurs minutes (``lockfiles.Tools.timeout`` par
@@ -95,7 +100,7 @@ def apply(
     writers.write(source.root, prepared.changes)
     emit(Event(kind=EventKind.WRITTEN, total=len(prepared.changes.files)))
     results = lockfiles.regenerate(
-        source, report, prepared.changes, prepared.jobs, on_event=on_event
+        source, report, prepared.changes, prepared.jobs, on_event=on_event, cancel=cancel
     )
     emit(Event(kind=EventKind.FINISHED))
     return results

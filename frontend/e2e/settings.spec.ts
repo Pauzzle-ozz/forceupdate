@@ -88,14 +88,24 @@ test('vider le cache, après confirmation', async ({ page }) => {
   await navigation(page).click()
   const cache = page.getByRole('region', { name: 'Cache' })
   await expect(cache).toContainText(/réponses? gardées?/)
+  const before = kept(await cache.textContent())
   await cache.getByRole('button', { name: 'Vider le cache…' }).click()
   const dialog = page.getByRole('alertdialog', { name: 'Vider le cache ?' })
   await expect(dialog.getByRole('button', { name: 'Annuler' })).toBeFocused()
   await dialog.getByRole('button', { name: 'Vider le cache' }).click()
   await expect(cache).toContainText('Cache vidé : la prochaine analyse redemande tout.')
-  await expect(cache).toContainText(/Contenu\s*vide/)
+  // « vide », ou presque : le serveur est partagé, l'analyse d'un autre test a pu y remettre
+  // une réponse aussitôt (vu à E30 : « 1 réponse gardée »).
+  await expect.poll(async () => kept(await cache.textContent())).toBeLessThan(before)
   expect(errors).toEqual([])
 })
+
+/** Le nombre de réponses gardées que dit la section « Cache » : 0 pour « vide ». */
+function kept(text: string | null): number {
+  const match = text?.match(/Contenu\s*(?:vide|([\d\s]+?)\sréponses?\sgardées?)/)
+  if (!match) throw new Error(`contenu du cache illisible : ${text}`)
+  return match[1] ? Number(match[1].replace(/\s/g, '')) : 0
+}
 
 test('un projet configuré : le rapport dit son forceupdate.toml, le paquet ignoré garde ses failles', async ({
   page,

@@ -13,7 +13,19 @@ Tout ce qui parle au réseau passe par ``HttpClient`` :
   interrogé pendant une minute (ou le temps que demande ``Retry-After``) : sans réseau, chaque
   paquet attendrait sinon ses reprises. Pas plus longtemps : le client de l'interface web sert
   des heures, le réseau peut revenir ;
-- une réponse de plus de 128 Mo est refusée (le document npm de ``next`` en fait 32).
+- une réponse de plus de 128 Mo est refusée (le document npm de ``next`` en fait 32) ;
+- les certificats du système (``truststore``, comme pip), plus ceux de ``SSL_CERT_FILE`` et
+  ``SSL_CERT_DIR`` (``ssl_context``) ; un certificat refusé n'est pas réessayé ;
+- un proxy : celui de ``HTTPS_PROXY`` (``ALL_PROXY``, ``NO_PROXY``), suivi par httpx. Celui des
+  réglages de Windows (WinINet, PAC) n'est pas lu, comme par uv.
+
+Réseau d'entreprise (E30, vérifié le 2026-11-02 avec httpx 0.28.1 et truststore 0.10.5, sous
+Windows) : un proxy qui déchiffre le trafic présente ses propres certificats, signés par une
+autorité de l'entreprise. Elle est dans le magasin du système, pas dans ``certifi`` : httpx seul
+les refuse. Avec ``SSL_CERT_FILE``, httpx seul *remplace* ``certifi`` par ce fichier (pypi.org
+refusé, vérifié) ; ici, il s'ajoute au magasin du système (sous Linux, OpenSSL lit lui-même
+``SSL_CERT_FILE`` à la place du sien). Un ``CONNECT`` par le proxy de ``HTTPS_PROXY`` vérifié,
+``NO_PROXY`` suivi.
 
 Une requête qui n'aboutit pas lève ``NetworkError``, avec un message en français fait pour
 le rapport. Un statut final (200, 404, 403…) n'est pas une erreur du client : c'est à
@@ -24,8 +36,10 @@ import asyncio
 import email.utils
 import json
 import logging
+import os
 import random
 import re
+import ssl
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
@@ -33,6 +47,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
+import truststore
 
 from forceupdate import __version__
 
@@ -143,6 +158,7 @@ class HttpClient:
             timeout=TIMEOUT,
             follow_redirects=True,
             limits=httpx.Limits(max_connections=64, max_keepalive_connections=32),
+            verify=ssl_context(),
         )
 
     async def __aenter__(self) -> "HttpClient":
@@ -201,7 +217,7 @@ class HttpClient:
                 logger.debug(
                     "%s %s : %r (essai %d sur %d)", method, url, error, attempt + 1, attempts
                 )
-                if final:
+                if final or _certificate_error(error) is not None:
                     message = _failure(host, error)
                     self._abandon(host, message)
                     raise NetworkError(message) from error
@@ -291,9 +307,48 @@ def _retry_after(headers: httpx.Headers) -> float | None:
     return max(0.0, (when - datetime.now(UTC)).total_seconds())
 
 
+def ssl_context() -> ssl.SSLContext:
+    """Le contexte TLS des requêtes : les certificats du système (``truststore``), plus ceux de
+    ``SSL_CERT_FILE`` et ``SSL_CERT_DIR`` s'ils sont donnés (l'autorité d'un proxy d'entreprise,
+    exportée dans un fichier). Un fichier illisible est dit dans le journal, et laissé."""
+    context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    cafile = os.environ.get("SSL_CERT_FILE") or None
+    capath = os.environ.get("SSL_CERT_DIR") or None
+    if cafile is not None or capath is not None:
+        try:
+            context.load_verify_locations(cafile=cafile, capath=capath)
+        except (OSError, ssl.SSLError) as error:
+            logger.warning("certificats de SSL_CERT_FILE ou SSL_CERT_DIR illisibles : %s", error)
+    return context
+
+
+def _certificate_error(error: BaseException) -> ssl.SSLCertVerificationError | None:
+    """Le refus du certificat du serveur qui a causé ``error``, s'il y en a un : cherché par
+    ``__cause__`` et par ``__context__``. Une chaîne d'exceptions peut reboucler (une exception
+    relevée deux fois) : chacune n'est vue qu'une fois."""
+    seen: set[int] = set()
+    todo: list[BaseException] = [error]
+    while todo:
+        current = todo.pop()
+        if id(current) in seen:
+            continue
+        if isinstance(current, ssl.SSLCertVerificationError):
+            return current
+        seen.add(id(current))
+        todo += [e for e in (current.__cause__, current.__context__) if e is not None]
+    return None
+
+
 def _failure(host: str, error: BaseException) -> str:
     if isinstance(error, httpx.TimeoutException | TimeoutError):
         return f"{host} ne répond pas (délai dépassé)."
+    refused = _certificate_error(error)
+    if refused is not None:
+        reason = (getattr(refused, "verify_message", None) or str(refused)).strip().rstrip(".")
+        return (
+            f"certificat de {host} refusé ({reason}) : derrière un proxy d'entreprise, donner "
+            "son autorité par SSL_CERT_FILE."
+        )
     return f"{host} injoignable ({type(error).__name__})."
 
 

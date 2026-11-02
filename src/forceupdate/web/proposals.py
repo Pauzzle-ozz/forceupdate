@@ -357,6 +357,7 @@ class Proposals:
                 on_step=lambda step: post(setattr, item, "step", step),
                 on_event=lambda event: post(setattr, item, "progress", event),
                 tools=self._tools(),
+                cancel=self.jobs.stopping,
             )
         except Exception as err:  # jamais un dépôt n'arrête les autres
             logger.error("envoi de %s en échec", item.repo.full_name, exc_info=err)

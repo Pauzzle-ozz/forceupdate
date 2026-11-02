@@ -18,7 +18,7 @@ import pytest
 from conftest import FakeTools, ToolCall
 from fake_bundler import FakeBundler
 
-from forceupdate import engine
+from forceupdate import engine, processes
 from forceupdate.models import (
     Edit,
     EditKind,
@@ -793,15 +793,24 @@ def test_tools_run_without_shell_input_or_activated_virtualenv(
         "capture_output": True,
         "timeout": LOCK_TIMEOUT,
         "check": False,
+        "cancel": None,
     }
 
 
-def test_the_real_spawn_never_uses_a_shell(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.undo()  # retire le garde-fou de conftest, qui remplace lockfiles._spawn
+REAL_SPAWN = lockfiles._spawn
+"""Le vrai ``_spawn``, pris à l'import : le garde-fou de conftest le remplace dans chaque test."""
+
+
+def test_the_real_spawn_kills_the_whole_tree_without_a_shell(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     seen: dict[str, object] = {}
-    monkeypatch.setattr(subprocess, "run", lambda command, **options: seen.update(options))
-    lockfiles._spawn(["uv", "lock"], timeout=1)
-    assert seen == {"shell": False, "timeout": 1}
+    monkeypatch.setattr(
+        processes, "run", lambda command, **options: seen.update(options, c=command)
+    )
+    REAL_SPAWN(["uv", "lock"], timeout=1)
+    # processes.run : sans shell, tout l'arbre tué à son délai (tests/test_processes.py).
+    assert seen == {"c": ["uv", "lock"], "timeout": 1}
 
 
 def test_a_workspace_lockfile_is_regenerated_once_from_its_root(

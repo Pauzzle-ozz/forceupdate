@@ -172,7 +172,11 @@ une page, c'est le serveur qui liste.
   « Choisir la version » (→ écran 5, sur ce paquet).
 - **Fichiers écartés** (`ignored_manifests`, replié) : la liste, et « Analyser aussi les
   dossiers de tests » (relance avec `include_tests`).
-- **Remarques** (`notices`) : ce qui n'a pas pu être lu ou vérifié, par fichier.
+- **Remarques** (`notices`) : ce qui n'a pas pu être lu ou vérifié, par fichier ; en tête,
+  celles sur la source (`Report.notices`, E30 : liste coupée, sous-module git non
+  initialisé), dont le dossier racine (`.`) se dit « Le dossier analysé ». Elles font aussi
+  une alerte d'avertissement en haut, « Analyse partielle : la source n'a pas été lue en
+  entier » (comme une arborescence tronquée par une forge) : ce n'est pas « à jour ».
 
 | État | Ce qu'on voit |
 |---|---|

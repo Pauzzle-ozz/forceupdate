@@ -55,9 +55,20 @@ export function Ignored({
   )
 }
 
-/** Les remarques : ce que l'analyse n'a pas pu lire, ou pas pu vérifier, par fichier. */
+/** L'endroit d'une remarque sur la source (`Report.notices`) : un dossier en chasse fixe, ou
+ * « Le dossier analysé » pour sa racine (`.`). */
+export function SourcePlace({ file }: { file: string }) {
+  if (file === '.') return <span className="font-semibold">Le dossier analysé</span>
+  return <span className="font-mono font-semibold break-all">{file}</span>
+}
+
+/** Les remarques : ce que l'analyse n'a pas pu lire, ou pas pu vérifier, par fichier ; d'abord
+ * celles sur la source elle-même (liste coupée, sous-module non initialisé : E30). */
 export function Notices({ report }: { report: Report }) {
-  const notices = report.projects.flatMap((project) => project.notices)
+  const notices = [
+    ...report.notices,
+    ...report.projects.flatMap((project) => project.notices),
+  ]
   // Les fins de vie des runtimes ont leur section (Lifecycles) : ici, le reste.
   const loose = report.projects.flatMap((project) =>
     project.findings.filter((finding) => !finding.dependency && finding.kind !== 'eol'),
@@ -93,7 +104,7 @@ export function Notices({ report }: { report: Report }) {
               <li key={index} className="flex items-start gap-3 border-border px-4 py-3 not-first:border-t">
                 <FileWarning className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
                 <div className="min-w-0 text-sm">
-                  <span className="font-mono font-semibold break-all">{notice.file}</span>
+                  <SourcePlace file={notice.file} />
                   <p>{notice.message}</p>
                 </div>
               </li>

@@ -381,6 +381,27 @@ def test_update_asks_before_writing(
         assert "Rien n'est écrit." in result.stdout.splitlines()
 
 
+def test_update_interrupted_by_ctrl_c_puts_back_and_says_so(
+    recorded: dict[str, respx.Route],
+    tmp_path: Path,
+    no_git: None,
+    fake_tools: Callable[..., FakeTools],
+) -> None:
+    root = vulnerable_copy(tmp_path)
+    tools = fake_tools("npm", "uv")
+
+    def npm(call: ToolCall) -> None:
+        raise KeyboardInterrupt  # Ctrl+C pendant que npm tourne
+
+    tools.handlers["npm"] = npm
+    result = update(str(root), "--yes")
+    assert result.exit_code == EXIT_ERROR, result.output
+    assert result.stderr.strip() == (
+        "forceupdate update : interrompu : ce qui n'était pas fini est remis comme avant."
+    )
+    assert unchanged(root)
+
+
 def test_update_without_an_answer(recorded: dict[str, respx.Route], tmp_path: Path) -> None:
     root = vulnerable_copy(tmp_path)
     result = update(str(root))

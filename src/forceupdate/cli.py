@@ -382,6 +382,8 @@ def update(
         results = local.apply(source, report, prepared)
     except writers.WriteError as err:
         _fail("update", str(err))
+    except KeyboardInterrupt:
+        _fail("update", "interrompu : ce qui n'était pas fini est remis comme avant.")
     terminal.render_outcome(prepared.changes, results, console)
     if any(result.status is lockfiles.LockStatus.FAILED for result in results):
         raise typer.Exit(code=EXIT_ERROR)

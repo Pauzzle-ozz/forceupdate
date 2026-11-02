@@ -51,7 +51,7 @@ import {
 import { Breadcrumb, Container, PageHead, useDocumentTitle } from '@/shell/Page'
 import { Dependencies } from './Dependencies'
 import { DependencyDetail } from './DependencyDetail'
-import { Ignored, Notices } from './Extras'
+import { Ignored, Notices, SourcePlace } from './Extras'
 import { Lifecycles } from './Lifecycles'
 import { Overview } from './Overview'
 import { Synthesis } from './Synthesis'
@@ -213,8 +213,26 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
         inconclusive > 0 ||
         unpinned > 0 ||
         repository?.truncated ||
+        report.notices.length > 0 ||
         report.projects.some((project) => project.notices.length > 0)) && (
         <div className="mb-6 flex flex-col gap-4">
+          {report.notices.length > 0 && (
+            <Alert variant="warning" role="status">
+              <TriangleAlert aria-hidden="true" />
+              <AlertTitle>{fr("Analyse partielle : la source n'a pas été lue en entier")}</AlertTitle>
+              <AlertDescription>
+                <ul className="flex flex-col gap-1">
+                  {report.notices.map((notice, index) => (
+                    <li key={index}>
+                      <SourcePlace file={notice.file} />
+                      {fr(` : ${notice.message}`)}
+                    </li>
+                  ))}
+                </ul>
+                <p>{fr('Des fichiers de dépendances peuvent manquer. Ce n\'est pas « à jour ».')}</p>
+              </AlertDescription>
+            </Alert>
+          )}
           {repository?.truncated && (
             <Alert variant="warning" role="status">
               <TriangleAlert aria-hidden="true" />

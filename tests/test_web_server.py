@@ -399,6 +399,37 @@ def test_ctrl_c_stops_the_server_cleanly_during_a_scan(
     thread.join(5)
 
 
+@pytest.mark.skipif(not hasattr(signal, "SIGBREAK"), reason="Ctrl+Break : Windows seulement")
+def test_ctrl_break_stops_the_server_like_ctrl_c(tmp_path: Path) -> None:
+    """Avant E30, uvicorn renvoyait SIGBREAK au gestionnaire du runtime C après l'arrêt : le
+    processus sortait aussitôt en code 3. Si cela revient, c'est pytest lui-même qui sort."""
+    announced: list[str] = []
+
+    def press_ctrl_break() -> None:
+        deadline = time.monotonic() + 10
+        while not announced and time.monotonic() < deadline:
+            time.sleep(0.02)
+        base, _, token = announced[0].partition("/?token=")
+        with httpx.Client(base_url=base, headers={"Authorization": f"Bearer {token}"}) as client:
+            while True:
+                try:
+                    client.get("/api/settings")
+                    break
+                except httpx.ConnectError:
+                    time.sleep(0.02)
+        signal.raise_signal(signal.SIGBREAK)
+
+    before = signal.getsignal(signal.SIGBREAK)
+    thread = threading.Thread(target=press_ctrl_break, daemon=True)
+    thread.start()
+    try:
+        app_module.serve(browser=False, announce=announced.append, state_dir=tmp_path)
+    except KeyboardInterrupt:
+        pytest.fail("Ctrl+Break est sorti de serve")
+    thread.join(5)
+    assert signal.getsignal(signal.SIGBREAK) == before
+
+
 def test_serve_refuses_a_taken_port(tmp_path: Path) -> None:
     taken = app_module._bind(0)
     taken.listen()

@@ -916,6 +916,8 @@ export interface components {
             projects: components["schemas"]["Project"][];
             /** Ignored Manifests */
             ignored_manifests: string[];
+            /** Notices */
+            notices: components["schemas"]["Notice"][];
             code: components["schemas"]["CodeFile"] | null;
             config: components["schemas"]["Configuration"] | null;
             options: components["schemas"]["ScanOptions"] | null;
@@ -1279,7 +1281,8 @@ export interface components {
         LockStatus: "regenerated" | "tool_missing" | "failed" | "undone";
         /**
          * Notice
-         * @description Une remarque sur un fichier d'un projet : non lu, illisible, mal formé…
+         * @description Une remarque sur un fichier d'un projet : non lu, illisible, mal formé… ; ou sur la
+         *     source (``Report.notices``).
          *
          *     Ce n'est pas un constat sur une dépendance : c'est ce que l'analyse n'a pas pu
          *     faire, pour que le rapport ne passe rien sous silence.

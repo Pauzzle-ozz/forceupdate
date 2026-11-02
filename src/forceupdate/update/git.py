@@ -13,6 +13,8 @@ import subprocess
 from collections.abc import Iterable
 from pathlib import Path
 
+from forceupdate import processes
+
 logger = logging.getLogger(__name__)
 
 GIT_TIMEOUT = 60.0
@@ -67,9 +69,7 @@ def _git(root: Path, *args: str) -> str | None:
     # Sans GIT_DIR & co, hérités par exemple d'un hook : git doit regarder ce dossier-ci.
     env = {key: value for key, value in os.environ.items() if not key.upper().startswith("GIT_")}
     try:
-        result = subprocess.run(
-            command, cwd=root, env=env, capture_output=True, timeout=GIT_TIMEOUT, check=False
-        )
+        result = processes.run(command, cwd=root, env=env, capture_output=True, timeout=GIT_TIMEOUT)
     except (OSError, subprocess.TimeoutExpired) as err:
         logger.debug("git %s impossible dans %s : %s", args[0], root, err)
         return None

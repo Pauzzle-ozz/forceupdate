@@ -51,6 +51,7 @@ from typing import Any, ClassVar
 
 import httpx
 
+from forceupdate import processes
 from forceupdate.forges import git
 from forceupdate.forges.base import (
     Access,
@@ -966,5 +967,5 @@ def _which(program: str) -> str | None:
 
 
 def _run(command: list[str], **options: Any) -> subprocess.CompletedProcess[bytes]:
-    """``subprocess.run``, sans shell. Les tests le remplacent."""
-    return subprocess.run(command, shell=False, check=False, **options)
+    """``processes.run``, sans shell. Les tests le remplacent."""
+    return processes.run(command, check=False, **options)

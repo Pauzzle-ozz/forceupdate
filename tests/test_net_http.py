@@ -2,16 +2,20 @@
 
 import asyncio
 import email.utils
+import ssl
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from pathlib import Path
+from typing import Any, ClassVar
 
 import httpx
 import pytest
 import respx
+import truststore
 
 from forceupdate import __version__
 from forceupdate.net import USER_AGENT, HttpClient, NetworkError
+from forceupdate.net import http as http_module
 
 URL = "https://registry.example/paquet"
 OTHER = "https://registry.example/autre"
@@ -324,3 +328,116 @@ def test_a_long_retry_after_abandons_the_host_for_as_long(respx_mock: respx.Mock
     status, _ = run(send, clock=lambda: now[0])
     assert status == 200
     assert route.call_count == 2
+
+
+# -- Réseau d'entreprise (E30) --------------------------------------------------------------
+
+TEST_CA = Path(__file__).parent / "fixtures" / "tls" / "ca.pem"
+"""Une autorité de test (son certificat public seul), comme celle d'un proxy d'entreprise."""
+
+
+class _SpyContext(truststore.SSLContext):
+    loaded: ClassVar[list[tuple[str | None, str | None]]] = []
+
+    def load_verify_locations(self, cafile: Any = None, capath: Any = None, cadata: Any = None):
+        type(self).loaded.append((cafile, capath))
+        super().load_verify_locations(cafile, capath, cadata)
+
+
+@pytest.fixture
+def spy_context(monkeypatch: pytest.MonkeyPatch) -> type[_SpyContext]:
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    monkeypatch.delenv("SSL_CERT_DIR", raising=False)
+    monkeypatch.setattr(http_module.truststore, "SSLContext", _SpyContext)
+    _SpyContext.loaded = []
+    return _SpyContext
+
+
+def test_the_system_certificates_are_trusted(spy_context: type[_SpyContext]) -> None:
+    # truststore : le magasin du système (vérifié à E30 : pypi.org passe, une autorité inconnue
+    # du système est refusée), pas certifi.
+    context = http_module.ssl_context()
+    assert isinstance(context, truststore.SSLContext)
+    assert spy_context.loaded == []
+
+
+def test_ssl_cert_file_is_added_to_the_system_certificates(
+    spy_context: type[_SpyContext], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SSL_CERT_FILE", str(TEST_CA))
+    monkeypatch.setenv("SSL_CERT_DIR", str(TEST_CA.parent))
+    http_module.ssl_context()
+    assert spy_context.loaded == [(str(TEST_CA), str(TEST_CA.parent))]
+
+
+def test_an_unreadable_ssl_cert_file_is_said_and_left(
+    spy_context: type[_SpyContext],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv("SSL_CERT_FILE", str(tmp_path / "absent.pem"))
+    context = http_module.ssl_context()
+    assert isinstance(context, truststore.SSLContext)
+    assert "SSL_CERT_FILE" in caplog.text
+
+
+def test_every_client_uses_this_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    made: list[ssl.SSLContext] = []
+    real = http_module.ssl_context
+
+    def spy() -> ssl.SSLContext:
+        made.append(real())
+        return made[-1]
+
+    monkeypatch.setattr(http_module, "ssl_context", spy)
+    run(lambda http: asyncio.sleep(0))
+    assert len(made) == 1
+
+
+def test_a_refused_certificate_is_not_retried_and_says_what_to_do(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Sans respx : il relève l'exception depuis la sienne, ce qui efface sa cause.
+    sent: list[str] = []
+
+    async def send(self: HttpClient, host: str, *args: object) -> None:
+        sent.append(host)
+        try:
+            raise ssl.SSLCertVerificationError(
+                1, "[SSL: CERTIFICATE_VERIFY_FAILED] unable to get local issuer certificate"
+            )
+        except ssl.SSLCertVerificationError as refused:
+            # Comme httpx : une ConnectError levée « from » le refus du certificat.
+            raise httpx.ConnectError("certificate verify failed") from refused
+
+    monkeypatch.setattr(HttpClient, "_send", send)
+
+    async def both(http: HttpClient) -> list[str]:
+        messages = []
+        for url in (URL, OTHER):
+            with pytest.raises(NetworkError) as raised:
+                await http.get(url)
+            messages.append(str(raised.value))
+        return messages
+
+    messages, sleeps = run(both)
+    assert (
+        messages
+        == [
+            "certificat de registry.example refusé ([SSL: CERTIFICATE_VERIFY_FAILED] unable to get "
+            "local issuer certificate) : derrière un proxy d'entreprise, donner son autorité par "
+            "SSL_CERT_FILE."
+        ]
+        * 2
+    )
+    # Une fois : réessayer n'y changerait rien ; puis l'hôte est abandonné, comme injoignable.
+    assert sent == ["registry.example"]
+    assert sleeps == []
+
+
+def test_a_chain_of_exceptions_that_loops_ends() -> None:
+    error = httpx.ConnectError("x")
+    wrapper = RuntimeError("enveloppe")
+    error.__cause__, wrapper.__context__ = wrapper, error
+    assert http_module._certificate_error(error) is None

@@ -146,6 +146,30 @@ describe('le rapport (écran 4)', () => {
     expect(screen.getByRole('button', { name: 'Analyser aussi les dossiers de tests' })).toBeInTheDocument()
   })
 
+  it('la source lue en partie : une alerte en haut, et les remarques en tête de leur section', async () => {
+    const report = structuredClone(VULNERABLE)
+    report.notices = [
+      {
+        file: '.',
+        message: 'plus de 200 000 fichiers : la liste s’arrête là, les projets des fichiers suivants ne sont pas analysés (choisir un dossier plus petit).',
+      },
+      { file: 'libs/sub', message: 'sous-module git non initialisé : pas analysé (git submodule update --init).' },
+    ]
+    withReport(report)
+    renderApp('/analyses/a1')
+    const title = await screen.findByText(/Analyse partielle\s:\sla source n'a pas été lue en entier/)
+    const alert = title.closest('[role="status"]') as HTMLElement
+    expect(within(alert).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      expect.stringMatching(/^Le dossier analysé\s:\splus de 200 000 fichiers/),
+      expect.stringMatching(/^libs\/sub\s:\ssous-module git non initialisé/),
+    ])
+    expect(within(alert).getByText(/Ce n'est pas « à jour »/)).toBeInTheDocument()
+    const section = screen.getByRole('region', { name: 'Remarques' })
+    const items = within(section).getAllByRole('listitem')
+    expect(items.map((item) => item.querySelector('span')?.textContent)).toEqual(['Le dossier analysé', 'libs/sub'])
+    expect(within(items[0]).getByText('Le dossier analysé')).not.toHaveClass('font-mono')
+  })
+
   it('hors ligne : la date des données du cache, et « Relancer en ligne »', async () => {
     const report = structuredClone(VULNERABLE)
     report.options = { ...report.options!, offline: true }

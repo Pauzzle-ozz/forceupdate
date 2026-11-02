@@ -44,6 +44,7 @@ du rapport, `ignored` des dépendances, `ignore` et `selection` des options).
 | `languages` | liste de [langages](#langage) | du plus lourd au plus léger |
 | `projects` | liste de [projets](#projet) | dans l'ordre des chemins |
 | `ignored_manifests` | liste de chemins | manifestes et lockfiles écartés, parce que rangés dans un dossier de tests, de fixtures ou d'exemples |
+| `notices` | liste de [remarques](#remarque) | les remarques sur la source elle-même, pas sur un projet (E30) : la liste des fichiers coupée (plus de 200 000), un sous-module git non initialisé, plus de 2 000 fichiers de dépendances. `file` est un dossier, `.` pour la racine. Un rapport qui en a n'est pas complet : à afficher |
 | `code` | [fichier de code](#fichier-de-code) ou `null` | le fichier de code choisi, et comment il est analysé (E28) ; `null` pour un dossier, un manifeste, un lockfile ou un dépôt |
 | `config` | [configuration](#configuration) ou `null` | la configuration du projet (`forceupdate.toml`, `[tool.forceupdate]`, E29) ; `null` s'il n'en a pas |
 | `options` | [options](#options) ou `null` | ce qui a été vérifié ; `null` si les dépendances n'ont pas été vérifiées auprès des registres |
@@ -164,7 +165,7 @@ deux extras) donne deux dépendances, chacune avec son emplacement.
 | Champ | Type | Sens |
 |---|---|---|
 | `line` | entier | ligne, à partir de 1 |
-| `column` | entier | première colonne, à partir de 0, en caractères (pas en octets) |
+| `column` | entier | première colonne, à partir de 0, en caractères (pas en octets) ; un BOM en tête du fichier ne compte pas (E30), comme dans un éditeur |
 | `end_column` | entier | colonne de fin, exclue. `column == end_column` : la contrainte est absente, c'est là qu'on l'insérerait |
 
 ## Constat
@@ -611,6 +612,7 @@ chaque constat, abrégée ici) :
     }
   ],
   "ignored_manifests": [],
+  "notices": [],
   "code": null,
   "config": null,
   "options": {"include_tests": false, "dev": true, "transitive": false, "offline": false, "cache": true, "ignore": [], "selection": []},

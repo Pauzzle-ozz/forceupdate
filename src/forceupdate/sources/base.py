@@ -9,6 +9,8 @@ mêmes étapes.
 from abc import ABC, abstractmethod
 from typing import NamedTuple
 
+from forceupdate.models import Notice
+
 
 class SourceError(Exception):
     """La source ne peut pas être analysée : chemin inexistant, dépôt inaccessible…
@@ -55,6 +57,12 @@ class Source(ABC):
         Sans ce qui n'est jamais parcouru (``node_modules``, ``.venv``… : voir
         ``detect.manifests.IGNORED_DIRS``), ni les liens symboliques.
         """
+
+    @property
+    def notices(self) -> list[Notice]:
+        """Ce que ``files`` n'a pas pu lister, à dire dans le rapport (``Report.notices``) : vide
+        avant ``files``."""
+        return []
 
     @abstractmethod
     def read_text(self, path: str) -> str | None:

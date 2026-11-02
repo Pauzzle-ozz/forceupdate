@@ -39,6 +39,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any
 
+from forceupdate import processes
 from forceupdate.forges.base import ForgeError
 
 logger = logging.getLogger(__name__)
@@ -472,6 +473,7 @@ def _which(program: str) -> str | None:
 
 
 def _spawn(command: list[str], **options: Any) -> subprocess.CompletedProcess[bytes]:
-    """``subprocess.run``, sans shell. Les tests le surveillent : jamais d'adresse réseau hors
-    des tests ``network``."""
-    return subprocess.run(command, shell=False, check=False, **options)
+    """``processes.run`` : sans shell, et tout l'arbre de git tué à son délai (sous Windows,
+    ``git.exe`` de ``Git\\cmd`` en lance un autre). Les tests le surveillent : jamais d'adresse
+    réseau hors des tests ``network``."""
+    return processes.run(command, check=False, **options)

@@ -75,6 +75,9 @@ def inventory(source: Source, *, include_tests: bool = False) -> Report:
     racine de la source (``Report.config``) : ses dossiers exclus ne sont pas lus, et son
     ``include-tests`` vaut ``include_tests``.
 
+    Ce que la source n'a pas pu lister (``Source.notices``), et un nombre de fichiers de
+    dépendances au-delà du plafond, sont dits dans ``Report.notices``.
+
     Un fichier de code choisi seul (``Source.code_file``, E28) donne un seul projet : celui du
     bloc PEP 723 d'un script Python (son propre manifeste, comme pour ``uv run``) ; sinon celui
     trouvé en remontant les dossiers, même rangé dans un dossier de tests (il a été choisi) ;
@@ -87,10 +90,13 @@ def inventory(source: Source, *, include_tests: bool = False) -> Report:
         report.config = configuration
         return report
     files = source.files()
+    notices = source.notices
     if configuration is not None:
         include_tests = include_tests or configuration.include_tests
         files = [f for f in files if not config.is_excluded_path(f.path, configuration.exclude)]
-    projects, ignored = find_projects((file.path for file in files), include_tests=include_tests)
+    projects, ignored = find_projects(
+        (file.path for file in files), include_tests=include_tests, notices=notices
+    )
     project_dirs = [project.path for project in projects]
     for project in projects:
         parsers.parse_project(project, source.read_text, project_dirs)
@@ -99,6 +105,7 @@ def inventory(source: Source, *, include_tests: bool = False) -> Report:
         languages=detect_languages(files),
         projects=projects,
         ignored_manifests=ignored,
+        notices=notices,
         config=configuration,
     )
 

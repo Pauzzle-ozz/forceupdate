@@ -30,6 +30,7 @@ import asyncio
 import enum
 import logging
 import re
+import threading
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -147,13 +148,15 @@ async def deliver(
     on_step: Callable[[Step], None] | None = None,
     on_event: Callable[[Event], None] | None = None,
     tools: lockfiles.Tools = lockfiles.DEFAULT_TOOLS,
+    cancel: threading.Event | None = None,
 ) -> Delivered:
     """Met à jour ``repo`` par une PR : ``selection`` sur l'analyse ``report``, dans un clone
     rangé dans ``workdir`` (que l'appelant efface), ses outils de lockfile lancés selon ``tools``.
     Ne lève pas : un échec est rendu (``Outcome.FAILED``, avec l'erreur en français).
 
     ``on_step`` reçoit chaque étape, ``on_event`` les ``Event`` de la mise à jour (un
-    ``regenerating`` par outil lancé)."""
+    ``regenerating`` par outil lancé). ``cancel`` levé (l'arrêt du serveur), l'outil de lockfile
+    en cours est tué, et rien n'est poussé."""
     step = on_step or _ignore
     hint = FINE_GRAINED if author.access is Access.UNKNOWN else ""
     base: str | None = None
@@ -187,7 +190,9 @@ async def deliver(
         if prepared.empty:
             return Delivered(outcome=Outcome.NOTHING, base=base, prepared=prepared)
         ready = prepared
-        results = await run(lambda: local.apply(source, report, ready, on_event=on_event))
+        results = await run(
+            lambda: local.apply(source, report, ready, on_event=on_event, cancel=cancel)
+        )
         paths = committable(prepared, results)
         message = commit_message(prepared, results)
         who = git.Author(

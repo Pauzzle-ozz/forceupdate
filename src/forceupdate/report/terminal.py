@@ -88,6 +88,12 @@ def render(report: Report, console: Console) -> None:
         for problem in report.config.problems:
             console.print(Text(f"  {problem}", style="yellow"))
     _print_dates(report, console)
+    if report.notices:
+        console.print(Text("Remarques sur la source", style="bold yellow"))
+        grid = _grid()
+        for notice in report.notices:
+            grid.add_row("", Text(notice.file), Text(notice.message))
+        console.print(grid)
     _print_languages(report, console)
     console.print()
     console.print(Text(f"Projets : {len(report.projects) or 'aucun'}", style="bold"))

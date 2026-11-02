@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from forceupdate.detect.manifests import DEFAULT_MAX_FILE_SIZE
+from forceupdate.sources import local as local_module
 from forceupdate.sources.base import SourceError, SourceFile
 from forceupdate.sources.local import LocalSource
 
@@ -175,3 +176,138 @@ class TestReadText:
         source = LocalSource(root)
         assert source.read_text("uv.lock") == big
         assert source.read_text("pyproject.toml") is None
+
+
+# -- Robustesse (E30) ----------------------------------------------------------------------
+
+windows_only = pytest.mark.skipif(os.name != "nt", reason="les jonctions sont propres à Windows")
+
+
+def junction(link: Path, target: Path) -> None:
+    """Une jonction Windows, comme ``mklink /J`` (vérifié : ``os.walk`` et git la suivent)."""
+    import _winapi
+
+    _winapi.CreateJunction(str(target), str(link))
+
+
+@windows_only
+class TestJunctions:
+    def test_a_junction_is_not_walked(self, make_tree: MakeTree, tmp_path: Path, no_git: None):
+        outside = make_tree({"package.json": "{}"}, root=tmp_path / "dehors")
+        root = make_tree({"requirements.txt": ""}, root=tmp_path / "racine")
+        junction(root / "lien", outside)
+        assert (root / "lien" / "package.json").is_file()
+        assert paths(LocalSource(root)) == ["requirements.txt"]
+
+    @requires_git
+    def test_git_lists_what_a_junction_holds_and_it_is_skipped(
+        self, make_tree: MakeTree, tmp_path: Path
+    ) -> None:
+        outside = make_tree({"package.json": "{}", "deep/Cargo.toml": ""}, root=tmp_path / "dehors")
+        root = tmp_path / "depot"
+        git_init(root)
+        make_tree({"requirements.txt": "", "src/app.py": ""}, root=root)
+        junction(root / "src" / "lien", outside)
+        listed = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
+        assert "src/lien/package.json" in listed  # git la suit : c'est à nous de la sauter
+        assert paths(LocalSource(root)) == ["requirements.txt", "src/app.py"]
+
+    def test_a_junction_loop_ends(self, make_tree: MakeTree, tmp_path: Path, no_git: None):
+        root = make_tree({"requirements.txt": ""}, root=tmp_path / "racine")
+        junction(root / "boucle", root)
+        assert paths(LocalSource(root)) == ["requirements.txt"]
+
+
+@requires_git
+class TestSubmodules:
+    @staticmethod
+    def parent_with_submodule(tmp_path: Path, make_tree: MakeTree) -> Path:
+        library = tmp_path / "bibliotheque"
+        git_init(library)
+        make_tree({"package.json": '{"dependencies": {"left-pad": "1.0.0"}}'}, root=library)
+        commit = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x"]
+        subprocess.run(["git", "add", "."], cwd=library, check=True, capture_output=True)
+        subprocess.run(commit, cwd=library, check=True, capture_output=True)
+        parent = tmp_path / "parent"
+        git_init(parent)
+        make_tree({"requirements.txt": "flask==3.0.0\n"}, root=parent)
+        add = ["git", "-c", "protocol.file.allow=always", "submodule", "add", "-q"]
+        subprocess.run(
+            [*add, str(library), "libs/sub"], cwd=parent, check=True, capture_output=True
+        )
+        subprocess.run(["git", "add", "."], cwd=parent, check=True, capture_output=True)
+        subprocess.run(commit, cwd=parent, check=True, capture_output=True)
+        return parent
+
+    def test_an_initialized_submodule_is_listed(self, make_tree: MakeTree, tmp_path: Path):
+        parent = self.parent_with_submodule(tmp_path, make_tree)
+        source = LocalSource(parent)
+        assert paths(source) == [".gitmodules", "libs/sub/package.json", "requirements.txt"]
+        assert source.notices == []
+
+    def test_an_uninitialized_submodule_is_said_not_walked_forever(
+        self, make_tree: MakeTree, tmp_path: Path
+    ) -> None:
+        parent = self.parent_with_submodule(tmp_path, make_tree)
+        clone = tmp_path / "clone"
+        subprocess.run(
+            ["git", "clone", "-q", str(parent), str(clone)], check=True, capture_output=True
+        )
+        assert list((clone / "libs" / "sub").iterdir()) == []
+        source = LocalSource(clone)
+        # Avant E30 : git répond « ./ » dans le dossier vide, et la liste y entrait sans fin.
+        assert paths(source) == [".gitmodules", "requirements.txt"]
+        assert [(n.file, n.message) for n in source.notices] == [
+            (
+                "libs/sub",
+                "sous-module git non initialisé : pas analysé (git submodule update --init).",
+            )
+        ]
+
+
+class TestLimits:
+    @pytest.mark.parametrize("git", [True, False])
+    def test_the_listing_stops_at_max_files_and_says_so(
+        self, make_tree: MakeTree, monkeypatch: pytest.MonkeyPatch, git: bool
+    ) -> None:
+        if git and shutil.which("git") is None:
+            pytest.skip("git n'est pas installé")
+        files = {f"p{n}/requirements.txt": "" for n in range(6)}
+        root = make_tree(files)
+        if git:
+            git_init(root)
+        else:
+            monkeypatch.setattr(shutil, "which", lambda name: None)
+        monkeypatch.setattr(local_module, "MAX_FILES", 4)
+        source = LocalSource(root)
+        assert len(source.files()) == 4
+        assert [n.file for n in source.notices] == ["."]
+        assert source.notices[0].message.startswith("plus de 4 fichiers : la liste s'arrête là")
+
+
+class TestEncodings:
+    def test_powershell_utf16_requirements_are_read(self, tmp_path: Path) -> None:
+        # « pip freeze > requirements.txt » sous PowerShell 5.1 : UTF-16 LE avec BOM, CRLF.
+        (tmp_path / "requirements.txt").write_bytes(
+            "requests==2.0.0\r\nflask==1.0\r\n".encode("utf-16")
+        )
+        assert (
+            LocalSource(tmp_path).read_text("requirements.txt") == "requests==2.0.0\nflask==1.0\n"
+        )
+
+    def test_a_utf8_bom_is_removed(self, tmp_path: Path) -> None:
+        (tmp_path / "pyproject.toml").write_bytes(b"\xef\xbb\xbf[project]\r\nname = 'x'\r\n")
+        assert LocalSource(tmp_path).read_text("pyproject.toml") == "[project]\nname = 'x'\n"
+
+    def test_cp1252_bytes_are_replaced_the_rest_is_read(self, tmp_path: Path) -> None:
+        (tmp_path / "requirements.txt").write_bytes(
+            "# dépendances\rrequests==2.0.0\n".encode("cp1252")
+        )
+        text = LocalSource(tmp_path).read_text("requirements.txt")
+        assert text == "# d\N{REPLACEMENT CHARACTER}pendances\nrequests==2.0.0\n"

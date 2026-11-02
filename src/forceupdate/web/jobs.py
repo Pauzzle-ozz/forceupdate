@@ -17,8 +17,9 @@ lockfile plusieurs minutes.
 - **Les mises à jour** (``update.local.apply`` : écriture, puis outils de lockfile ; et celles
   des PR, ``update.forge.deliver``, par ``in_updates``) tournent dans un thread à part, une à
   la fois : deux outils ne réécrivent jamais les mêmes fichiers en même temps. Une mise à jour
-  ne s'annule pas : interrompre un outil à mi-chemin laisserait des fichiers à moitié faits (si
-  l'outil échoue, ``lockfiles.regenerate`` remet tout comme avant).
+  ne s'annule pas depuis l'interface ; à l'arrêt du serveur (Ctrl+C), son outil en cours est
+  tué (``Jobs.stopping``, ``processes``) et ``lockfiles.regenerate`` remet comme avant ce qui
+  n'était pas fini. Un navigateur fermé ne change rien : elle continue, son résultat reste.
 - **L'état** de chaque tâche (``Scan``, ``Plan`` : statut, événements de progression, résultat)
   n'est modifié que dans la boucle du serveur : les threads lui envoient leurs événements et
   leur résultat par ``call_soon_threadsafe``. Les routes le lisent donc sans verrou.
@@ -43,7 +44,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
-from forceupdate import engine
+from forceupdate import engine, processes
 from forceupdate.forges.base import ChangeRequest, Forge, ForgeError, Repository, TokenRefused
 from forceupdate.models import Event, Report, ScanOptions, to_dict
 from forceupdate.net import Cache, HttpClient, NetworkError
@@ -433,17 +434,22 @@ class Jobs:
         self._updates = concurrent.futures.ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="forceupdate-updates"
         )
+        self.stopping = threading.Event()
+        """Levé à l'arrêt (``close``) : l'outil de lockfile d'une mise à jour en cours est tué,
+        celles qui attendent ne lancent plus rien."""
 
     def start(self) -> None:
         self.worker.start()
 
     async def close(self) -> None:
-        """Annule les analyses en cours, attend la fin d'une mise à jour en cours (ses outils
-        ne sont pas interrompus), puis arrête les threads et efface les fichiers envoyés."""
+        """Annule les analyses en cours, arrête la mise à jour en cours (son outil est tué, ce
+        qui n'était pas fini est remis comme avant), puis arrête les threads et efface les
+        fichiers envoyés."""
+        self.stopping.set()
         for scan in self.scans.values():
             self.cancel(scan)
         if any(plan.status is TaskStatus.RUNNING for plan in self.plans.values()):
-            logger.warning("mise à jour en cours : attente de sa fin avant de s'arrêter")
+            logger.warning("mise à jour en cours : arrêtée, ce qui n'était pas fini est remis")
         await asyncio.to_thread(self._updates.shutdown)
         await asyncio.to_thread(self.worker.stop)
         for scan in self.scans.values():
@@ -618,7 +624,12 @@ class Jobs:
             self._post(plan.progress.add, event)
 
         future = self._updates.submit(
-            local.apply, scan.local, scan.report, plan.prepared, on_event=on_event
+            local.apply,
+            scan.local,
+            scan.report,
+            plan.prepared,
+            on_event=on_event,
+            cancel=self.stopping,
         )
         future.add_done_callback(lambda done: self._post(self._applied, plan, done))
 
@@ -628,6 +639,9 @@ class Jobs:
         error = future.exception()
         if isinstance(error, writers.WriteError):
             plan.status, plan.error = TaskStatus.FAILED, str(error)
+        elif isinstance(error, processes.Interrupted):
+            plan.status = TaskStatus.FAILED
+            plan.error = "arrêtée avec forceupdate : ce qui n'était pas fini est remis comme avant."
         elif error is not None:
             logger.error("mise à jour de %s en échec", plan.scan.label, exc_info=error)
             plan.status, plan.error = TaskStatus.FAILED, f"erreur inattendue : {error!r}"

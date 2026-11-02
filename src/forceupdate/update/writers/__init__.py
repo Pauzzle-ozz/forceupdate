@@ -61,7 +61,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from forceupdate.detect.manifests import match_dependency_file
+from forceupdate.detect.manifests import BOM, match_dependency_file, text_encoding
 from forceupdate.models import (
     Dependency,
     Ecosystem,
@@ -256,7 +256,8 @@ def write(root: Path, changes: Changes) -> None:
     """Écrit les fichiers de ``changes`` dans la source de dossier ``root``.
 
     Lève ``WriteError`` sans rien écrire si l'un d'eux a changé depuis ``prepare`` ; si une
-    écriture échoue, les fichiers déjà écrits sont remis comme avant.
+    écriture échoue, ou qu'on l'interrompt (Ctrl+C), les fichiers déjà écrits sont remis comme
+    avant. Chaque fichier est remplacé d'un coup (``replace_file``) : jamais à moitié écrit.
     """
     for change in changes.files:
         try:
@@ -273,14 +274,25 @@ def write(root: Path, changes: Changes) -> None:
         try:
             replace_file(root / change.path, change.after.encode("utf-8"))
         except OSError as err:
-            for previous in reversed(done):
-                with contextlib.suppress(OSError):
-                    replace_file(root / previous.path, previous.before.encode("utf-8"))
+            _put_back(root, done)
             restored = " ; les fichiers déjà écrits sont remis comme avant" if done else ""
             raise WriteError(
                 f"{change.path} : écriture impossible ({err.strerror or err}){restored}."
             ) from err
+        except BaseException:  # Ctrl+C : le fichier en cours est entier, avant ou après
+            _put_back(root, [*done, change])
+            raise
         done.append(change)
+
+
+def _put_back(root: Path, changes: Iterable[FileChange]) -> None:
+    """Remet ``changes`` comme avant, dans l'ordre inverse ; un fichier qui n'est pas tel que
+    réécrit (pas encore remplacé) est laissé."""
+    for change in reversed(list(changes)):
+        full = root / change.path
+        with contextlib.suppress(OSError):
+            if full.read_bytes() == change.after.encode("utf-8"):
+                replace_file(full, change.before.encode("utf-8"))
 
 
 def unified_diff(path: str, before: str, after: str, *, context: int = 3) -> str:
@@ -335,13 +347,13 @@ def _locate(
 def _target(files: "_Files", target: Target) -> Target:
     """``target``, si son fichier a bien ``old`` à cet endroit, et que son format n'y voit pas
     d'obstacle (``CHECKS``). Lève ``Refused``."""
-    text = files.text(target.path)
+    text = _parsed(files.text(target.path))
     written = _WRITTEN.get(_pattern(target.path, target.pattern) or "")
     if written is not None:
         target = written(text, target)
     lines = text.split("\n")
     location = target.location
-    line = lines[location.line - 1].removesuffix("\r") if location.line <= len(lines) else ""
+    line = lines[location.line - 1] if location.line <= len(lines) else ""
     if location.end_column > len(line) or line[location.column : location.end_column] != target.old:
         raise Refused(
             f"{target.path} a changé depuis l'analyse : « {target.old} » n'est plus à la ligne "
@@ -415,7 +427,7 @@ def _rewrite_all(
 
 def _rewrite(path: str, text: str, targets: list[Target]) -> str:
     """``text`` avec ``targets`` (toutes de ``path``) appliquées de la fin vers le début, puis
-    relu (``_verify``)."""
+    relu (``_verify``). Un BOM en tête reste, sans compter dans les colonnes de la ligne 1."""
     ordered = sorted(targets, key=lambda t: (t.location.line, t.location.column))
     for first, second in itertools.pairwise(ordered):
         if (
@@ -423,12 +435,14 @@ def _rewrite(path: str, text: str, targets: list[Target]) -> str:
             and second.location.column < first.location.end_column
         ):
             raise Refused(f"{path} : deux réécritures se chevauchent ligne {second.location.line}.")
-    line_starts = [0] + [i + 1 for i, char in enumerate(text) if char == "\n"]
-    after = text
+    body = text.removeprefix(BOM)
+    line_starts = [0] + [i + 1 for i, char in enumerate(body) if char == "\n"]
+    after = body
     for target in reversed(ordered):
         start = line_starts[target.location.line - 1] + target.location.column
         end = start + target.location.end_column - target.location.column
         after = after[:start] + target.new + after[end:]
+    after = text[: len(text) - len(body)] + after
     _verify(path, text, after, ordered)
     return after
 
@@ -520,10 +534,10 @@ def _pattern(path: str, pattern: str | None) -> str | None:
 
 
 def _parsed(text: str) -> str:
-    """``text`` comme le voient les parseurs : ``LocalSource`` lit les fichiers en
-    convertissant les fins de ligne. Les emplacements ne changent pas : un ``\\r`` n'est
-    jamais qu'en fin de ligne."""
-    return text.replace("\r\n", "\n")
+    """``text`` comme le voient les parseurs (``detect.manifests.decode_text``) : sans BOM, les
+    fins de ligne converties. Les emplacements ne changent pas : un ``\\r`` n'est jamais qu'en
+    fin de ligne, et le BOM ne compte pas dans les colonnes."""
+    return text.removeprefix(BOM).replace("\r\n", "\n")
 
 
 # ---------------------------------------------------------------------------
@@ -576,6 +590,12 @@ def _read(root: Path, path: str) -> str:
         raise Refused(f"{path} : introuvable.") from err
     except OSError as err:
         raise Refused(f"{path} : illisible ({err.strerror or err}).") from err
+    encoding = text_encoding(data)
+    if encoding not in ("utf-8", "utf-8-sig"):
+        raise Refused(
+            f"{path} : en {encoding.upper()}, pas réécrit (le réenregistrer en UTF-8 pour que "
+            "forceupdate le mette à jour)."
+        )
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as err:

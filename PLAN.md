@@ -9,7 +9,7 @@ sessions ». L'idée et les décisions sont dans [docs/BRIEF.md](docs/BRIEF.md).
 
 ## Le livrable
 
-Ce qui doit être vrai à la fin. Coché seulement à l'étape E35 (recette), après
+Ce qui doit être vrai à la fin. Coché seulement à l'étape E36 (recette), après
 vérification à la main.
 
 - [ ] `uv tool install forceupdate` installe l'outil depuis PyPI, interface comprise (pas besoin de node pour l'utiliser), sous Windows et sous Linux.
@@ -123,12 +123,13 @@ Statuts : `à faire`, `en cours`, `fait`.
 | E27 | G. Compléments | Fin de vie des runtimes et frameworks | fait |
 | E28 | G | Fichier de code isolé | fait |
 | E29 | H. Livraison | Configuration et page Réglages | fait |
-| E30 | H | Robustesse et performance | à faire |
-| E31 | H | Mise à jour : le npm du projet, Python, NuGet, Go | à faire |
-| E32 | H | Registres et dépôts privés | à faire |
-| E33 | H | Compléments d'analyse | à faire |
-| E34 | H | Documentation, packaging, CI | à faire |
-| E35 | H | Recette finale | à faire |
+| E30 | H | Robustesse et performance | fait |
+| E31 | H | Forges : robustesse | à faire |
+| E32 | H | Mise à jour : le npm du projet, Python, NuGet, Go | à faire |
+| E33 | H | Registres et dépôts privés | à faire |
+| E34 | H | Compléments d'analyse | à faire |
+| E35 | H | Documentation, packaging, CI | à faire |
+| E36 | H | Recette finale | à faire |
 
 **Jalons** :
 
@@ -2557,18 +2558,164 @@ l'écran 9 et s'appliquent aux analyses et aux plans suivants ; le cache se vide
 
 ### E30 — Robustesse et performance
 
-- [ ] Robustesse :
-  - dossiers énormes (plafonds, nombre maximal de fichiers) ;
-  - fichiers illisibles, encodages exotiques ;
-  - liens symboliques : déjà jamais suivis (E02) ; reste les jonctions Windows, et les sous-modules git non initialisés ;
-  - erreurs réseau partielles : section « non concluant » du rapport ;
-  - réseau d'entreprise : un proxy (`HTTPS_PROXY`, déjà suivi par httpx) et ses certificats. httpx se fie à `certifi`, pas au magasin du système. **Décidé avec l'utilisateur (session 29)** : la dépendance `truststore` (les certificats du système d'abord, comme pip), `SSL_CERT_FILE` toujours suivi. À tester derrière un proxy ;
-  - fermeture de l'interface ou Ctrl+C pendant une mise à jour : fichiers restaurés. Depuis E11, c'est fait pendant la régénération des lockfiles (`lockfiles.regenerate`) ; depuis E12, le serveur attend la fin de la mise à jour en cours avant de s'arrêter (Ctrl+C atteint aussi l'outil, qui échoue, et le groupe est remis). Reste l'écriture des manifestes, et un navigateur fermé (rien ne se perd : la mise à jour continue) ;
-  - Ctrl+Break sous Windows : l'arrêt est propre, mais uvicorn renvoie le signal ensuite et le processus sort avec le code 3, sans « Interface arrêtée. » ;
-  - délai d'un outil de lockfile dépassé sous Windows : `subprocess.run` ne tue que `cmd.exe` (`npm.CMD`), pas le node qu'il a lancé. Tuer tout l'arbre (groupe de processus, `taskkill /T`).
-- [ ] Performance : mesurer sur un gros dépôt (Argos par exemple). Viser moins de 30 s, cache vide, pour environ 500 dépendances directes. Noter la mesure dans le journal. Et la suite de tests : 3 min au début de E28, 7 à la fin ; à remesurer au calme (`--durations=25`).
+- [x] Robustesse :
+  - dossiers énormes : au plus 200 000 fichiers listés (`sources.local.MAX_FILES`), et 2 000 fichiers de dépendances (`DEFAULT_MAX_FILES`, depuis E02) ; au-delà, la liste s'arrête et **le rapport le dit** (`Report.notices`, nouveau) ;
+  - fichiers illisibles, encodages exotiques : UTF-16 et UTF-32 lus d'après leur BOM, BOM UTF-8 retiré (`detect.manifests.decode_text`) ; la réécriture garde le BOM, refuse l'UTF-16 en le disant ;
+  - liens symboliques : déjà jamais suivis (E02) ; les jonctions Windows non plus ; un sous-module git non initialisé est dit (avant : `RecursionError`) ;
+  - erreurs réseau partielles : la section « non concluant » existait (E07, E08) ; un certificat refusé est dit comme tel, sans reprise ;
+  - réseau d'entreprise : `truststore` (le magasin du système), `SSL_CERT_FILE` et `SSL_CERT_DIR` ajoutés au magasin ; `HTTPS_PROXY` vérifié par un vrai proxy `CONNECT` ;
+  - Ctrl+C pendant l'écriture des manifestes, pendant un outil, ou arrêt du serveur : ce qui n'était pas fini est remis comme avant ; un navigateur fermé ne change rien (la mise à jour continue) ;
+  - Ctrl+Break sous Windows : traité comme Ctrl+C (code 0, « Interface arrêtée. ») ;
+  - délai d'un outil dépassé sous Windows : tout l'arbre est tué (`processes.run`, `taskkill /F /T`).
+- [x] Performance : Argos mesuré, cache vide (voir les notes et le journal) ; la suite de tests remesurée (`--durations=25`).
+
+**Fini quand** : tests de robustesse verts, mesure notée dans le journal.
+
+**Notes** (session 30) :
+
+- **Commit d'abord** : E29 commitée seule (`E29 : configuration et page Réglages`), avec l'accord
+  de l'utilisateur. **E30 découpée avec son accord** : les cases des forges (depuis E16, E18,
+  E20) font E31 (« Forges : robustesse ») ; E31 à E35 de départ deviennent E32 à E36. Les
+  mentions « E31 » à « E35 » des notes et du journal d'avant la session 30 désignent donc E32 à
+  E36.
+- **Vérifié en vrai** avant d'écrire (2026-11-02, Windows 11, Python 3.12) :
+  - **l'arbre de `npm.CMD`** (un `npm run` qui lance un node de 25 s, délai de 3 s) :
+    `subprocess.run(capture_output=True, timeout=3)` lève `TimeoutExpired` après **25,8 s** (il
+    ne tue que `cmd.exe`, puis attend la fin de la sortie, que tient le node petit-fils) ; sans
+    capture, à 3 s, mais `npm-cli`, son `cmd.exe` et le node **tournent encore** ;
+    `taskkill /F /T /PID` tue les quatre processus, la main rendue en 3,6 s. Le `git.exe` de
+    `Git\cmd` est aussi un lanceur (46 Ko). Avec `processes.run` : délai rendu en 3,2 s, arrêt
+    demandé (`cancel`) en 2,2 s, aucun processus restant ;
+  - **Ctrl+Break** sur `forceupdate ui` (lancé dans un nouveau groupe, `CTRL_BREAK_EVENT`) :
+    code 3, sans « Interface arrêtée. » ; uvicorn 0.54 remet le gestionnaire d'avant (celui du
+    runtime C pour `SIGBREAK`) puis renvoie le signal. Corrigé : code 0, « Interface arrêtée. » ;
+  - **une jonction** (`mklink /J`, et `_winapi.CreateJunction` dans les tests) : `is_symlink`
+    faux, `is_junction` vrai (3.12), `st_reparse_tag` = `IO_REPARSE_TAG_MOUNT_POINT` ;
+    `os.walk` y entre, **`git ls-files --others` liste ce qu'elle contient** (un dossier hors du
+    dépôt) ; `LocalSource` le listait, et `read_text` le refusait ensuite (hors de la source) :
+    un faux projet « introuvable, illisible ou trop gros » ;
+  - **un sous-module non initialisé** (un clone sans `--recurse-submodules`) : git liste le
+    dossier (vide) ; dans ce dossier, `git ls-files` répond `./` : `LocalSource` y entrait sans
+    fin (**`RecursionError`**). Un sous-module rempli est bien lu ; sous `vendor/`, il est
+    ignoré (`IGNORED_DIRS`) ;
+  - **les encodages** : un `requirements.txt` écrit par `>` de PowerShell 5.1 (UTF-16 LE, BOM,
+    CRLF) donnait « n'est pas une dépendance valide » à chaque ligne ; un `package.json` en UTF-16,
+    « JSON invalide ». **Le BOM UTF-8**, essayé sur chacun des fichiers de dépendances des
+    mini-projets : TOML (`pyproject.toml`, `Pipfile`, `poetry.lock`, `uv.lock`, `Cargo.toml`,
+    `Cargo.lock`), `requirements*.txt`/`.in`, `go.mod`, `go.work`, `Pipfile.lock`, `yarn.lock`
+    v1, `.nvmrc`, `.python-version` ne se lisaient plus ; JSON, XML, Gemfile, Gradle passaient.
+    Après : aucun écart, en BOM comme en UTF-16 (et un test le garde). Un `composer.json` ou un
+    `requirements.txt` en cp1252, un `pom.xml` en ISO-8859-1 : lus (les accents ne sont que
+    dans des commentaires) ;
+  - **le réseau** (httpx 0.28.1, truststore 0.10.5, un serveur HTTPS local signé par une
+    autorité de test faite avec l'openssl de Git, et un proxy `CONNECT` écrit pour l'essai, rien
+    d'installé) : httpx seul refuse l'autorité inconnue ; avec `SSL_CERT_FILE`, il accepte le
+    serveur local mais **refuse pypi.org** (le fichier remplace `certifi`) ; truststore passe
+    pypi.org, refuse le serveur local avec le message de Windows (en français) ; truststore +
+    `load_verify_locations` passe les deux. Par le proxy de `HTTPS_PROXY` : `CONNECT pypi.org:443`
+    reçu, `NO_PROXY=127.0.0.1` suivi, `trust_env=False` le contourne ; un proxy injoignable :
+    `ConnectError` (« pypi.org injoignable », comme sans réseau). `urllib.request.getproxies()`
+    ne voit aucun proxy du système ici. Le refus d'un certificat est un
+    `ssl.SSLCertVerificationError` sous la `ConnectError`, avec `verify_message` ;
+  - **Argos**, cache vide (`forceupdate scan --no-cache`, `uv run` compris) : 1 445 fichiers
+    listés en 0,22 s, inventaire en 0,22 s ; **3,2 s** pour 86 directes (83 paquets, PyPI et
+    npm) et 569 dépendances passées à OSV ; **7,4 s** avec `--transitive` (570 vérifiées auprès
+    des registres) ; aucun « non concluant ». Argos n'a pas 500 directes : les 570 de
+    `--transitive` en tiennent lieu, bien sous les 30 s ;
+  - **un outil qui dépasse son délai, de bout en bout** : `local.apply` sur une copie de
+    `vulnerable` avec le vrai npm et `lockfiles.Tools(timeout=0.3)` : « n'a pas fini », l'arbre
+    tué, la main rendue en 0,5 s, `package.json` remis, aucun `npm-cli` restant (le délai
+    minimal des réglages est 10 s : passé par le moteur).
+- **Organisation** :
+  - `processes.py` (nouveau) : `run` (comme `subprocess.run`, sans shell, plus `cancel`),
+    `kill_tree`, `Interrupted` ; sous Windows `taskkill` par son chemin (`%SYSTEMROOT%`), ailleurs
+    une session (`start_new_session`) et `killpg`. Tous les lancements y passent : outils de
+    lockfile (`lockfiles._spawn`), git (`forges.git._spawn`, `update.git`, `git ls-files` de
+    `sources.local`), `gh` (`github._run`) ;
+  - `update/lockfiles.py` : `regenerate(cancel=)`, `_Context.cancel` ; interrompue, elle remet
+    le groupe en cours **et les manifestes des groupes pas encore lancés** (`_undo_written` ;
+    avant, ils restaient réécrits sans leur lockfile) ; `local.apply(cancel=)`,
+    `forge.deliver(cancel=)` ; `web/jobs.py` : `Jobs.stopping`, levé par `close` ;
+  - `update/writers` : `write` remet aussi les fichiers déjà écrits sur Ctrl+C (`_put_back`) ;
+    le BOM reste, les emplacements se placent dans le texte sans lui ; UTF-16 refusé ;
+  - `detect/manifests.py` : `decode_text`, `text_encoding`, `BOM` ; `find_projects(notices=)` ;
+  - `sources/local.py` : `_Listing` (plafond, jonctions, sous-modules), `_is_junction` ;
+    `Source.notices` ; `models.Report.notices` (JSON : champ ajouté, `schema_version` reste 1) ;
+    `report/` : « Remarques sur la source » (terminal, Markdown) ;
+  - `net/http.py` : `ssl_context` (truststore + `SSL_CERT_FILE`/`SSL_CERT_DIR`),
+    `_certificate_error` (par `__cause__` et `__context__`, sans reboucler), pas de reprise ;
+  - `web/app.py` : `_break_as_interrupt` ; `cli.py` : « interrompu : ce qui n'était pas fini est
+    remis comme avant » (code 2) ;
+  - front : l'alerte « Analyse partielle : la source n'a pas été lue en entier » (écran 4, comme
+    l'arborescence tronquée d'une forge) et ces remarques en tête de « Remarques »
+    (`SourcePlace` : « Le dossier analysé » pour `.`) ; `design-system/ECRANS.md` le dit.
+- **Tranché** :
+  - **`truststore`** (justification de la dépendance, décidée à la session 29) : sans lui, un
+    proxy d'entreprise qui déchiffre le trafic fait tout échouer (son autorité est dans le
+    magasin du système, pas dans `certifi`), et `SSL_CERT_FILE` seul casse les autres hôtes ;
+    c'est ce que fait pip (par défaut depuis 24.2). Pur Python, sans dépendance, MIT, déjà dans le
+    `uv.lock` (par `httpx2`, en dev) ; 0.10.5 publié le 2026-10-12. Sous Linux, truststore suit
+    OpenSSL, qui lit lui-même `SSL_CERT_FILE` à la place de son magasin (dit dans la doc) ;
+  - un certificat refusé n'est pas réessayé (rien n'y changerait) et l'hôte est abandonné,
+    comme un hôte injoignable ; le message dit « derrière un proxy d'entreprise, donner son
+    autorité par SSL_CERT_FILE » ;
+  - le proxy des réglages de Windows (WinINet, PAC) n'est pas lu : comme uv, `HTTPS_PROXY`
+    seulement (pour la doc) ;
+  - **une mise à jour interrompue garde ce qui est fini** : les groupes dont l'outil a tourné
+    restent (cohérents : manifeste et lockfile) ; le groupe en cours et ceux qui n'ont pas
+    tourné sont remis, comme pour l'échec d'un outil ;
+  - **l'arrêt du serveur tue l'outil en cours** (`Jobs.stopping`) au lieu d'attendre sa fin :
+    c'était déjà le cas par Ctrl+C sous Windows (la console l'atteint) ; ailleurs, l'outil est
+    dans sa propre session et Ctrl+C ne l'atteint plus : c'est `cancel` qui le tue. Les
+    commandes git d'un envoi ne reçoivent pas `cancel` : E31 (arrêt pendant un envoi) ;
+  - le BOM ne compte pas dans les colonnes (comme dans un éditeur) ; les parseurs JSON gardent
+    leur `removeprefix(BOM)` (sans effet désormais) ;
+  - une source peut dire ce qu'elle n'a pas pu lister (`Source.notices`) ; les sources des forges
+    n'en ont pas encore (un sous-module d'un dépôt est une entrée `commit` de l'arborescence,
+    sautée sans rien dire : ajouté à E31) ;
+  - pas d'essai derrière un vrai proxy d'entreprise : aucun sous la main ; un proxy `CONNECT` et
+    une autorité de test l'ont remplacé (l'installation d'un mitmproxy n'a pas été demandée).
+- **Trouvé** : le heredoc mange toujours les barres obliques inverses (deux fois) : les scripts
+  sont écrits avec l'outil d'écriture ; l'outil d'écriture change bien `﻿` en caractère
+  (écrire `\N{ZERO WIDTH NO-BREAK SPACE}`) ; respx relève l'exception d'un `side_effect` depuis
+  la sienne (`SideEffectError`), ce qui écrase sa cause et fait **reboucler la chaîne** :
+  `_certificate_error` tournait sans fin (le test se bloquait) ; il ne voit plus chaque
+  exception qu'une fois, et le test passe par `HttpClient._send` ; le test du vrai `_spawn` de
+  `test_lockfiles.py` utilisait `monkeypatch.undo()` (interdit) : il prend la fonction à
+  l'import ; le test Playwright « vider le cache » attendait « vide » juste après le
+  vidage : une analyse d'un autre test (serveur partagé) y avait déjà remis une réponse ; il
+  compare désormais au nombre d'avant.
+- **Tests** : `test_processes.py` (8 : un arbre Python dont le petit-enfant tient la sortie ;
+  délai, `cancel`, sans shell, `taskkill` du système) ; `test_robustness.py` (décodage, **chaque
+  fichier de dépendances des mini-projets en BOM et en UTF-16**, la réécriture avec BOM et en
+  UTF-16, Ctrl+C pendant l'écriture et pendant un outil, `cancel`, l'arrêt du serveur pendant
+  un outil, les remarques sur la source dans les trois rapports et le JSON) ; dans
+  `test_sources.py` (jonctions, boucle de jonction, sous-modules, plafond avec et sans git,
+  encodages), `test_net_http.py` (contexte TLS, `SSL_CERT_FILE` illisible, certificat refusé
+  sans reprise, chaîne qui reboucle), `test_web_server.py` (Ctrl+Break, Windows : sans la
+  correction, pytest sort en code 3), `test_cli.py` (Ctrl+C pendant `update`),
+  `test_lockfiles.py`. Front : `ReportView.test.tsx` (la source lue en partie) ; les trois
+  rapports d'exemple ont `notices`. 4 761 tests Python verts (plus 21 réseau, avec les vrais
+  outils, tous lancés par `processes.run`), 163 Vitest, 67 Playwright ; la suite Python prend
+  4 min 26 au calme (4 min 24 au début de la session : rien de lent n'a été ajouté, sauf les
+  délais réels de `test_processes.py`, 2 à 3 s chacun ; le plus long, 4,2 s :
+  `test_endoflife_down_is_inconclusive`). Vérifié aussi dans le navigateur (le serveur hors
+  ligne des tests, le clone au sous-module vide) : l'alerte en clair et en sombre, à 1440 et
+  375 px, sans débordement ni erreur de console.
+- **Limites** (pour la doc, E35) : au-delà de 200 000 fichiers, la source est coupée (dans
+  l'ordre de git, ou du parcours) ; un fichier en UTF-16 se lit mais ne se réécrit pas ; un
+  descendant d'un outil qui sort de son arbre (un démon) n'est pas tué ; le proxy des réglages
+  de Windows n'est pas lu ; sous Linux, `SSL_CERT_FILE` remplace le magasin du système
+  (OpenSSL) ; un fichier qui n'est pas de l'UTF-8 se lit, ses octets illisibles remplacés, mais
+  ne se réécrit pas.
+
+### E31 — Forges : robustesse
+
+Venue de E30, découpée à la session 30 avec l'accord de l'utilisateur (E31 à E35 de départ
+deviennent E32 à E36).
+
 - [ ] Depuis E16 :
-  - tokens GitHub qui expirent : **tranché avec l'utilisateur (session 29) : ils restent sans expiration** (décision n°13, comme `gh`) ; la doc le dit (E34). Pour mémoire, les faire expirer demanderait de garder le `refresh_token` (8 h pour le token, 6 mois sans usage pour le `refresh_token`), de le renouveler une seule fois à la fois, et de traiter `bad_refresh_token` ;
+  - tokens GitHub qui expirent : **tranché avec l'utilisateur (session 29) : ils restent sans expiration** (décision n°13, comme `gh`) ; la doc le dit (E35). Pour mémoire, les faire expirer demanderait de garder le `refresh_token` (8 h pour le token, 6 mois sans usage pour le `refresh_token`), de le renouveler une seule fois à la fois, et de traiter `bad_refresh_token` ;
   - le trousseau sous Linux sans Secret Service (serveur, WSL) : la connexion est refusée avec la raison (`keyring` dans `GET /api/accounts`) ; dire dans la doc comment en installer un, ou envisager un repli (fichier chiffré : à justifier).
 - [ ] Depuis E18 (les PR) :
   - un arrêt du serveur pendant un envoi peut laisser une branche poussée sans PR (relancer la reprend) : le dire à l'arrêt, ou attendre la fin du dépôt en cours comme pour une mise à jour locale ; les dossiers de travail `forceupdate-pr-*` laissés par un arrêt brutal : les effacer au démarrage ;
@@ -2578,10 +2725,14 @@ l'écran 9 et s'appliquent aux analyses et aux plans suivants ; le cache se vide
   - un refresh token de Bitbucket inutilisé pendant 3 mois expire : le compte passe en `problem` (« se reconnecter ») ; le dire dans la carte avant, ou le renouveler de temps en temps ;
   - un dépôt où le compte écrit par un groupe, sans droit explicite ni administration du workspace : vu en lecture seule (`…/permissions/repositories` ne liste que les droits explicites) ; le vérifier sur un vrai workspace d'équipe, et sinon essayer `role=contributor` ;
   - lire l'arbre de la branche par git (`git.remote_tree`) coûte un `fetch` de plus par envoi, quand la branche existe déjà : le mesurer sur un gros dépôt.
+- [ ] Depuis E30 :
+  - un sous-module d'un dépôt (une entrée `commit` de l'arborescence de la forge) est sauté sans rien dire : le dire, comme en local (`Source.notices`, « sous-module git non initialisé ») ;
+  - à l'arrêt du serveur, l'outil de lockfile d'un envoi est tué (`Jobs.stopping`), mais pas ses commandes git (clone, push) : sous Windows Ctrl+C les atteint par la console, ailleurs elles ont leur session et vont jusqu'au bout ; décider avec la première case de E18 (le dire, ou attendre la fin du dépôt en cours) et passer `cancel` à `forges.git` s'il le faut.
 
-**Fini quand** : tests de robustesse verts, mesure notée dans le journal.
+**Fini quand** : chaque case a ses tests, ou une décision notée (la doc, E35) ; vérifié avec
+les dépôts de test des forges, sans toucher à leurs PR et MR (recette, E36).
 
-### E31 — Mise à jour : le npm du projet, Python, NuGet, Go
+### E32 — Mise à jour : le npm du projet, Python, NuGet, Go
 
 - [ ] Depuis l'essai de l'utilisateur (une PR sur un de ses dépôts, après E23) : **le lockfile est régénéré par le npm de la machine, pas par celui qu'attend le projet**. npm 11 (Node 24, sur la machine) n'écrit plus certains paquets facultatifs (`ws`, `zod`, `devtools-protocol` de puppeteer ; `@emnapi/*` de Tailwind) que npm 10 exige : `npm ci` de la CI du dépôt (Node 22, npm 10) a refusé les deux lockfiles de la PR (« Missing: … from lock file »), avant tests et lint ; vérifié sur la branche : `npm ci` passe avec npm 11, échoue avec npm 10. À faire :
   - lire la version attendue, dans cet ordre : `packageManager` (`npm@10.9.0`), `devEngines.packageManager`, `engines.npm` ; sinon la version de Node du projet (depuis E27, dans `Project.runtimes` : `checks.runtimes.project_runtime`, plutôt que de relire `engines.node`, `.nvmrc`, `.node-version`) puis la `node-version` de `actions/setup-node` dans `.github/workflows/*.yml` (la plus basse s'il y en a plusieurs), traduite en npm par la version livrée avec Node (Node 18 et 20 : npm 10 ; Node 22 : npm 10 ; Node 24 : npm 11 ; table à revérifier sur nodejs.org le jour venu) ; rien de tout cela : ne rien dire ;
@@ -2600,7 +2751,7 @@ l'écran 9 et s'appliquent aux analyses et aux plans suivants ; le cache se vide
 npm 11 installé donne un lockfile que `npm@10 ci` accepte ; les autres cases ont leurs tests et
 sont vérifiées avec le vrai outil.
 
-### E32 — Registres et dépôts privés
+### E33 — Registres et dépôts privés
 
 Un paquet d'un registre privé est aujourd'hui demandé au registre public (introuvable, ou un
 homonyme). Le demander à son registre, avec ses identifiants (jamais envoyés ailleurs), ou dire
@@ -2616,7 +2767,7 @@ homonyme). Le demander à son registre, avec ses identifiants (jamais envoyés a
 registre (testé avec un registre simulé), ou dit « privé : non vérifié » ; jamais au registre
 public.
 
-### E33 — Compléments d'analyse
+### E34 — Compléments d'analyse
 
 - [ ] Depuis E21 (Rust) : la version « permise » d'une contrainte Cargo est la plus haute qu'elle accepte ; le résolveur 3 (édition 2024, `resolver = "3"`) préfère celles dont le `rust-version` convient au projet (celui de `[package]`, sinon la version de `rustc`) : l'index donne `rust_version` de chaque version, le prendre en compte.
 - [ ] Depuis E22 (Go) :
@@ -2654,9 +2805,9 @@ public.
     existe sur PyPI (et, si possible, qu'il fournit l'import : `top_level.txt` de sa dernière roue).
 
 **Fini quand** : chaque case a ses tests et a été vérifiée en vrai ; les limites qui restent sont
-écrites, pour la documentation (E34).
+écrites, pour la documentation (E35).
 
-### E34 — Documentation, packaging, CI
+### E35 — Documentation, packaging, CI
 
 - [ ] `README.md` : à quoi ça sert, installation, démarrage (`ui`), captures d'écran, la ligne de commande, les limites par écosystème.
 - [ ] Docs :
@@ -2667,6 +2818,12 @@ public.
   - Depuis E28 : dans `docs/USAGE.md`, un fichier de code (la remontée jusqu'au manifeste de son
     écosystème et ses arrêts, le bloc PEP 723 et son `script.py.lock`, les imports lus par langage,
     la table import → paquet, « version non fixée »).
+  - Depuis E29 et E30 : les limites notées à E29 (configuration lue à la racine seulement…) ; un
+    « Réseau d'entreprise » (`HTTPS_PROXY`, `NO_PROXY`, `SSL_CERT_FILE` et `SSL_CERT_DIR`, le
+    magasin du système par truststore, sous Linux `SSL_CERT_FILE` à la place du magasin ; le
+    proxy des réglages de Windows non lu) ; les fichiers en UTF-16 lus mais pas réécrits ; le
+    plafond de 200 000 fichiers ; Ctrl+C et l'arrêt de `ui` pendant une mise à jour (ce qui
+    n'était pas fini est remis) ; les autres limites des notes de E30.
 - [ ] Depuis E20 : dans `docs/FORGES.md`, Bitbucket : enregistrer son propre « OAuth client » (Workspace settings → OAuth clients ; « Authorization code » et « Refresh token », jamais « Client credentials » ; Account Read et Email, Repositories et Pull requests en écriture ; adresse de retour `http://127.0.0.1/oauth/bitbucket/callback`) et le passer par `FORCEUPDATE_BITBUCKET_CLIENT_ID` / `…_SECRET` ; le token d'API Atlassian (`id.atlassian.com`, application Bitbucket, ses six portées), les app passwords qui ne marchent plus ; pas de révocation (« Retirer l'accès » dans `bitbucket.org/account/settings/app-authorizations/`) ; pas d'adresse `noreply` (l'adresse principale du compte signe les commits) ; Bitbucket Data Center hors V1.
 - [ ] Depuis E18 : dans `docs/FORGES.md`, ce que fait une PR (branche `forceupdate/dependencies` remplacée à chaque envoi, un commit au nom du compte avec son adresse `noreply`, marqué `Generated-by: forceupdate` ; jamais par-dessus le commit d'un autre ; ce que dit la description ; un lockfile dont l'outil manque sur l'ordinateur) et qu'il faut git ; dans le README, une capture de l'écran 8 et d'une PR.
 - [ ] Packaging :
@@ -2687,14 +2844,14 @@ public.
 **Fini quand** : `uv tool install forceupdate` depuis PyPI, dans un dossier vierge,
 marche ; la CI est verte.
 
-### E35 — Recette finale
+### E36 — Recette finale
 
 - [ ] Dérouler « Le livrable », case par case, dans l'interface :
   - un vrai projet local par écosystème disponible ;
   - un fichier de code isolé, et un fichier glissé-déposé ;
   - les comptes GitHub, GitLab et Bitbucket de l'utilisateur : analyse de tous les dépôts, puis une PR / MR sur un dépôt de test de chaque forge (`Pauzzle-ozz/forceupdate-demo` sur GitHub et sur gitlab.com, `pauzzle/forceupdate-demo` sur Bitbucket ; leur PR #1 et MR !1 y sont déjà) ; les supprimer ensuite, avec l'accord de l'utilisateur.
 - [ ] Revue finale avec le skill `ui-ux-pro-max` : accessibilité, clair et sombre, petites et grandes fenêtres.
-- [ ] Corriger les écarts. Un écart trop gros pour cette session devient une nouvelle étape (E36…) dans ce plan.
+- [ ] Corriger les écarts. Un écart trop gros pour cette session devient une nouvelle étape (E37…) dans ce plan.
 - [ ] Cocher « Le livrable ». Taguer `v1.0.0`, avec l'accord de l'utilisateur.
 
 **Fini quand** : toutes les cases de « Le livrable » sont cochées.
@@ -2759,3 +2916,4 @@ En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.
 | 27 | 2026-11-01 | E27 | Fait. Commit de E26 d'abord (accord de l'utilisateur). endoflife.date vérifié en vrai (forme v1 : `isEol` booléen, `eolFrom` date ou `null`, `isLts`/`ltsFrom`, `latest`, 404 en HTML, un alias en 301 ; l'ancienne forme pas demandée) : `endoflife.py` (cache 24 h, une erreur est « non concluant »). `parsers/runtimes.py` : la version des runtimes sans rien exécuter (`requires-python`, Poetry, `Pipfile`, `setup.cfg` ; `engines.node`, `volta` ; `go`, `toolchain` ; `ruby` du `Gemfile`, `RUBY VERSION` ; `require.php`, `config.platform.php` ; propriétés Maven, Gradle ; `TargetFramework(s)` ; `.python-version`, `runtime.txt`, `.nvmrc` avec `lts/…`, `.node-version`, `.ruby-version`, `.tool-versions`, `global.json`, les `FROM` des `Dockerfile` avec leurs `ARG`), rattachés aux projets (`Project.runtime_files`, `Project.runtimes`). `checks/eol.py` : la table des frameworks (tirée des `purl` d'endoflife.date, 56 produits vérifiés), le cycle d'une version, le cycle conseillé (plus récent, maintenu, LTS d'abord : Django 3.2 → 5.2, Node.js 16 → 26), un constat si la fin est passée ou dans moins de 6 mois, à la date du jour que les tests fixent. Les versions qu'un runtime du projet ne fait pas tourner ne sont plus proposées (`checks/runtimes.py` : `engines.node`, `require.php`, `ruby:`, `requires-python` gardés par les registres ; symfony/console v6.4.49 sous PHP 8.1, comme `composer outdated`), et c'est dit ; la dernière version du cycle conseillé d'un framework proposée (`SUPPORTED_CYCLE`). Les SDK de projet MSBuild (`Sdk="Nom/Version"`, `<Sdk>`, `msbuild-sdks` de `global.json`) vérifiés et réécrits. Écran 4 : la section « Fins de vie » (date, source, cycle conseillé, LTS, version conseillée bloquée par le runtime), les runtimes dans la carte du projet. Mini-projet `eol` (Python 3.8, Django 3.2, Node.js 16) : trois constats datés, dans l'interface et en ligne de commande. 4441 tests Python verts (plus 21 réseau), 146 Vitest, 53 Playwright ; vérifié à la main en vrai (scan, update à blanc, interface en clair et en sombre). Cases ajoutées à E29, E30 |
 | 28 | 2026-11-02 | E28 | Fait. Commit de E27 d'abord (accord de l'utilisateur). Vérifié en vrai : uv 0.10 et PEP 723 (bloc n'importe où, jusqu'au dernier `# ///`, refusé s'il n'est pas fermé, invisible derrière un BOM ; `uv lock --script` écrit `x.py.lock` ; un script à bloc ignore le projet autour), les 72 modules intégrés de Node 24.12 (4 seulement avec `node:`), le proxy Go (404 pour un sous-paquet ; `go mod tidy` rattache `golang.org/x/text/language` à `golang.org/x/text`). Un fichier de code dans un projet : la remontée jusqu'au premier manifeste de son écosystème (arrêt à la racine git, du disque, ou avant le dossier personnel), la source est le dépôt git, « analysé via `<manifeste>` ». Seul : le bloc PEP 723 (vrai manifeste, réécrivable, `requires-python` en runtime, `script.py.lock` lu et régénéré par `uv lock --script`), sinon ses imports (`ast` ; des lexers pour JS/TS et Go ; table import → paquet, espaces de noms et modules Go rattachés à la vérification). Nouveau constat `unpinned` (« version non fixée, dernière X »), remarque « failles non vérifiables ». Interface : écran 2 (fichiers de code, dépôt), écran 4 (lecture du fichier, compteur et alerte, badges). 4587 tests Python verts, 151 Vitest, 59 Playwright ; vérifié à la main en ligne de commande et dans l'interface (un débordement à 375 px trouvé et corrigé). |
 | 29 | 2026-11-02 | E29 | Fait. Commit de E28 d'abord (accord de l'utilisateur). E29 de départ découpée avec lui en cinq étapes (E29 configuration et Réglages, E30 robustesse et performance, E31 mise à jour : le npm du projet, Python, NuGet, Go, E32 registres et dépôts privés, E33 compléments d'analyse ; documentation E34, recette E35). Décidé avec lui pour la suite : tokens GitHub sans expiration, `truststore`, `npx npm@10` coché d'office. Vérifié en vrai : rustup 1.29 (`rustup default`, `RUSTUP_TOOLCHAIN` devant `rust-toolchain.toml`, sans rien installer). `config.py` : `forceupdate.toml` ou `[tool.forceupdate]` (paquets et versions ignorés dans une syntaxe commune aux huit écosystèmes, dossiers exclus, dossiers de tests, sélection par défaut par écosystème), valeurs fausses dites et écartées ; un paquet ignoré n'est ni vérifié ni mis à jour mais ses failles restent dites, une version ignorée est retirée de ce que dit le registre. `preferences.py` : les réglages de la personne (le même format, dans son dossier de configuration ; dépôts exclus, délais des outils et du clone, chaîne d'outils Rust), lus par la ligne de commande (`--include-tests`, `--level` sinon le projet puis les réglages) et le serveur (`GET`/`PUT /api/settings`, `DELETE /api/cache`, `Cache.stats`). Le projet prime. Écran 9 (sélection, ignorés, analyse, dépôts exclus, outils, cache confirmé, thème) ; le rapport dit la configuration. Septième garde-fou des tests (`user_settings`). Trouvé par Playwright : une règle générale égale aux valeurs par défaut faisait dire « sélection réglée » (écartée). 4667 tests Python verts (plus 21 réseau), 162 Vitest, 67 Playwright ; vérifié à la main en ligne de commande et dans l'interface (vrai réseau, 375 px). Suite Python : 4 min 24 au calme (7 min à la fin de E28). Pas encore commitée. |
+| 30 | 2026-11-02 | E30 | Fait. Commit de E29 d'abord (accord de l'utilisateur) ; E30 découpée avec lui : les cases des forges font E31 (« Forges : robustesse »), E31 à E35 deviennent E32 à E36. Vérifié en vrai : l'arbre de `npm.CMD` (`subprocess.run` rend un délai de 3 s après 25,8 s, ou laisse node tourner ; `taskkill /T` tue les quatre processus), Ctrl+Break (code 3), une jonction (suivie par `os.walk` et par `git ls-files`), un sous-module non initialisé (`RecursionError`), le BOM sur chaque fichier des mini-projets (TOML, requirements, go.mod, yarn.lock… cassés) et l'UTF-16 de PowerShell 5.1, httpx avec truststore, `SSL_CERT_FILE` (httpx seul remplace certifi : pypi.org refusé) et un proxy `CONNECT`. `processes.py` (tout outil, git et `gh` : l'arbre tué au délai, à Ctrl+C, à l'arrêt du serveur), `decode_text` (BOM, UTF-16), `_Listing` (200 000 fichiers au plus, jonctions, sous-modules), `Report.notices` (« Analyse partielle » dans l'interface), `ssl_context` (truststore, ajouté aux dépendances), un certificat refusé dit sans reprise, Ctrl+C pendant l'écriture ou un outil et l'arrêt du serveur : ce qui n'était pas fini est remis (`_undo_written`, `Jobs.stopping`), Ctrl+Break comme Ctrl+C. **Mesure** : Argos, cache vide, 3,2 s (86 directes, 569 à OSV), 7,4 s avec `--transitive` (570 vérifiées), aucun non concluant ; un vrai npm au délai de 0,3 s tué, fichiers remis en 0,5 s. Suite Python : 4 min 26. 4 761 tests Python verts (plus 21 réseau), 163 Vitest, 67 Playwright. E30 pas encore commitée. |
