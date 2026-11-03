@@ -1,24 +1,34 @@
-# Session 36 — Étape E35 (fin) : publication de la 1.0.0rc1, puis E36 : recette finale
+# Session 36 — Étape E35 (fin) : les essais de l'utilisateur, la publication de la 1.0.0rc1, puis E36
 
 Contexte : E01 à E34 sont faites ; E35 (documentation, packaging, CI) l'est sauf sa dernière case,
-la publication sur PyPI, que l'utilisateur a voulu garder pour cette session. Fait à E35 :
+la publication sur PyPI : **l'utilisateur a voulu d'abord essayer l'outil lui-même**, installé
+depuis le dépôt (`uv tool install .`), sur ses projets et ses comptes. Fait à E35 :
 `README.md` réécrit (aussi la page PyPI) avec cinq captures, `docs/USAGE.md` (la doc utilisateur
 complète), `docs/FORGES.md`, `CHANGELOG.md`, `docs/JSON_FORMAT.md` vérifié ; la version
 `1.0.0rc1` (décision de l'utilisateur : une pré-version d'abord, la 1.0.0 au tag de la recette) ;
 la CI sur Ubuntu, Windows et macOS (Python 3.11 et 3.14), le front sous Ubuntu et Windows,
 `network.yml` chaque lundi ; `.gitattributes` (LF partout). En faisant tourner la suite sous
-Linux, trouvé et corrigé un plantage de toute analyse hors Windows (E30). Tout est commité et
-poussé (`be210cd`, puis le commit de la doc). 5 110 tests Python (plus 28 réseau), 168 Vitest,
-72 Playwright.
+Linux, trouvé et corrigé un plantage de toute analyse hors Windows (E30). Poussé : `be210cd` et
+`7a6a670` ; les dernières notes de PLAN.md et ce prompt ont pu rester à commiter (`git status`).
+5 110 tests Python (plus 28 réseau), 168 Vitest, 72 Playwright.
 
 Lis CLAUDE.md, puis dans PLAN.md : la case « Publication sur PyPI » de E35 et les notes de E35,
 puis l'étape E36 (toutes ses cases, dont « Depuis E35 ») et « Le livrable » (en tête).
 
 À faire :
+0. **Les retours de l'utilisateur** sur ses essais : les lui demander s'il ne les donne pas.
+   Chaque défaut est reproduit, corrigé avec son test (et la doc si elle change), ou, trop gros,
+   porté au plan (E36 ou une nouvelle étape) ; rien n'est publié avant que l'utilisateur dise que
+   c'est bon.
 1. **Finir E35** :
    - vérifier la CI du dernier commit poussé (`gh run list`) : verte sur les trois systèmes et pour
      le front ; sinon, corriger d'abord (la suite sous Linux se lance en local par Docker :
-     CLAUDE.md, « La suite sous Linux, sans pousser » ; macOS seulement par la CI) ;
+     CLAUDE.md, « La suite sous Linux, sans pousser » ; macOS seulement par la CI). Le front sous
+     Windows a échoué deux fois sur `e2e/code.spec.ts` (une analyse qui attendait le travail d'un
+     autre test sur le serveur partagé) : la CI fait maintenant tourner Playwright sur un seul
+     worker, et garde les traces d'un test en échec (l'artefact `traces-playwright-<os>` du job) ;
+     si un test échoue encore, lire sa trace (`npx playwright show-trace`) avant toute autre
+     chose ;
    - **avec l'accord de l'utilisateur**, pousser l'étiquette `v1.0.0rc1` sur ce commit :
      `publish.yml` vérifie que l'étiquette est la version, teste, construit le front et publie par
      Trusted Publishing ; suivre le workflow « Publication » ;

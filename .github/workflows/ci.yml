@@ -80,3 +80,13 @@ jobs:
           uv sync --locked
           npx playwright install --with-deps chromium
           npx playwright test
+
+      # Les traces d'un test en échec (trace: retain-on-failure) : l'écran, le réseau, la durée
+      # de chaque étape, à ouvrir avec « npx playwright show-trace ».
+      - name: Traces des tests en échec
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: traces-playwright-${{ matrix.os }}
+          path: frontend/test-results/
+          retention-days: 14
