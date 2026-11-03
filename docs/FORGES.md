@@ -544,7 +544,13 @@ total : « 1 PR ouverte · 1 MR ouverte · 1 mise à jour · 1 en échec ».
   ```
 
 - Rien à commiter au bout du compte (aucun fichier changé) : rien n'est poussé, « rien à
-  faire sur la branche par défaut telle qu'elle est ».
+  faire sur la branche par défaut telle qu'elle est ». Si c'est parce que l'outil de lockfile a
+  gardé les versions (une dépendance indirecte que le paquet qui la tire ne laisse pas monter :
+  voir [La régénération](USAGE.md#ce-qui-vaut-pour-tous) dans USAGE.md), le résultat le dit
+  : « aucune mise à jour n'a pu se faire : d'autres paquets retiennent les versions choisies ;
+  rien n'est poussé », puis chaque paquet, « minimatch 10.2.6, pas 11.0.1 (backend) : retenue
+  par nodemon 3.1.14 », et quoi faire (monter ce paquet, ou forcer sa version). Dans une PR qui
+  part, une version retenue est dite de même, dans la description (« retenue en … par … »).
 
 ### La description
 

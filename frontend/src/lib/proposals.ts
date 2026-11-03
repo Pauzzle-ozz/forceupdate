@@ -121,6 +121,48 @@ export function stepText(item: ProposedRepository): string {
   }
 }
 
+/** Une mise à jour que l'outil de lockfile a laissée sous la version choisie. */
+export interface HeldUpdate {
+  /** La clé de la mise à jour (`backend|npm|minimatch|10.2.6`). */
+  update: string
+  name: string
+  /** Le projet, `.` pour la racine. */
+  project: string
+  /** La version choisie. */
+  chosen: string
+  /** Les versions restées dans le lockfile. */
+  versions: string[]
+  /** Les paquets qui la retiennent (`nodemon 3.1.14`) ; vide si l'outil ne le dit pas. */
+  heldBy: string[]
+}
+
+/**
+ * Les mises à jour d'un dépôt envoyé que l'outil de lockfile n'a pas pu faire : une indirecte
+ * hors de la plage que demande le paquet qui la tire (`nodemon` demande `minimatch ^10.2.1`, la
+ * correction est en 11.0.1) reste où elle est.
+ */
+export function heldUpdates(item: ProposedRepository): HeldUpdate[] {
+  return item.results
+    .flatMap((result) => result.installed)
+    .filter((installed) => installed.reach === 'below')
+    .map((installed) => {
+      const applied = item.applied.find((update) => update.update === installed.update)
+      return {
+        update: installed.update,
+        name: applied?.name ?? installed.update,
+        project: applied?.project ?? '.',
+        chosen: applied?.version ?? installed.version,
+        versions: installed.versions,
+        heldBy: installed.held_by,
+      }
+    })
+}
+
+/** Rien de poussé parce que toutes les mises à jour ont été retenues : il y avait à faire. */
+function allHeld(item: ProposedRepository): boolean {
+  return item.state === 'nothing' && heldUpdates(item).length > 0
+}
+
 /** Ce qu'il est advenu d'un dépôt envoyé, en une phrase (sans l'erreur, dite à part). */
 export function outcomeText(item: ProposedRepository): string {
   const word = requestWord(item.forge)
@@ -137,7 +179,9 @@ export function outcomeText(item: ProposedRepository): string {
         ? `${word}${number} mise à jour`
         : fr(`${word}${number} mise à jour : elle avait déjà ces changements, rien n'est poussé, sa description est refaite`)
     case 'nothing':
-      return fr("rien à faire sur la branche par défaut telle qu'elle est : rien n'est poussé")
+      return allHeld(item)
+        ? fr("aucune mise à jour n'a pu se faire : d'autres paquets retiennent les versions choisies ; rien n'est poussé")
+        : fr("rien à faire sur la branche par défaut telle qu'elle est : rien n'est poussé")
     case 'failed':
       return `pas de ${word}`
     default:
@@ -151,10 +195,12 @@ export function resultSummary(proposal: Proposal): string {
   const by = (state: ProposedState) => items.filter((item) => item.state === state).length
   const opened = (word: string) =>
     items.filter((item) => item.state === 'opened' && requestWord(item.forge) === word).length
+  const held = items.filter(allHeld).length
   return [
     ...['PR', 'MR'].map((word) => opened(word) && `${opened(word)} ${word} ${opened(word) >= 2 ? 'ouvertes' : 'ouverte'}`),
     by('updated') && `${by('updated')} ${by('updated') >= 2 ? 'mises à jour' : 'mise à jour'}`,
-    by('nothing') && `${count(by('nothing'), 'dépôt')} sans rien à faire`,
+    held && `${count(held, 'dépôt')} aux mises à jour retenues`,
+    by('nothing') - held && `${count(by('nothing') - held, 'dépôt')} sans rien à faire`,
     by('failed') && `${by('failed')} en échec`,
   ]
     .filter(Boolean)

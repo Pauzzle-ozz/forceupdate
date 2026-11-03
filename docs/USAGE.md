@@ -671,6 +671,14 @@ version que permet la contrainte. »), ou une version restée en dessous, avec c
 (« retenue par debug 4.3.1. »). Les autres paquets que le lockfile a changés sont listés
 (« aussi changé »).
 
+Une version retenue est presque toujours celle d'une dépendance **indirecte** : l'outil ne la
+monte pas au-delà de la plage que demande le paquet qui la tire. `nodemon` 3.1.14 demande
+`minimatch ^10.2.1` : la correction d'une faille de minimatch, publiée en 11.0.1 (une
+majeure), reste hors d'atteinte, et le lockfile ne change pas. Le plan le signale d'avance (« le
+paquet qui la tire devra peut-être monter aussi ») ; pour aller plus loin, monter d'abord ce
+paquet (une version plus récente de nodemon qui accepte minimatch 11), ou forcer la version dans
+le manifeste (`overrides` de npm, `resolutions` de Yarn), à ses risques.
+
 Commandes vérifiées avec npm 11.6, pnpm 12.15, Yarn 1.22 et 4.18, uv 0.10, Poetry 1.8 et
 2.5, PDM 2.29, pipenv 2026.10, pip-tools 7.6, cargo 1.99, Go 1.27, Composer 2.11, Bundler 4.0
 et le SDK .NET 10.0.403.

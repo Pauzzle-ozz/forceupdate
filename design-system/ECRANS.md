@@ -467,6 +467,14 @@ récapitulatif, et retrouver les liens.
   une branche déjà poussée sera reprise. » (l'erreur du dépôt, si le navigateur relit le
   récapitulatif avant la fin de l'arrêt ; la console le dit toujours, les récapitulatifs ne
   survivent pas au serveur).
+- **Fait à la session 36** (les essais de l'utilisateur, sur son dépôt `mew`) : un dépôt où rien
+  n'est poussé parce que l'outil de lockfile a gardé les versions choisies (des indirectes que
+  leur parent ne laisse pas monter) ne dit plus « rien à faire » : l'icône `triangle-alert`
+  (avertissement), « aucune mise à jour n'a pu se faire : d'autres paquets retiennent les
+  versions choisies ; rien n'est poussé », la liste « Mises à jour retenues » (une ligne par
+  paquet, comme les options non appliquées : « minimatch 10.2.6, pas 11.0.1 (backend) : retenue
+  par nodemon 3.1.14 ») et une phrase sur quoi faire ; le total dit « 1 dépôt aux mises à jour
+  retenues ». Une version retenue dans une PR qui part est listée de même.
 
 ## 9. Réglages (E29)
 

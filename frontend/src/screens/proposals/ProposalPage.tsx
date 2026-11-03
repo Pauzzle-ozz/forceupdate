@@ -40,6 +40,7 @@ import {
   defaultChecked,
   finished,
   forgeLabel,
+  heldUpdates,
   keyOf,
   keyText,
   outcomeText,
@@ -606,6 +607,9 @@ const STATE_ICON: Record<string, { icon: LucideIcon; className: string; spin?: b
   failed: { icon: CircleX, className: 'text-danger' },
 }
 
+/** Rien de poussé parce que les versions choisies sont retenues : il reste à faire. */
+const HELD_ICON: (typeof STATE_ICON)[string] = { icon: TriangleAlert, className: 'text-warning' }
+
 function Sending({ proposal }: { proposal: Proposal }) {
   const running = proposal.status === 'running'
   const items = sent(proposal)
@@ -708,7 +712,9 @@ function Sending({ proposal }: { proposal: Proposal }) {
 /** Un dépôt envoyé : où il en est, puis sa PR, ou l'erreur, et ce qui reste à faire. */
 function SentCard({ item, showForge }: { item: ProposedRepository; showForge: boolean }) {
   const id = useId()
-  const look = STATE_ICON[item.state] ?? STATE_ICON.waiting
+  // Les versions que l'outil de lockfile n'a pas pu monter (session 36).
+  const held = finished(item) ? heldUpdates(item) : []
+  const look = item.state === 'nothing' && held.length > 0 ? HELD_ICON : (STATE_ICON[item.state] ?? STATE_ICON.waiting)
   const Icon = look.icon
   const word = requestWord(item.forge)
   // À reprendre : ce qui n'est pas régénéré, et un lockfile que le npm du projet refuse (E32).
@@ -752,6 +758,31 @@ function SentCard({ item, showForge }: { item: ProposedRepository; showForge: bo
             <ResultLine key={result.lockfile} result={result} job={item.lockfiles.find((job) => job.lockfile === result.lockfile)} word={word} />
           ))}
         </ul>
+      )}
+      {held.length > 0 && (
+        <div className="flex flex-col gap-1 text-sm">
+          <ul className="flex flex-col gap-1" aria-label={`Mises à jour retenues de ${item.full_name}`}>
+            {held.map((update) => (
+              <li key={update.update} className="flex items-start gap-2 text-warning">
+                <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                <span>
+                  <span className="font-mono">
+                    {update.name} {update.versions.join(', ')}
+                  </span>
+                  {`, pas ${update.chosen}`}
+                  {update.project !== '.' && <span className="text-fg-muted">{` (${update.project})`}</span>}
+                  {`${NBSP}: `}
+                  {update.heldBy.length > 0 ? `retenue par ${update.heldBy.join(', ')}` : 'une version plus basse reste'}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-fg-muted">
+            {fr(
+              "Une dépendance indirecte ne monte pas au-delà de ce qu'accepte le paquet qui la tire : monter ce paquet d'abord, ou forcer sa version dans le manifeste (overrides de npm, resolutions de Yarn).",
+            )}
+          </p>
+        </div>
       )}
       {finished(item) && item.skipped.length > 0 && (
         <ul className="flex flex-col gap-1 text-sm">

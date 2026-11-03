@@ -3614,8 +3614,33 @@ marche ; la CI est verte.
   forceupdate).
 - **L'outil d'édition écrit en CRLF** sous Windows tout fichier qu'il touche : repassés en LF
   (`sed -i 's/\r$//'`) ; git les aurait normalisés au commit (`.gitattributes`).
+- **Les retours de l'utilisateur**, après les huit étapes (avec l'accord de l'utilisateur, le
+  premier commit de la session est fait avant, `bdb1b05`, pas poussé) :
+  - « le bouton Ouvrir n'ouvre rien » (écran 2) : il attendait la fenêtre de choix d'un dossier du
+    système ; **décidé avec lui** : la fenêtre Windows (et celles des autres systèmes), portée à E36
+    (« Depuis la session 36 ») ;
+  - **son dépôt `mew`** : PR #2 ouverte et fusionnée, puis analysé de nouveau ; restaient 5 failles
+    d'indirectes dont la correction est une majeure (minimatch 11.0.1, basic-ftp 6.2.1, zod 4.6.6) ;
+    il les a cochées, envoyé la PR : « rien à faire sur la branche par défaut telle qu'elle est :
+    rien n'est poussé », et les failles restaient. **La cause** (reproduite sur un clone, en ligne
+    de commande) : leurs parents demandent l'ancienne majeure (`nodemon` : `minimatch ^10.2.1`,
+    `get-uri` : `basic-ftp ^5.0.2`, `chromium-bidi` : `zod ^3.24.1`, eslint 9 : `minimatch
+    ^3.1.2`) ; npm régénère à l'identique, rien à commiter. La ligne de commande disait « retenue
+    par nodemon 3.1.14 » ; l'écran du résultat des PR ne le disait pas (les données y étaient :
+    `results[].installed[].held_by`). **Corrigé** : `heldUpdates` (`lib/proposals.ts`), la phrase
+    « aucune mise à jour n'a pu se faire : d'autres paquets retiennent les versions choisies ; rien
+    n'est poussé », l'icône d'avertissement, la liste « Mises à jour retenues » et quoi faire, le
+    total « 1 dépôt aux mises à jour retenues » ; un test Vitest (le cas de mew) ; `USAGE.md`
+    (pourquoi une indirecte est retenue, quoi faire), `FORGES.md`, `ECRANS.md`. Le prévoir dès
+    l'écran 5 (le lockfile dit la plage de chaque parent) : porté à E36 ;
+  - **un test Vitest instable trouvé en route** : « la colonne PR, le compteur des PR ouvertes »
+    échouait à chaque fois une fois mon test ajouté, et passait seul. La préparation
+    (`/pr?depots=…`) montre « Préparer les PR », puis passe à `/pr/{id}`, qui rend un nouveau titre :
+    le `findByRole` tenait l'ancien, détaché avant le `expect`. Une course d'avant, que le minutage
+    révélait ; les trois tests qui passent par là attendent par `waitFor` (`prepared()`).
 - **Pour E36** (ajouté à « Depuis la session 36 ») : deux détails du tableau de « Mes dépôts »,
-  la déconnexion pas essayée, les autres écosystèmes sur de vrais projets.
+  la déconnexion pas essayée, les autres écosystèmes sur de vrais projets, la fenêtre de choix
+  d'un dossier, l'indirecte retenue dite d'avance.
 
 ### E36 — Recette finale
 
@@ -3652,7 +3677,24 @@ marche ; la CI est verte.
     tableau reste étroit (le conteneur) : à revoir avec la revue ui-ux-pro-max ;
   - « Se déconnecter… » : pas essayé en vrai (les trois comptes de l'utilisateur sont connectés) ;
   - le fichier de réglages écrit par l'écran 9 finit par une table `[selection]` vide : sans effet,
-    la retirer quand elle n'a rien.
+    la retirer quand elle n'a rien ;
+  - **choisir un dossier par la fenêtre du système** (décision de l'utilisateur) : sur l'écran 2,
+    un bouton (« Parcourir… ») ouvre la fenêtre « Sélectionner un dossier » de Windows (celles de
+    macOS et de Linux de même : `osascript`, `zenity` ou `kdialog`, sinon tkinter), ouverte par le
+    serveur local, qui tourne sur l'ordinateur de la personne ; le dossier choisi s'ouvre dans la
+    liste. Le bouton « Ouvrir » d'aujourd'hui ne fait que suivre un chemin collé dans le champ
+    « Dossier ouvert » (vide, rien de visible) : la personne attendait cette fenêtre. Points à
+    trancher : la fenêtre au premier plan (elle peut s'ouvrir derrière le navigateur), sans
+    affichage (serveur, WSL : le bouton absent ou désactivé, avec la raison), les tests (la
+    fenêtre simulée). Peut devenir une étape à part (E37) si E36 est trop grosse ;
+  - **une indirecte que son parent retient, dite d'avance** : le lockfile dit la plage que chaque
+    paquet demande (`nodemon` 3.1.14 : `minimatch ^10.2.1`) ; une correction hors de toutes ces
+    plages (minimatch 11.0.1) ne se fera pas par le lockfile seul. Le dire dès l'écran 5 et le
+    récapitulatif des PR (« nodemon demande ^10.2.1 : npm la gardera en 10.x ; monter nodemon
+    d'abord ») au lieu de « devra peut-être monter aussi », ne plus la compter dans « failles
+    corrigées », et proposer le parent s'il a une version qui accepte la correction (ou dire
+    qu'aucune ne l'accepte). Pour npm d'abord (pnpm, Yarn, uv, Poetry : leurs lockfiles le disent
+    aussi). Le résultat le dit déjà (session 36).
 - [ ] Cocher « Le livrable ». Passer à la version `1.0.0` (`pyproject.toml`, `uv lock`, `uv run python
   -m forceupdate.web.openapi`, classifieur « Development Status :: 5 - Production/Stable », le
   README et `docs/USAGE.md` sans la phrase de la pré-version, `CHANGELOG.md`), CI verte, puis taguer

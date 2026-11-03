@@ -60,6 +60,15 @@ async function card(name: string): Promise<HTMLElement> {
   return heading.closest<HTMLElement>('[data-slot="card"]')!
 }
 
+/**
+ * Le titre « Préparer les PR », une fois préparé le récapitulatif : la préparation
+ * (`/pr?depots=…`) le montre, puis passe à `/pr/{id}`, qui le rend de nouveau. Un `findByRole`
+ * peut tenir l'ancien titre, détaché juste après : l'assertion se refait jusqu'à ce qu'il tienne.
+ */
+async function prepared() {
+  await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Préparer les PR' })).toBeInTheDocument())
+}
+
 afterEach(() => {
   Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true })
 })
@@ -75,7 +84,7 @@ describe('PR (écran 8)', () => {
   it('prépare le récapitulatif des dépôts demandés, puis passe à son adresse', async () => {
     const calls = mockApi({ 'POST /api/proposals': recap(), 'GET /api/proposals/pr1': recap() })
     renderApp('/pr?depots=github:github.com/octo/boutique,github:github.com/octo/site,gitlab:gitlab.com/atelier/web/api')
-    expect(await screen.findByRole('heading', { level: 1, name: 'Préparer les PR' })).toBeInTheDocument()
+    await prepared()
     const posts = calls.filter((call) => call.method === 'POST')
     expect(posts).toHaveLength(1)
     expect(JSON.parse(String(posts[0].init.body))).toEqual({
@@ -249,6 +258,59 @@ describe('PR (écran 8)', () => {
     expect(screen.getByRole('link', { name: 'Retour à mes dépôts' })).toHaveAttribute('href', '/depots')
   })
 
+  it('rien de poussé parce que les versions sont retenues : le résultat dit par qui (session 36)', async () => {
+    // Le cas de mew : des indirectes dont la correction est une majeure que leur parent refuse ;
+    // npm régénère le lockfile à l'identique, rien n'est commité.
+    const held = (update: string, versions: string[], by: string[]) => ({
+      update,
+      version: versions[versions.length - 1],
+      versions,
+      reach: 'below' as const,
+      held_by: by,
+    })
+    const done = proposal({
+      status: 'done',
+      started_at: '2026-11-03T13:30:00+00:00',
+      finished_at: '2026-11-03T13:31:00+00:00',
+      repositories: [
+        proposedRepository({
+          full_name: 'octo/mew',
+          state: 'nothing',
+          applied: [
+            { update: 'backend|npm|minimatch|10.2.6', name: 'minimatch', ecosystem: 'npm', project: 'backend', direct: false, current: '10.2.6', version: '11.0.1', gap: 'major', fixes: ['CVE-2026-118764'] },
+            { update: 'backend|npm|basic-ftp|5.3.1', name: 'basic-ftp', ecosystem: 'npm', project: 'backend', direct: false, current: '5.3.1', version: '6.2.1', gap: 'major', fixes: ['CVE-2026-1'] },
+          ],
+          results: [
+            {
+              ...regenerated()[0],
+              lockfile: 'backend/package-lock.json',
+              installed: [
+                held('backend|npm|minimatch|10.2.6', ['10.2.6'], ['nodemon 3.1.14']),
+                held('backend|npm|basic-ftp|5.3.1', ['5.3.1'], ['get-uri 6.0.5']),
+              ],
+            },
+          ],
+        }),
+        proposedRepository({ full_name: 'octo/site', state: 'nothing' }),
+      ],
+    })
+    mockApi({ 'GET /api/proposals/pr1': done, 'GET /api/repositories': repositoryList() })
+    renderApp('/pr/pr1')
+    expect(await screen.findByRole('heading', { level: 1, name: 'PR envoyées' })).toBeInTheDocument()
+    expect(screen.getByText(/1 dépôt aux mises à jour retenues · 1 dépôt sans rien à faire/)).toBeInTheDocument()
+    // Dans la carte, et dans l'annonce aux lecteurs d'écran.
+    expect(screen.getAllByText(/aucune mise à jour n'a pu se faire/)).toHaveLength(2)
+    const list = screen.getByRole('list', { name: 'Mises à jour retenues de octo/mew' })
+    const lines = within(list).getAllByRole('listitem').map((line) => line.textContent)
+    expect(lines).toEqual([
+      'minimatch 10.2.6, pas 11.0.1 (backend) : retenue par nodemon 3.1.14',
+      'basic-ftp 5.3.1, pas 6.2.1 (backend) : retenue par get-uri 6.0.5',
+    ])
+    expect(screen.getByText(/monter ce paquet d'abord, ou forcer sa version/)).toBeInTheDocument()
+    // Un dépôt vraiment sans rien à faire garde sa phrase.
+    expect(screen.getAllByText(/rien à faire sur la branche par défaut/).length).toBeGreaterThan(0)
+  })
+
   it('un récapitulatif oublié (serveur redémarré) le dit', async () => {
     mockApi({ 'GET /api/proposals/vieux': new Status(404, { detail: 'Récapitulatif inconnu : vieux.' }) })
     renderApp('/pr/vieux')
@@ -288,7 +350,7 @@ describe('les PR depuis l’écran 7 et le rapport d’un dépôt', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Sélectionner octo/site' }))
     expect(screen.getByRole('button', { name: 'Analyser ces 2 dépôts' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Préparer 2 PR' }))
-    expect(await screen.findByRole('heading', { level: 1, name: 'Préparer les PR' })).toBeInTheDocument()
+    await prepared()
     const post = calls.find((call) => call.method === 'POST')!
     expect(JSON.parse(String(post.init.body)).repositories.map((item: { full_name: string }) => item.full_name)).toEqual([
       'octo/boutique',
@@ -332,7 +394,7 @@ describe('les PR depuis l’écran 7 et le rapport d’un dépôt', () => {
     expect(screen.getByRole('link', { name: 'Mes dépôts' })).toHaveAttribute('href', '/depots')
     expect(screen.getByText(/Rien n'est poussé à cette étape/)).toBeInTheDocument()
     await user.click(screen.getAllByRole('button', { name: 'Préparer la PR' })[0])
-    expect(await screen.findByRole('heading', { level: 1, name: 'Préparer les PR' })).toBeInTheDocument()
+    await prepared()
     const body = JSON.parse(String(calls.find((call) => call.method === 'POST')!.init.body))
     expect(body.repositories).toEqual([
       {
