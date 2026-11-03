@@ -55,11 +55,16 @@ export function useScanEvents(scanId: string, onEnd?: () => void): ScanProgress 
 
   useEffect(() => {
     const source = new EventSource(api.scanEventsUrl(scanId))
-    let closed = false
-    const finish = () => {
-      if (closed) return
-      closed = true
+    // Fermé : à la fin, au flux perdu, au démontage. Un AbortController plutôt qu'un `let` : la
+    // règle react(immutability) d'oxlint refuse une variable réaffectée dans le nettoyage.
+    const closed = new AbortController()
+    const close = () => {
+      closed.abort()
       source.close()
+    }
+    const finish = () => {
+      if (closed.signal.aborted) return
+      close()
       ended.current?.()
       void client.invalidateQueries({ queryKey: queryKeys.scan(scanId) })
       void client.invalidateQueries({ queryKey: queryKeys.scans })
@@ -70,22 +75,18 @@ export function useScanEvents(scanId: string, onEnd?: () => void): ScanProgress 
     })
     source.addEventListener('end', finish)
     source.addEventListener('error', () => {
-      if (closed) return
+      if (closed.signal.aborted) return
       api
         .getScan(scanId)
         .then((scan) => {
           if (scan.status !== 'running') finish()
         })
         .catch(() => {
-          closed = true
-          source.close()
+          close()
           setState((current) => ({ ...current, lost: true }))
         })
     })
-    return () => {
-      closed = true
-      source.close()
-    }
+    return close
   }, [scanId, client])
 
   return state

@@ -49,11 +49,15 @@ export function usePlanEvents(planId: string, onEnd?: () => void): ApplyProgress
 
   useEffect(() => {
     const source = new EventSource(api.planEventsUrl(planId))
-    let closed = false
-    const finish = () => {
-      if (closed) return
-      closed = true
+    // Comme `useScanEvents` : un AbortController, pas un `let` réaffecté dans le nettoyage.
+    const closed = new AbortController()
+    const close = () => {
+      closed.abort()
       source.close()
+    }
+    const finish = () => {
+      if (closed.signal.aborted) return
+      close()
       ended.current?.()
       void client.invalidateQueries({ queryKey: queryKeys.plan(planId) })
     }
@@ -63,22 +67,18 @@ export function usePlanEvents(planId: string, onEnd?: () => void): ApplyProgress
     })
     source.addEventListener('end', finish)
     source.addEventListener('error', () => {
-      if (closed) return
+      if (closed.signal.aborted) return
       api
         .getPlan(planId)
         .then((plan) => {
           if (plan.status !== 'running') finish()
         })
         .catch(() => {
-          closed = true
-          source.close()
+          close()
           setState((current) => ({ ...current, lost: true }))
         })
     })
-    return () => {
-      closed = true
-      source.close()
-    }
+    return close
   }, [planId, client])
 
   return state
