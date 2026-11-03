@@ -1,65 +1,76 @@
-# Session 36 — Étape E35 (fin) : les essais de l'utilisateur, la publication de la 1.0.0rc1, puis E36
+# Session 37 — Étape E36 : Recette finale
 
-Contexte : E01 à E34 sont faites ; E35 (documentation, packaging, CI) l'est sauf sa dernière case,
-la publication sur PyPI : **l'utilisateur a voulu d'abord essayer l'outil lui-même**, installé
-depuis le dépôt (`uv tool install .`), sur ses projets et ses comptes. Fait à E35 :
-`README.md` réécrit (aussi la page PyPI) avec cinq captures, `docs/USAGE.md` (la doc utilisateur
-complète), `docs/FORGES.md`, `CHANGELOG.md`, `docs/JSON_FORMAT.md` vérifié ; la version
-`1.0.0rc1` (décision de l'utilisateur : une pré-version d'abord, la 1.0.0 au tag de la recette) ;
-la CI sur Ubuntu, Windows et macOS (Python 3.11 et 3.14), le front sous Ubuntu et Windows,
-`network.yml` chaque lundi ; `.gitattributes` (LF partout). En faisant tourner la suite sous
-Linux, trouvé et corrigé un plantage de toute analyse hors Windows (E30). Poussé : `be210cd`,
-`7a6a670`, `739a3c8` et `0425828` (CI verte sur les huit jobs) ; la case CI de PLAN.md, cochée
-après, peut ne pas être commitée (`git status`).
-5 110 tests Python (plus 28 réseau), 169 Vitest, 72 Playwright.
+Contexte : E01 à E35 sont faites. **La 1.0.0rc1 est publiée sur PyPI** (session 36, étiquette
+`v1.0.0rc1` sur `b9aacaf`), vérifiée depuis PyPI sans node. À la session 36, l'utilisateur a fait
+ses essais, guidé étape par étape (interface, analyse, mise à jour locale, fichier de code, forges,
+réglages, ligne de commande) : deux défauts corrigés (la raison d'une version écartée par le runtime
+dans le terminal et le Markdown ; l'écran de résultat des PR qui disait « rien à faire » quand npm
+gardait des indirectes retenues par leur parent), et cinq points portés à E36 (« Depuis la session
+36 »), dont deux fonctions décidées avec lui. CI verte sur les huit jobs. 5 107 tests Python, 170
+Vitest, 72 Playwright.
 
-Lis CLAUDE.md, puis dans PLAN.md : la case « Publication sur PyPI » de E35 et les notes de E35,
-puis l'étape E36 (toutes ses cases, dont « Depuis E35 ») et « Le livrable » (en tête).
+Lis CLAUDE.md, puis dans PLAN.md : « Le livrable » (en tête), l'étape E36 (toutes ses cases, dont
+« Depuis E35 » et « Depuis la session 36 ») et les notes de E35 (sessions 35 et 36).
+**Charge d'abord le skill ui-ux-pro-max** et lis `design-system/MASTER.md` (sa « Checklist avant
+livraison »), puis `design-system/ECRANS.md` pour chaque écran touché.
 
 À faire :
-0. **Les retours de l'utilisateur** sur ses essais : les lui demander s'il ne les donne pas.
-   Chaque défaut est reproduit, corrigé avec son test (et la doc si elle change), ou, trop gros,
-   porté au plan (E36 ou une nouvelle étape) ; rien n'est publié avant que l'utilisateur dise que
-   c'est bon.
-1. **Finir E35** :
-   - vérifier la CI du dernier commit poussé (`gh run list`) : verte sur les trois systèmes et pour
-     le front ; sinon, corriger d'abord (la suite sous Linux se lance en local par Docker :
-     CLAUDE.md, « La suite sous Linux, sans pousser » ; macOS seulement par la CI). Un test
-     Playwright qui échouait par intermittence (`e2e/code.spec.ts`) cachait un vrai défaut du front
-     (une analyse finie en quelques millisecondes dite « échouée »), trouvé par sa trace et corrigé
-     à la fin de la session 35 ; la CI garde les traces d'un test en échec (l'artefact
-     `traces-playwright-<os>` du job) : si un test échoue encore, lire sa trace
-     (`npx playwright show-trace`) avant toute autre chose, et ne jamais relancer jusqu'au vert ;
-   - **avec l'accord de l'utilisateur**, pousser l'étiquette `v1.0.0rc1` sur ce commit :
-     `publish.yml` vérifie que l'étiquette est la version, teste, construit le front et publie par
-     Trusted Publishing ; suivre le workflow « Publication » ;
-   - vérifier `uv tool install forceupdate==1.0.0rc1` **depuis PyPI**, dans des dossiers d'outils à
-     part (`UV_TOOL_DIR`, `UV_TOOL_BIN_DIR` dans le scratchpad) et un `PATH` sans node : `--version`,
-     un `scan`, `ui` qui sert l'interface ; regarder la page PyPI (le README, ses images) ;
-   - cocher la case, E35 « fait », une ligne au journal.
-2. **Puis E36, avec l'accord de l'utilisateur** (une étape par session : lui proposer de la faire
-   dans cette session ou la suivante) : dérouler « Le livrable » dans l'interface installée depuis
-   PyPI, la revue finale avec le skill ui-ux-pro-max, les écarts « Depuis E35 », la 1.0.0.
+- **E36 est grosse** (la recette, la revue, huit écarts « Depuis E35 », cinq points « Depuis la
+  session 36 » dont deux fonctions, la 1.0.0) : proposer d'abord un découpage à l'utilisateur, par
+  exemple E36 = les écarts et les deux fonctions (la fenêtre de choix d'un dossier du système ;
+  l'indirecte retenue dite d'avance), E37 = la recette, la revue et la 1.0.0. S'il refuse, tout
+  dans l'ordre du plan.
+- Les cases de E36 :
+  - les écarts « Depuis E35 » (le jeton dans le chemin d'une adresse de registre et la clé du
+    cache, `UV_INDEX_<NOM>_USERNAME`, un registre en http, « Privé : non vérifié » jamais émis,
+    `include-tests` du projet, `java` de `.tool-versions`, la commande Yarn 2+ affichée, l'aide de
+    `--help` en cp1252 et en anglais) ;
+  - « Depuis la session 36 » : « Mes dépôts » sur un grand écran, « Se déconnecter… » en vrai, la
+    table `[selection]` vide des réglages, **la fenêtre « Sélectionner un dossier » du système**
+    (écran 2 ; ses points à trancher sont dans le plan), **l'indirecte retenue dite d'avance**
+    (écran 5 et récapitulatif des PR : le lockfile dit la plage de chaque parent) ;
+  - dérouler « Le livrable » dans l'interface (un vrai projet par écosystème disponible, un fichier
+    de code et un fichier déposé, les trois forges : analyse de tous les dépôts, une PR / MR sur
+    chaque dépôt de test) ; la revue finale ui-ux-pro-max (accessibilité, clair et sombre, 375 px et
+    grand écran) ;
+  - cocher « Le livrable » ; passer à la `1.0.0` (voir la dernière case de E36), CI verte, puis
+    l'étiquette `v1.0.0` **avec l'accord de l'utilisateur** ; vérifier `uv tool install
+    forceupdate` (sans `==`) depuis PyPI, sans node.
 
 Attention :
-- **Publier est irréversible** (un numéro de version ne se réutilise pas) : jamais sans l'accord
-  de l'utilisateur, et seulement après une CI verte. Si la publication échoue après l'étiquette,
-  ne pas réutiliser `v1.0.0rc1` : comprendre, puis `1.0.0rc2` avec son accord.
-- La CI a eu un délai dépassé une fois sous Ubuntu (Playwright, le second envoi d'une MR) : les
-  tests à deux envois ont maintenant `test.slow()` ; si un test reste instable, le dire plutôt que
-  de relancer jusqu'au vert.
-- Pour E36, charger d'abord le skill ui-ux-pro-max et lire design-system/MASTER.md (sa
-  « Checklist avant livraison ») ; les PR #1 et MR !1 des dépôts de test existent déjà : les
-  supprimer en fin de recette **avec l'accord de l'utilisateur** (jamais un autre dépôt).
+- **L'utilisateur préfère être guidé** pour les essais : une étape à la fois, la commande exacte,
+  puis ce qu'il doit voir ; il répond « fait » ou colle sa sortie. Calculer d'avance ce qu'il
+  verra (lancer soi-même `scan` ou `update --dry-run` sur une copie), et vérifier ensuite (git diff
+  d'une copie, `gh` pour les PR). Une consigne fausse de ma part est à dire comme telle.
+- Ses projets réels sur le bureau : `the good guy` (Argos : Python + un front npm), `outils de scrap
+  google` (radar-pros, Node), `argos-ops`. Pour une mise à jour : un clone dans le scratchpad
+  (`git clone --no-hardlinks`), jamais son vrai dossier. Son dépôt GitHub `mew` (PR #2 de
+  forceupdate fusionnée par lui) : ne rien y pousser sans son accord.
+- L'outil installé chez lui (`~/.local/bin/forceupdate`) vient du dépôt (`uv tool install .`) :
+  pour la recette « depuis PyPI », lui faire installer la version publiée
+  (`uv tool install forceupdate==1.0.0rc1 --force`, puis la 1.0.0), dans un PowerShell hors de VS
+  Code (le `.venv` activé y prendrait la version de développement). Après un changement du front :
+  `npm run build` avant `uv tool install . --force`.
+- **Publier est irréversible** : la 1.0.0 seulement avec l'accord explicite de l'utilisateur, après
+  une CI verte ; si la publication échoue après l'étiquette, ne pas réutiliser `v1.0.0` (comprendre,
+  puis `1.0.1` avec son accord).
+- Les PR #1 (GitHub, Bitbucket) et la MR !1 (gitlab.com) des dépôts de test `forceupdate-demo`
+  existent ; les supprimer en fin de recette **avec l'accord de l'utilisateur** (jamais un autre
+  dépôt).
+- L'outil d'édition écrit en CRLF sous Windows tout fichier qu'il touche : le repasser en LF
+  (`sed -i 's/\r$//'`) ; les rapports d'exemple du front (`frontend/src/test/fixtures/`) se refont
+  par `tests/e2e_server.py --report` (voir sa docstring), en LF (`tr -d '\r'`), `imports.py` depuis
+  une copie hors du dépôt.
+- Un test qui échoue seulement quand d'autres tournent : chercher la course (session 36 : un
+  titre trouvé puis remplacé par un changement d'adresse), ne jamais relancer jusqu'au vert.
 - La doc décrit l'outil tel qu'il est : un écart corrigé change aussi `docs/USAGE.md`,
-  `docs/FORGES.md` ou le README.
+  `docs/FORGES.md`, `docs/JSON_FORMAT.md` ou le README.
 - Scripts : les écrire dans le scratchpad avec l'outil d'écriture, jamais par un heredoc ni par
-  `python -c` avec des `\n` dans une chaîne ; `python -I -X utf8`. Jamais de `git stash` sur
-  l'arbre de travail pendant qu'une suite de tests tourne.
+  `python -c` avec des `\n` dans une chaîne ; `python -I -X utf8`.
 
-Fini quand (E35) : `uv tool install forceupdate==1.0.0rc1` depuis PyPI, dans un dossier vierge,
-marche ; la CI est verte. Vérifier avec : `uv run pytest`, `uv run ruff check`,
-`uv run ruff format --check` ; dans `frontend/` : `npm test`, `npm run typecheck`,
-`npm run lint`, `npm run test:e2e` ; `gh run list`.
+Fini quand : toutes les cases de « Le livrable » sont cochées, la 1.0.0 est publiée et
+`uv tool install forceupdate` l'installe depuis PyPI. Vérifier avec : `uv run pytest`,
+`uv run ruff check`, `uv run ruff format --check` ; dans `frontend/` : `npm test`,
+`npm run typecheck`, `npm run lint`, `npm run test:e2e` ; `gh run list`.
 
 En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.

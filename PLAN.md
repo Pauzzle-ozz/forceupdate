@@ -128,7 +128,7 @@ Statuts : `à faire`, `en cours`, `fait`.
 | E32 | H | Mise à jour : le npm du projet, Python, NuGet, Go | fait |
 | E33 | H | Registres et dépôts privés | fait |
 | E34 | H | Compléments d'analyse | fait |
-| E35 | H | Documentation, packaging, CI | en cours |
+| E35 | H | Documentation, packaging, CI | fait |
 | E36 | H | Recette finale | à faire |
 
 **Jalons** :
@@ -3484,10 +3484,12 @@ public.
   - lint, tests et build du front : job « Front » ajouté à E14 (Ubuntu, node 24 ; types, oxlint, Vitest, build, Playwright) ; y ajouter Windows ;
   - un job hebdomadaire avec les tests `network`.
 - [x] Depuis E15 : le serveur des tests de bout en bout (`tests/e2e_server.py`) laisse son dossier temporaire (`forceupdate-e2e-*`) quand Playwright l'arrête en fin de série : le faire effacer (par exemple, les vieux dossiers au démarrage, ou un `globalTeardown` de Playwright).
-- [ ] Publication sur PyPI (décision n°19 du brief) :
+- [x] Publication sur PyPI (décision n°19 du brief) :
   - un workflow GitHub Actions publie le paquet quand on pousse un tag `v*` (Trusted Publishing, sans mot de passe stocké) : fait à E09 (`.github/workflows/publish.yml`), avec la construction du front depuis E14 ;
-  - publier la `1.0.0`, avec l'accord de l'utilisateur ;
-  - vérifier `uv tool install forceupdate` depuis PyPI, sur une machine sans node.
+  - publier la `1.0.0`, avec l'accord de l'utilisateur : la `1.0.0rc1` publiée à la session 36
+    (étiquette `v1.0.0rc1` sur `b9aacaf`), la `1.0.0` à E36 ;
+  - vérifier `uv tool install forceupdate` depuis PyPI, sur une machine sans node : fait pour
+    `forceupdate==1.0.0rc1` (session 36).
 
 **Fini quand** : `uv tool install forceupdate` depuis PyPI, dans un dossier vierge,
 marche ; la CI est verte.
@@ -3641,6 +3643,24 @@ marche ; la CI est verte.
 - **Pour E36** (ajouté à « Depuis la session 36 ») : deux détails du tableau de « Mes dépôts »,
   la déconnexion pas essayée, les autres écosystèmes sur de vrais projets, la fenêtre de choix
   d'un dossier, l'indirecte retenue dite d'avance.
+- **Commits et CI** (accord de l'utilisateur pour chacun) : `bdb1b05` (le rapport dit la version
+  que le runtime écarte) commité seul d'abord, puis `b9aacaf` (le résultat des PR) ; les deux
+  poussés : **CI verte sur les huit jobs** (Python 3.11 et 3.14 sous Ubuntu, Windows et macOS ;
+  le front sous Ubuntu et Windows). Avant : 5 107 tests Python (31 sautés), 170 Vitest, 72
+  Playwright, verts en local.
+- **Publié** (accord explicite de l'utilisateur, après la CI verte) : l'étiquette annotée
+  `v1.0.0rc1` sur `b9aacaf`, le workflow « Publication » vert à chaque étape (l'étiquette égale la
+  version, ruff, pytest, le front testé et construit, la wheel porte `web/static/index.html`,
+  `uv publish`). Sur PyPI : `forceupdate-1.0.0rc1-py3-none-any.whl` (975 Ko) et le sdist
+  (2,6 Mo) ; la page (le README, ses cinq captures en adresses absolues : 200), licence MIT,
+  « Development Status :: 4 - Beta ».
+- **Vérifié depuis PyPI**, sous Windows, dans des dossiers d'outils à part (`UV_TOOL_DIR`,
+  `UV_TOOL_BIN_DIR` dans le scratchpad) et un `PATH` **sans node** :
+  `uv tool install --refresh forceupdate==1.0.0rc1`, `--version` (1.0.0rc1), un `scan` d'une copie
+  de `vulnerable` (28 failles, code 0), `ui --no-browser` (la page, son script de 657 Ko, l'API :
+  200 avec le cookie, 401 sans) ; le front publié contient les correctifs de la session. Linux :
+  par la CI (le paquet est le même, pur Python). L'outil de l'utilisateur
+  (`~/.local/bin/forceupdate`) reste celui installé depuis le dépôt (`uv tool install .`).
 
 ### E36 — Recette finale
 
@@ -3769,3 +3789,4 @@ En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.
 | 33 | 2026-11-02 | E33 | Fait. Commit de E32 d'abord (`41f2fc8`, accord de l'utilisateur). Décidé avec lui : les identifiants des registres privés sont lus dans les fichiers de la personne et ne partent que vers l'hôte exact (https, ou la machine elle-même), jamais dans le cache, un rapport, un journal, l'API ni le navigateur ; les variables d'un fichier du projet ne sont jamais développées. Vérifié en vrai : `go env -w` et `GOENV`, le proxy public qui va chercher un module chez son hôte, `npm config`, un dépôt Composer local (Composer demande aussi Packagist), `dotnet nuget list source` et `<clear />`, uv et un index local à identifiants ; Maven et Gradle d'après leur documentation. `userfiles.py`, `net/auth.py` (un identifiant lié à son adresse ; `HttpClient` suit les redirections sans lui vers une autre origine), `routing/` (npm et `.yarnrc.yml`, Go, `.netrc`, Composer, NuGet, Python, Maven et Gradle, Ruby), `ComposerRepository`, `NuGetFeed`, `SimpleIndex` (JSON ou HTML) ; un paquet privé par son nom n'est jamais demandé au registre public ni à OSV ; un refus arrête la chaîne. Neuvième garde-fou des tests (`user_files`). Ajouté en route : la source globale d'un `Gemfile` (non vérifiée) ; à E34 : Ruby et Rust privés. Vérifié à la main : `forceupdate scan` contre six registres privés locaux, chacun avec son identifiant, aucun secret dans le rapport. Interface inchangée. 4987 tests Python verts (plus 23 réseau ; ceux des registres relancés), 167 Vitest, 72 Playwright. |
 | 34 | 2026-11-03 | E34 | Fait. Commit de E33 d'abord (`598468e`, accord de l'utilisateur) ; découpage proposé, refusé : E34 entière en une session. Vérifié en vrai : Bundler 4.0.20 et un serveur de gems local à identifiant (index compact, clés de `bundle config`, miroir), cargo 1.99.1 et un registre « sparse » local à jeton (`credentials.toml`, `replace-with`, résolveur 3 et `rust-version`), Go 1.27.3 (`go.work`), le proxy (blackfriday), `composer audit` (twig 3.4.1 : 17 failles, 15 chez OSV) et huit choix de `minimum-stability`, Maven Central (`<relocation>`, Spring Boot), le SDK .NET (`Directory.Build.targets`), endoflife.date et nodejs.org, uv (`exclude-newer`) ; Maven et Gradle d'après leur documentation. `routing/ruby.py` (réécrit), `routing/cargo.py`, `GemServer`, le runtime `rust` (sans fin de vie), la version construite d'un workspace Go, chaque majeure à `+incompatible`, `advisories/packagist.py`, `ComposerVersions.resolved` et `Project.resolution` (format JSON et API), `managed.py` (parent et BOM distants, « à la main »), `Maven.pom` et `CacheKind.FILES`, `gradle.lockfile`, `settings.gradle(.kts)`, versions riches, la variante de Guava, `Update=` de MSBuild, images, `mise.toml`, `required_ruby_version`, `setup-*`, les tests `network` des tables, carnets, `.vue`, `.svelte`, Deno, `tsconfig.json`, `importlib`, espace de noms local, `exclude-newer` ; « Rust » au front. Trouvé : l'aiguillage de Cargo lisait une raison que `routing.apply` efface (il renvoyait à crates.io). 5 103 tests Python verts (plus 28 réseau), 168 Vitest, 72 Playwright. Pas encore commitée. |
 | 35 | 2026-11-03 | E35 | En cours (reste la publication, après les essais de l'utilisateur). Commit de E34 d'abord (`34b4c4f`, accord de l'utilisateur) ; découpage proposé, refusé. Décidé avec lui : la `1.0.0rc1` d'abord, la `1.0.0` à la recette ; pas de publication dans cette session. Trouvé : `main` pas poussé depuis E13, la CI de E13 en échec ; la suite sous Linux (Docker) : **toute analyse d'un dossier plantait hors Windows** (`stat.IO_REPARSE_TAG_MOUNT_POINT`, E30), corrigé ; `.gitattributes` (LF partout). Doc : `README.md` (cinq captures, dont l'écran 8 et une vraie PR), `docs/USAGE.md`, `docs/FORGES.md`, `CHANGELOG.md`, `docs/JSON_FORMAT.md` vérifié par script. En relisant le code pour la doc : un identifiant dans l'adresse d'un dépôt Gradle partait en http et restait dans la clé du cache (corrigé), le proxy des réglages du système est lu (dit), d'autres écarts portés à E36. Packaging : version `1.0.0rc1`, `uv tool install .` sans node vérifié, `LICENSE` dans le wheel. CI : macOS, Front sous Windows, `network.yml` hebdomadaire ; premier passage : un chemin coupé sous macOS (corrigé) ; un test Playwright qui échouait par intermittence cachait un vrai défaut du front, trouvé par sa trace (les traces sont maintenant gardées) : une analyse finie en quelques millisecondes se disait « échouée » (corrigé, un test). Le serveur e2e balaie ses vieux dossiers. 5 110 tests Python (plus 28 réseau), 169 Vitest, 72 Playwright. Commits `be210cd`, `7a6a670`, `739a3c8` et le correctif du front, poussés. |
+| 36 | 2026-11-03 | E35 | Fait. Les essais de l'utilisateur, faits ensemble, guidés étape par étape (installé depuis le dépôt) : lancement, analyse de forceupdate et d'Argos (mêmes chiffres qu'en ligne de commande), mise à jour d'une copie d'Argos (uv, npm 10 par npx), un fichier de code et un fichier déposé, les trois forges connectées par OAuth, 11 dépôts analysés, la PR #1 et la MR !1 mises à jour (sans nouvelle PR), les réglages, `scan` et `update` en ligne de commande, Ctrl+C. Deux défauts corrigés : le terminal et le Markdown (donc les PR) ne disaient pas pourquoi une version plus récente n'est pas proposée quand le runtime ne la fait pas tourner (`Finding.blocked`) ; l'écran de résultat des PR disait « rien à faire » quand npm avait gardé les versions choisies (des indirectes retenues par leur parent, le dépôt `mew` de l'utilisateur), il dit maintenant lesquelles et par qui. Une course dans trois tests Vitest de l'écran 8, révélée en route, corrigée ; les rapports d'exemple du front régénérés (périmés depuis E34). Portés à E36 (décidé avec l'utilisateur) : la fenêtre de choix d'un dossier du système, l'indirecte retenue dite d'avance, deux détails de « Mes dépôts », la déconnexion. Commits `bdb1b05` et `b9aacaf`, poussés, CI verte sur les huit jobs ; **la 1.0.0rc1 publiée sur PyPI** (accord de l'utilisateur), vérifiée depuis PyPI sans node. 5 107 tests Python, 170 Vitest, 72 Playwright. |
