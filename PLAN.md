@@ -3702,6 +3702,16 @@ marche ; la CI est verte.
   1440 et 375 px. Doc : `USAGE.md` (écrans 2 et 4, le CSV, `--format csv`, la relecture npm),
   `FORGES.md`, `JSON_FORMAT.md` (les deux routes), `ECRANS.md`, `CHANGELOG.md` (« Non publié »),
   le README.
+- **Fin de session** : la CI de `7109460` verte sous Ubuntu, Windows et pour le front ; ses jobs
+  macOS (et ceux de `3007959`) annulés par GitHub, faute de machines (« The job was not acquired by
+  Runner … capacity constraints ») : relancés, verts (CI verte sur les huit jobs). L'outil de l'utilisateur réinstallé depuis le dépôt :
+  le premier essai a échoué (son `ui` tournait : Windows verrouille l'outil, qui est resté à moitié
+  démonté), le second a réutilisé la construction en cache de la même version (sans le nouveau
+  code) ; `uv tool install . --force --reinstall --refresh-package forceupdate` l'a fait (noté dans le
+  prompt). **Ménage** (accord de l'utilisateur) : les 34 scratchpads des sessions passées, ses
+  « Récents », `~/go` (`go clean -modcache`), `~/.virtualenvs` (vide), les oracles Maven et NuGet de
+  `~/sdk` (CLAUDE.md dit d'où les reprendre) ; le cache de forceupdate laissé (son `ui` le tient
+  ouvert : « Vider le cache » de l'écran 9) ; `~/sdk` et Rust gardés jusqu'à la fin de E36.
 
 ### E36 — Recette finale
 

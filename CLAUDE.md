@@ -350,8 +350,9 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   inconnu ; cloner une gem `git:` d'un dépôt externe n'a pas été permis.
 - Java : ni Maven ni Gradle ne sont installés (choix de l'utilisateur, E25) : pas de lockfile Java en
   V1, et forceupdate ne lance jamais Gradle (un script est un programme). Java 8 n'est qu'un JRE (pas de
-  `javac`) ; l'oracle des versions Maven est `~/sdk/maven-artifact/maven-artifact-3.9.16.jar`, lancé
-  par Nashorn : `"/c/Program Files/Java/jre1.8.0_481/bin/jjs.exe" -cp <jar> script.js -- <args>`
+  `javac`) ; l'oracle des versions Maven était `~/sdk/maven-artifact/maven-artifact-3.9.16.jar`
+  (effacé à la session 36, à la demande de l'utilisateur : le reprendre de Maven Central,
+  `org.apache.maven:maven-artifact:3.9.16`, s'il faut revérifier), lancé par Nashorn : `"/c/Program Files/Java/jre1.8.0_481/bin/jjs.exe" -cp <jar> script.js -- <args>`
   (`ComparableVersion`, `VersionRange` ; voir les notes de E25). `ComparableVersion` n'est pas
   transitif : ne pas trier un corpus avec `Collections.sort` (il refuse), comparer deux à deux.
 - Le SDK .NET 10.0.403 est dans `~/sdk/dotnet-sdk-10.0.403` (E26 : l'archive zip officielle,
@@ -359,8 +360,9 @@ cd reference && python -m pytest argos_sca_parsers_tests.py
   `forceupdate update`, `ui` ou `pytest --run-network`. Le `dotnet` de `C:\Program Files\dotnet`
   n'a que des runtimes : sans SDK, forceupdate le tient pour absent. Pour un essai à la main,
   `DOTNET_CLI_HOME` et `NUGET_PACKAGES` dans le scratchpad ; `dotnet restore` écrit `obj/` dans
-  chaque projet (ne pas le copier dans `tests/projects/`). L'oracle des versions NuGet est
-  `~/sdk/nuget-versioning-7.9.0/lib/net472/NuGet.Versioning.dll`, chargé par PowerShell 5.1
+  chaque projet (ne pas le copier dans `tests/projects/`). L'oracle des versions NuGet était
+  `~/sdk/nuget-versioning-7.9.0/lib/net472/NuGet.Versioning.dll` (effacé à la session 36 : le
+  paquet `NuGet.Versioning` 7.9.0 de nuget.org, s'il faut revérifier), chargé par PowerShell 5.1
   (`[Reflection.Assembly]::LoadFrom`) ; `[NuGet.Versioning.NuGetVersion]::TryParse` y prend la
   surcharge stricte héritée de `SemanticVersion` : `Parse` dans un `try`.
 - Un fichier de code (E28) s'analyse à travers le projet trouvé en remontant les dossiers : dans
