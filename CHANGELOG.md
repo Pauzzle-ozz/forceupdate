@@ -4,7 +4,9 @@ Les versions de forceupdate publiées sur [PyPI](https://pypi.org/project/forceu
 numéros suivent [SemVer](https://semver.org/lang/fr/) : à partir de la 1.0.0, une majeure peut
 casser la ligne de commande, le format JSON du rapport (`schema_version`) ou la configuration.
 
-## Non publié
+## 1.0.0 — 2026-11-04
+
+La première version stable : la 1.0.0rc1, plus ce qu'en ont montré les essais.
 
 ### Ajouté
 
@@ -46,6 +48,10 @@ casser la ligne de commande, le format JSON du rapport (`schema_version`) ou la 
 - Les réglages écrits par l'écran Réglages ne finissent plus par une table `[selection]` vide.
 - « Mes dépôts » sur un grand écran : l'en-tête des PR, et le cadenas d'un dépôt au nom long, ne
   passent plus à la ligne.
+- Bitbucket : une PR de forceupdate fusionnée était prise pour l'ouverte (avec un filtre BBQL,
+  Bitbucket ignore le paramètre `state`), et sa mise à jour refusée (« Can only update an open
+  pull request ») : une nouvelle PR s'ouvre.
+- Un dépôt sauté au récapitulatif parce que rien n'y est coché mène au choix de ses mises à jour.
 
 ## 1.0.0rc1 — 2026-11-03
 

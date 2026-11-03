@@ -27,9 +27,7 @@ uv tool uninstall forceupdate
 ```
 
 Python 3.11 ou plus récent (uv l'installe s'il manque) ; Windows, Linux ou macOS. L'interface
-est dans le paquet : node ne sert qu'à développer forceupdate, pas à s'en servir. La 1.0.0rc1
-est une pré-version : `uv tool install forceupdate==1.0.0rc1` tant que la 1.0.0 n'est pas
-publiée.
+est dans le paquet : node ne sert qu'à développer forceupdate, pas à s'en servir.
 
 À installer selon l'usage :
 

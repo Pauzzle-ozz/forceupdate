@@ -24,9 +24,6 @@ uv tool install forceupdate
 ou `pipx install forceupdate`. Python 3.11 ou plus récent ; Windows, Linux ou macOS. L'interface
 est livrée dans le paquet : node n'est pas nécessaire.
 
-La 1.0.0rc1 est une pré-version : `uv tool install forceupdate==1.0.0rc1` (ou `--prerelease
-allow`) tant que la 1.0.0 n'est pas publiée.
-
 Ce qu'il faut en plus, selon l'usage :
 
 - **git**, pour ouvrir des PR (forceupdate clone, commite et pousse) et pour le garde-fou des

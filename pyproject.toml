@@ -1,6 +1,6 @@
 [project]
 name = "forceupdate"
-version = "1.0.0rc1"
+version = "1.0.0"
 description = "Trouve les dépendances à mettre à jour (versions, failles, fins de vie) et fait les mises à jour : en local, ou par pull request sur GitHub, GitLab et Bitbucket."
 readme = "README.md"
 license = "MIT"
@@ -17,7 +17,7 @@ keywords = [
     "pull-request",
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Environment :: Web Environment",
     "Intended Audience :: Developers",
