@@ -7,7 +7,8 @@ garde-fou de ``update``, ou un lockfile que son outil n'a pas pu régénérer).
 
 Le JSON et le Markdown sortent toujours en UTF-8, sur la sortie standard comme dans un fichier.
 Sous Windows, une sortie redirigée serait sinon écrite dans le codage de la console (cp1252) :
-la sortie standard redirigée est donc repassée en UTF-8 (``_utf8_stdout``).
+la sortie standard redirigée est donc repassée en UTF-8 (``_utf8_stdout``), dès le lancement
+(``run``, le point d'entrée de la commande : l'aide comprise).
 """
 
 import enum
@@ -16,10 +17,12 @@ import sys
 from pathlib import Path
 from typing import Annotated, NoReturn
 
+import click
 import typer
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
 from rich.text import Text
+from typer.core import TyperCommand, TyperGroup
 
 from forceupdate import __version__, checks, engine, preferences
 from forceupdate.checks import FailOn
@@ -36,12 +39,42 @@ EXIT_ERROR = 2
 FILE_WIDTH = 120
 """Largeur du rapport terminal écrit dans un fichier (``--output``)."""
 
+HELP_OPTION = "Affiche cette aide et quitte."
+
+
+class _FrenchHelp:
+    """L'option ``--help`` dite en français (click l'écrit « Show this message and exit. »)."""
+
+    def get_help_option(self, ctx: click.Context) -> click.Option | None:
+        option = super().get_help_option(ctx)  # type: ignore[misc]
+        if option is not None:
+            option.help = HELP_OPTION
+        return option
+
+
+class _Group(_FrenchHelp, TyperGroup):
+    pass
+
+
+class _Command(_FrenchHelp, TyperCommand):
+    pass
+
+
 app = typer.Typer(
     name="forceupdate",
     help="Trouve les dépendances à mettre à jour, et fait les mises à jour.",
     no_args_is_help=True,
     add_completion=False,
+    cls=_Group,
 )
+
+
+def run() -> None:
+    """La commande ``forceupdate`` (``[project.scripts]``) : la sortie standard redirigée passe en
+    UTF-8 avant tout, puis ``app``. L'aide sortait sinon en cp1252 sous Windows (E35)."""
+    _utf8_stdout()
+    app(prog_name="forceupdate")
+
 
 PathArgument = Annotated[
     Path,
@@ -83,7 +116,7 @@ def _fail(command: str, message: str) -> NoReturn:
     raise typer.Exit(code=EXIT_ERROR)
 
 
-@app.command()
+@app.command(cls=_Command)
 def ui(
     port: Annotated[
         int,
@@ -119,7 +152,7 @@ def ui(
     typer.echo("Interface arrêtée.")
 
 
-@app.command()
+@app.command(cls=_Command)
 def scan(
     path: PathArgument = Path("."),
     output_format: Annotated[
@@ -242,7 +275,7 @@ def scan(
         raise typer.Exit(code=EXIT_FAIL_ON)
 
 
-@app.command()
+@app.command(cls=_Command)
 def update(
     path: PathArgument = Path("."),
     level: Annotated[

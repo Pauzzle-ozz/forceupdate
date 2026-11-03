@@ -3807,6 +3807,90 @@ marche ; la CI est verte.
 
 **Fini quand** : toutes les cases de « Le livrable » sont cochées.
 
+**Notes** (session 37) :
+
+- **Début** : rien à commiter ; CI de `7109460` et `4faf460` verte sur les huit jobs (macOS relancé
+  à la session 36). Retours de l'utilisateur : « Parcourir… » s'ouvre **devant** le navigateur
+  (Windows), le CSV s'ouvre bien dans Excel. **Découpage proposé, refusé** : toute E36 dans la
+  session. Ordre choisi (dit à l'utilisateur) : les écarts connus d'abord, la recette ensuite sur
+  l'outil corrigé, pour que la 1.0.0 soit la version recettée.
+- **La PR #1 de `forceupdate` renvoyée avec l'utilisateur** (l'outil installé contient la
+  correction de la session 36) : npm a de nouveau écrit un lockfile que `npm ci` refusait, refait,
+  relu, accepté, et la description le dit ; l'étape « Dépendances » de la CI passe. Deux autres
+  causes sont alors apparues, dans **notre** code, pas dans l'outil : oxlint 1.91.0 (une mise à jour
+  de la PR) ajoute la règle `react(immutability)`, qui refusait `closed = true` dans le nettoyage
+  de `useScanEvents` et `usePlanEvents` (un `AbortController` ; commit `06d9c3c`, poussé avec
+  l'accord de l'utilisateur) ; puis un test Vitest de la session 36 (« Parcourir… » pour un
+  fichier) lisait le champ avant le changement d'adresse (une course sous Ubuntu, en CI : elle a
+  aussi fait échouer le front de `main` à `06d9c3c`, sans les dépendances de la PR ; vérifié sur un
+  worktree de la PR : Vitest 3 fois, Playwright 72, types, lint ; commit `153c67d`, poussé, CI de
+  `main` verte). Troisième envoi (un premier essai : GitHub « Partially Degraded Service »,
+  clone en échec, bien dit) : **CI de la PR verte sur les huit jobs** (macOS relancé, encore faute
+  de machines chez GitHub).
+- **Une majeure que l'outil refuse ne fait plus tomber tout le lockfile** (`lockfiles._retry`) :
+  sur un échec d'un groupe, ses fichiers remis, l'outil est relancé sans les majeures du groupe ;
+  s'il réussit, chaque majeure est rajoutée une à une (`MAX_ALONE` = 6), gardée si l'outil
+  l'accepte ; les refusées vont dans `Regenerated.dropped` (`Dropped` : la mise à jour, l'option,
+  la raison de l'outil). Chaque essai part des fichiers d'avant la mise à jour (les emplacements
+  des réécritures sont ceux de l'analyse) ; le dernier essai réussi est remis (`_put`). Pas pour un
+  groupe qui refait `vendor/`. Une seule majeure : pas d'essai de plus (elle et les autres, c'est
+  le premier essai). La raison (`_why`) : la phrase « Because … » d'uv, Poetry, PDM ; « Could not
+  resolve dependency » et « Conflicting peer dependency » de npm ; sinon les trois dernières
+  lignes ; tirée de **toute** la sortie (le message d'échec n'en garde que 12 lignes, un ERESOLVE
+  en fait 27). **Vérifié en vrai** (vrai uv, vrai PyPI) sur un clone de `sechunter` (`the good
+  guy`), toutes les majeures : 19 mises à jour faites, failles de pyasn1 et pypdf comprises ;
+  `redis` 8.1.0 (« Because only the following versions of arq are available … arq>0.26.0
+  depends on redis[hiredis]>=4.2.0,<6 ») et `python-dateutil` 4.0.0 (botocore `<3`) retirées,
+  leurs contraintes intactes. Affiché : le terminal (« pas faite, uv refuse 8.1.0 : … »), la
+  description de PR (« pas faite : uv la refuse (…) », « régénéré sans redis 8.1.0, qu'il
+  refuse »), le commit (sans elles), l'écran 5 (alerte « Appliquée, sauf une majeure que l'outil
+  de lockfile refuse », une ligne par majeure retirée), l'écran 8 (« Majeures refusées »), l'API
+  (`LockResult.dropped`). Pas fait : prévoir le refus d'après les métadonnées du registre
+  (`peerDependencies`, `requires_dist`) avant de lancer l'outil (« voir aussi si » du plan).
+- **L'indirecte retenue dite d'avance** (npm) : `LockedPackage.requires` (la plage que chaque
+  paquet demande, lue dans `package-lock.json`, v1 compris), `Dependency.required_by`
+  (`Requirement` : nom, version, plage ; vide ailleurs et pour une directe), `UpdateOption.held_by`
+  (les parents dont la plage refuse la version) ; l'avertissement « nodemon 3.1.14 demande ^10.2.1
+  : le lockfile seul ne la fera pas monter ; monter nodemon d'abord. » (« une de ses copies
+  restera en dessous » si un seul la retient) remplace « devra peut-être monter aussi » quand les
+  plages sont connues ; jamais pré-cochée (`choose`) ; ses failles pas comptées (récapitulatif de
+  l'écran 5, « Corrigerait 2 failles, mais … la retiendra » ; rapport ; récapitulatif des PR :
+  « retenue par … : monter ce paquet d'abord », `ProposedUpdate.held_by`). Vérifié sur le front de
+  forceupdate : minimatch 5.1.9 (`@redocly/openapi-core` demande **5.1.9** exactement) et 10.2.6
+  (`@ts-morph/common` `^10.0.1`). **Pas fait** : proposer la version du parent qui accepte la
+  correction (il faudrait lire chaque version du parent au registre : dit comme limite dans
+  USAGE.md) ; pnpm, Yarn, uv et Poetry (seul `package-lock.json` donne les plages).
+- **Les écarts « Depuis E35 »** : la clé du cache est l'empreinte SHA-256 de l'adresse (format 2,
+  la base au format 1 est vidée à l'ouverture) ; `UV_INDEX_<NOM>_USERNAME`/`_PASSWORD` envoyés à
+  l'index que la personne déclare à ce nom (son environnement, son `uv.toml` : `Index.personal`),
+  comme Cargo, jamais à celui du projet (remarque corrigée) ; un registre en http hors de la
+  machine : **tranché, le dire** (demandé sans identifiant, comme l'outil ; une remarque pour tout
+  identifiant lié à une adresse en http, `routing._over_http` ; docstring corrigée) ; « Privé : non
+  vérifié : l'index … n'est pas déclaré » retiré (la route `private=True` reste : le nom ne part pas
+  chez OSV) ; `include-tests` : **tranché, le dire** (déjà dans USAGE.md : faire primer le projet
+  demanderait une case à trois états dans l'interface) ; `java 17` de `.tool-versions` lu
+  (Temurin, comme `mise.toml`) ; la commande Yarn 2+ « à la main » est `yarn up -R` (toutes les
+  mises à jour) ; npm : ses `--no-audit --no-fund` en plus, dits dans USAGE.md (n'affectent que
+  l'affichage) ; `forceupdate --help` redirigé en UTF-8 (`cli.run`, le nouveau point d'entrée de
+  `[project.scripts]` et de `python -m forceupdate`) et « Affiche cette aide et quitte. »
+  (`_FrenchHelp`).
+- **« Depuis la session 36 », aussi** : le message du commit ne compte plus une version retenue
+  (`Reach.BELOW`) ni retirée ; la sortie des outils sans chemin de l'ordinateur (`_redact` : le
+  dossier de la source devient `.`, `userfiles.tilde` : le dossier personnel `~` ; aussi l'erreur
+  de git) ; plus de table `[selection]` vide ; « Mes dépôts » (pas de capture de l'utilisateur :
+  corrigé d'après le code) : l'en-tête des PR insécable, la colonne du dépôt de 240 px au moins dès
+  1 024 px, le cadenas et le lien suivent le nom dans la ligne. Le conteneur reste à 1 280 px
+  (MASTER, et `container-width` du skill).
+- **Relevé en renvoyant la PR, corrigé** : l'écran du résultat des PR ne disait pas qu'un lockfile
+  avait été refait (« En route », les avertissements d'un lockfile régénéré) ; « Versions exactes
+  refusées : … a échoué (code 1) : » sans la raison (`_Failed.reason`) ; `@vitejs/plugin-react`
+  6.2.1 « une version plus basse reste » : npm la refuse (ERESOLVE, `@babel/core` 8 par
+  `@rolldown/plugin-babel`), ce que l'avertissement dit maintenant ; deux lignes `minimatch`
+  identiques dans « Mises à jour retenues » (une ligne par paquet) ; le titre « Envoi terminé : 1
+  en échec » avec une coche verte (l'icône dit l'échec) ; « Relancer » sans bouton : **« Renvoyer le
+  dépôt en échec »** (le serveur renvoie les dépôts `failed` d'un récapitulatif fini, même
+  sélection) ; le dossier de travail du serveur dans l'erreur de clone (`~`).
+
 ---
 
 ## Modèle de prompt de session

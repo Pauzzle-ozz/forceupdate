@@ -285,8 +285,10 @@ def test_what_cannot_be_proposed_or_sent(
     assert response.status_code == 409
     assert "git n'est pas installé" in response.json()["detail"]
     sent(api, proposal["id"], "octo/vulnerable")
+    # Envoyé : seul un dépôt en échec se renvoie (session 37).
     again = api.post(url, json={"repositories": [key("octo/vulnerable")]})
-    assert again.status_code == 409
+    assert again.status_code == 400
+    assert "pas en échec" in again.json()["detail"]
 
 
 def test_a_failing_repository_does_not_stop_the_others(
@@ -302,6 +304,14 @@ def test_a_failing_repository_does_not_stop_the_others(
     assert done["octo/muet"]["state"] == "failed"
     assert "GitHub refuse l'accès (403)" in done["octo/muet"]["error"]
     assert done["octo/vulnerable"]["state"] == "opened"
+
+    # Session 37 : le dépôt en échec se renvoie, avec la même sélection ; les autres restent.
+    github.repos["octo/muet"].push = True
+    again = items(sent(api, proposal["id"], "octo/muet"))
+    assert again["octo/muet"]["state"] == "opened", again["octo/muet"]["error"]
+    assert again["octo/muet"]["error"] is None
+    assert again["octo/muet"]["selection"] == done["octo/muet"]["selection"]
+    assert again["octo/vulnerable"]["state"] == "opened"
 
 
 def test_files_changed_since_the_analysis_are_left_out(
@@ -335,6 +345,7 @@ def test_files_changed_since_the_analysis_are_left_out(
             "version": "2.11.3",
             "gap": "minor",
             "fixes": ["CVE-2019-10906", "CVE-2020-28493"],
+            "held_by": [],
         }
     ]
     assert done["committed"] == ["requirements.txt"]

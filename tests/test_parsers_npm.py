@@ -897,6 +897,36 @@ def test_transitives_of_the_same_name_are_in_version_order() -> None:
     assert transitives(parse(files)) == [("x", "9.0.0", RUNTIME), ("x", "10.0.0", RUNTIME)]
 
 
+def test_a_transitive_says_who_requires_it_and_with_which_range() -> None:
+    """Session 37 : la plage de chaque parent, pour dire d'avance qu'il retiendra une mise à
+    jour (``planner``). Chaque copie a ses parents ; un pair compte aussi."""
+    lock = {
+        "lockfileVersion": 3,
+        "packages": {
+            "": {"dependencies": {"a": "^1.0.0", "b": "^1.0.0", "c": "^1.0.0"}},
+            "node_modules/a": {"version": "1.0.0", "dependencies": {"x": "^10.0.0"}},
+            "node_modules/a/node_modules/x": {"version": "10.0.0"},
+            "node_modules/b": {"version": "1.0.0", "dependencies": {"x": "^9.0.0"}},
+            "node_modules/c": {"version": "1.2.0", "peerDependencies": {"x": "9.x"}},
+            "node_modules/x": {"version": "9.0.0"},
+        },
+    }
+    files = {
+        "package.json": package_json(dependencies={"a": "^1.0.0", "b": "^1.0.0", "c": "^1.0.0"}),
+        "package-lock.json": json.dumps(lock),
+    }
+    found = {
+        (d.name, d.installed): [(r.name, r.version, r.range) for r in d.required_by]
+        for d in parse(files).dependencies
+        if not d.direct
+    }
+    assert found == {
+        ("x", "9.0.0"): [("b", "1.0.0", "^9.0.0"), ("c", "1.2.0", "9.x")],
+        ("x", "10.0.0"): [("a", "1.0.0", "^10.0.0")],
+    }
+    assert all(d.required_by == () for d in parse(files).dependencies if d.direct)
+
+
 # ---------------------------------------------------------------------------
 # Catalogues pnpm
 # ---------------------------------------------------------------------------

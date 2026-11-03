@@ -1,5 +1,5 @@
 """``python -m forceupdate`` : la même chose que la commande ``forceupdate``."""
 
-from forceupdate.cli import app
+from forceupdate.cli import run
 
-app(prog_name="forceupdate")
+run()

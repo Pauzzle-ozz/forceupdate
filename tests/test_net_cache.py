@@ -193,3 +193,36 @@ def test_an_error_while_running_disables_the_cache(
         assert cache.get(VERSIONS, "clé") is None
     assert not cache.enabled
     assert "no such table" in caplog.text
+
+
+def test_no_address_is_written_on_disk(tmp_path: Path) -> None:
+    """E35 : un jeton écrit dans le chemin d'une adresse de registre finissait dans la clé du
+    cache. Elle est rangée sous son empreinte."""
+    path = tmp_path / "cache.sqlite3"
+    cache = Cache(path)
+    url = "https://pypi.fury.io/jeton-secret-123/simple/acme/"
+    cache.set(VERSIONS, url, {"versions": ["1.0"]})
+    entry = cache.get(VERSIONS, url)
+    assert entry is not None and entry.value == {"versions": ["1.0"]}
+    cache.close()
+    for suffix in ("", "-wal"):
+        written = path.with_name(path.name + suffix)
+        if written.exists():
+            assert b"jeton-secret-123" not in written.read_bytes()
+
+
+def test_a_cache_of_the_first_format_is_emptied(tmp_path: Path) -> None:
+    """Ses clés étaient des adresses en clair : le format 2 le vide en l'ouvrant."""
+    path = tmp_path / "cache.sqlite3"
+    db = sqlite3.connect(path)
+    db.execute(
+        "CREATE TABLE entries (kind TEXT NOT NULL, key TEXT NOT NULL,"
+        " stored_at REAL NOT NULL, value TEXT NOT NULL, PRIMARY KEY (kind, key))"
+    )
+    db.execute("INSERT INTO entries VALUES ('versions', 'https://pypi.fury.io/jeton/', 9e12, '1')")
+    db.execute("PRAGMA user_version = 1")
+    db.commit()
+    db.close()
+    cache = Cache(path)
+    assert cache.stats().entries == 0
+    cache.close()

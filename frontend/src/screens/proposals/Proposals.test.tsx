@@ -277,8 +277,8 @@ describe('PR (écran 8)', () => {
           full_name: 'octo/mew',
           state: 'nothing',
           applied: [
-            { update: 'backend|npm|minimatch|10.2.6', name: 'minimatch', ecosystem: 'npm', project: 'backend', direct: false, current: '10.2.6', version: '11.0.1', gap: 'major', fixes: ['CVE-2026-118764'] },
-            { update: 'backend|npm|basic-ftp|5.3.1', name: 'basic-ftp', ecosystem: 'npm', project: 'backend', direct: false, current: '5.3.1', version: '6.2.1', gap: 'major', fixes: ['CVE-2026-1'] },
+            { update: 'backend|npm|minimatch|10.2.6', name: 'minimatch', ecosystem: 'npm', project: 'backend', direct: false, current: '10.2.6', version: '11.0.1', gap: 'major', fixes: ['CVE-2026-118764'], held_by: [] },
+            { update: 'backend|npm|basic-ftp|5.3.1', name: 'basic-ftp', ecosystem: 'npm', project: 'backend', direct: false, current: '5.3.1', version: '6.2.1', gap: 'major', fixes: ['CVE-2026-1'], held_by: [] },
           ],
           results: [
             {
@@ -309,6 +309,96 @@ describe('PR (écran 8)', () => {
     expect(screen.getByText(/monter ce paquet d'abord, ou forcer sa version/)).toBeInTheDocument()
     // Un dépôt vraiment sans rien à faire garde sa phrase.
     expect(screen.getAllByText(/rien à faire sur la branche par défaut/).length).toBeGreaterThan(0)
+  })
+
+  it('une majeure refusée, les notes d’un lockfile refait, une ligne par paquet retenu (session 37)', async () => {
+    const minimatch = (current: string) => ({
+      update: `frontend|npm|minimatch|${current}`,
+      name: 'minimatch',
+      ecosystem: 'npm' as const,
+      project: 'frontend',
+      direct: false,
+      current,
+      version: '11.0.1',
+      gap: 'major' as const,
+      fixes: ['CVE-2026-118764'],
+      held_by: [],
+    })
+    const done = proposal({
+      status: 'done',
+      started_at: '2026-11-03T13:30:00+00:00',
+      finished_at: '2026-11-03T13:31:00+00:00',
+      repositories: [
+        proposedRepository({
+          full_name: 'octo/forceupdate',
+          state: 'updated',
+          pushed: true,
+          request: REQUEST,
+          applied: [
+            minimatch('5.1.9'),
+            minimatch('10.2.6'),
+            { update: 'frontend|npm|typescript', name: 'typescript', ecosystem: 'npm', project: 'frontend', direct: true, current: '5.9.3', version: '7.0.2', gap: 'major', fixes: [], held_by: [] },
+          ],
+          results: [
+            {
+              ...regenerated()[0],
+              lockfile: 'frontend/package-lock.json',
+              installed: [
+                { update: 'frontend|npm|minimatch|5.1.9', version: '11.0.1', versions: ['5.1.9', '10.2.6'], reach: 'below', held_by: ['@redocly/openapi-core 1.34.22'] },
+                { update: 'frontend|npm|minimatch|10.2.6', version: '11.0.1', versions: ['5.1.9', '10.2.6'], reach: 'below', held_by: ['@ts-morph/common 0.27.0'] },
+              ],
+              warnings: ["npm refusait le lockfile qu'il venait d'écrire (Missing: @emnapi/wasi-threads@1.2.3 from lock file) : refait par « npm install --ignore-scripts --no-audit --no-fund », sans les scripts du projet, puis relu."],
+              dropped: [
+                { update: 'frontend|npm|typescript', version: '7.0.2', reason: 'Could not resolve dependency: peer typescript@"^5.x" from openapi-typescript@7.13.0.' },
+              ],
+            },
+          ],
+        }),
+      ],
+    })
+    mockApi({ 'GET /api/proposals/pr1': done, 'GET /api/repositories': repositoryList() })
+    renderApp('/pr/pr1')
+    const refused = await screen.findByRole('list', { name: 'Majeures refusées de octo/forceupdate' })
+    expect(refused).toHaveTextContent("typescript 7.0.2 (frontend) : pas faite, l'outil de frontend/package-lock.json la refuse")
+    expect(refused).toHaveTextContent('peer typescript@"^5.x" from openapi-typescript@7.13.0')
+    expect(screen.getByText(/monter d'abord le paquet qui bloque/)).toBeInTheDocument()
+    const notes = screen.getByRole('list', { name: 'En route, pour octo/forceupdate' })
+    expect(notes).toHaveTextContent("frontend/package-lock.json : npm refusait le lockfile qu'il venait d'écrire")
+    // Deux mises à jour de minimatch (une par version installée), une seule ligne.
+    const held = within(screen.getByRole('list', { name: 'Mises à jour retenues de octo/forceupdate' })).getAllByRole('listitem')
+    expect(held.map((line) => line.textContent)).toEqual([
+      'minimatch 5.1.9, 10.2.6, pas 11.0.1 (frontend) : retenue par @redocly/openapi-core 1.34.22, @ts-morph/common 0.27.0',
+    ])
+  })
+
+  it('un dépôt en échec se renvoie, avec la même sélection ; l’icône dit l’échec (session 37)', async () => {
+    const done = proposal({
+      status: 'done',
+      started_at: '2026-11-03T13:30:00+00:00',
+      finished_at: '2026-11-03T13:31:00+00:00',
+      repositories: [
+        proposedRepository({
+          full_name: 'octo/vulnerable',
+          state: 'failed',
+          error: "Git n'a pas pu cloner : la forge ne répond pas (réseau, DNS, certificat).",
+        }),
+      ],
+    })
+    const calls = mockApi({
+      'GET /api/proposals/pr1': done,
+      'GET /api/repositories': repositoryList(),
+      'POST /api/proposals/pr1/send': proposal({ status: 'running' }),
+    })
+    const user = userEvent.setup()
+    renderApp('/pr/pr1')
+    expect(await screen.findByText(/Envoi terminé\s: 1 en échec/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Renvoyer le dépôt en échec' }))
+    await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true))
+    const send = calls.find((call) => call.method === 'POST')!
+    expect(send.url.pathname).toBe('/api/proposals/pr1/send')
+    expect(JSON.parse(String(send.init.body))).toEqual({
+      repositories: [{ forge: 'github', host: 'github.com', full_name: 'octo/vulnerable' }],
+    })
   })
 
   it('un récapitulatif oublié (serveur redémarré) le dit', async () => {

@@ -179,7 +179,7 @@ describe('choisir un dossier ou un fichier (écran 2)', () => {
     await screen.findByRole('list', { name: 'Contenu de C:/Projets' })
     await user.click(screen.getByRole('button', { name: 'Parcourir…' }))
     // Le fichier est choisi tout de suite ; son dossier s'ouvre au changement d'adresse, après :
-    // attendre sa liste (lire le champ dès le bouton échouait avec jsdom 30).
+    // attendre sa liste (lire le champ dès le bouton échouait parfois sous Ubuntu, en CI).
     expect(await screen.findByRole('list', { name: 'Contenu de C:/Projets/vulnerable' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Analyser ce fichier' })).toBeInTheDocument()
     expect(screen.getByLabelText('Dossier ouvert')).toHaveValue('C:/Projets/vulnerable')

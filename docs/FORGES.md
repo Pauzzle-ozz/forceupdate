@@ -520,7 +520,8 @@ total : « 1 PR ouverte · 1 MR ouverte · 1 mise à jour · 1 en échec ».
 
 - Il contient les manifestes réécrits et les lockfiles régénérés (et le `vendor/` refait),
   nommés un par un. Jamais les fichiers qu'un outil en échec a remis comme avant, ni ce
-  qu'un outil a laissé à côté (un `.venv`).
+  qu'un outil a laissé à côté (un `.venv`). Une majeure que l'outil refuse est retirée et le
+  reste part (voir « Sur un échec » dans USAGE.md).
 - Il est fait au nom du compte du token : son nom (sinon son identifiant), et son adresse
   `noreply`, qui rattache le commit au compte sans dévoiler la vraie :
 
@@ -543,6 +544,9 @@ total : « 1 PR ouverte · 1 MR ouverte · 1 mise à jour · 1 en échec ».
   Generated-by: forceupdate 1.0.0
   ```
 
+  Seules les versions que le lockfile a atteintes y sont : ni une majeure retirée, ni une
+  version retenue en dessous (la description les dit).
+
 - Rien à commiter au bout du compte (aucun fichier changé) : rien n'est poussé, « rien à
   faire sur la branche par défaut telle qu'elle est ». Si c'est parce que l'outil de lockfile a
   gardé les versions (une dépendance indirecte que le paquet qui la tire ne laisse pas monter :
@@ -559,11 +563,13 @@ Titre : « Mise à jour des dépendances (forceupdate) ». La description, en fr
 - la version de forceupdate, le commit et la branche de départ ;
 - « Mises à jour » : un tableau (paquet, projet, version, failles corrigées, état : « faite »,
   « faite, en … » si l'outil a pris plus haut, « retenue en … par … », « lockfile à régénérer
-  (npm absent) », « pas faite : lockfile en échec ») ;
+  (npm absent) », « pas faite : uv la refuse (Because arq==0.28.0 depends on redis<6…) » pour
+  une majeure retirée, « pas faite : lockfile en échec ») ;
 - « Lockfiles » : régénéré par quel outil et relu par quoi (tout `package-lock.json` est relu
   par `npm ci --dry-run`, et refait par une vraie installation si npm le refuse : voir « Le npm
-  du projet » dans USAGE.md), ce que l'outil a dit en plus, la commande à lancer, l'erreur de
-  l'outil ;
+  du projet » dans USAGE.md), « régénéré sans redis 8.1.0, qu'il refuse », ce que l'outil a dit
+  en plus, la commande à lancer, l'erreur de l'outil. Sans les chemins de l'ordinateur : le
+  dossier du clone devient `.`, le dossier personnel `~` ;
 - « Non appliquées » : les options sautées, et pourquoi ;
 - « Rapport de l'analyse » : le rapport Markdown du dépôt, raccourci au-delà de 60 000
   caractères (GitHub refuse une description de plus de 65 536) ;
@@ -579,7 +585,10 @@ quand même. La description dit : « pas régénéré, npm n'est pas installé l
 préparée. À lancer dans `<dossier>`, puis commiter », et la commande.
 
 Un outil qui échoue : ses fichiers sont remis comme avant et ne sont pas dans la PR ; la
-description donne son erreur.
+description donne son erreur. S'il échouait à cause d'une majeure, elle seule est retirée, le
+reste part : le résultat de l'envoi le dit (« typescript 7.0.2 (frontend) : pas faite, l'outil
+de frontend/package-lock.json la refuse : … »), avec ce qui s'est passé en route sur un
+lockfile (« npm refusait le lockfile qu'il venait d'écrire … refait par … »).
 
 ### Il faut git
 
@@ -591,6 +600,12 @@ cloner. », et rien ne part.
 Relancer (depuis « Mes dépôts », ou depuis le rapport du dépôt) met à jour **la même PR** :
 la branche est refaite sur la branche par défaut du moment, la description aussi. Jamais une
 deuxième PR, même si une autre fenêtre l'a ouverte entre-temps.
+
+Un dépôt en échec (la forge ne répondait pas, un token refusé puis reconnecté) se renvoie depuis
+le résultat : « Renvoyer le dépôt en échec » repart avec la même sélection, sans repasser par le
+récapitulatif ; les dépôts déjà envoyés ne bougent pas. Le titre du résultat dit l'échec (son
+icône : rouge si tout a échoué, avertissement si une partie), et l'erreur de git écrit le dossier
+personnel `~`.
 
 ### Une PR fermée sans fusion
 

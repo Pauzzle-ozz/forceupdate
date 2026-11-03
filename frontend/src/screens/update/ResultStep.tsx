@@ -57,7 +57,7 @@ export function ResultStep({ scan, plan, report, live }: StepProps) {
     <Container>
       <UpdateHeader scan={scan} step={3} />
       <div className="flex max-w-215 flex-col gap-4">
-        <Outcome plan={plan} jobs={jobs} outcomeRef={outcome} />
+        <Outcome plan={plan} jobs={jobs} outcomeRef={outcome} describe={(update) => byId.get(update)?.update ?? null} />
         {plan.results.map((result) => (
           <ResultCard
             key={result.lockfile}
@@ -111,16 +111,20 @@ function Outcome({
   plan,
   jobs,
   outcomeRef,
+  describe,
 }: {
   plan: UpdatePlan
   jobs: Map<string, LockJob>
   outcomeRef: React.Ref<HTMLDivElement>
+  describe: (update: string) => { name: string } | null
 }) {
   const results = plan.results
   const failed = results.filter((result) => result.status === 'failed')
   const missing = results.filter((result) => result.status === 'tool_missing')
   const regenerated = results.filter((result) => result.status === 'regenerated')
   const installed = regenerated.flatMap((result) => result.installed)
+  // Les majeures que l'outil refusait, retirées pour que le reste se fasse (session 37).
+  const dropped = regenerated.flatMap((result) => result.dropped)
   const elsewhere = installed.filter((version) => version.reach !== 'exact').length
   const tool = (result: LockResult) => jobs.get(result.lockfile)?.tool ?? "L'outil"
 
@@ -174,7 +178,25 @@ function Outcome({
       </Alert>
     )
   }
-  const applied = plan.applied.length
+  const applied = plan.applied.length - dropped.length
+  const advice = plan.uncommitted === null ? 'Relire les fichiers réécrits, puis lancer les tests.' : 'Relire avec git diff, lancer les tests, puis commiter.'
+  if (dropped.length > 0) {
+    const names = dropped.map((item) => `${describe(item.update)?.name ?? item.update} ${item.version}`)
+    return (
+      <Alert variant="warning" role="status" ref={outcomeRef} tabIndex={-1}>
+        <TriangleAlert aria-hidden="true" />
+        <AlertTitle>{fr(`Appliquée, sauf ${dropped.length >= 2 ? `${dropped.length} majeures` : 'une majeure'} que l'outil de lockfile refuse`)}</AlertTitle>
+        <AlertDescription>
+          <p>
+            {fr(
+              `${count(applied, 'mise à jour faite', 'mises à jour faites')}. L'outil échouait avec toutes : ${listText(names)} ${dropped.length >= 2 ? 'sont remises' : 'est remise'} comme avant, et sa carte dit pourquoi. Monter d'abord le paquet qui la bloque.`,
+            )}{' '}
+            {advice}
+          </p>
+        </AlertDescription>
+      </Alert>
+    )
+  }
   return (
     <Alert variant="success" role="status" ref={outcomeRef} tabIndex={-1}>
       <CircleCheck aria-hidden="true" />
@@ -189,9 +211,7 @@ function Outcome({
                 ? ', toutes à la version demandée.'
                 : ', à la version demandée.'
               : fr(`, dont ${elsewhere} à une autre version que celle demandée : voir ci-dessous.`)}{' '}
-          {plan.uncommitted === null
-            ? 'Relire les fichiers réécrits, puis lancer les tests.'
-            : 'Relire avec git diff, lancer les tests, puis commiter.'}
+          {advice}
         </p>
       </AlertDescription>
     </Alert>
@@ -248,6 +268,30 @@ function ResultCard({
                       )}
                     </span>
                     <ReachBadge installed={installed} chosen={selection[installed.update]} />
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+          {result.dropped.length > 0 && (
+            <ul className="flex flex-col gap-2 text-sm" aria-label={`Refusées par ${job?.tool ?? "l'outil"}`}>
+              {result.dropped.map((item) => {
+                const update = describe(item.update)
+                return (
+                  <li key={item.update} className="flex flex-col gap-1">
+                    <span className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <b className="font-mono">{update?.name ?? item.update}</b>
+                        <VersionArrow from={update?.current_version ?? null} to={item.version} />
+                      </span>
+                      <Badge variant="danger" className="whitespace-normal">
+                        <CircleX aria-hidden="true" />
+                        {`pas faite : ${job?.tool ?? "l'outil"} la refuse`}
+                      </Badge>
+                    </span>
+                    <span lang="en" className="font-mono text-[13px] text-fg-muted [overflow-wrap:anywhere]">
+                      {item.reason}
+                    </span>
                   </li>
                 )
               })}

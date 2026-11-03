@@ -63,7 +63,8 @@ async def send_proposal(
 ) -> JSONResponse:
     """Envoie les dépôts cochés du récapitulatif, en tâche de fond, un à la fois : clone,
     mise à jour, commit, push de ``forceupdate/dependencies`` (jamais la branche par défaut),
-    PR ouverte ou mise à jour. Se suit par ``GET /api/proposals/{id}``. Ne s'annule pas."""
+    PR ouverte ou mise à jour. Se suit par ``GET /api/proposals/{id}``. Ne s'annule pas. Un
+    récapitulatif déjà envoyé renvoie ses dépôts en échec, avec la même sélection."""
     proposal = _find(proposals, proposal_id)
     try:
         await proposals.send(proposal, body.repositories)

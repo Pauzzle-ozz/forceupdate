@@ -19,8 +19,10 @@ D'après la configuration de l'outil de chaque écosystème (un module par écos
   « privé : non vérifié ».
 
 Les fichiers du projet sont lus par la source (``read_text`` : une forge les télécharge, comme ceux
-des parseurs) ; ceux de la personne par ``userfiles``. Un registre déclaré n'est demandé qu'en
-https, ou en http vers la machine elle-même ; ses messages citent son hôte, jamais son adresse.
+des parseurs) ; ceux de la personne par ``userfiles``. Un registre déclaré en http sur une autre
+machine est demandé comme l'outil du projet le ferait, mais sans identifiant : un identifiant ne
+part qu'en https, ou en http vers la machine elle-même (``net.auth``), et une remarque le dit
+(E35 : seul Bundler le disait). Ses messages citent son hôte, jamais son adresse.
 """
 
 import dataclasses
@@ -32,7 +34,7 @@ from urllib.parse import urlsplit
 from forceupdate import registries
 from forceupdate.models import Dependency, Ecosystem, Notice, Project, Report
 from forceupdate.net import Cache, HttpClient
-from forceupdate.net.auth import Credential, Credentials
+from forceupdate.net.auth import Credential, Credentials, is_loopback
 from forceupdate.parsers.base import ReadText
 from forceupdate.registries import PackageInfo, PackageNotFound, Registry
 
@@ -163,8 +165,25 @@ def read(report: Report, read_text: ReadText, user: User | None = None) -> Routi
             routers[project.path, ecosystem] = reading.router
             credentials += reading.credentials
             said = notices.setdefault(project.path, [])
-            said += [n for n in reading.notices if n not in said]
+            found = [*reading.notices, *_over_http(reading.credentials)]
+            said += [n for n in found if n not in said]
     return Routing(routers, credentials, notices)
+
+
+def _over_http(credentials: Iterable[Credential]) -> list[Notice]:
+    """Une remarque par identifiant lié à une adresse en http hors de la machine : il ne partira
+    pas (``Credential.matches``), le registre est demandé sans lui."""
+    return [
+        Notice(
+            file=credential.source,
+            message=(
+                f"L'identifiant pour {credential.host} n'est pas envoyé : l'adresse est en http, "
+                "forceupdate n'envoie un identifiant qu'en https (ou vers la machine elle-même)."
+            ),
+        )
+        for credential in credentials
+        if credential.scheme == "http" and not is_loopback(credential.host)
+    ]
 
 
 def apply(report: Report, routing: Routing) -> None:

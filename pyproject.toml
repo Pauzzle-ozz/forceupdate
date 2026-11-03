@@ -53,7 +53,7 @@ Repository = "https://github.com/Pauzzle-ozz/forceupdate"
 Issues = "https://github.com/Pauzzle-ozz/forceupdate/issues"
 
 [project.scripts]
-forceupdate = "forceupdate.cli:app"
+forceupdate = "forceupdate.cli:run"
 
 [dependency-groups]
 dev = [

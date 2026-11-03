@@ -389,6 +389,18 @@ class InstalledVersion:
 
 
 @dataclass(frozen=True, kw_only=True)
+class DroppedUpdate:
+    """Une majeure retirée pour que l'outil de lockfile réussisse (``lockfiles.Dropped``) : sa
+    contrainte est remise comme avant."""
+
+    update: str
+    version: str
+    """La version choisie, que l'outil refuse."""
+    reason: str
+    """Ce qu'en dit l'outil, en peu de lignes."""
+
+
+@dataclass(frozen=True, kw_only=True)
 class LockResult:
     """Ce qu'il est advenu d'un lockfile (``lockfiles.Regenerated``)."""
 
@@ -401,6 +413,9 @@ class LockResult:
     warnings: tuple[str, ...]
     verified: LockVerified | None
     """Régénéré avec le npm du projet : ce qu'en dit son ``npm ci --dry-run``."""
+    dropped: tuple[DroppedUpdate, ...]
+    """``regenerated`` après un échec de l'outil avec toutes les mises à jour : les majeures qu'il
+    refuse, retirées ; les autres sont faites (session 37)."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -830,6 +845,9 @@ class ProposedUpdate:
     gap: Gap | None
     fixes: tuple[str, ...]
     """Les failles qu'elle corrige (le premier identifiant de chacune)."""
+    held_by: tuple[str, ...]
+    """Une indirecte que des paquets retiendront (``UpdateOption.held_by``) : ses failles ne
+    seront pas corrigées par le lockfile seul."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -1042,6 +1060,10 @@ def lock_result(result: Regenerated) -> LockResult:
             if result.verified is not None
             else None
         ),
+        dropped=tuple(
+            DroppedUpdate(update=item.update.id, version=item.option.version, reason=item.reason)
+            for item in result.dropped
+        ),
     )
 
 
@@ -1057,6 +1079,7 @@ def proposed_update(choice: Choice) -> ProposedUpdate:
         version=option.version,
         gap=option.gap,
         fixes=option.fixes,
+        held_by=option.held_by,
     )
 
 

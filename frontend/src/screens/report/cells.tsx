@@ -243,6 +243,7 @@ export function fixesText(option: UpdateOption): string | null {
   const fixed = option.fixes.length
   const total = fixed + option.unfixed.length
   if (total === 0) return null
+  if (fixed > 0 && option.held_by.length > 0) return `corrigerait ${count(fixed, 'faille')}, retenue par ${option.held_by.join(', ')}`
   if (option.unfixed.length === 0) return fixed === 1 ? 'corrige la faille' : `corrige les ${fixed} failles`
   if (fixed === 0) return `laisse ${count(total, 'faille')}`
   return `corrige ${count(fixed, 'faille')} sur ${total}`

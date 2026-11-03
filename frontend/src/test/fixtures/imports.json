@@ -38,7 +38,8 @@
           "excluded": [],
           "imported": "requests",
           "ignored": null,
-          "manual": null
+          "manual": null,
+          "required_by": []
         },
         {
           "ecosystem": "PyPI",
@@ -55,7 +56,8 @@
           "excluded": [],
           "imported": "dateutil",
           "ignored": null,
-          "manual": null
+          "manual": null,
+          "required_by": []
         },
         {
           "ecosystem": "PyPI",
@@ -72,7 +74,8 @@
           "excluded": [],
           "imported": "flask",
           "ignored": null,
-          "manual": null
+          "manual": null,
+          "required_by": []
         },
         {
           "ecosystem": "PyPI",
@@ -89,7 +92,8 @@
           "excluded": [],
           "imported": "jinja2",
           "ignored": null,
-          "manual": null
+          "manual": null,
+          "required_by": []
         }
       ],
       "overrides": [],
@@ -113,7 +117,8 @@
             "excluded": [],
             "imported": "flask",
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": null,
           "current_is_approximate": false,
@@ -146,7 +151,8 @@
             "excluded": [],
             "imported": "jinja2",
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": null,
           "current_is_approximate": false,
@@ -179,7 +185,8 @@
             "excluded": [],
             "imported": "dateutil",
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": null,
           "current_is_approximate": false,
@@ -212,7 +219,8 @@
             "excluded": [],
             "imported": "requests",
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": null,
           "current_is_approximate": false,

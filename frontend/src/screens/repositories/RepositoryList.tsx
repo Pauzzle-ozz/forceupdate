@@ -285,7 +285,9 @@ function RepositoryTable({ all, shown, selected, onSelect, sort, onSort }: ListP
           <TableHead scope="col" className="w-10">
             <SelectAll shown={shown} selected={selected} onSelect={onSelect} />
           </TableHead>
-          <TableHead scope="col" aria-sort={ariaSort(sort, 'name')}>
+          {/* Une largeur minimale : sans elle, un nom (cassable partout) cédait sa place aux
+              colonnes insécables, et passait à la ligne avec son cadenas (session 36, 2 560 px). */}
+          <TableHead scope="col" aria-sort={ariaSort(sort, 'name')} className="lg:min-w-60">
             <SortButton label="Dépôt" column="name" sort={sort} onSort={onSort} />
           </TableHead>
           <TableHead scope="col" className="max-lg:hidden">
@@ -296,7 +298,9 @@ function RepositoryTable({ all, shown, selected, onSelect, sort, onSort }: ListP
             <SortButton label="Dernier push" column="pushed" sort={sort} onSort={onSort} />
           </TableHead>
           <TableHead scope="col">Analyse</TableHead>
-          <TableHead scope="col">{requestWords(forgesOf(all)).replace(' et ', ' / ')}</TableHead>
+          <TableHead scope="col" className="whitespace-nowrap">
+            {requestWords(forgesOf(all)).replace(' et ', ' / ')}
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -422,33 +426,37 @@ function RepositoryName({ row, name: spoken }: { row: RepositoryRow; name: strin
   const forge = forgeLabel(row.forge, row.host)
   return (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-      {row.scan ? (
-        <Link
-          to={`/analyses/${row.scan.id}`}
-          className="font-mono text-sm font-semibold break-all text-fg"
-          aria-label={spoken !== row.full_name ? spoken : undefined}
-        >
-          {name}
-        </Link>
-      ) : (
-        <span className="font-mono text-sm font-semibold break-all">{name}</span>
-      )}
-      <span className="inline-flex items-center gap-1">
-        {row.private && (
-          <span role="img" aria-label="privé" title="privé" className="inline-flex text-fg-muted">
-            <Lock className="size-4" aria-hidden="true" />
-          </span>
+      {/* Le cadenas et le lien suivent le nom dans la ligne : ils ne passent plus seuls à la
+          ligne suivante (session 36). */}
+      <span className="min-w-0">
+        {row.scan ? (
+          <Link
+            to={`/analyses/${row.scan.id}`}
+            className="font-mono text-sm font-semibold break-all text-fg"
+            aria-label={spoken !== row.full_name ? spoken : undefined}
+          >
+            {name}
+          </Link>
+        ) : (
+          <span className="font-mono text-sm font-semibold break-all">{name}</span>
         )}
-        <a
-          href={row.url}
-          target="_blank"
-          rel="noreferrer"
-          aria-label={`Ouvrir ${row.full_name} sur ${forge} (nouvel onglet)`}
-          title={`Ouvrir sur ${forge}`}
-          className="inline-flex size-6 items-center justify-center rounded-xs text-fg-muted hover:text-fg pointer-coarse:size-11"
-        >
-          <ExternalLink className="size-3.5" aria-hidden="true" />
-        </a>
+        <span className="ml-1.5 inline-flex items-center gap-1 align-middle">
+          {row.private && (
+            <span role="img" aria-label="privé" title="privé" className="inline-flex text-fg-muted">
+              <Lock className="size-4" aria-hidden="true" />
+            </span>
+          )}
+          <a
+            href={row.url}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={`Ouvrir ${row.full_name} sur ${forge} (nouvel onglet)`}
+            title={`Ouvrir sur ${forge}`}
+            className="inline-flex size-6 items-center justify-center rounded-xs text-fg-muted hover:text-fg pointer-coarse:size-11"
+          >
+            <ExternalLink className="size-3.5" aria-hidden="true" />
+          </a>
+        </span>
       </span>
       {row.archived && <Badge variant="neutral">archivé</Badge>}
       {row.fork && <Badge variant="neutral">fork</Badge>}

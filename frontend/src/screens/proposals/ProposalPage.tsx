@@ -38,6 +38,7 @@ import { useOnline } from '@/hooks/useStatus'
 import { NBSP, count, formatDate, fr } from '@/lib/format'
 import {
   defaultChecked,
+  droppedUpdates,
   finished,
   forgeLabel,
   heldUpdates,
@@ -361,7 +362,8 @@ function RecapCard({
 }) {
   const id = useId()
   const word = requestWord(item.forge)
-  const fixes = new Set(item.applied.flatMap((update) => update.fixes)).size
+  // Une indirecte que son parent retiendra ne corrige rien par le lockfile seul (session 37).
+  const fixes = new Set(item.applied.flatMap((update) => (update.held_by.length > 0 ? [] : update.fixes))).size
   return (
     <Card className={cn('flex flex-col gap-4', checked && 'border-control bg-primary-soft')} aria-labelledby={`${id}-nom`}>
       <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2">
@@ -448,7 +450,14 @@ function RecapCard({
               </span>
               {update.gap && <GapBadge gap={update.gap} />}
               {!update.direct && <Badge variant="outline">indirecte</Badge>}
-              {update.fixes.length > 0 && <span className="text-fg-muted">{count(update.fixes.length, 'faille corrigée', 'failles corrigées')}</span>}
+              {update.held_by.length > 0 ? (
+                <span className="inline-flex items-center gap-1 text-warning">
+                  <TriangleAlert className="size-4 shrink-0" aria-hidden="true" />
+                  {`retenue par ${update.held_by.join(', ')} : monter ce paquet d'abord`}
+                </span>
+              ) : (
+                update.fixes.length > 0 && <span className="text-fg-muted">{count(update.fixes.length, 'faille corrigée', 'failles corrigées')}</span>
+              )}
             </li>
           ))}
         </ul>
@@ -617,8 +626,14 @@ function Sending({ proposal }: { proposal: Proposal }) {
   const several = new Set(proposal.repositories.map((item) => `${item.forge}:${item.host}`)).size > 1
   const refused = items.filter((item) => item.state === 'failed' && item.error?.includes('token'))
   const done = items.filter(finished)
+  const failed = items.filter((item) => item.state === 'failed')
   const others = proposal.repositories.filter((item) => item.state === 'skipped')
   const announced = done.map((item) => `${item.full_name} : ${outcomeText(item)}.`).join(' ')
+  // Un envoi fini : son icône dit l'échec (session 37 : une coche verte pour « 1 en échec »).
+  const Head = running ? LoaderCircle : failed.length === 0 ? CircleCheck : failed.length === items.length ? CircleX : TriangleAlert
+  const headClass = running ? 'animate-spin text-link' : failed.length === 0 ? 'text-success' : failed.length === items.length ? 'text-danger' : 'text-warning'
+  const resend = useSendProposal(proposal.id)
+  const online = useOnline()
 
   useEffect(() => {
     // L'envoi qui commence, puis le résultat : le focus va au titre.
@@ -631,11 +646,7 @@ function Sending({ proposal }: { proposal: Proposal }) {
 
       <Card className="mb-6 flex flex-col gap-3" role="region" aria-labelledby="envoi-titre">
         <h2 id="envoi-titre" className="flex items-center gap-2 text-base">
-          {running ? (
-            <LoaderCircle className="size-4 animate-spin text-link" aria-hidden="true" />
-          ) : (
-            <CircleCheck className="size-4 text-success" aria-hidden="true" />
-          )}
+          <Head className={cn('size-4', headClass)} aria-hidden="true" />
           {running
             ? fr(`Envoi de ${count(items.length, 'dépôt')} : ${done.length} ${done.length >= 2 ? 'terminés' : 'terminé'}`)
             : fr(`Envoi terminé : ${resultSummary(proposal) || 'rien envoyé'}`)}
@@ -698,11 +709,31 @@ function Sending({ proposal }: { proposal: Proposal }) {
       {others.length > 0 && <SkippedList items={others} title="Pas envoyés" />}
 
       {!running && (
-        <div className="mt-6 flex flex-wrap gap-2">
-          <Link to="/depots" className={buttonVariants({ variant: 'primary' })}>
-            <FolderGit2 aria-hidden="true" />
-            Retour à mes dépôts
-          </Link>
+        <div className="mt-6 flex flex-col gap-2">
+          <div className="flex flex-wrap gap-2">
+            {failed.length > 0 && (
+              // Renvoyer ce qui a échoué (la forge ne répondait pas…), avec la même sélection.
+              <Button
+                variant="primary"
+                disabled={resend.isPending || !online}
+                onClick={() => resend.mutate(failed.map(keyOf))}
+              >
+                {resend.isPending ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
+                {failed.length >= 2 ? `Renvoyer les ${failed.length} dépôts en échec` : 'Renvoyer le dépôt en échec'}
+              </Button>
+            )}
+            <Link to="/depots" className={buttonVariants({ variant: failed.length > 0 ? 'secondary' : 'primary' })}>
+              <FolderGit2 aria-hidden="true" />
+              Retour à mes dépôts
+            </Link>
+          </div>
+          {failed.length > 0 && !online && <p className="text-sm text-fg-muted">{fr('Hors ligne : le renvoi attend le réseau.')}</p>}
+          {resend.error && (
+            <p role="alert" className="flex items-center gap-2 text-sm text-danger">
+              <CircleX className="size-4 shrink-0" aria-hidden="true" />
+              {resend.error.message}
+            </p>
+          )}
         </div>
       )}
     </Container>
@@ -712,8 +743,15 @@ function Sending({ proposal }: { proposal: Proposal }) {
 /** Un dépôt envoyé : où il en est, puis sa PR, ou l'erreur, et ce qui reste à faire. */
 function SentCard({ item, showForge }: { item: ProposedRepository; showForge: boolean }) {
   const id = useId()
-  // Les versions que l'outil de lockfile n'a pas pu monter (session 36).
+  // Les versions que l'outil de lockfile n'a pas pu monter (session 36), les majeures qu'il
+  // refusait, retirées pour que le reste parte, et ce qui s'est passé en route (session 37).
   const held = finished(item) ? heldUpdates(item) : []
+  const dropped = finished(item) ? droppedUpdates(item) : []
+  const notes = finished(item)
+    ? item.results
+        .filter((result) => result.status === 'regenerated' && !result.verified?.error)
+        .flatMap((result) => result.warnings.map((warning) => ({ lockfile: result.lockfile, warning })))
+    : []
   const look = item.state === 'nothing' && held.length > 0 ? HELD_ICON : (STATE_ICON[item.state] ?? STATE_ICON.waiting)
   const Icon = look.icon
   const word = requestWord(item.forge)
@@ -759,6 +797,32 @@ function SentCard({ item, showForge }: { item: ProposedRepository; showForge: bo
           ))}
         </ul>
       )}
+      {dropped.length > 0 && (
+        <div className="flex flex-col gap-1 text-sm">
+          <ul className="flex flex-col gap-1" aria-label={`Majeures refusées de ${item.full_name}`}>
+            {dropped.map((update) => (
+              <li key={update.update} className="flex items-start gap-2 text-warning">
+                <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                <span>
+                  <span className="font-mono">
+                    {update.name} {update.version}
+                  </span>
+                  {update.project !== '.' && <span className="text-fg-muted">{` (${update.project})`}</span>}
+                  {`${NBSP}: pas faite, l'outil de ${update.lockfile} la refuse${NBSP}: `}
+                  <span lang="en" className="font-mono text-[13px] [overflow-wrap:anywhere]">
+                    {update.reason}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-fg-muted">
+            {fr(
+              `Remise${dropped.length >= 2 ? 's' : ''} comme avant pour que les autres mises à jour partent : monter d'abord le paquet qui bloque, puis relancer.`,
+            )}
+          </p>
+        </div>
+      )}
       {held.length > 0 && (
         <div className="flex flex-col gap-1 text-sm">
           <ul className="flex flex-col gap-1" aria-label={`Mises à jour retenues de ${item.full_name}`}>
@@ -783,6 +847,19 @@ function SentCard({ item, showForge }: { item: ProposedRepository; showForge: bo
             )}
           </p>
         </div>
+      )}
+      {notes.length > 0 && (
+        <ul className="flex flex-col gap-1 text-sm" aria-label={`En route, pour ${item.full_name}`}>
+          {notes.map((note) => (
+            <li key={`${note.lockfile} ${note.warning}`} className="flex items-start gap-2">
+              <Info className="mt-0.5 size-4 shrink-0 text-link" aria-hidden="true" />
+              <span className="[overflow-wrap:anywhere]">
+                <span className="font-mono">{note.lockfile}</span>
+                {`${NBSP}: ${note.warning}`}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
       {finished(item) && item.skipped.length > 0 && (
         <ul className="flex flex-col gap-1 text-sm">

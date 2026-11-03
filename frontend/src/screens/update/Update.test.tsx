@@ -531,6 +531,28 @@ describe('la mise à jour (écran 5), étapes Appliquer et Résultat', () => {
     expect(screen.getByText('markupsafe 1.1.0 → 1.1.1')).toBeInTheDocument()
   })
 
+  it('une majeure que l’outil refuse : retirée, avec sa raison, le reste fait (session 37)', async () => {
+    const results = regenerated()
+    results[1].installed = [{ update: '.|PyPI|flask', version: '0.12.5', versions: ['0.12.5'], reach: 'exact', held_by: [] }]
+    results[1].dropped = [
+      {
+        update: '.|PyPI|jinja2|2.10',
+        version: '2.10.1',
+        reason: 'Because flask==0.12.5 depends on jinja2<2.10.1, we can conclude that your requirements are unsatisfiable.',
+      },
+    ]
+    mockApi({
+      'GET /api/scans/a1': scanDetail(),
+      'GET /api/updates/p1': planDocument({ status: 'done', applicable: false, results }),
+    })
+    renderApp('/plans/p1')
+    const outcome = (await screen.findByText("Appliquée, sauf une majeure que l'outil de lockfile refuse")).closest('[role="status"]')
+    expect(outcome).toHaveTextContent('jinja2 2.10.1 est remise comme avant')
+    const refused = screen.getByRole('list', { name: 'Refusées par uv pip compile' })
+    expect(refused).toHaveTextContent('pas faite : uv pip compile la refuse')
+    expect(refused).toHaveTextContent('Because flask==0.12.5 depends on jinja2<2.10.1')
+  })
+
   it('le lockfile relu par le npm du projet : accepté, ou refusé avec la commande (E32)', async () => {
     const command = 'npx -y npm@10 ci --dry-run --ignore-scripts --no-audit --no-fund'
     const results = regenerated()

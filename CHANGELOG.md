@@ -12,6 +12,18 @@ casser la ligne de commande, le format JSON du rapport (`schema_version`) ou la 
   l'ordinateur (l'Explorateur sous Windows), ouverte par le serveur local.
 - Télécharger le rapport depuis l'interface : en Markdown, en JSON, et les dépendances à mettre
   à jour en CSV pour un tableur ; `forceupdate scan --format csv`.
+- Une majeure que l'outil de lockfile refuse ne fait plus tomber tout le lockfile : l'outil est
+  relancé sans les majeures, puis avec chacune ; celles qu'il refuse sont retirées, avec sa raison
+  (« Because arq==0.28.0 depends on redis<6… »), et le reste est fait, failles comprises
+  (`results[].dropped` dans l'API).
+- Une indirecte que le paquet qui la tire retiendra est dite dès le choix des mises à jour,
+  d'après les plages d'un `package-lock.json` (« nodemon 3.1.14 demande ^10.2.1 : le lockfile
+  seul ne la fera pas monter ») : jamais pré-cochée, ses failles pas comptées corrigées
+  (`Dependency.required_by`, `UpdateOption.held_by` dans le JSON).
+- Le résultat des PR renvoie les dépôts en échec, avec la même sélection, et dit ce qui s'est
+  passé sur un lockfile régénéré (un `package-lock.json` refait par npm).
+- `UV_INDEX_<NOM>_USERNAME` et `_PASSWORD` sont envoyés à l'index de ce nom que déclare la
+  personne (son environnement, son `uv.toml`), jamais à celui d'un fichier du projet.
 
 ### Corrigé
 
@@ -19,6 +31,21 @@ casser la ligne de commande, le format JSON du rapport (`schema_version`) ou la 
   relu par `npm ci --dry-run`, et refait par une vraie installation (sans les scripts) quand npm
   a écrit un lockfile incomplet (npm 11.6.2 et les dépendances embarquées de
   `@tailwindcss/oxide-wasm32-wasi`).
+- Le message du commit d'une PR comptait comme faite une version que le lockfile retenait en
+  dessous ; la description d'une PR pouvait citer un chemin de l'ordinateur (le journal de npm) :
+  le dossier personnel s'écrit `~`, le dossier du dépôt `.`.
+- « Versions exactes refusées » dit maintenant pourquoi (ce que l'outil a répondu).
+- Le cache range ses entrées sous l'empreinte de l'adresse : un jeton écrit dans le chemin d'une
+  adresse de registre n'est plus écrit sur le disque (le cache d'avant est vidé à l'ouverture).
+- Un identifiant lié à un registre en http (hors de la machine) n'est pas envoyé, et une remarque
+  le dit maintenant pour tous les écosystèmes (seul Bundler le disait).
+- Pour Yarn 2+, la commande « à la main » est celle que forceupdate lance (`yarn up -R`).
+- `java 17` sans distribution est lu dans `.tool-versions` (Temurin), comme dans `mise.toml`.
+- `forceupdate --help` redirigé sort en UTF-8 sous Windows, et l'option `--help` est dite en
+  français.
+- Les réglages écrits par l'écran Réglages ne finissent plus par une table `[selection]` vide.
+- « Mes dépôts » sur un grand écran : l'en-tête des PR, et le cadenas d'un dépôt au nom long, ne
+  passent plus à la ligne.
 
 ## 1.0.0rc1 — 2026-11-03
 

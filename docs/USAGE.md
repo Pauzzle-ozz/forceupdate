@@ -268,8 +268,9 @@ peuvent s'y abîmer. Y préférer `--output` :
 forceupdate scan . --format json --output rapport.json   # UTF-8, tel quel
 ```
 
-L'invite de commandes (`cmd`) copie la sortie telle quelle. `scan` écrit toujours en UTF-8 une
-sortie redirigée vers un fichier ou un tube ; c'est PowerShell qui la recode ensuite.
+L'invite de commandes (`cmd`) copie la sortie telle quelle. forceupdate écrit toujours en UTF-8
+une sortie redirigée vers un fichier ou un tube (l'aide de `--help` comprise) ; c'est PowerShell
+qui la recode ensuite.
 
 ## Lire un rapport
 
@@ -681,7 +682,8 @@ version choisie, et pas une autre, forceupdate vise le paquet, à la façon de c
 - npm, pnpm, Poetry, PDM, Cargo, Bundler : la version exacte écrite à la place de la
   contrainte le temps d'un premier passage, puis la contrainte remise et l'outil relancé, qui
   garde la version. Si ce passage échoue (un pair qui exige autre chose…), le lockfile est
-  régénéré sans, et le résultat le dit (« Versions exactes refusées : … ») ;
+  régénéré sans, et le résultat le dit, avec ce qu'a dit l'outil (« Versions exactes refusées :
+  « npm install … » a échoué (code 1) : Conflicting peer dependency: @babel/core@8.1.0. ») ;
 - Composer : `composer update nom:version` ;
 - Go et NuGet : rien à viser, la version est écrite dans le manifeste ;
 - Yarn et pipenv ne savent pas garder une version épinglée : ils prennent la plus haute que
@@ -696,10 +698,18 @@ version que permet la contrainte. »), ou une version restée en dessous, avec c
 Une version retenue est presque toujours celle d'une dépendance **indirecte** : l'outil ne la
 monte pas au-delà de la plage que demande le paquet qui la tire. `nodemon` 3.1.14 demande
 `minimatch ^10.2.1` : la correction d'une faille de minimatch, publiée en 11.0.1 (une
-majeure), reste hors d'atteinte, et le lockfile ne change pas. Le plan le signale d'avance (« le
-paquet qui la tire devra peut-être monter aussi ») ; pour aller plus loin, monter d'abord ce
-paquet (une version plus récente de nodemon qui accepte minimatch 11), ou forcer la version dans
-le manifeste (`overrides` de npm, `resolutions` de Yarn), à ses risques.
+majeure), reste hors d'atteinte, et le lockfile ne change pas.
+
+**Le plan le dit d'avance** pour un `package-lock.json`, qui écrit la plage que chaque paquet
+demande : « nodemon 3.1.14 demande ^10.2.1 : le lockfile seul ne la fera pas monter ; monter
+nodemon d'abord. » (« une de ses copies restera en dessous » si un seul des paquets qui la
+tirent la retient). Une telle option n'est jamais pré-cochée, et ses failles ne sont pas
+comptées corrigées (récapitulatif de l'écran 5, récapitulatif des PR). Ailleurs (pnpm, Yarn, uv,
+Poetry), le plan ne connaît pas ces plages : « Dépendance indirecte : le paquet qui la tire devra
+peut-être monter aussi », pour une majeure. forceupdate ne cherche pas quelle version du paquet
+qui la tire accepterait la correction : pour aller plus loin, monter d'abord ce paquet (une
+version plus récente de nodemon qui accepte minimatch 11), ou forcer la version dans le
+manifeste (`overrides` de npm, `resolutions` de Yarn), à ses risques.
 
 Commandes vérifiées avec npm 11.6, pnpm 12.15, Yarn 1.22 et 4.18, uv 0.10, Poetry 1.8 et
 2.5, PDM 2.29, pipenv 2026.10, pip-tools 7.6, cargo 1.99, Go 1.27, Composer 2.11, Bundler 4.0
@@ -835,6 +845,12 @@ workspace npm, Yarn ou pnpm prend le lockfile de la racine, s'il en est bien mem
 `yarn upgrade` n'est pas lancé : il réordonne le `package.json`. Avec `CI=true`, Yarn et pnpm
 refusent de changer leur lockfile : forceupdate le leur permet. Yarn 2+ écrit aussi
 `.yarn/install-state.gz`.
+
+Quand l'outil manque, la commande donnée à lancer à la main fait la même chose, sans les options
+qui ne changent que ce qu'il affiche (`--no-audit --no-fund` de npm) ni le passage épinglé :
+`npm install --package-lock-only --ignore-scripts`, `npm update nom --package-lock-only
+--ignore-scripts`, `yarn up -R nom… --mode=update-lockfile` (Yarn 2+, toutes les mises à jour,
+directes réécrites comprises).
 
 **Particularités** : le `package-lock.json` peut être régénéré avec le npm qu'attend le projet,
 pas celui de la machine (voir « Le npm du projet »). Une version que le Node du projet
@@ -1397,13 +1413,37 @@ package-lock.json : échec de npm ; remis comme avant : package-lock.json, packa
 
 Un autre lockfile du groupe : « pas régénéré, package-lock.json a échoué ». Code de retour 2.
 
+**Une majeure que l'outil refuse ne fait plus tomber tout le reste.** Si le groupe porte des
+majeures, l'outil est relancé sans elles ; s'il réussit, chaque majeure est rajoutée, une à une
+(six au plus), et gardée si l'outil l'accepte. Celles qu'il refuse sont **retirées** : leur
+contrainte est remise comme avant, et le résultat dit pourquoi, d'après l'outil (la phrase
+« Because … » d'uv, de Poetry et de PDM ; ce que npm ne résout pas, « Could not resolve
+dependency », « Conflicting peer dependency ») :
+
+```
+uv.lock : régénéré (uv).
+   httpx       0.28.1
+   redis       pas faite, uv refuse 8.1.0 : Because arq==0.28.0 depends on redis<6 and your
+               project depends on redis>=8.1.0, we can conclude that your project's requirements
+               are unsatisfiable.
+```
+
+Le lockfile est régénéré avec le reste (code 0) ; monter d'abord le paquet qui bloque (ici
+`arq`), puis relancer. Chaque essai relance l'outil : sur un gros projet, compter quelques
+minutes de plus. Si l'outil échoue encore sans les majeures, tout est remis comme avant, comme
+plus haut. Un groupe qui refait `vendor/` (Go) n'est pas réessayé.
+
+Les erreurs gardées n'ont pas les chemins de l'ordinateur : le dossier du projet devient `.`,
+le dossier personnel `~` (elles vont aussi dans la description d'une PR).
+
 ### Les majeures
 
 Avec la sélection par défaut (`--level minor`), une majeure est proposée, jamais cochée :
 « Majeure : peut demander d'adapter le code. » Une faille que seule une majeure corrige est
 proposée de même, avec les deux mentions. En 0.x, ce qui sort de `^` est une majeure
 (`0.2.3` → `0.3.0`). Une indirecte majeure ajoute : « Dépendance indirecte : le paquet qui la
-tire devra peut-être monter aussi. »
+tire devra peut-être monter aussi. », ou, quand le `package-lock.json` dit sa plage, lequel la
+retiendra (voir [La régénération](#ce-qui-vaut-pour-tous)).
 
 `--level major` (ou `level = "major"` dans la sélection de `forceupdate.toml` ou des réglages)
 les fait cocher. Une majeure Go publiée sous un autre module reste toujours « à la main ».
@@ -1459,7 +1499,7 @@ Dans les fichiers de version (des versions choisies) :
 | `runtime.txt` (Heroku) | `python-3.8.10` |
 | `.nvmrc`, `.node-version` | `16`, `v16.20.2`, `lts/gallium` ; pas `lts/*`, `node`, `stable` |
 | `.ruby-version` | `3.2.2`, `ruby-3.2.2` ; pas `jruby-9.4` |
-| `.tool-versions` (asdf, mise) | `nodejs` (ou `node`), `python`, `ruby`, `golang` (ou `go`), `php`, `dotnet` (ou `dotnet-core`), `rust`, `java temurin-17.0.2+8` ; la première version de la ligne |
+| `.tool-versions` (asdf, mise) | `nodejs` (ou `node`), `python`, `ruby`, `golang` (ou `go`), `php`, `dotnet` (ou `dotnet-core`), `rust`, `java temurin-17.0.2+8` (ou `java 17`, Temurin, comme mise) ; la première version de la ligne |
 | `mise.toml`, `.mise.toml` | `[tools]` : `python = "3.11"`, une liste (la première), `{ version = "…" }`, `java = "temurin-17"` ; pas `latest`, `lts`, `prefix:3` |
 | `global.json` | `sdk.version` : le SDK .NET |
 | `rust-toolchain.toml`, `rust-toolchain` | `channel = "1.80.0"` ; pas `stable`, `nightly` |
@@ -1672,7 +1712,7 @@ Temurin**, la distribution de référence d'OpenJDK, sauf quand une autre est no
 
 | Lu | Jugé d'après |
 |---|---|
-| un `pom.xml`, un script Gradle ; les images `eclipse-temurin`, `openjdk`, `bitnami/java`, `cimg/openjdk`, `circleci/openjdk`, `mcr.microsoft.com/devcontainers/java` ; `temurin-17`, `adoptopenjdk-17`, `openjdk-17` dans `.tool-versions` ou `mise.toml` (et `java = "17"` dans `mise.toml`) ; `actions/setup-java` avec `distribution: temurin`, `adopt…`, ou une distribution autre que les deux ci-dessous | Eclipse Temurin |
+| un `pom.xml`, un script Gradle ; les images `eclipse-temurin`, `openjdk`, `bitnami/java`, `cimg/openjdk`, `circleci/openjdk`, `mcr.microsoft.com/devcontainers/java` ; `temurin-17`, `adoptopenjdk-17`, `openjdk-17` dans `.tool-versions` ou `mise.toml` (et `java 17` sans distribution, dans l'un comme dans l'autre) ; `actions/setup-java` avec `distribution: temurin`, `adopt…`, ou une distribution autre que les deux ci-dessous | Eclipse Temurin |
 | l'image `amazoncorretto` ; `corretto-17` (`.tool-versions`, `mise.toml`) ; `distribution: corretto` | Amazon Corretto |
 | `zulu-17` (`.tool-versions`, `mise.toml`) ; `distribution: zulu` | Azul Zulu |
 
@@ -1967,7 +2007,9 @@ forceupdate lit les identifiants là où l'outil de l'écosystème les lit (le d
   chemin, quand ils sont écrits) ;
 - seulement en https, ou en http vers la machine elle-même (`localhost`, `127.0.0.1` et toute
   adresse `127.x.x.x`, `::1` : rien ne quitte l'ordinateur, pour un Verdaccio ou un index local).
-  Un registre déclaré en http sur une autre machine est demandé sans identifiant ;
+  Un registre déclaré en http sur une autre machine est demandé sans identifiant, et une
+  remarque le dit (« L'identifiant pour pkgs.corp.example n'est pas envoyé : l'adresse est en
+  http… ») ;
 - une redirection vers une autre origine (un autre hôte, un autre port, ou de https vers http) part
   sans identifiant ;
 - le registre public reçoit l'identifiant déclaré pour son hôte (un paquet privé hébergé sur
@@ -1977,9 +2019,10 @@ forceupdate lit les identifiants là où l'outil de l'écosystème les lit (le d
   le navigateur. Les messages citent l'hôte, jamais l'adresse. Les identifiants écrits dans une
   adresse (`https://nom:secret@hôte/…`) en sont retirés avant tout usage.
 
-Une exception : un jeton écrit dans le *chemin* d'une adresse (`https://repo.example/<jeton>/simple/`)
-fait partie de l'adresse. Il n'apparaît dans aucun message, mais l'adresse sert de clé au cache, sur
-l'ordinateur. Préférer un identifiant à part (`.netrc`, `_authToken`…).
+Un jeton écrit dans le *chemin* d'une adresse (`https://repo.example/<jeton>/simple/`) fait partie
+de l'adresse : il n'apparaît dans aucun message, et le cache range ses entrées sous l'empreinte
+(SHA-256) de l'adresse, jamais l'adresse elle-même. Un identifiant à part (`.netrc`,
+`_authToken`…) reste préférable : il n'est envoyé qu'à son hôte.
 
 **Les variables d'environnement.** Dans un fichier de la personne, `${NOM}` (npm, Yarn, pip, uv ;
 `${env.NOM}` pour Maven) et `%NOM%` (NuGet) sont remplacées par la variable, comme le fait l'outil.
@@ -2001,8 +2044,10 @@ dépôt pourrait sinon recevoir les identifiants de la personne en déclarant ce
 son choix. Quand seul le projet donne l'adresse, une remarque le dit : la déclarer aussi chez soi.
 
 Les identifiants de uv rattachés au nom d'un index (`UV_INDEX_<NOM>_USERNAME`,
-`UV_INDEX_<NOM>_PASSWORD`) et ceux de Poetry (`poetry config http-basic.<nom>`) ne sont jamais
-envoyés. Pour Python, mettre l'identifiant dans `~/.netrc`.
+`UV_INDEX_<NOM>_PASSWORD`) suivent la même règle : ils partent vers l'adresse que la personne
+donne à ce nom (`UV_INDEX`, son `uv.toml`), jamais vers celle du projet (une remarque le dit).
+Ceux de Poetry (`poetry config http-basic.<nom>`) ne sont jamais envoyés. Sinon, pour Python,
+mettre l'identifiant dans `~/.netrc`.
 
 ### En bref
 
@@ -2093,8 +2138,9 @@ L'outil du projet décide de ce qui est lu : un script à bloc PEP 723 (uv), pui
 
 Les identifiants : ceux écrits dans l'adresse d'un index (`https://nom:secret@hôte/simple/`), et
 `~/.netrc` (ou le fichier de `NETRC` ; sous Windows, `~/_netrc` aussi) pour l'hôte de chaque index
-déclaré, quel que soit le port. `UV_INDEX_<NOM>_USERNAME`, `UV_INDEX_<NOM>_PASSWORD` et les
-identifiants de Poetry ne sont jamais envoyés (voir plus haut).
+déclaré, quel que soit le port. `UV_INDEX_<NOM>_USERNAME` et `UV_INDEX_<NOM>_PASSWORD` vont à
+l'index de ce nom que déclare la personne (`UV_INDEX`, son `uv.toml`), jamais à celui du projet ;
+les identifiants de Poetry ne sont jamais envoyés (voir plus haut).
 
 ```text
 # ~/.netrc
@@ -2115,7 +2161,8 @@ et aucun paquet du projet n'est vérifié (« Non vérifié : l'adresse d'un ind
 pas ; il pourrait servir ce paquet. ») ; dans ses identifiants (`https://${USER}:${TOKEN}@…`),
 l'index est demandé sans eux, et une remarque dit de les mettre dans `~/.netrc`.
 
-Limites : le trousseau (`keyring`), les identifiants de Poetry et `UV_INDEX_<NOM>_*` ;
+Limites : le trousseau (`keyring`), les identifiants de Poetry, `UV_INDEX_<NOM>_*` pour un index
+que seul le projet déclare ;
 `--find-links` ; `UV_CONFIG_FILE` et les fichiers de configuration du système (`/etc/pip.conf`,
 `/etc/uv/uv.toml`) ; les variables de Poetry, PDM et Pipenv ; la source notée dans un lockfile
 (`uv.lock`, `poetry.lock`, `Pipfile.lock`) : seule la configuration compte.

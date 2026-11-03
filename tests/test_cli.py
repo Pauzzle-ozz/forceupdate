@@ -15,7 +15,7 @@ from conftest import FakeTools, ToolCall
 from typer.testing import CliRunner, Result
 
 from forceupdate import __version__, parsers
-from forceupdate.cli import EXIT_ERROR, EXIT_FAIL_ON, app
+from forceupdate.cli import EXIT_ERROR, EXIT_FAIL_ON, app, run
 from forceupdate.models import Ecosystem
 
 runner = CliRunner()
@@ -35,7 +35,7 @@ def test_version_option() -> None:
 
 def test_console_script_points_to_app() -> None:
     (script,) = entry_points(group="console_scripts", name="forceupdate")
-    assert script.load() is app
+    assert script.load() is run
 
 
 def scan(*args: str) -> Result:
@@ -571,6 +571,20 @@ def test_redirected_output_is_utf8(make_tree: MakeTree, output_format: str) -> N
     assert completed.returncode == 0, completed.stderr
     assert "il faudrait l'exécuter" in completed.stdout.decode("utf-8")
     assert completed.stderr == b""  # pas de barre de progression hors d'une console
+
+
+def test_redirected_help_is_utf8_and_french() -> None:
+    """E35 : ``forceupdate --help`` dans un tube sortait en cp1252 sous Windows, et l'aide de
+    ``--help`` était en anglais (« Show this message and exit. »)."""
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONIOENCODING", "PYTHONUTF8")}
+    env["COLUMNS"] = "200"  # sur 80 colonnes, rich coupe la phrase
+    for arguments in ([], ["scan"]):
+        command = [sys.executable, "-m", "forceupdate", *arguments, "--help"]
+        completed = subprocess.run(command, capture_output=True, env=env, timeout=60, check=False)
+        assert completed.returncode == 0, completed.stderr
+        said = completed.stdout.decode("utf-8")
+        assert "Affiche cette aide et quitte." in said
+        assert "Show this message" not in said
 
 
 def test_no_arguments_shows_help() -> None:

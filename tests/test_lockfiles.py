@@ -311,6 +311,16 @@ def test_plan_of_each_npm_lockfile(
     assert (job.kind, job.command) == (kind, command)
 
 
+def test_the_yarn_berry_command_is_the_one_that_runs(make_tree: MakeTree) -> None:
+    """E35 : une directe réécrite, le plan affichait ``yarn install --mode=update-lockfile``,
+    et lançait ``yarn up -R lodash`` (``_Yarn.run``)."""
+    root = make_tree({"package.json": LODASH_ONLY, "yarn.lock": YARN_BERRY})
+    source, report = analyse(root)
+    choice = wanted(project_of(report), "lodash", "5.0.0", new="^5.0.0")
+    (job,) = lockfiles.plan(source, report, writers.prepare(root, [choice]))
+    assert job.command == "yarn up -R lodash --mode=update-lockfile"
+
+
 def test_yarn_says_when_it_runs_code_of_the_project(make_tree: MakeTree) -> None:
     root = make_tree(
         {
@@ -812,7 +822,7 @@ def test_a_refused_pin_falls_back_to_npm_update(make_tree: MakeTree, fake_tools:
     assert result.status is LockStatus.REGENERATED
     assert result.warnings == (
         "Versions exactes refusées : « npm install --package-lock-only --ignore-scripts "
-        "--no-audit --no-fund » a échoué (code 1) :",
+        "--no-audit --no-fund » a échoué (code 1) : code ERESOLVE ; could not resolve.",
     )
     assert result.installed[0].reach is Reach.ABOVE
     assert (root / "package.json").read_text(encoding="utf-8") == PACKAGE_JSON
@@ -1308,7 +1318,8 @@ def test_a_refused_cargo_pin_falls_back_to_precise(tmp_path: Path, fake_tools: T
     ]
     assert result.status is LockStatus.REGENERATED, result.error
     assert result.warnings == (
-        "Versions exactes refusées : « cargo update --workspace » a échoué (code 101) :",
+        "Versions exactes refusées : « cargo update --workspace » a échoué (code 101) : error: "
+        "failed to select a version for the requirement.",
     )
     assert result.installed[0].reach is Reach.EXACT
 
@@ -2036,7 +2047,10 @@ def test_a_refused_pin_falls_back_to_the_highest_allowed(tmp_path: Path, fake_to
         "bundle lock",
     ]
     assert result.status is LockStatus.REGENERATED, result.error
-    assert result.warnings == ("Versions exactes refusées : « bundle lock » a échoué (code 6) :",)
+    assert result.warnings == (
+        "Versions exactes refusées : « bundle lock » a échoué (code 6) : Could not find "
+        "compatible versions for gem rack-protection.",
+    )
     assert [(i.update.name, i.versions, i.reach, i.held_by) for i in result.installed] == [
         ("rack", ("2.2.25",), Reach.ABOVE, ()),
         ("rack-protection", ("2.2.2",), Reach.BELOW, ("sinatra 2.2.2",)),

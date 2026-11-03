@@ -628,8 +628,10 @@ def _tool_versions(path: str, content: str) -> list[Runtime | None]:
             continue
         tool, version = words[0].lower(), words[1]
         if tool == "java":
-            vendor, _, number = version.partition("-")
-            product = _JAVA_VENDORS.get(vendor.lower())
+            # Comme ``mise.toml`` : « java 17 », sans distribution, est Temurin (E35 : il
+            # n'était pas lu).
+            vendor, _, number = version.rpartition("-")
+            product = _JAVA_VENDORS.get(vendor.lower(), "eclipse-temurin" if not vendor else None)
             java = _java_number(_LEADING.match(number)[1]) if _LEADING.match(number) else None
             if product is not None and java is not None:
                 found.append(_choice(product, java, path, f"{words[0]} {version}"))

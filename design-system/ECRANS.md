@@ -235,7 +235,17 @@ Cas particuliers à montrer : option `manual` (grisée, raison), option avec `in
 pas d'option, retirer le paquet), indirecte (par le lockfile seul, avertissement « le
 paquet qui la tire devra peut-être monter aussi » ; une indirecte Go se réécrit dans
 `go.mod`), majeure Go publiée sous un autre module (`manual` : la commande `go get` et les
-imports à changer).
+imports à changer). **Session 37** : une indirecte que son parent retiendra (`held_by`,
+d'après les plages d'un `package-lock.json`) : l'avertissement le nomme (« nodemon 3.1.14
+demande ^10.2.1 : le lockfile seul ne la fera pas monter ; monter nodemon d'abord. »), la
+phrase des failles devient « Corrigerait 2 failles, mais nodemon 3.1.14 la retiendra »,
+jamais pré-cochée, pas comptée dans « failles corrigées » du récapitulatif.
+
+**Résultat, session 37** : une majeure que l'outil de lockfile refuse est retirée et le reste
+se fait (`results[].dropped`) : l'alerte d'en tête devient un avertissement « Appliquée, sauf
+une majeure que l'outil de lockfile refuse » (les noms, monter d'abord le paquet qui bloque),
+et la carte du lockfile a une ligne par majeure retirée, badge « pas faite : uv la refuse »
+(danger), la raison de l'outil en chasse fixe dessous (`lang="en"`).
 
 **Fichier envoyé** : étapes Choisir et Vérifier seulement ; à la place d'« Appliquer »,
 « Télécharger *nom* » (`GET /api/updates/{id}/files/{nom}`) ; pas de lockfile (le dire, et
@@ -488,6 +498,18 @@ récapitulatif, et retrouver les liens.
   paquet, comme les options non appliquées : « minimatch 10.2.6, pas 11.0.1 (backend) : retenue
   par nodemon 3.1.14 ») et une phrase sur quoi faire ; le total dit « 1 dépôt aux mises à jour
   retenues ». Une version retenue dans une PR qui part est listée de même.
+- **Fait à la session 37** : une ligne par paquet retenu (deux `minimatch` installées, deux mises
+  à jour : une ligne, leurs versions et leurs parents réunis) ; « Majeures refusées » : une
+  majeure que l'outil de lockfile refusait, retirée pour que le reste parte (`triangle-alert`,
+  « typescript 7.0.2 (frontend) : pas faite, l'outil de frontend/package-lock.json la refuse : »
+  puis la raison de l'outil, et quoi faire) ; « En route » : ce qu'a dit l'outil d'un lockfile
+  régénéré (`info`, « npm refusait le lockfile qu'il venait d'écrire … refait par … », que seule
+  la description de la PR disait). Au récapitulatif, une indirecte que son parent retiendra dit
+  « retenue par nodemon 3.1.14 : monter ce paquet d'abord » à la place de ses failles, qui ne
+  sont pas comptées. Un résultat avec des dépôts en échec : l'icône du titre dit l'échec (`circle-x` rouge si
+  tous, `triangle-alert` sinon), et « Renvoyer le dépôt en échec » (principale ; « Retour à mes
+  dépôts » devient secondaire) les renvoie avec la même sélection (`POST /send` d'un
+  récapitulatif fini : seulement ses dépôts en échec) ; hors ligne, désactivé avec la raison.
 
 ## 9. Réglages (E29)
 

@@ -588,7 +588,8 @@ export interface paths {
          * Send Proposal
          * @description Envoie les dépôts cochés du récapitulatif, en tâche de fond, un à la fois : clone,
          *     mise à jour, commit, push de ``forceupdate/dependencies`` (jamais la branche par défaut),
-         *     PR ouverte ou mise à jour. Se suit par ``GET /api/proposals/{id}``. Ne s'annule pas.
+         *     PR ouverte ou mise à jour. Se suit par ``GET /api/proposals/{id}``. Ne s'annule pas. Un
+         *     récapitulatif déjà envoyé renvoie ses dépôts en échec, avec la même sélection.
          */
         post: operations["send_proposal"];
         delete?: never;
@@ -935,6 +936,11 @@ export interface components {
             ignored: string | null;
             /** Manual */
             manual: string | null;
+            /**
+             * Required By
+             * @default []
+             */
+            required_by: components["schemas"]["Requirement"][];
         };
         /**
          * Disconnection
@@ -985,6 +991,19 @@ export interface components {
          * @enum {string}
          */
         DownloadFormat: "md" | "json" | "csv";
+        /**
+         * DroppedUpdate
+         * @description Une majeure retirée pour que l'outil de lockfile réussisse (``lockfiles.Dropped``) : sa
+         *     contrainte est remise comme avant.
+         */
+        DroppedUpdate: {
+            /** Update */
+            update: string;
+            /** Version */
+            version: string;
+            /** Reason */
+            reason: string;
+        };
         /**
          * Ecosystem
          * @description Un écosystème de paquets. Les valeurs sont les noms qu'utilise OSV.
@@ -1352,6 +1371,8 @@ export interface components {
             /** Warnings */
             warnings: string[];
             verified: components["schemas"]["LockVerified"] | null;
+            /** Dropped */
+            dropped: components["schemas"]["DroppedUpdate"][];
         };
         /**
          * LockStatus
@@ -1670,6 +1691,8 @@ export interface components {
             gap: components["schemas"]["Gap"] | null;
             /** Fixes */
             fixes: string[];
+            /** Held By */
+            held_by: string[];
         };
         /**
          * RateLimit
@@ -1936,6 +1959,19 @@ export interface components {
             };
             /** Open Requests */
             open_requests: number;
+        };
+        /**
+         * Requirement
+         * @description Un paquet du lockfile qui requiert une dépendance indirecte, et la plage qu'il en demande
+         *     (session 37) : par le lockfile seul, elle ne sortira pas de cette plage.
+         */
+        Requirement: {
+            /** Name */
+            name: string;
+            /** Version */
+            version: string;
+            /** Range */
+            range: string;
         };
         /**
          * Restriction
@@ -2375,6 +2411,11 @@ export interface components {
              * @default []
              */
             warnings: string[];
+            /**
+             * Held By
+             * @default []
+             */
+            held_by: string[];
         };
         /**
          * UpdatePlan

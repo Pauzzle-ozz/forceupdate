@@ -67,6 +67,22 @@ describe('l’écran 5, prêt à afficher', () => {
     expect(fixesSentence(minor)).toEqual({ text: 'Corrige les 6 failles', full: true })
   })
 
+  it('une indirecte que son parent retiendra : ses failles ne sont pas comptées (session 37)', () => {
+    const jinja2 = update('.|PyPI|jinja2|2.10')
+    const option = jinja2.options[jinja2.options.length - 1]
+    const held = { ...option, held_by: ['flask 0.12.5'] }
+    expect(option.fixes.length).toBeGreaterThanOrEqual(2)
+    expect(fixesSentence(held)?.text).toBe(`Corrigerait ${option.fixes.length} failles, mais flask 0.12.5 la retiendra`)
+    const report = structuredClone(VULNERABLE)
+    const project = report.projects[0]
+    project.updates = project.updates.map((item) =>
+      item.id === jinja2.id ? { ...item, options: item.options.map((o) => (o.version === option.version ? held : o)) } : item,
+    )
+    const selection = { [jinja2.id]: option.version }
+    expect(recap(VULNERABLE, selection).fixed).toBe(option.fixes.length)
+    expect(recap(report, selection).fixed).toBe(0)
+  })
+
   it('dit quels fichiers touche une option du plan', () => {
     const plan = planDocument()
     expect(plannedFiles(plan, update('.|npm|lodash'), '4.18.1')).toEqual({

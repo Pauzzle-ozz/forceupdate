@@ -161,6 +161,7 @@ deux extras) donne deux dépendances, chacune avec son emplacement.
 | `imported` | chaîne ou `null` | pour une dépendance tirée des imports d'un fichier de code seul (E28), l'import tel qu'écrit : `cv2` (le paquet `opencv-python`), `google.cloud.storage`, `lodash/fp`, `golang.org/x/text/cases` (le module `golang.org/x/text`) ; sans contrainte ni emplacement ; `null` pour une dépendance déclarée |
 | `ignored` | chaîne ou `null` | la règle qui ignore le paquet et d'où elle vient (E29 : `lodash (forceupdate.toml)`, `lodash (réglages)`) : il n'est pas vérifié auprès de son registre et n'a jamais de mise à jour ; ses failles restent cherchées et dites ; `null` s'il ne l'est pas |
 | `manual` | chaîne ou `null` | pourquoi sa contrainte ne se réécrit pas, bien qu'on sache où elle est (E32 : `ligne 3 à empreintes (--hash) : …`, une ligne de `requirements` qui porte des `--hash`) ; ses options de mise à jour sont alors à faire à la main ; `null` si elle se réécrit |
+| `required_by` | liste | une indirecte (session 37) : les paquets du lockfile qui la requièrent à cette version, et la plage que chacun demande, `{"name", "version", "range"}` (`{"name": "nodemon", "version": "3.1.14", "range": "^10.2.1"}`) ; seulement d'un `package-lock.json`, `[]` ailleurs et pour une directe |
 
 ### Emplacement
 
@@ -367,6 +368,7 @@ est une majeure.
 | `lockfile` | chemin ou `null` | le lockfile à régénérer ; `null` sans lockfile |
 | `manual` | chaîne ou `null` | pourquoi forceupdate ne sait pas l'appliquer seul (contrainte sans emplacement, style non géré) ; une telle option n'est jamais pré-cochée |
 | `warnings` | liste de chaînes | à lire avant de cocher : `Majeure : peut demander d'adapter le code.`, `Revient à une version plus ancienne.`, `Version dépréciée : …`, `Faille connue dans cette version : …` |
+| `held_by` | liste de chaînes | une indirecte montée par le lockfile seul (session 37) : les paquets dont la plage (`required_by`) n'accepte pas cette version (`nodemon 3.1.14`) ; ils la retiendront : ses failles ne sont pas comptées corrigées, et l'option n'est jamais pré-cochée. `[]` sinon |
 
 ### Réécriture
 
@@ -830,6 +832,7 @@ comme avant.
 | `changed` | liste de chaînes | les autres paquets que le lockfile a changés (`h11 0.16.0 → 0.14.0`) ; pour Go, relus dans `go.mod` |
 | `warnings` | liste de chaînes | ce qui s'est passé en route |
 | `verified` | objet ou `null` | régénéré avec le npm du projet (E32) : `{"command", "error"}`, ce qu'en dit son `npm ci --dry-run` ; `error` vaut `null` s'il l'accepte, sinon ce qu'il reproche (`Missing: zod@3.25.76 from lock file.`) ; le lockfile reste régénéré |
+| `dropped` | liste | `regenerated` après un échec de l'outil avec toutes les mises à jour (session 37) : les majeures qu'il refuse, retirées (leur contrainte remise comme avant), `{"update", "version", "reason"}` ; `reason` est ce qu'en dit l'outil (`Because arq==0.28.0 depends on redis<6…`) |
 
 ## Progression (SSE)
 
@@ -1219,8 +1222,9 @@ par la forge ; `404` : aucun compte connecté à cette forge sur cet hôte ; `40
 prête, token absent du trousseau.
 
 `POST /api/proposals/{id}/send` prend `{"repositories": [{"forge", "host", "full_name"}, …]}`,
-des dépôts prêts (`ready`) du récapitulatif (sinon `400`) ; `409` : déjà envoyé, git absent,
-token absent du trousseau.
+des dépôts prêts (`ready`) du récapitulatif (sinon `400`). Un récapitulatif déjà envoyé (`done`)
+renvoie ses dépôts en échec (`failed`), avec la même sélection (session 37) ; un autre dépôt :
+`400`. `409` : en cours d'envoi, git absent, token absent du trousseau.
 
 ### Récapitulatif de PR
 
@@ -1250,7 +1254,7 @@ token absent du trousseau.
 | `request` | [PR](#pr) ou `null` | la PR déjà ouverte ; après l'envoi, celle ouverte ou mise à jour |
 | `closed` | [PR](#pr) ou `null` | sans PR ouverte, la dernière PR de forceupdate du dépôt si elle a été fermée sans fusion (`closed_at`, E31) : pas cochée par défaut, l'envoyer en ouvre une nouvelle |
 | `selection` | objet | la sélection préparée |
-| `applied` | liste | les mises à jour que la PR porte : `{"update", "name", "ecosystem", "project", "direct", "current", "version", "gap", "fixes"}` (`update` : l'`id` de la [mise à jour](#mise-à-jour) ; `current` : la version utilisée ; `fixes` : les failles corrigées) |
+| `applied` | liste | les mises à jour que la PR porte : `{"update", "name", "ecosystem", "project", "direct", "current", "version", "gap", "fixes", "held_by"}` (`update` : l'`id` de la [mise à jour](#mise-à-jour) ; `current` : la version utilisée ; `fixes` : les failles corrigées ; `held_by` : les paquets qui la retiendront, voir l'[option](#option-de-mise-à-jour)) |
 | `skipped` | liste | les options choisies qui ne seront pas appliquées : `{"update", "name", "version", "reason"}` |
 | `files`, `lockfiles` | listes | comme dans le [plan](#plan-de-mise-à-jour) |
 | `step` | chaîne ou `null` | `sending` : `cloning`, `updating` (réécriture, lockfiles, commit), `pushing`, `requesting` |

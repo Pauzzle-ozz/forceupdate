@@ -14,10 +14,14 @@ s'en servir en même temps.
 - **Jetable** : un fichier illisible ou d'un autre format est vidé ; un disque où l'on ne
   peut pas écrire désactive le cache, avec un avertissement dans les logs. Le cache ne
   fait jamais échouer une analyse.
+- **Sans adresse** : une entrée est rangée sous l'empreinte (SHA-256) de sa clé, pas sous la clé :
+  l'adresse d'un registre peut porter un jeton dans son chemin (``https://pypi.fury.io/<jeton>/``),
+  qui ne doit pas finir sur le disque (E35 ; format 2, qui vide celui d'avant).
 """
 
 import contextlib
 import enum
+import hashlib
 import json
 import logging
 import sqlite3
@@ -33,8 +37,9 @@ import platformdirs
 
 logger = logging.getLogger(__name__)
 
-_SCHEMA = 1
-"""Version du format de la base, dans ``PRAGMA user_version`` : une autre la fait vider."""
+_SCHEMA = 2
+"""Version du format de la base, dans ``PRAGMA user_version`` : une autre la fait vider. 2 : les
+clés sont des empreintes (``_stored``)."""
 _KEEP = 30 * 24 * 3600.0
 """Les entrées plus vieilles que 30 jours sont effacées à l'ouverture, même hors ligne."""
 
@@ -143,7 +148,8 @@ class Cache:
         """
         with self._lock:
             row = self._execute(
-                "SELECT stored_at, value FROM entries WHERE kind = ? AND key = ?", (kind, key)
+                "SELECT stored_at, value FROM entries WHERE kind = ? AND key = ?",
+                (kind, _stored(key)),
             )
         if row is None:
             return None
@@ -165,7 +171,7 @@ class Cache:
         with self._lock:
             self._execute(
                 "INSERT OR REPLACE INTO entries (kind, key, stored_at, value) VALUES (?, ?, ?, ?)",
-                (kind, key, self._clock(), text),
+                (kind, _stored(key), self._clock(), text),
                 commit=True,
             )
 
@@ -264,3 +270,8 @@ class Cache:
         if self._db is not None:
             self._db.close()
         self._db = None
+
+
+def _stored(key: str) -> str:
+    """La clé telle que rangée : son empreinte, jamais l'adresse elle-même."""
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()

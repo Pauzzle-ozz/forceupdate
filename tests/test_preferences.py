@@ -35,6 +35,15 @@ def test_without_a_file_the_defaults(user_settings: Path) -> None:
     assert preferences.DEFAULTS.lock_timeout == 600
 
 
+def test_no_empty_selection_table(user_settings: Path) -> None:
+    """Session 36 : le fichier finissait par une table ``[selection]`` vide."""
+    preferences.save(Preferences(ignore=("lodash",)))
+    text = user_settings.read_text(encoding="utf-8")
+    assert "[selection" not in text
+    assert text.endswith("rust-default-toolchain = false\n")
+    assert preferences.load() == (Preferences(ignore=("lodash",)), [])
+
+
 def test_save_then_load(user_settings: Path) -> None:
     value = Preferences(
         ignore=("lodash", "django@>=5", "a\\b"),

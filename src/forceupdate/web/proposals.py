@@ -300,17 +300,19 @@ class Proposals:
     # -- l'envoi -----------------------------------------------------------------------
 
     async def send(self, proposal: Proposal, keys: list[RepositoryKey]) -> None:
-        """Envoie les dépôts ``keys`` du récapitulatif, en tâche de fond. Lève
-        ``RepositoryError``."""
-        if proposal.status is not ProposalStatus.PLANNED:
-            raise RepositoryError(409, "Ce récapitulatif est déjà envoyé, ou en cours d'envoi.")
+        """Envoie les dépôts ``keys`` du récapitulatif, en tâche de fond. Un récapitulatif déjà
+        envoyé renvoie ceux qui ont échoué (session 37 : la forge ne répondait pas, il fallait
+        tout refaire, sélection comprise), avec la même sélection. Lève ``RepositoryError``."""
+        again = proposal.status is ProposalStatus.DONE
+        if proposal.status is ProposalStatus.RUNNING:
+            raise RepositoryError(409, "Ce récapitulatif est en cours d'envoi.")
+        wanted = ProposedState.FAILED if again else ProposedState.READY
         chosen: list[Proposed] = []
         for key in keys:
             item = proposal.item(key)
-            if item is None or item.state is not ProposedState.READY:
-                raise RepositoryError(
-                    400, f"{key.full_name} : pas prêt à envoyer dans ce récapitulatif."
-                )
+            if item is None or item.state is not wanted:
+                said = "pas en échec" if again else "pas prêt à envoyer"
+                raise RepositoryError(400, f"{key.full_name} : {said} dans ce récapitulatif.")
             if item not in chosen:
                 chosen.append(item)
         if not chosen:
@@ -327,10 +329,12 @@ class Proposals:
             groups.append((await self.repositories.worker_forge_of(account), account, items))
         for item in proposal.items:
             if item in chosen:
-                item.state = ProposedState.WAITING
+                item.state, item.error, item.delivered = ProposedState.WAITING, None, None
+                item.step, item.progress = None, None
             elif item.state is ProposedState.READY:
                 item.state, item.reason = ProposedState.SKIPPED, "pas coché à l'envoi"
         proposal.status, proposal.started_at = ProposalStatus.RUNNING, _now()
+        proposal.error, proposal.finished_at = None, None
         future = self.jobs.worker.submit(self._send(groups))
         future.add_done_callback(lambda done: self.jobs.post(self._sent, proposal, done))
 

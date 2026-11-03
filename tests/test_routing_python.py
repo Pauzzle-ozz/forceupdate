@@ -14,7 +14,7 @@ import pytest
 import respx
 from conftest import UserFiles, recorded_responses
 
-from forceupdate import engine
+from forceupdate import engine, routing
 from forceupdate.models import FindingKind, Report
 from forceupdate.net import Cache, HttpClient
 from forceupdate.registries.pypi import ACCEPT, simple_html_files
@@ -181,6 +181,31 @@ def test_index_url_of_a_requirements_file(make_tree: MakeTree) -> None:
     assert "jo:pw" not in json.dumps([n.message for p in report.projects for n in p.notices])
 
 
+def test_an_identifier_over_http_is_not_sent_and_said(make_tree: MakeTree) -> None:
+    """E35 : un registre en http sur une autre machine est demandé sans identifiant ; seul
+    Bundler le disait."""
+    root = make_tree(
+        {"requirements.txt": "-i http://jo:pw@pkgs.corp.example/simple/\nacme-private==1.0.0\n"}
+    )
+    source = LocalSource(root)
+    report = engine.inventory(source)
+    found = routing.read(report, source.read_text)
+    (project,) = report.projects
+    assert [n.message for n in found.notices(project)] == [
+        "L'identifiant pour pkgs.corp.example n'est pas envoyé : l'adresse est en http, "
+        "forceupdate n'envoie un identifiant qu'en https (ou vers la machine elle-même)."
+    ]
+    # Vers la machine elle-même, il part : rien à dire.
+    local = make_tree(
+        {"requirements.txt": "-i http://jo:pw@127.0.0.1:8080/simple/\nacme-private==1.0.0\n"},
+        root=root / "local",
+    )
+    source = LocalSource(local)
+    report = engine.inventory(source)
+    (project,) = report.projects
+    assert routing.read(report, source.read_text).notices(project) == []
+
+
 def test_extra_index_comes_first(make_tree: MakeTree) -> None:
     root = make_tree(
         {"requirements.txt": f"--extra-index-url {INDEX}\nacme-private==1.0.0\nflask==2.0.1\n"}
@@ -339,6 +364,22 @@ import acme_private
     assert routes["private"].call_count == 1
     assert routes["pypi-private"].call_count == 0
     assert findings(report, "acme-private")[0][0] is FindingKind.OUTDATED
+
+
+def test_named_uv_credentials_go_to_the_address_the_person_gives(
+    make_tree: MakeTree, user_files: UserFiles
+) -> None:
+    """E35 : ``UV_INDEX_<NOM>_PASSWORD`` ne partait jamais. Il part vers l'adresse que la
+    personne donne à ce nom (ici son environnement, déclaré avant le projet), comme Cargo."""
+    root = make_tree({"pyproject.toml": UV_PROJECT, "uv.lock": "version = 1\n"})
+    user_files.env["UV_INDEX"] = f"corp={INDEX}/"
+    user_files.env["UV_INDEX_CORP_USERNAME"] = "jo"
+    user_files.env["UV_INDEX_CORP_PASSWORD"] = "pw"
+    with index() as routes:
+        report = analyze(root)
+    assert routes["private"].calls.last.request.headers["authorization"] == "Basic am86cHc="
+    (project,) = report.projects
+    assert not any("UV_INDEX_CORP_PASSWORD" in n.message for n in project.notices)
 
 
 def test_uv_environment_and_named_credentials(make_tree: MakeTree, user_files: UserFiles) -> None:

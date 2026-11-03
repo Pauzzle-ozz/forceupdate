@@ -625,6 +625,12 @@ def _package_lock(path: str, raw: Mapping[str, Any]) -> NpmLockfile:
                 local=installed_name is None or entry.get("link") is True or reason == REASON_LOCAL,
                 unverifiable_reason=reason,
                 key=key or ".",
+                requires={
+                    dependency: wanted
+                    for section in ("peerDependencies", "optionalDependencies", "dependencies")
+                    for dependency, wanted in _mapping(entry.get(section)).items()
+                    if isinstance(wanted, str) and wanted
+                },
             )
         )
     return _npm_lockfile(path, locked, importers=importers)

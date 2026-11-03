@@ -142,20 +142,60 @@ export interface HeldUpdate {
  * correction est en 11.0.1) reste où elle est.
  */
 export function heldUpdates(item: ProposedRepository): HeldUpdate[] {
-  return item.results
-    .flatMap((result) => result.installed)
-    .filter((installed) => installed.reach === 'below')
-    .map((installed) => {
-      const applied = item.applied.find((update) => update.update === installed.update)
+  // Un paquet à plusieurs versions installées (deux minimatch indirectes) donne une mise à jour
+  // par version, mais une seule ligne : les mêmes versions restent, retenues par les uns ou les
+  // autres.
+  const found = new Map<string, HeldUpdate>()
+  for (const installed of item.results.flatMap((result) => result.installed)) {
+    if (installed.reach !== 'below') continue
+    const applied = item.applied.find((update) => update.update === installed.update)
+    const held = {
+      update: installed.update,
+      name: applied?.name ?? installed.update,
+      project: applied?.project ?? '.',
+      chosen: applied?.version ?? installed.version,
+      versions: installed.versions,
+      heldBy: installed.held_by,
+    }
+    const key = `${held.project}|${held.name}|${held.chosen}`
+    const known = found.get(key)
+    found.set(
+      key,
+      known
+        ? { ...known, versions: [...new Set([...known.versions, ...held.versions])], heldBy: [...new Set([...known.heldBy, ...held.heldBy])] }
+        : held,
+    )
+  }
+  return [...found.values()]
+}
+
+/** Une majeure que l'outil de lockfile refusait, retirée pour que le reste parte (session 37). */
+export interface DroppedUpdate {
+  update: string
+  name: string
+  project: string
+  version: string
+  /** Ce qu'en dit l'outil (en anglais, le plus souvent). */
+  reason: string
+  /** Le lockfile, et l'outil qui le régénère. */
+  lockfile: string
+}
+
+/** Les majeures d'un dépôt envoyé que l'outil de lockfile refusait : remises comme avant. */
+export function droppedUpdates(item: ProposedRepository): DroppedUpdate[] {
+  return item.results.flatMap((result) =>
+    result.dropped.map((dropped) => {
+      const applied = item.applied.find((update) => update.update === dropped.update)
       return {
-        update: installed.update,
-        name: applied?.name ?? installed.update,
+        update: dropped.update,
+        name: applied?.name ?? dropped.update,
         project: applied?.project ?? '.',
-        chosen: applied?.version ?? installed.version,
-        versions: installed.versions,
-        heldBy: installed.held_by,
+        version: dropped.version,
+        reason: dropped.reason,
+        lockfile: result.lockfile,
       }
-    })
+    }),
+  )
 }
 
 /** Rien de poussé parce que toutes les mises à jour ont été retenues : il y avait à faire. */

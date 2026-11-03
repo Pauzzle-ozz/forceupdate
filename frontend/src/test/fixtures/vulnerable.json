@@ -41,7 +41,8 @@
           "excluded": [],
           "imported": null,
           "ignored": null,
-          "manual": null
+          "manual": null,
+          "required_by": []
         },
         {
           "ecosystem": "PyPI",
@@ -62,7 +63,8 @@
           "excluded": [],
           "imported": null,
           "ignored": null,
-          "manual": null
+          "manual": null,
+          "required_by": []
         },
         {
           "ecosystem": "PyPI",
@@ -83,7 +85,8 @@
           "excluded": [],
           "imported": null,
           "ignored": null,
-          "manual": null
+          "manual": null,
+          "required_by": []
         },
         {
           "ecosystem": "PyPI",
@@ -104,7 +107,8 @@
           "excluded": [],
           "imported": null,
           "ignored": null,
-          "manual": null
+          "manual": null,
+          "required_by": []
         },
         {
           "ecosystem": "PyPI",
@@ -125,7 +129,8 @@
           "excluded": [],
           "imported": null,
           "ignored": null,
-          "manual": null
+          "manual": null,
+          "required_by": []
         },
         {
           "ecosystem": "PyPI",
@@ -146,7 +151,8 @@
           "excluded": [],
           "imported": null,
           "ignored": null,
-          "manual": null
+          "manual": null,
+          "required_by": []
         },
         {
           "ecosystem": "npm",
@@ -167,7 +173,8 @@
           "excluded": [],
           "imported": null,
           "ignored": null,
-          "manual": null
+          "manual": null,
+          "required_by": []
         }
       ],
       "overrides": [],
@@ -195,7 +202,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "0.12",
           "current_is_approximate": false,
@@ -236,7 +244,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "0.12",
           "current_is_approximate": false,
@@ -277,7 +286,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "0.12",
           "current_is_approximate": false,
@@ -318,7 +328,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "2.10",
           "current_is_approximate": false,
@@ -359,7 +370,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "2.10",
           "current_is_approximate": false,
@@ -400,7 +412,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "4.17.15",
           "current_is_approximate": false,
@@ -440,7 +453,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "4.17.15",
           "current_is_approximate": false,
@@ -480,7 +494,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "4.17.15",
           "current_is_approximate": false,
@@ -520,7 +535,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "0.14.1",
           "current_is_approximate": false,
@@ -561,7 +577,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "0.14.1",
           "current_is_approximate": false,
@@ -602,7 +619,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "0.14.1",
           "current_is_approximate": false,
@@ -643,7 +661,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "0.14.1",
           "current_is_approximate": false,
@@ -684,7 +703,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "0.14.1",
           "current_is_approximate": false,
@@ -725,7 +745,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "0.12",
           "current_is_approximate": false,
@@ -766,7 +787,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "2.10",
           "current_is_approximate": false,
@@ -807,7 +829,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "2.10",
           "current_is_approximate": false,
@@ -848,7 +871,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "2.10",
           "current_is_approximate": false,
@@ -890,7 +914,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "2.10",
           "current_is_approximate": false,
@@ -931,7 +956,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "4.17.15",
           "current_is_approximate": false,
@@ -971,7 +997,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "4.17.15",
           "current_is_approximate": false,
@@ -1011,7 +1038,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "4.17.15",
           "current_is_approximate": false,
@@ -1051,7 +1079,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "0.14.1",
           "current_is_approximate": false,
@@ -1092,7 +1121,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "0.14.1",
           "current_is_approximate": false,
@@ -1133,7 +1163,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "0.14.1",
           "current_is_approximate": false,
@@ -1173,7 +1204,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "0.14.1",
           "current_is_approximate": false,
@@ -1214,7 +1246,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "0.14.1",
           "current_is_approximate": false,
@@ -1255,7 +1288,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "0.14.1",
           "current_is_approximate": false,
@@ -1296,7 +1330,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "0.14.1",
           "current_is_approximate": false,
@@ -1337,7 +1372,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "0.12",
           "current_is_approximate": false,
@@ -1374,7 +1410,8 @@
             "excluded": [],
             "imported": null,
             "ignored": null,
-            "manual": null
+            "manual": null,
+            "required_by": []
           },
           "current_version": "4.17.15",
           "current_is_approximate": false,
@@ -1415,7 +1452,8 @@
               "excluded": [],
               "imported": null,
               "ignored": null,
-              "manual": null
+              "manual": null,
+              "required_by": []
             }
           ],
           "current_version": "0.12",
@@ -1452,7 +1490,8 @@
               ],
               "lockfile": "requirements.txt",
               "manual": null,
-              "warnings": []
+              "warnings": [],
+              "held_by": []
             },
             {
               "version": "3.1.3",
@@ -1487,7 +1526,8 @@
               "manual": null,
               "warnings": [
                 "Majeure : peut demander d'adapter le code."
-              ]
+              ],
+              "held_by": []
             }
           ],
           "selected": "0.12.5",
@@ -1518,7 +1558,8 @@
               "excluded": [],
               "imported": null,
               "ignored": null,
-              "manual": null
+              "manual": null,
+              "required_by": []
             }
           ],
           "current_version": "2.10",
@@ -1544,7 +1585,8 @@
               "edits": [],
               "lockfile": "requirements.txt",
               "manual": null,
-              "warnings": []
+              "warnings": [],
+              "held_by": []
             },
             {
               "version": "2.11.3",
@@ -1566,7 +1608,8 @@
               "edits": [],
               "lockfile": "requirements.txt",
               "manual": null,
-              "warnings": []
+              "warnings": [],
+              "held_by": []
             },
             {
               "version": "3.1.6",
@@ -1590,7 +1633,8 @@
               "warnings": [
                 "Majeure : peut demander d'adapter le code.",
                 "Dépendance indirecte : le paquet qui la tire devra peut-être monter aussi."
-              ]
+              ],
+              "held_by": []
             }
           ],
           "selected": "2.11.3",
@@ -1621,7 +1665,8 @@
               "excluded": [],
               "imported": null,
               "ignored": null,
-              "manual": null
+              "manual": null,
+              "required_by": []
             }
           ],
           "current_version": "4.17.15",
@@ -1660,7 +1705,8 @@
               ],
               "lockfile": "package-lock.json",
               "manual": null,
-              "warnings": []
+              "warnings": [],
+              "held_by": []
             },
             {
               "version": "4.18.1",
@@ -1695,7 +1741,8 @@
               ],
               "lockfile": "package-lock.json",
               "manual": null,
-              "warnings": []
+              "warnings": [],
+              "held_by": []
             }
           ],
           "selected": "4.18.1",
@@ -1726,7 +1773,8 @@
               "excluded": [],
               "imported": null,
               "ignored": null,
-              "manual": null
+              "manual": null,
+              "required_by": []
             }
           ],
           "current_version": "0.14.1",
@@ -1760,7 +1808,8 @@
               "warnings": [
                 "Majeure : peut demander d'adapter le code.",
                 "Dépendance indirecte : le paquet qui la tire devra peut-être monter aussi."
-              ]
+              ],
+              "held_by": []
             }
           ],
           "selected": null,

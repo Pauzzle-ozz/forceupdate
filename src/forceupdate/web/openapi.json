@@ -2487,7 +2487,7 @@
           "PR"
         ],
         "summary": "Send Proposal",
-        "description": "Envoie les dépôts cochés du récapitulatif, en tâche de fond, un à la fois : clone,\nmise à jour, commit, push de ``forceupdate/dependencies`` (jamais la branche par défaut),\nPR ouverte ou mise à jour. Se suit par ``GET /api/proposals/{id}``. Ne s'annule pas.",
+        "description": "Envoie les dépôts cochés du récapitulatif, en tâche de fond, un à la fois : clone,\nmise à jour, commit, push de ``forceupdate/dependencies`` (jamais la branche par défaut),\nPR ouverte ou mise à jour. Se suit par ``GET /api/proposals/{id}``. Ne s'annule pas. Un\nrécapitulatif déjà envoyé renvoie ses dépôts en échec, avec la même sélection.",
         "operationId": "send_proposal",
         "parameters": [
           {
@@ -3443,6 +3443,14 @@
               }
             ],
             "title": "Manual"
+          },
+          "required_by": {
+            "items": {
+              "$ref": "#/components/schemas/Requirement"
+            },
+            "type": "array",
+            "title": "Required By",
+            "default": []
           }
         },
         "type": "object",
@@ -3461,7 +3469,8 @@
           "excluded",
           "imported",
           "ignored",
-          "manual"
+          "manual",
+          "required_by"
         ],
         "title": "Dependency",
         "description": "Une dépendance d'un projet.\n\nUne directe vient du manifeste (``package.json``, ``pyproject.toml``…). Une\ntransitive vient seulement du lockfile : ``direct=False``, sans ``location``. Sauf pour Go :\n``go.mod`` écrit aussi les indirectes (``// indirect``), avec leur emplacement."
@@ -3633,6 +3642,30 @@
         ],
         "title": "DownloadFormat",
         "description": "Ce qui se télécharge d'un rapport (session 36), comme ``scan --format``."
+      },
+      "DroppedUpdate": {
+        "properties": {
+          "update": {
+            "type": "string",
+            "title": "Update"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "update",
+          "version",
+          "reason"
+        ],
+        "title": "DroppedUpdate",
+        "description": "Une majeure retirée pour que l'outil de lockfile réussisse (``lockfiles.Dropped``) : sa\ncontrainte est remise comme avant."
       },
       "Ecosystem": {
         "type": "string",
@@ -4658,6 +4691,13 @@
                 "type": "null"
               }
             ]
+          },
+          "dropped": {
+            "items": {
+              "$ref": "#/components/schemas/DroppedUpdate"
+            },
+            "type": "array",
+            "title": "Dropped"
           }
         },
         "type": "object",
@@ -4669,7 +4709,8 @@
           "installed",
           "changed",
           "warnings",
-          "verified"
+          "verified",
+          "dropped"
         ],
         "title": "LockResult",
         "description": "Ce qu'il est advenu d'un lockfile (``lockfiles.Regenerated``)."
@@ -5478,6 +5519,13 @@
             },
             "type": "array",
             "title": "Fixes"
+          },
+          "held_by": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Held By"
           }
         },
         "type": "object",
@@ -5490,7 +5538,8 @@
           "current",
           "version",
           "gap",
-          "fixes"
+          "fixes",
+          "held_by"
         ],
         "title": "ProposedUpdate",
         "description": "Une mise à jour qu'une PR porte, avec ce qu'il faut pour la dire."
@@ -6186,6 +6235,30 @@
         ],
         "title": "RepositorySynthesis",
         "description": "La synthèse de tous les dépôts listés, calculée par le serveur."
+      },
+      "Requirement": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "range": {
+            "type": "string",
+            "title": "Range"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "range"
+        ],
+        "title": "Requirement",
+        "description": "Un paquet du lockfile qui requiert une dépendance indirecte, et la plage qu'il en demande\n(session 37) : par le lockfile seul, elle ne sortira pas de cette plage."
       },
       "Restriction": {
         "properties": {
@@ -7166,6 +7239,14 @@
             "type": "array",
             "title": "Warnings",
             "default": []
+          },
+          "held_by": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Held By",
+            "default": []
           }
         },
         "type": "object",
@@ -7179,7 +7260,8 @@
           "edits",
           "lockfile",
           "manual",
-          "warnings"
+          "warnings",
+          "held_by"
         ],
         "title": "UpdateOption",
         "description": "Une version vers laquelle monter un paquet : une case à cocher de l'interface."

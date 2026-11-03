@@ -49,7 +49,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any
 
-from forceupdate import processes
+from forceupdate import processes, userfiles
 from forceupdate.forges.base import ForgeError
 
 logger = logging.getLogger(__name__)
@@ -448,7 +448,8 @@ def _git(
             if text
         )
         failure = _diagnose(said)
-        detail = _last_lines(said)
+        # Le dossier de travail est sous le dossier personnel : « ~ » (session 37).
+        detail = _last_lines(userfiles.tilde(said))
         message = f"git n'a pas pu {action} : {_REASONS[failure]}"
         if detail:
             message += f" Ce que git a dit : {detail}"

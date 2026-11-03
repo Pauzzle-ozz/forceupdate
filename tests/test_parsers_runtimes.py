@@ -349,6 +349,15 @@ class TestVersionFiles:
             ("dotnet", "8.0.100", "dotnet-core 8.0.100"),
         ]
 
+    def test_tool_versions_java_without_a_distribution_is_temurin(self) -> None:
+        """E35 : « java 17 » n'était pas lu ; il l'est dans ``mise.toml`` (Temurin)."""
+        content = "java 17\njava oracle-21\n"
+        files = {".tool-versions": content, "pom.xml": "<project/>"}
+        assert [(p, v, source) for p, v, _, _, source in runtimes(files)][:1] == [
+            ("eclipse-temurin", "17", "java 17")
+        ]
+        assert all(source != "java oracle-21" for *_, source in runtimes(files))
+
 
 def _manifest(product: str) -> str:
     return {

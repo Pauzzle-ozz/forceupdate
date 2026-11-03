@@ -149,6 +149,17 @@ class Location:
 
 
 @dataclass(frozen=True, kw_only=True)
+class Requirement:
+    """Un paquet du lockfile qui requiert une dépendance indirecte, et la plage qu'il en demande
+    (session 37) : par le lockfile seul, elle ne sortira pas de cette plage."""
+
+    name: str
+    version: str
+    range: str
+    """Telle qu'écrite dans le lockfile (``^10.2.1``)."""
+
+
+@dataclass(frozen=True, kw_only=True)
 class Dependency:
     """Une dépendance d'un projet.
 
@@ -203,6 +214,9 @@ class Dependency:
     """Pourquoi sa contrainte ne se réécrit pas, bien qu'on sache où elle est (E32 : une ligne
     de ``requirements`` à empreintes, ``--hash``) : ses options sont à faire à la main, jamais
     pré-cochées. ``None`` si elle se réécrit."""
+    required_by: tuple[Requirement, ...] = ()
+    """Une indirecte : les paquets du lockfile qui la requièrent à cette version, et la plage
+    que chacun demande (``package-lock.json`` ; vide ailleurs, et pour une directe)."""
 
     @property
     def verifiable(self) -> bool:
@@ -439,6 +453,11 @@ class UpdateOption:
     warnings: tuple[str, ...] = ()
     """Ce qu'il faut savoir avant de la cocher (« Majeure : peut demander d'adapter le
     code. »)."""
+    held_by: tuple[str, ...] = ()
+    """Une indirecte montée par le lockfile seul : les paquets qui la requièrent et dont la plage
+    n'accepte pas cette version (``nodemon 3.1.14``), d'après ``Dependency.required_by``. Ils la
+    retiendront : ses failles ne sont pas comptées corrigées, et elle n'est jamais
+    pré-cochée."""
 
 
 @dataclass(frozen=True, kw_only=True)

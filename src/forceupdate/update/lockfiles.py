@@ -121,7 +121,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from forceupdate import engine, parsers, processes, versions
+from forceupdate import engine, parsers, processes, userfiles, versions
 from forceupdate.detect.manifests import decode_text, ecosystem_for_manifest, match_dependency_file
 from forceupdate.models import (
     Dependency,
@@ -130,6 +130,7 @@ from forceupdate.models import (
     EditKind,
     Event,
     EventKind,
+    Gap,
     Project,
     Report,
     Scope,
@@ -151,6 +152,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "DEFAULT_TOOLS",
     "LOCK_TIMEOUT",
+    "Dropped",
     "Extra",
     "ExtraKind",
     "Installed",
@@ -458,10 +460,22 @@ class Installed:
 
 
 @dataclass(frozen=True, kw_only=True)
+class Dropped:
+    """Une mise à jour retirée pour que l'outil de lockfile réussisse (session 37) : sa
+    contrainte est remise comme avant."""
+
+    update: Update
+    option: UpdateOption
+    reason: str
+    """Ce que l'outil en dit, en peu de lignes : « Because arq==0.28.0 depends on redis<6… »."""
+
+
+@dataclass(frozen=True, kw_only=True)
 class Regenerated:
     """Ce qu'il est advenu d'un lockfile."""
 
     job: Job
+    """Sans les mises à jour de ``dropped`` : ``installed`` relit les autres."""
     status: LockStatus
     error: str | None = None
     """``FAILED`` : ce que l'outil a dit ; ``UNDONE`` : quel lockfile a échoué."""
@@ -475,6 +489,9 @@ class Regenerated:
     """Ce qui s'est passé en route (versions exactes refusées…)."""
     verified: Verified | None = None
     """``REGENERATED`` avec le npm du projet : ce qu'en dit ``npm ci --dry-run`` de ce npm."""
+    dropped: tuple[Dropped, ...] = ()
+    """``REGENERATED`` après un échec de l'outil avec toutes les mises à jour : les majeures qu'il
+    refuse, retirées (``_retry``). Les autres sont faites."""
 
 
 # ---------------------------------------------------------------------------
@@ -1556,7 +1573,12 @@ def _pip_tools_order(
 
 
 class _Failed(Exception):
-    """Une commande a échoué : le message, en français, dit laquelle et ce que l'outil a dit."""
+    """Une commande a échoué : le message, en français, dit laquelle et ce que l'outil a dit ;
+    ``reason``, pourquoi, en peu de lignes (``_why``), tiré de toute sa sortie."""
+
+    def __init__(self, message: str, reason: str | None = None) -> None:
+        super().__init__(message)
+        self.reason = reason or message
 
 
 def regenerate(
@@ -1619,18 +1641,27 @@ def regenerate(
             raise
         if failure is None:
             folders.discard()
-        else:
-            failed, message = failure
-            restored = _restore(source.root, saved, written, group) + folders.restore()
-            folders.discard()
-            for job in group:
-                if job is failed:
-                    status, error = LockStatus.FAILED, message
-                else:
-                    status, error = LockStatus.UNDONE, f"{failed.lockfile} a échoué"
-                outcome[job.lockfile] = Regenerated(
-                    job=job, status=status, error=error, restored=restored
-                )
+            continue
+        failed, error = failure
+        restored = _restore(source.root, saved, written, group) + folders.restore()
+        folders.discard()
+        try:
+            retried = _retry(source, report, group, error, cancel)
+        except BaseException:  # Ctrl+C pendant un nouvel essai : tout comme avant
+            _restore(source.root, saved, written, group)
+            _undo_written(source.root, written, groups[index + 1 :])
+            raise
+        if retried is not None:
+            outcome.update(retried)
+            continue
+        for job in group:
+            if job is failed:
+                status, message = LockStatus.FAILED, str(error)
+            else:
+                status, message = LockStatus.UNDONE, f"{failed.lockfile} a échoué"
+            outcome[job.lockfile] = Regenerated(
+                job=job, status=status, error=message, restored=restored
+            )
     if any(r.status is LockStatus.REGENERATED for r in outcome.values()):
         after = {project.path: project for project in engine.inventory(source).projects}
         for path, result in outcome.items():
@@ -1646,7 +1677,7 @@ def _run_group(
     outcome: dict[str, Regenerated],
     announce: Callable[[Job], None],
     cancel: threading.Event | None,
-) -> tuple[Job, str] | None:
+) -> tuple[Job, _Failed] | None:
     """Régénère les lockfiles du groupe, dans l'ordre, jusqu'au premier qui échoue : rend
     celui-là et son erreur. ``announce`` est appelé avant chaque outil lancé."""
     for job in group:
@@ -1658,7 +1689,7 @@ def _run_group(
         try:
             _DRIVERS[job.kind].run(context)
         except _Failed as failed:
-            return job, str(failed)
+            return job, failed
         outcome[job.lockfile] = Regenerated(
             job=job,
             status=LockStatus.REGENERATED,
@@ -1666,6 +1697,106 @@ def _run_group(
             verified=context.verified,
         )
     return None
+
+
+MAX_ALONE = 6
+"""Après un échec, les majeures essayées une à une, au plus : chaque essai relance l'outil
+(``_retry``)."""
+
+_Attempt = tuple[dict[str, Regenerated], dict[str, bytes | None]]
+"""Un essai réussi de ``_retry`` : le résultat de chaque lockfile, et les fichiers tels qu'il les
+a laissés (``_snapshot``)."""
+
+
+def _retry(
+    source: LocalSource,
+    report: Report,
+    group: Sequence[Job],
+    error: _Failed,
+    cancel: threading.Event | None,
+) -> dict[str, Regenerated] | None:
+    """Après l'échec de ``group`` (``error``), ses fichiers remis comme avant : le régénère sans
+    ses majeures, puis avec chacune en plus, une à une, et garde celles que l'outil accepte
+    (session 36 : une seule majeure incompatible, ``redis`` 8 que ``arq`` refuse, faisait tomber
+    les vingt mises à jour d'un ``uv.lock``, failles comprises). Rend le résultat de chaque
+    lockfile du groupe, les majeures refusées dans ``Regenerated.dropped`` avec ce qu'en dit
+    l'outil ; ``None`` s'il n'y a rien à retirer, si l'outil échoue encore sans les majeures, ou
+    si rien ne passe.
+
+    Chaque essai part des fichiers d'avant la mise à jour : les emplacements des réécritures
+    sont ceux de l'analyse. À la fin, ceux du dernier essai réussi sont remis. Pas pour un
+    groupe qui refait un dossier (``vendor/`` de Go)."""
+    choices = [choice for job in group for choice in job.choices]
+    majors = [choice for choice in choices if choice[2].gap is Gap.MAJOR]
+    if not majors or len(choices) < 2 or any(job.refreshes for job in group):
+        return None
+    root = source.root
+    original = _snapshot(root, report, group)
+
+    def attempt(chosen: list[Choice]) -> _Attempt | _Failed:
+        if cancel is not None and cancel.is_set():
+            raise processes.Interrupted("mise à jour arrêtée")
+        _put(root, original)
+        if not chosen:
+            return {}, original
+        changes = writers.prepare(root, chosen)
+        writers.write(root, changes)
+        current = {project.path: project for project in engine.inventory(source).projects}
+        ids = {update.id for _, update, _ in chosen}
+        jobs = [
+            dataclasses.replace(job, choices=tuple(c for c in job.choices if c[1].id in ids))
+            for job in group
+        ]
+        outcome: dict[str, Regenerated] = {}
+        failure = _run_group(source, jobs, current, outcome, _ignore, cancel)
+        return failure[1] if failure is not None else (outcome, _snapshot(root, report, group))
+
+    kept = [choice for choice in choices if choice[2].gap is not Gap.MAJOR]
+    best = attempt(kept)
+    if isinstance(best, _Failed):
+        _put(root, original)
+        return None
+    dropped: list[Dropped] = []
+    for index, major in enumerate(majors):
+        trial = [*kept, major]
+        found: _Attempt | _Failed
+        if index >= MAX_ALONE:
+            found = _Failed("", f"pas essayée seule (au plus {MAX_ALONE} le sont).")
+        elif len(trial) == len(choices):
+            found = error  # toutes : le premier essai, qui a échoué
+        else:
+            found = attempt(trial)
+        if isinstance(found, _Failed):
+            dropped.append(Dropped(update=major[1], option=major[2], reason=found.reason))
+        else:
+            kept, best = trial, found
+    if not kept:
+        _put(root, original)
+        return None
+    outcome, state = best
+    _put(root, state)
+    for job in group:
+        mine = tuple(d for d in dropped if any(d.update.id == c[1].id for c in job.choices))
+        if mine:
+            outcome[job.lockfile] = dataclasses.replace(outcome[job.lockfile], dropped=mine)
+    return outcome
+
+
+def _put(root: Path, state: Mapping[str, bytes | None]) -> None:
+    """Remet les fichiers de ``state`` (``_snapshot``) tels qu'ils y sont ; ``None`` : absent."""
+    for path, data in state.items():
+        full = root / path
+        try:
+            if data is None:
+                full.unlink(missing_ok=True)
+            elif not full.is_file() or full.read_bytes() != data:
+                writers.replace_file(full, data)
+        except OSError as err:
+            logger.warning("%s n'a pas pu être remis : %s", path, err)
+
+
+def _ignore(_: object) -> None:
+    pass
 
 
 def _groups(jobs: Sequence[Job]) -> list[list[Job]]:
@@ -1991,6 +2122,60 @@ _NPM_PREFIX = re.compile(r"^npm (?:error|ERR!)\s?")
 _NPM_MISMATCH = re.compile(r"^(?:Missing|Invalid): ")
 
 
+_NOISE = re.compile(
+    r"A complete log of this run can be found in|For a full report see|npm-cache[\\/]_logs"
+    r"|^npm (?:error|ERR!)\s*$"
+)
+"""Les lignes de npm qui ne disent rien de l'échec : où est son journal (un chemin de
+l'ordinateur), une ligne vide."""
+
+_WHY_LINES = 3
+_WHY_LENGTH = 400
+_DECORATION = f" {chr(0xD7)}╰─▶│"
+"""Les signes dont uv habille ses erreurs (le signe de multiplication, « ╰─▶ », « │ »)."""
+
+
+def _why(lines: Sequence[str]) -> str:
+    """Pourquoi l'outil a échoué, d'après sa sortie, en peu de lignes : la phrase « Because … »
+    d'uv, de Poetry et de PDM (la contrainte qui bloque) ; ce que npm ne résout pas (« Could not
+    resolve dependency », « Conflicting peer dependency ») ; sinon ses dernières lignes."""
+    said = [_NPM_PREFIX.sub("", line).strip(_DECORATION) for line in lines]
+    said = [line for line in said if line]
+    if not said:
+        return "l'outil n'a rien dit."
+    start = next((i for i, line in enumerate(said) if line.startswith("Because ")), None)
+    if start is not None:
+        sentence = []
+        for line in said[start:]:
+            sentence.append(line)
+            if line.endswith("."):
+                break
+        return _shortened(" ".join(sentence))
+    npm = [
+        f"{line} {said[index + 1]}" if line == "Could not resolve dependency:" else line
+        for index, line in enumerate(said)
+        if (line == "Could not resolve dependency:" and index + 1 < len(said))
+        or line.startswith("Conflicting peer dependency:")
+    ]
+    return _shortened(" ; ".join(npm or said[-_WHY_LINES:]))
+
+
+def _shortened(text: str) -> str:
+    text = text if len(text) <= _WHY_LENGTH else f"{text[: _WHY_LENGTH - 1].rstrip()}…"
+    return text if text.endswith((".", "…")) else f"{text}."
+
+
+def _redact(text: str, root: Path) -> str:
+    """``text`` sans les chemins de l'ordinateur : le dossier de la source devient ``.``, le
+    dossier personnel ``~`` (la sortie d'un outil va dans la description d'une PR : session 36,
+    le journal de npm sous ``C:\\Users\\<nom>``)."""
+    flags = re.IGNORECASE if os.name == "nt" else 0
+    for spelled in dict.fromkeys((str(root), root.as_posix())):
+        if len(spelled) > 3:  # jamais une racine (« C:\ », « / »)
+            text = re.sub(re.escape(spelled), ".", text, flags=flags)
+    return userfiles.tilde(text)
+
+
 def _npm_complaint(lines: Sequence[str]) -> str:
     """Ce que ``npm ci`` reproche au lockfile, en une phrase : ses lignes « Missing: … from lock
     file » et « Invalid: … » (suivies de l'aide de la commande, qu'on laisse) ; sinon ses dernières
@@ -2036,10 +2221,19 @@ class _Context:
         dans le dossier du lockfile. Lève ``_Failed``."""
         result = self._execute(arguments)
         if result.returncode != 0:
-            lines = _output_lines(result)[-_OUTPUT_LINES:]
-            said = "\n".join(lines) or "(rien)"
+            output = self.said(result)
+            said = "\n".join(output[-_OUTPUT_LINES:]) or "(rien)"
             shown = self.shown(*arguments)
-            raise _Failed(f"« {shown} » a échoué (code {result.returncode}) :\n{said}")
+            raise _Failed(
+                f"« {shown} » a échoué (code {result.returncode}) :\n{said}", reason=_why(output)
+            )
+
+    def said(self, result: subprocess.CompletedProcess[bytes]) -> list[str]:
+        """Ce qu'a écrit l'outil (``_output_lines``), sans ce qui ne dit rien (« A complete log of
+        this run… ») ni les chemins de l'ordinateur (``_redact``) : sa sortie peut aller dans la
+        description d'une PR."""
+        lines = (_redact(line, self.root) for line in _output_lines(result))
+        return [line for line in lines if not _NOISE.search(line)]
 
     def verify(self, *arguments: str) -> None:
         """Relit le lockfile régénéré avec ``arguments`` (``ci --dry-run``) : ce qu'en dit
@@ -2051,7 +2245,7 @@ class _Context:
         except _Failed as failed:
             self.verified = Verified(command=command, error=str(failed))
         else:
-            error = _npm_complaint(_output_lines(result)) if result.returncode != 0 else None
+            error = _npm_complaint(self.said(result)) if result.returncode != 0 else None
             self.verified = Verified(command=command, error=error)
 
     def _execute(self, arguments: Sequence[str]) -> subprocess.CompletedProcess[bytes]:
@@ -2109,8 +2303,8 @@ class _Context:
         try:
             self.run(*arguments)
         except _Failed as failed:
-            first = str(failed).split("\n", 1)[0]
-            self.warnings.append(f"Versions exactes refusées : {first}")
+            first = str(failed).split("\n", 1)[0].removesuffix(" :")
+            self.warnings.append(f"Versions exactes refusées : {first} : {failed.reason}")
             return False
         finally:
             for change in files:
@@ -2389,7 +2583,9 @@ def _yarn1_entry(block: Sequence[str]) -> tuple[str, str | None]:
 
 class _Yarn(_Driver):
     def manual(self, job: Job) -> list[str]:
-        names = _lockfile_only(job)
+        # Celle que lance ``run`` : ``yarn up -R`` vise toutes les mises à jour, directes
+        # réécrites comprises (E35 : le plan affichait ``yarn install``).
+        names = list(dict.fromkeys(update.name for _, update, _ in job.choices))
         if names:
             return ["yarn", "up", "-R", *names, "--mode=update-lockfile"]
         return ["yarn", "install", "--mode=update-lockfile"]

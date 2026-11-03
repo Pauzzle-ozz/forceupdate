@@ -22,6 +22,7 @@ from forceupdate.models import (
     Override,
     Project,
     Report,
+    Requirement,
     Scope,
     Severity,
     Update,
@@ -611,6 +612,46 @@ def test_an_indirect_dependency_moves_with_its_lockfile() -> None:
     assert update.options[0].reasons == (UpdateReason.LATEST_PATCH,)
     assert update.option("5.0.0").warnings == (MAJOR_WARNING, INDIRECT_MAJOR_WARNING)  # type: ignore[union-attr]
     assert update.selected == "4.18.1"
+
+
+def test_an_indirect_its_parent_holds_is_said_and_never_preselected() -> None:
+    """Session 36 : ``nodemon`` demande ``minimatch ^10.2.1``, la correction était en 11.0.1 ;
+    npm la gardait, la PR disait la faille corrigée."""
+    held = dataclasses.replace(
+        indirect("lodash", "4.17.15"),
+        required_by=(Requirement(name="nodemon", version="3.1.14", range="~4.17.0"),),
+    )
+    project = plan(held, infos=[info("lodash", LODASH)], advisories=LODASH_ADVISORIES)
+    update = single(project)
+    # 4.17.21 reste dans ~4.17.0 ; 4.18.1 et 5.0.0 en sortent.
+    assert update.option("4.17.21").held_by == ()  # type: ignore[union-attr]
+    assert update.option("4.18.1").held_by == ("nodemon 3.1.14",)  # type: ignore[union-attr]
+    assert update.option("4.18.1").warnings == (  # type: ignore[union-attr]
+        "nodemon 3.1.14 demande ~4.17.0 : le lockfile seul ne la fera pas monter ; monter "
+        "nodemon d'abord.",
+    )
+    # La majeure : son avertissement, celui du parent, plus « devra peut-être monter ».
+    assert update.option("5.0.0").warnings == (  # type: ignore[union-attr]
+        MAJOR_WARNING,
+        "nodemon 3.1.14 demande ~4.17.0 : le lockfile seul ne la fera pas monter ; monter "
+        "nodemon d'abord.",
+    )
+    assert update.selected == "4.17.21"
+
+
+def test_an_indirect_held_by_one_of_its_parents_only() -> None:
+    held = dataclasses.replace(
+        indirect("lodash", "4.17.15"),
+        required_by=(
+            Requirement(name="a", version="1.0.0", range="^4.17.0"),
+            Requirement(name="b", version="2.0.0", range="4.17.15"),
+        ),
+    )
+    update = single(plan(held, infos=[info("lodash", LODASH)], advisories=LODASH_ADVISORIES))
+    assert update.option("4.18.1").held_by == ("b 2.0.0",)  # type: ignore[union-attr]
+    assert update.option("4.18.1").warnings == (  # type: ignore[union-attr]
+        "b 2.0.0 demande 4.17.15 : une de ses copies restera en dessous ; monter b d'abord.",
+    )
 
 
 def override(constraint: str, key: str = "lodash", section: str = "overrides") -> Override:

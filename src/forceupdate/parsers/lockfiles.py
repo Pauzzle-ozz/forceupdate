@@ -18,7 +18,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from fnmatch import fnmatchcase
 
-from forceupdate.models import Dependency, Ecosystem, Location, Scope
+from forceupdate.models import Dependency, Ecosystem, Location, Requirement, Scope
 
 Edge = tuple[str, frozenset[str]]
 """Ce qu'un paquet requiert : l'autre paquet (son ``LockedPackage.node``), et ses extras
@@ -54,6 +54,10 @@ class LockedPackage:
     key: str = ""
     """Son identifiant dans le graphe, quand un même nom peut y être en plusieurs versions
     (npm : ``node_modules/a/node_modules/x``, descripteur Yarn, clé pnpm). Vide : le nom."""
+    requires: Mapping[str, str] = field(default_factory=dict)
+    """La plage qu'il demande de chaque paquet qu'il requiert, par nom, si le lockfile la dit
+    (``package-lock.json`` : ``{"minimatch": "^10.2.1"}``) ; elle va dans
+    ``Dependency.required_by``."""
 
     @property
     def node(self) -> str:
@@ -126,6 +130,7 @@ def transitives(
     qu'une fois.
     """
     scopes = reachable_scopes(starts, lock, order=order) if lock.graph else {}
+    required = _required_by(lock)
     result = []
     seen: set[tuple[str, str]] = set()
     for package in lock.packages:
@@ -148,9 +153,30 @@ def transitives(
                 file=lock.path,
                 location=package.location,
                 unverifiable_reason=package.unverifiable_reason,
+                required_by=tuple(required.get((package.name, package.version), ())),
             )
         )
     return result
+
+
+def _required_by(lock: Lockfile) -> dict[tuple[str, str], list[Requirement]]:
+    """Pour chaque paquet du lockfile (nom, version), ceux qui le requièrent et la plage que
+    chacun demande (``LockedPackage.requires``), toutes ses copies confondues ; vide sans
+    graphe ou sans plages."""
+    if not lock.graph or not any(package.requires for package in lock.packages):
+        return {}
+    by_node = {package.node: package for package in lock.packages}
+    found: dict[tuple[str, str], list[Requirement]] = defaultdict(list)
+    for parent in lock.packages:
+        for node, _ in parent.dependencies:
+            child = by_node.get(node)
+            wanted = parent.requires.get(child.name) if child is not None else None
+            if child is None or wanted is None:
+                continue
+            requirement = Requirement(name=parent.name, version=parent.version, range=wanted)
+            if requirement not in found[(child.name, child.version)]:
+                found[(child.name, child.version)].append(requirement)
+    return found
 
 
 def reachable_scopes(

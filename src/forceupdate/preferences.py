@@ -205,10 +205,9 @@ def to_toml(preferences: Preferences) -> str:
         f"lock-timeout = {preferences.lock_timeout}",
         f"clone-timeout = {preferences.clone_timeout}",
         f"rust-default-toolchain = {_bool(preferences.rust_default_toolchain)}",
-        "",
-        "[selection]",
-        *_rule_lines(general),
     ]
+    if _rule_lines(general):  # pas de table [selection] vide (session 36)
+        lines += ["", "[selection]", *_rule_lines(general)]
     for rule in preferences.selection:
         if rule.ecosystem is not None:
             lines += ["", f"[selection.{ECOSYSTEM_KEYS[rule.ecosystem]}]", *_rule_lines(rule)]

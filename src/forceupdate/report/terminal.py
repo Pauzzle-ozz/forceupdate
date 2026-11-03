@@ -391,6 +391,10 @@ def _print_result(result: Regenerated, console: Console) -> None:
         line.append(f"régénéré ({job.tool}).", style="green")
         for installed in result.installed:
             grid.add_row("", Text(update_subject(installed.update)), _installed(installed, job))
+        for dropped in result.dropped:
+            refused = Text(f"pas faite, {job.tool} refuse {dropped.option.version} : ", style="red")
+            refused.append(dropped.reason, style="dim")
+            grid.add_row("", Text(update_subject(dropped.update)), refused)
         if result.changed:
             shown = ", ".join(result.changed[:_CHANGED_SHOWN])
             more = len(result.changed) - _CHANGED_SHOWN

@@ -42,6 +42,17 @@ def home() -> Path:
     return _home()
 
 
+def tilde(text: str) -> str:
+    """``text`` avec le dossier personnel écrit ``~`` : la sortie d'un outil (npm, git) qui va à
+    l'écran ou dans la description d'une PR ne dit pas le nom de la personne (session 36)."""
+    folder = home()
+    flags = re.IGNORECASE if sys.platform == "win32" else 0
+    for spelled in dict.fromkeys((str(folder), folder.as_posix())):
+        if len(spelled) > 3:  # jamais une racine (« C:\ », « / »)
+            text = re.sub(re.escape(spelled), "~", text, flags=flags)
+    return text
+
+
 def environ() -> Mapping[str, str]:
     """L'environnement de la personne (``GOPRIVATE``, ``COMPOSER_AUTH``, ``PIP_INDEX_URL``…)."""
     return _environ()

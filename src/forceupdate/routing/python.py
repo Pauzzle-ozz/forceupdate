@@ -26,9 +26,9 @@ l'index … » (``parsers.python.attached_index``) ; l'aiguillage le rend vérif
 (``Route.attached``). Un index nommé ``pypi`` (ou à l'adresse de PyPI) est PyPI.
 
 Les identifiants : ceux écrits dans l'adresse d'un index (``https://nom:secret@hôte/simple``) et
-``.netrc`` (uv et pip le lisent). ``UV_INDEX_<NOM>_USERNAME`` et ``_PASSWORD``, et ceux de Poetry
-(``http-basic.<nom>``), sont rattachés à un *nom* que donne le projet : pas utilisés (une remarque
-le dit pour ceux de uv).
+``.netrc`` (uv et pip le lisent). ``UV_INDEX_<NOM>_USERNAME`` et ``_PASSWORD`` vont à l'adresse que
+la personne donne à ce nom (``UV_INDEX``, son ``uv.toml``), jamais à celle d'un fichier du projet
+(une remarque le dit). Ceux de Poetry (``http-basic.<nom>``) ne sont pas utilisés.
 """
 
 import configparser
@@ -63,6 +63,8 @@ class Index:
     url: str
     file: str
     explicit: bool = False
+    personal: bool = False
+    """Déclaré par la personne (son environnement, son ``uv.toml``), pas par le projet."""
 
     @property
     def pypi(self) -> bool:
@@ -139,7 +141,9 @@ class PythonConfig:
                 credential = bound_or_none(clean, value=basic(*userinfo), source=file)
                 if credential is not None:
                     self.credentials.append(credential)
-        return Index(name=name, url=clean.rstrip("/"), file=file, explicit=explicit)
+        return Index(
+            name=name, url=clean.rstrip("/"), file=file, explicit=explicit, personal=personal
+        )
 
 
 def read(project: Project, read_text: ReadText, user: User) -> Reading | None:
@@ -197,11 +201,10 @@ def _router(config: PythonConfig, attached: dict[str, str]) -> Router:
         if wanted is not None:
             index = config.named.get(wanted.lower())
             if index is None:
-                return Route(
-                    public=False,
-                    private=True,
-                    unchecked=f"Privé : non vérifié : l'index « {wanted} » n'est pas déclaré",
-                )
+                # L'index n'est pas déclaré : la dépendance reste « Non vérifiable : vient de
+                # l'index … » (le parseur), et privée : son nom ne part pas chez OSV (E35 : le
+                # message « non vérifié » d'ici ne pouvait pas sortir).
+                return Route(public=False, private=True)
             if index.pypi:
                 return Route(attached=True)
             return Route(registries=(index.declared(),), public=False, private=True, attached=True)
@@ -343,16 +346,28 @@ def _personal_uv() -> dict[str, Any]:
 
 
 def _uv_named_credentials(config: PythonConfig, environment: Any) -> None:
-    """``UV_INDEX_<NOM>_USERNAME`` : rattachés au nom d'un index que donne le projet, jamais
-    envoyés (dit)."""
+    """``UV_INDEX_<NOM>_USERNAME`` et ``_PASSWORD``, rattachés au nom d'un index : envoyés à
+    l'adresse que la personne donne à ce nom (son environnement, son ``uv.toml``), comme Cargo ;
+    jamais à celle d'un fichier du projet (un dépôt recevrait sinon l'identifiant en déclarant
+    ce nom avec l'adresse de son choix) : dit (E35 : jamais envoyés)."""
     for name, index in config.named.items():
-        variable = f"UV_INDEX_{re.sub(r'[^A-Za-z0-9]', '_', name).upper()}_PASSWORD"
-        if environment.get(variable) and index.file not in ("UV_INDEX", "UV_EXTRA_INDEX_URL"):
+        key = re.sub(r"[^A-Za-z0-9]", "_", name).upper()
+        variable = f"UV_INDEX_{key}_PASSWORD"
+        password = environment.get(variable)
+        if not password:
+            continue
+        if not index.personal:
             message = (
                 f"{variable} est rattaché au nom « {name} », dont l'adresse vient d'un fichier du "
-                "projet : pas envoyé. Mettre l'identifiant de cet hôte dans ~/.netrc."
+                "projet : pas envoyé. Déclarer cet index aussi chez soi (UV_INDEX, son uv.toml), "
+                "ou mettre l'identifiant de cet hôte dans ~/.netrc."
             )
             config.notices.append(Notice(file=index.file, message=message))
+            continue
+        username = environment.get(f"UV_INDEX_{key}_USERNAME") or ""
+        credential = bound_or_none(index.url, value=basic(username, password), source=variable)
+        if credential is not None:
+            config.credentials.append(credential)
 
 
 # -- Poetry, PDM, Pipenv -------------------------------------------------------------------

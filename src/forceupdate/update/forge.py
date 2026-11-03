@@ -382,12 +382,18 @@ def _analysis(report: Report) -> str:
 def _done(
     prepared: Prepared, results: tuple[Regenerated, ...]
 ) -> list[tuple[Update, UpdateOption, Regenerated | None]]:
-    """Les options appliquées qui restent faites (pas remises comme avant)."""
+    """Les options appliquées qui restent faites : ni remises comme avant (un lockfile en échec,
+    une majeure que l'outil refuse), ni retenues en dessous par le lockfile (session 36 : le
+    commit disait « minimatch 10.2.6 → 11.0.1 », le lockfile gardait 10.2.6)."""
     by_lockfile = {result.job.lockfile: result for result in results}
     found = []
     for _, update, option in prepared.changes.applied:
         result = by_lockfile.get(option.lockfile or "")
-        if result is not None and result.status in (LockStatus.FAILED, LockStatus.UNDONE):
+        if result is not None and (
+            result.status in (LockStatus.FAILED, LockStatus.UNDONE)
+            or any(d.update.id == update.id for d in result.dropped)
+            or any(i.update.id == update.id and i.reach is Reach.BELOW for i in result.installed)
+        ):
             continue
         found.append((update, option, result))
     return found
@@ -401,6 +407,9 @@ def _state(update_id: str, result: Regenerated | None) -> str:
         return f"lockfile à régénérer ({result.job.program_name} absent)"
     if result.status in (LockStatus.FAILED, LockStatus.UNDONE):
         return "pas faite : lockfile en échec"
+    dropped = next((d for d in result.dropped if d.update.id == update_id), None)
+    if dropped is not None:
+        return f"pas faite : {result.job.tool} la refuse ({escape(dropped.reason.rstrip('.'))})"
     installed = next((i for i in result.installed if i.update.id == update_id), None)
     if installed is None or installed.reach is Reach.EXACT:
         return "faite"
@@ -426,6 +435,12 @@ def _lockfile_lines(result: Regenerated) -> list[str]:
         elif verified is not None:
             lines.append(
                 f"  **Refusé par `{code(verified.command)}`** : {escape(verified.error or '')}"
+            )
+        if result.dropped:
+            names = ", ".join(f"{d.update.name} {d.option.version}" for d in result.dropped)
+            lines.append(
+                f"  {escape(job.tool)} échouait avec toutes les mises à jour : régénéré sans "
+                f"{escape(names)}, qu'il refuse (le tableau dit pourquoi)."
             )
         lines += [f"  {escape(warning)}" for warning in result.warnings]
         if result.changed:

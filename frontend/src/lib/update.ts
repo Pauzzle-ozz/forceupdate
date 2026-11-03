@@ -43,6 +43,12 @@ export function fixesSentence(option: UpdateOption): { text: string; full: boole
   const fixed = option.fixes.length
   const left = option.unfixed.length
   if (fixed + left === 0) return null
+  // Une indirecte que son parent retiendra (session 37) : la version corrige, le lockfile ne
+  // la prendra pas.
+  if (fixed > 0 && option.held_by.length > 0) {
+    const verb = option.held_by.length >= 2 ? 'la retiendront' : 'la retiendra'
+    return { text: `Corrigerait ${count(fixed, 'faille')}, mais ${listText(option.held_by)} ${verb}`, full: false }
+  }
   if (left === 0) return { text: fixed === 1 ? 'Corrige la faille' : `Corrige les ${fixed} failles`, full: true }
   if (fixed === 0) return { text: `Laisse ${count(left, 'faille')}`, full: false }
   return { text: `Corrige ${count(fixed, 'faille')} sur ${fixed + left}, en laisse ${left}`, full: false }
@@ -197,7 +203,8 @@ export function recap(report: Report, selection: Selection): Recap {
       const option = chosenOption(update, selection[update.id])
       if (!option) continue
       result.chosen += 1
-      result.fixed += option.fixes.length
+      // Retenue par le paquet qui la tire : ses failles resteront (session 37).
+      if (option.held_by.length === 0) result.fixed += option.fixes.length
       result.introduced += option.introduced.length
       if (option.gap === 'major') result.majors += 1
       for (const edit of option.edits) files.add(editTarget(edit))
