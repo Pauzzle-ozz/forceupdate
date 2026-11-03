@@ -221,6 +221,8 @@ async function analyzeVulnerable(page: Page) {
 }
 
 test('une PR par dépôt : le récapitulatif, l’envoi, la PR ouverte ; relancer met à jour la même', async ({ page }) => {
+  // Deux envois (clone, outils, push) : une machine de CI lente dépasse le délai par défaut.
+  test.slow()
   const errors = watchConsole(page)
   await repositories(page)
   await analyzeVulnerable(page)
@@ -247,7 +249,7 @@ test('une PR par dépôt : le récapitulatif, l’envoi, la PR ouverte ; relance
   await page.getByRole('button', { name: 'Envoyer la PR' }).click()
 
   // L'envoi, puis le résultat avec le lien de la PR.
-  await expect(page.getByRole('heading', { level: 1, name: 'PR envoyées' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('heading', { level: 1, name: 'PR envoyées' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText('1 PR ouverte', { exact: false })).toBeVisible()
   const link = page.getByRole('link', { name: /Voir la PR #41 sur GitHub/ })
   await expect(link).toHaveAttribute('href', 'https://github.com/octo-e2e/vulnerable/pull/41')
@@ -266,7 +268,7 @@ test('une PR par dépôt : le récapitulatif, l’envoi, la PR ouverte ; relance
   await expect(page.getByRole('heading', { level: 1, name: 'Préparer les PR' })).toBeVisible()
   await expect(page.getByText('met à jour la PR #41')).toBeVisible()
   await page.getByRole('button', { name: 'Envoyer la PR' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'PR envoyées' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('heading', { level: 1, name: 'PR envoyées' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText(/PR #41 mise à jour/).first()).toBeVisible()
   await expect(page.getByRole('link', { name: /Voir la PR #41 sur GitHub/ })).toBeVisible()
   expect(errors).toEqual([])
@@ -284,7 +286,7 @@ for (const scheme of ['light', 'dark'] as const) {
       await page.locator('details').first().evaluate((element) => element.setAttribute('open', ''))
       await audit(page, 'récapitulatif')
       await page.getByRole('button', { name: 'Envoyer la PR' }).click()
-      await expect(page.getByRole('heading', { level: 1, name: 'PR envoyées' })).toBeVisible({ timeout: 30_000 })
+      await expect(page.getByRole('heading', { level: 1, name: 'PR envoyées' })).toBeVisible({ timeout: 60_000 })
       await audit(page, 'résultat')
     })
   }
@@ -416,6 +418,8 @@ async function bothForges(page: Page) {
 }
 
 test('GitLab : ses projets avec ceux de GitHub, une MR ouverte, puis la même mise à jour', async ({ page }) => {
+  // Deux envois (clone, outils, push) : une machine de CI lente dépasse le délai par défaut.
+  test.slow()
   const errors = watchConsole(page)
   await page.setViewportSize({ width: 1440, height: 900 })
   await bothForges(page)
@@ -441,7 +445,7 @@ test('GitLab : ses projets avec ceux de GitHub, une MR ouverte, puis la même mi
   await expect(card.getByText('nouvelle MR')).toBeVisible()
   await expect(card.getByText('régénéré par npm')).toBeVisible()
   await page.getByRole('button', { name: 'Envoyer la MR' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'MR envoyées' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('heading', { level: 1, name: 'MR envoyées' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText('1 MR ouverte', { exact: false })).toBeVisible()
   await expect(page.getByRole('link', { name: /Voir la MR !1 sur GitLab/ })).toHaveAttribute(
     'href',
@@ -462,7 +466,7 @@ test('GitLab : ses projets avec ceux de GitHub, une MR ouverte, puis la même mi
   await page.getByRole('button', { name: 'Préparer la MR' }).first().click()
   await expect(page.getByText('met à jour la MR !1')).toBeVisible()
   await page.getByRole('button', { name: 'Envoyer la MR' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'MR envoyées' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('heading', { level: 1, name: 'MR envoyées' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText(/MR\s!1 mise à jour\s:\selle avait déjà ces changements/).first()).toBeVisible()
   expect(errors).toEqual([])
 })
@@ -538,6 +542,8 @@ async function withBitbucket(page: Page) {
 }
 
 test('Bitbucket : ses dépôts avec ceux de GitHub, une PR ouverte, puis la même mise à jour', async ({ page }) => {
+  // Deux envois (clone, outils, push) : une machine de CI lente dépasse le délai par défaut.
+  test.slow()
   const errors = watchConsole(page)
   await page.setViewportSize({ width: 1440, height: 900 })
   await withBitbucket(page)
@@ -561,7 +567,7 @@ test('Bitbucket : ses dépôts avec ceux de GitHub, une PR ouverte, puis la mêm
   await expect(card.getByText('nouvelle PR')).toBeVisible()
   await expect(card.getByText('régénéré par npm')).toBeVisible()
   await page.getByRole('button', { name: 'Envoyer la PR' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'PR envoyées' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('heading', { level: 1, name: 'PR envoyées' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText('1 PR ouverte', { exact: false })).toBeVisible()
   await expect(page.getByRole('link', { name: /Voir la PR #1 sur Bitbucket/ })).toHaveAttribute(
     'href',
@@ -581,7 +587,7 @@ test('Bitbucket : ses dépôts avec ceux de GitHub, une PR ouverte, puis la mêm
   await page.getByRole('button', { name: 'Préparer la PR' }).first().click()
   await expect(page.getByText('met à jour la PR #1')).toBeVisible()
   await page.getByRole('button', { name: 'Envoyer la PR' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'PR envoyées' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('heading', { level: 1, name: 'PR envoyées' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText(/PR\s#1 mise à jour\s:\selle avait déjà ces changements/).first()).toBeVisible()
   expect(errors).toEqual([])
 })

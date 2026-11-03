@@ -46,12 +46,16 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 ├── CLAUDE.md               ← ce fichier
 ├── PLAN.md                 ← le plan complet, étape par étape, et le journal des sessions
 ├── PROCHAINE_SESSION.md    ← le prompt de la prochaine session (réécrit à chaque session)
-├── README.md
+├── README.md               ← aussi la page PyPI : liens et images en adresses absolues (GitHub)
+├── CHANGELOG.md            ← les versions publiées sur PyPI
 ├── LICENSE                 ← MIT, « Copyright (c) 2026 Pauzzle »
-├── pyproject.toml          ← le paquet, ses dépendances, la config ruff et pytest
+├── pyproject.toml          ← le paquet, ses dépendances, la config ruff et pytest ; la version (une seule fois)
 ├── uv.lock                 ← les versions figées des dépendances (versionné)
-├── .github/workflows/      ← ci.yml : ruff + pytest (Ubuntu et Windows, Python 3.11 et 3.14), et le
-│                             front (types, lint, Vitest, Playwright) ; publish.yml : PyPI, front compris
+├── .gitattributes          ← tout en LF, même sous Windows (E35 : les tests comparent des octets)
+├── .github/workflows/      ← ci.yml : ruff + pytest (Ubuntu, Windows, macOS ; Python 3.11 et 3.14), et le
+│                             front sous Ubuntu et Windows (types, lint, Vitest, Playwright) ; network.yml :
+│                             les tests network chaque lundi et à la demande, vrais outils installés ;
+│                             publish.yml : PyPI à une étiquette v*, front compris
 ├── design-system/          ← produit à E13 avec le skill ui-ux-pro-max
 │   ├── MASTER.md           ← les règles de l'interface : tokens, typo, composants, accessibilité
 │   ├── ECRANS.md           ← les 9 écrans : contenu, appels à l'API, états, adresses
@@ -59,7 +63,11 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   └── mockups/            ← maquettes HTML statiques (ouvrir index.html), tokens de référence
 ├── docs/
 │   ├── BRIEF.md            ← l'idée, les décisions prises, les pièges, les sources de données
-│   └── JSON_FORMAT.md      ← le format du rapport JSON (scan --format json), et l'API de ui
+│   ├── USAGE.md            ← la doc utilisateur (E35) : interface, commandes, configuration,
+│   │                         écosystèmes et leurs limites, registres privés, réseau, robustesse
+│   ├── FORGES.md           ← la doc des forges (E35) : connexion, droits, PR, application à soi
+│   ├── JSON_FORMAT.md      ← le format du rapport JSON (scan --format json), et l'API de ui
+│   └── images/             ← les captures du README (E35 : le serveur de tests/e2e_server.py, 1440 px)
 ├── reference/              ← code repris d'Argos, à piocher (voir reference/README.md)
 ├── frontend/               ← l'interface : React + TypeScript + Vite + Tailwind 4 + shadcn/ui (E14)
 │   ├── src/api/            ← schema.d.ts (généré depuis openapi.json), client.ts, types.ts
@@ -217,6 +225,13 @@ uv run --isolated --python 3.11 --group dev pytest
 cd reference && python -m pytest argos_sca_parsers_tests.py
 ```
 
+- **La suite sous Linux, sans pousser** (E35 : elle y cassait sans qu'on le voie) : Docker
+  Desktop est installé (le démarrer). Une archive fidèle du dépôt (`git -c core.autocrlf=false
+  archive` de `git stash create`, sinon de `HEAD` : sans `-c`, `archive` applique l'`autocrlf`
+  de Windows), dépliée dans `ghcr.io/astral-sh/uv:python3.14-bookworm` lancé en utilisateur non
+  root (`--user 1000:1000`, `HOME` et `UV_CACHE_DIR` dans `/tmp`), puis `uv sync --locked` et
+  `uv run pytest`. Monter le dossier avec `MSYS_NO_PATHCONV=1` sous Git Bash. macOS ne se teste
+  que par la CI.
 - Sous Windows, uv prévient parfois « Failed to hardlink files » : sans effet sur
   le résultat, `UV_LINK_MODE=copy` le fait taire.
 - Sous Windows, une sortie redirigée (tube, fichier) est écrite en cp1252 par

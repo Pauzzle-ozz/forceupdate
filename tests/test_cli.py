@@ -169,6 +169,17 @@ def test_scan_output_file(make_tree: MakeTree, output_format: str, start: str) -
     assert "\r\n" not in text
 
 
+def test_a_long_source_path_is_never_cut(make_tree: MakeTree) -> None:
+    """Un chemin plus long que les 120 colonnes du rapport écrit dans un fichier (celui du
+    dossier temporaire de macOS : /private/var/folders/…) reste entier, sur sa ligne."""
+    name = "projet-" + "x" * 100
+    root = make_tree({f"{name}/requirements.txt": "flask==2.0.1\n"})
+    target = root / "rapport.txt"
+    assert scan(str(root / name), "--output", str(target)).exit_code == 0
+    first = target.read_text(encoding="utf-8").splitlines()[0]
+    assert first.startswith("Source : ") and first.endswith(name)
+
+
 def test_scan_output_file_error(tmp_path: Path) -> None:
     result = scan(str(tmp_path), "--output", str(tmp_path / "absent" / "rapport.json"))
     assert result.exit_code == EXIT_ERROR

@@ -1,52 +1,54 @@
-# Session 35 — Étape E35 : Documentation, packaging, CI
+# Session 36 — Étape E35 (fin) : publication de la 1.0.0rc1, puis E36 : recette finale
 
-Contexte : E01 à E34 sont faites. E34 (compléments d'analyse, faite en une session à la demande de
-l'utilisateur) : registres privés de Ruby (serveurs de gems, configuration de Bundler) et de Rust
-(`[registries]`, `credentials.toml`), `rust-version` et le résolveur 3, la version construite d'un
-workspace Go et les majeures à `+incompatible`, les avis de Packagist (FriendsOfPHP) et
-`minimum-stability`, les versions Maven gérées par un parent ou un BOM distant (`managed.py`),
-`<relocation>`, `gradle.lockfile`, `settings.gradle(.kts)`, les versions riches, la variante de
-Guava, `Directory.Build.targets`, de nouvelles sources de runtimes (images, `mise.toml`,
-`required_ruby_version`, `setup-*`), les tests `network` des tables tenues à la main, et pour les
-fichiers de code les carnets, `.vue`, `.svelte`, Deno, `tsconfig.json`, `importlib`, un paquet
-d'espace de noms local et `exclude-newer`. Détail dans les notes de E34.
-5 103 tests Python verts (plus 28 réseau), 168 Vitest, 72 Playwright.
-**E34 n'est pas commitée : à proposer d'abord.**
+Contexte : E01 à E34 sont faites ; E35 (documentation, packaging, CI) l'est sauf sa dernière case,
+la publication sur PyPI, que l'utilisateur a voulu garder pour cette session. Fait à E35 :
+`README.md` réécrit (aussi la page PyPI) avec cinq captures, `docs/USAGE.md` (la doc utilisateur
+complète), `docs/FORGES.md`, `CHANGELOG.md`, `docs/JSON_FORMAT.md` vérifié ; la version
+`1.0.0rc1` (décision de l'utilisateur : une pré-version d'abord, la 1.0.0 au tag de la recette) ;
+la CI sur Ubuntu, Windows et macOS (Python 3.11 et 3.14), le front sous Ubuntu et Windows,
+`network.yml` chaque lundi ; `.gitattributes` (LF partout). En faisant tourner la suite sous
+Linux, trouvé et corrigé un plantage de toute analyse hors Windows (E30). Tout est commité et
+poussé (`be210cd`, puis le commit de la doc). 5 110 tests Python (plus 28 réseau), 168 Vitest,
+72 Playwright.
 
-Lis CLAUDE.md, puis l'étape E35 de PLAN.md (toutes ses cases), et les notes qu'elle cite : E16 à
-E20 (forges), E27 à E34 (les limites de chaque étape, pour la documentation), docs/BRIEF.md
-(décision n°19 : PyPI), docs/JSON_FORMAT.md.
-Pour les captures d'écran du README : charge d'abord le skill ui-ux-pro-max, et lis
-design-system/MASTER.md.
+Lis CLAUDE.md, puis dans PLAN.md : la case « Publication sur PyPI » de E35 et les notes de E35,
+puis l'étape E36 (toutes ses cases, dont « Depuis E35 ») et « Le livrable » (en tête).
 
-À faire (les cases de E35) :
-- `README.md` : à quoi ça sert, installation, démarrage (`ui`), captures d'écran (dont l'écran 8 et
-  une PR), la ligne de commande, les limites par écosystème ;
-- `docs/USAGE.md` (l'interface écran par écran, toutes les commandes et options, et tout ce que
-  listent les puces « Depuis E… » de E35, dont celle de E33 et E34), `docs/FORGES.md` (les puces de
-  E16, E18, E20, E31), `docs/JSON_FORMAT.md` à jour, `CHANGELOG.md` ;
-- packaging : `uv tool install .` sous Windows sur une machine sans node, version `1.0.0`, `LICENSE`
-  dans le paquet ;
-- CI : macOS en plus, le job « Front » aussi sous Windows, un job hebdomadaire avec les tests
-  `network` (dont `tests/test_tables_network.py`) ;
-- le dossier `forceupdate-e2e-*` que laisse le serveur des tests de bout en bout ;
-- publication sur PyPI (Trusted Publishing, `v1.0.0`) : **avec l'accord de l'utilisateur**, puis
-  `uv tool install forceupdate` depuis PyPI sur une machine sans node.
+À faire :
+1. **Finir E35** :
+   - vérifier la CI du dernier commit poussé (`gh run list`) : verte sur les trois systèmes et pour
+     le front ; sinon, corriger d'abord (la suite sous Linux se lance en local par Docker :
+     CLAUDE.md, « La suite sous Linux, sans pousser » ; macOS seulement par la CI) ;
+   - **avec l'accord de l'utilisateur**, pousser l'étiquette `v1.0.0rc1` sur ce commit :
+     `publish.yml` vérifie que l'étiquette est la version, teste, construit le front et publie par
+     Trusted Publishing ; suivre le workflow « Publication » ;
+   - vérifier `uv tool install forceupdate==1.0.0rc1` **depuis PyPI**, dans des dossiers d'outils à
+     part (`UV_TOOL_DIR`, `UV_TOOL_BIN_DIR` dans le scratchpad) et un `PATH` sans node : `--version`,
+     un `scan`, `ui` qui sert l'interface ; regarder la page PyPI (le README, ses images) ;
+   - cocher la case, E35 « fait », une ligne au journal.
+2. **Puis E36, avec l'accord de l'utilisateur** (une étape par session : lui proposer de la faire
+   dans cette session ou la suivante) : dérouler « Le livrable » dans l'interface installée depuis
+   PyPI, la revue finale avec le skill ui-ux-pro-max, les écarts « Depuis E35 », la 1.0.0.
 
 Attention :
-- **Demander à l'utilisateur** d'abord le commit de E34 (message « E34 : compléments d'analyse »,
-  un résumé comme pour E32 et E33).
-- E35 est grosse elle aussi : proposer de la découper (par exemple la documentation, puis
-  packaging, CI et publication), sans découper seul.
-- La documentation décrit l'outil tel qu'il est : relire le code ou essayer la commande avant
-  d'écrire une option ou une limite ; les limites sont dans les notes de chaque étape (« Limites »).
-- Publier sur PyPI est irréversible (un numéro de version ne se réutilise pas) : jamais sans
-  l'accord de l'utilisateur, et après une CI verte.
+- **Publier est irréversible** (un numéro de version ne se réutilise pas) : jamais sans l'accord
+  de l'utilisateur, et seulement après une CI verte. Si la publication échoue après l'étiquette,
+  ne pas réutiliser `v1.0.0rc1` : comprendre, puis `1.0.0rc2` avec son accord.
+- La CI a eu un délai dépassé une fois sous Ubuntu (Playwright, le second envoi d'une MR) : les
+  tests à deux envois ont maintenant `test.slow()` ; si un test reste instable, le dire plutôt que
+  de relancer jusqu'au vert.
+- Pour E36, charger d'abord le skill ui-ux-pro-max et lire design-system/MASTER.md (sa
+  « Checklist avant livraison ») ; les PR #1 et MR !1 des dépôts de test existent déjà : les
+  supprimer en fin de recette **avec l'accord de l'utilisateur** (jamais un autre dépôt).
+- La doc décrit l'outil tel qu'il est : un écart corrigé change aussi `docs/USAGE.md`,
+  `docs/FORGES.md` ou le README.
 - Scripts : les écrire dans le scratchpad avec l'outil d'écriture, jamais par un heredoc ni par
-  `python -c` avec des `\n` dans une chaîne (l'outil Bash les transforme) ; `python -I -X utf8`.
+  `python -c` avec des `\n` dans une chaîne ; `python -I -X utf8`. Jamais de `git stash` sur
+  l'arbre de travail pendant qu'une suite de tests tourne.
 
-Fini quand : `uv tool install forceupdate` depuis PyPI, dans un dossier vierge, marche ; la CI est
-verte. Vérifier avec : `uv run pytest`, `uv run ruff check`, `uv run ruff format --check` ; dans
-`frontend/` : `npm test`, `npm run typecheck`, `npm run lint`, `npm run test:e2e`.
+Fini quand (E35) : `uv tool install forceupdate==1.0.0rc1` depuis PyPI, dans un dossier vierge,
+marche ; la CI est verte. Vérifier avec : `uv run pytest`, `uv run ruff check`,
+`uv run ruff format --check` ; dans `frontend/` : `npm test`, `npm run typecheck`,
+`npm run lint`, `npm run test:e2e` ; `gh run list`.
 
 En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.

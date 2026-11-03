@@ -80,7 +80,8 @@ _IN_TABLE = (FindingKind.OUTDATED, FindingKind.UNPINNED)
 
 def render(report: Report, console: Console) -> None:
     """Écrit le rapport sur ``console``."""
-    console.print(Text.assemble(("Source : ", "bold"), report.source))
+    # Le chemin entier sur sa ligne, jamais coupé (un rapport écrit dans un fichier a 120 colonnes).
+    console.print(Text.assemble(("Source : ", "bold"), report.source), soft_wrap=True)
     if report.code is not None:
         console.print(Text(code_reading(report.code)))
     if report.config is not None:
@@ -296,7 +297,8 @@ def render_plan(
     """Écrit les mises à jour proposées sur ``console`` : par projet, celles que ``selection``
     choisit, puis les autres versions proposées, et ce que les options ne disent pas (faille
     sans version corrigée…). ``rules`` sont les règles qui ont fait la sélection."""
-    console.print(Text.assemble(("Source : ", "bold"), report.source))
+    # Le chemin entier sur sa ligne, jamais coupé (un rapport écrit dans un fichier a 120 colonnes).
+    console.print(Text.assemble(("Source : ", "bold"), report.source), soft_wrap=True)
     _print_dates(report, console)
     updates = [u for project in report.projects for u in project.updates]
     for project in report.projects:

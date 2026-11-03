@@ -128,7 +128,7 @@ Statuts : `à faire`, `en cours`, `fait`.
 | E32 | H | Mise à jour : le npm du projet, Python, NuGet, Go | fait |
 | E33 | H | Registres et dépôts privés | fait |
 | E34 | H | Compléments d'analyse | fait |
-| E35 | H | Documentation, packaging, CI | à faire |
+| E35 | H | Documentation, packaging, CI | en cours |
 | E36 | H | Recette finale | à faire |
 
 **Jalons** :
@@ -3431,8 +3431,8 @@ public.
 
 ### E35 — Documentation, packaging, CI
 
-- [ ] `README.md` : à quoi ça sert, installation, démarrage (`ui`), captures d'écran, la ligne de commande, les limites par écosystème.
-- [ ] Docs :
+- [x] `README.md` : à quoi ça sert, installation, démarrage (`ui`), captures d'écran, la ligne de commande, les limites par écosystème.
+- [x] Docs :
   - `docs/USAGE.md` : l'interface écran par écran, et toutes les commandes et options. Dire que sous PowerShell 5.1, `>` recode la sortie d'un programme (en UTF-16, via le codage de la console) : y préférer `--output` (E07). Depuis E27 : les fins de vie (où chaque runtime est lu, la table des frameworks, le cycle conseillé, les versions écartées parce que le runtime du projet ne les fait pas tourner, Java jugé d'après Eclipse Temurin) ;
   - `docs/JSON_FORMAT.md` : à jour ;
   - `docs/FORGES.md` : connexion à GitHub, GitLab et Bitbucket, droits nécessaires, ce que contient une PR, comment enregistrer l'outil auprès de chaque forge. Depuis E16 : les quatre façons de se connecter, ce que dit « droits non vérifiés » (token fine-grained : Contents et Pull requests en écriture, Metadata en lecture), où est le token (trousseau du système) et ce qui est révoqué à la déconnexion ; enregistrer sa propre OAuth App GitHub (« Redirect URIs » `http://127.0.0.1/oauth/github/callback`, Device Flow coché, « Expire user access tokens » décoché) et la passer par `FORCEUPDATE_GITHUB_CLIENT_ID` / `…_SECRET` ;
@@ -3462,9 +3462,9 @@ public.
     fichiers de code (carnets, `.vue`, `.svelte`, Deno, `tsconfig.json`, `importlib`,
     `exclude-newer`) ; les limites des notes de E33 et de E34 ; `Project.resolution` dans
     `docs/JSON_FORMAT.md` (fait à E34).
-- [ ] Depuis E20 : dans `docs/FORGES.md`, Bitbucket : enregistrer son propre « OAuth client » (Workspace settings → OAuth clients ; « Authorization code » et « Refresh token », jamais « Client credentials » ; Account Read et Email, Repositories et Pull requests en écriture ; adresse de retour `http://127.0.0.1/oauth/bitbucket/callback`) et le passer par `FORCEUPDATE_BITBUCKET_CLIENT_ID` / `…_SECRET` ; le token d'API Atlassian (`id.atlassian.com`, application Bitbucket, ses six portées), les app passwords qui ne marchent plus ; pas de révocation (« Retirer l'accès » dans `bitbucket.org/account/settings/app-authorizations/`) ; pas d'adresse `noreply` (l'adresse principale du compte signe les commits) ; Bitbucket Data Center hors V1.
-- [ ] Depuis E18 : dans `docs/FORGES.md`, ce que fait une PR (branche `forceupdate/dependencies` remplacée à chaque envoi, un commit au nom du compte avec son adresse `noreply`, marqué `Generated-by: forceupdate` ; jamais par-dessus le commit d'un autre ; ce que dit la description ; un lockfile dont l'outil manque sur l'ordinateur) et qu'il faut git ; dans le README, une capture de l'écran 8 et d'une PR.
-- [ ] Depuis E31 : dans `docs/FORGES.md` :
+- [x] Depuis E20 : dans `docs/FORGES.md`, Bitbucket : enregistrer son propre « OAuth client » (Workspace settings → OAuth clients ; « Authorization code » et « Refresh token », jamais « Client credentials » ; Account Read et Email, Repositories et Pull requests en écriture ; adresse de retour `http://127.0.0.1/oauth/bitbucket/callback`) et le passer par `FORCEUPDATE_BITBUCKET_CLIENT_ID` / `…_SECRET` ; le token d'API Atlassian (`id.atlassian.com`, application Bitbucket, ses six portées), les app passwords qui ne marchent plus ; pas de révocation (« Retirer l'accès » dans `bitbucket.org/account/settings/app-authorizations/`) ; pas d'adresse `noreply` (l'adresse principale du compte signe les commits) ; Bitbucket Data Center hors V1.
+- [x] Depuis E18 : dans `docs/FORGES.md`, ce que fait une PR (branche `forceupdate/dependencies` remplacée à chaque envoi, un commit au nom du compte avec son adresse `noreply`, marqué `Generated-by: forceupdate` ; jamais par-dessus le commit d'un autre ; ce que dit la description ; un lockfile dont l'outil manque sur l'ordinateur) et qu'il faut git ; dans le README, une capture de l'écran 8 et d'une PR.
+- [x] Depuis E31 : dans `docs/FORGES.md` :
   - **le trousseau sous Linux** (serveur, WSL) : sans Secret Service, aucun compte ne se connecte (la raison est dite) ; en installer un (GNOME Keyring : `gnome-keyring` et `dbus`, `dbus-run-session -- sh -c 'echo -n "<phrase>" | gnome-keyring-daemon --unlock; forceupdate ui'` sur un serveur sans session graphique : à vérifier sur une vraie machine le jour venu), ou choisir un autre trousseau par keyring : `uv tool install forceupdate --with keyrings.cryptfile`, puis `PYTHON_KEYRING_BACKEND=keyrings.cryptfile.cryptfile.CryptFileKeyring` (sa phrase de passe demandée dans le terminal, ou `KEYRING_CRYPTFILE_PASSWORD`) ; jamais de fichier en clair par forceupdate (décision de la session 31) ;
   - les tokens GitHub sans expiration (comme `gh`) ; ceux de GitLab et Bitbucket (2 h) renouvelés à chaque usage ; un refresh token de Bitbucket qui ne marche plus : « se reconnecter » ;
   - une PR fermée sans fusion : le récapitulatif la signale et ne coche pas le dépôt (l'envoyer en ouvre une nouvelle ; la branche restée sur la forge est reprise) ;
@@ -3473,16 +3473,17 @@ public.
   - un sous-module n'est pas analysé (le rapport le dit) : l'analyser comme un dépôt à part ;
   - Bitbucket : un dépôt où le compte écrit par un groupe est vu d'après la permission effective que donne Bitbucket (non vérifié en vrai) ;
   - le dossier de travail du serveur (`forceupdate-ui-*` du dossier temporaire) : effacé à l'arrêt, ou au démarrage suivant après un arrêt brutal.
-- [ ] Packaging :
+- [x] Packaging :
   - le front est construit avant `uv build`, et le paquet le contient : fait à E14 (`publish.yml`, `artifacts` de hatchling, vérifié dans le wheel) ;
   - `uv tool install .` testé sous Windows (Linux via la CI), sur une machine sans node ;
-  - version `1.0.0` ;
+  - version `1.0.0` : `1.0.0rc1` d'abord (décision de l'utilisateur, session 35 : la 1.0.0 après
+    la recette, E36) ;
   - licence MIT : le fichier `LICENSE` est bien inclus dans le paquet.
 - [ ] CI GitHub Actions :
   - ruff + pytest, sur Ubuntu, Windows et macOS, avec Python 3.11 et 3.14 ;
   - lint, tests et build du front : job « Front » ajouté à E14 (Ubuntu, node 24 ; types, oxlint, Vitest, build, Playwright) ; y ajouter Windows ;
   - un job hebdomadaire avec les tests `network`.
-- [ ] Depuis E15 : le serveur des tests de bout en bout (`tests/e2e_server.py`) laisse son dossier temporaire (`forceupdate-e2e-*`) quand Playwright l'arrête en fin de série : le faire effacer (par exemple, les vieux dossiers au démarrage, ou un `globalTeardown` de Playwright).
+- [x] Depuis E15 : le serveur des tests de bout en bout (`tests/e2e_server.py`) laisse son dossier temporaire (`forceupdate-e2e-*`) quand Playwright l'arrête en fin de série : le faire effacer (par exemple, les vieux dossiers au démarrage, ou un `globalTeardown` de Playwright).
 - [ ] Publication sur PyPI (décision n°19 du brief) :
   - un workflow GitHub Actions publie le paquet quand on pousse un tag `v*` (Trusted Publishing, sans mot de passe stocké) : fait à E09 (`.github/workflows/publish.yml`), avec la construction du front depuis E14 ;
   - publier la `1.0.0`, avec l'accord de l'utilisateur ;
@@ -3490,6 +3491,71 @@ public.
 
 **Fini quand** : `uv tool install forceupdate` depuis PyPI, dans un dossier vierge,
 marche ; la CI est verte.
+
+**Notes** (session 35) :
+
+- **Commit d'abord** : E34 commitée (`34b4c4f`), avec l'accord de l'utilisateur. **Découpage
+  proposé, refusé** : E35 entière en une session. **Décidé avec lui** : publier d'abord la
+  `1.0.0rc1` (une pré-version : `uv tool install forceupdate` ne la prend pas sans `==` ou
+  `--prerelease allow`), la `1.0.0` au tag de la recette (E36), pour qu'un écart trouvé à la
+  recette ne coûte pas une `1.0.1` ; commit en deux parties, la première poussée tout de suite pour
+  lancer la CI (accord de l'utilisateur).
+- **Trouvé : `main` n'avait pas été poussé depuis E13** (22 commits), et la CI de E13 échouait
+  déjà : sous Windows, un clone (`core.autocrlf`) mettait les mini-projets en CRLF ; sous Ubuntu, la
+  racine `/` de l'écran 2 n'avait pas de nom. **La suite tournée sous Linux** (Docker, image
+  `ghcr.io/astral-sh/uv:python3.14-bookworm`, utilisateur non root ; la méthode est dans CLAUDE.md) :
+  311 échecs, presque tous d'une cause : `sources/local.py` (E30) lisait
+  `stat.IO_REPARSE_TAG_MOUNT_POINT`, qui n'existe que sous Windows — **toute analyse d'un dossier
+  plantait sous Linux et macOS**. Corrigé, puis 5 103 tests verts sous Linux. `.gitattributes`
+  (`* text=auto eol=lf`) : les fichiers du dépôt en LF partout ; l'index l'était déjà.
+- **Documentation** : `README.md` réécrit (aussi la page PyPI : liens et images en adresses
+  absolues de GitHub), `docs/USAGE.md` (2 550 lignes : installation et données, l'interface écran
+  par écran, `scan` et `update` option par option, codes de retour, PowerShell 5.1, lire un
+  rapport, configuration, les huit écosystèmes et leurs limites, particularités de la mise à jour,
+  fins de vie et runtimes, fichier de code, registres privés, réseau d'entreprise, robustesse),
+  `docs/FORGES.md` (705 lignes : toutes les puces de E16, E18, E20, E31), `CHANGELOG.md`,
+  `docs/JSON_FORMAT.md` vérifié par un script (chaque clé des rapports des mini-projets et chaque
+  propriété d'`openapi.json` cherchée dans la doc : `advised_blocked` manquait). Quatre sections
+  rédigées par des agents à partir des notes **et du code** (le code a gagné partout où ils
+  divergeaient), relues et assemblées ; les ancres vérifiées par un script.
+- **Captures** (`docs/images/`, 1440 px) : le serveur de `tests/e2e_server.py` (réponses
+  enregistrées, forges simulées), une copie de `vulnerable` nommée `boutique`, son chemin montré
+  `C:/Projets/boutique` (comme `--source`) ; le rapport, l'écran 5, mes dépôts en sombre, le
+  récapitulatif des PR (écran 8) ; « une PR » : la description de la vraie PR #1 du dépôt de test,
+  rendue par l'API Markdown de GitHub (lecture seule), dans une page à son titre et ses branches.
+- **Trouvé en relisant le code pour la doc, corrigé** : un identifiant écrit dans l'adresse d'un
+  dépôt Gradle (`maven("https://nom:secret@…")`) restait dans l'adresse (la clé du cache) et
+  partait même en http (deux tests ; le second voit le défaut) ; le conseil du token fine-grained
+  de GitHub donné pour toute forge (un test) ; « (injoignable) » à la déconnexion quand la
+  révocation échoue faute de secret ; l'avertissement de `nuget.config` et trois docstrings
+  périmés depuis E33 ; **le proxy des réglages du système est lu** (httpx passe par
+  `urllib.request.getproxies` : sous Windows le proxy réglé à la main, sans ses exceptions ; ni PAC
+  ni détection automatique), contrairement à ce que disaient E30 et la docstring. Les autres écarts
+  relevés vont à E36 (« Depuis E35 »).
+- **Packaging** : `uv build` (wheel et sdist : l'interface, `LICENSE` dans `dist-info/licenses/`) ;
+  `uv tool install .` sous Windows **sans node dans le `PATH`**, dans des dossiers d'outils à part
+  (`UV_TOOL_DIR`, `UV_TOOL_BIN_DIR`) : `--version`, un vrai `scan` (28 failles de `vulnerable`), `ui`
+  qui sert l'interface.
+- **CI** : macOS en plus (Python 3.11 et 3.14), le job « Front » sous Ubuntu et Windows (`bash`
+  partout) ; `network.yml` le lundi et à la demande : Node 24 et pnpm, Go, Rust, PHP 8.5 et
+  Composer, Ruby 4.0, .NET 10 installés par leurs actions (versions des actions vérifiées sur
+  GitHub ; `ruby/setup-ruby` n'a pas d'étiquette `v1`, d'où `v1.336.0`), `pytest --run-network -m
+  network` ; un outil absent fait sauter son test.
+- **Le dossier `forceupdate-e2e-*`** : `workdirs.Workdirs` et `sweep` prennent un préfixe ; le
+  serveur de bout en bout garde son dossier verrouillé, y range celui de `ui`, et balaie au
+  démarrage ceux des séries d'avant (18 effacés au premier démarrage).
+- **La CI, première fois sur les trois systèmes** (commit `be210cd`) : Ubuntu et Windows verts ;
+  macOS, un échec sur 5 103 — le chemin du dossier temporaire (`/private/var/folders/…`) dépassait
+  les 120 colonnes d'un rapport terminal écrit dans un fichier, et rich le coupait : la ligne
+  « Source » n'est plus repliée (`soft_wrap`, un test) ; le front sous Ubuntu, un test Playwright
+  (le second envoi d'une MR) au-delà de 30 s, vert à la relance : les trois tests à deux envois
+  ont `test.slow()` et 60 s. À revérifier sur le commit de la doc.
+- **Pas publié dans cette session** (choix de l'utilisateur) : la case « Publication » reste, la
+  prochaine session commence par elle (étiquette `v1.0.0rc1` après une CI verte, avec son accord,
+  puis `uv tool install forceupdate==1.0.0rc1` depuis PyPI sans node).
+- **Tests** : 5 110 tests Python (plus 28 réseau, pas relancés), verts sous Windows et sous Linux
+  (Docker) — sauf les quelques-uns que chaque système saute (liens symboliques, droits POSIX) ;
+  168 Vitest, 72 Playwright.
 
 ### E36 — Recette finale
 
@@ -3499,7 +3565,32 @@ marche ; la CI est verte.
   - les comptes GitHub, GitLab et Bitbucket de l'utilisateur : analyse de tous les dépôts, puis une PR / MR sur un dépôt de test de chaque forge (`Pauzzle-ozz/forceupdate-demo` sur GitHub et sur gitlab.com, `pauzzle/forceupdate-demo` sur Bitbucket ; leur PR #1 et MR !1 y sont déjà) ; les supprimer ensuite, avec l'accord de l'utilisateur.
 - [ ] Revue finale avec le skill `ui-ux-pro-max` : accessibilité, clair et sombre, petites et grandes fenêtres.
 - [ ] Corriger les écarts. Un écart trop gros pour cette session devient une nouvelle étape (E37…) dans ce plan.
-- [ ] Cocher « Le livrable ». Taguer `v1.0.0`, avec l'accord de l'utilisateur.
+- [ ] Depuis E35 (relevé en écrivant la doc ; chaque point est dit dans `docs/USAGE.md` ou
+  `docs/FORGES.md`, à mettre à jour s'il change) :
+  - un identifiant écrit dans le **chemin** d'une adresse de registre (`https://pypi.fury.io/<jeton>/…`)
+    fait partie de la clé du cache (SQLite) : contraire à « jamais dans le cache » (E33) ; le
+    retirer de la clé (une empreinte de l'adresse), ou le dire comme une limite (fait à E35) ;
+  - `UV_INDEX_<NOM>_USERNAME` / `_PASSWORD` ne partent jamais (la doc dit d'utiliser `~/.netrc`),
+    et la remarque parle d'une adresse « d'un fichier du projet » même quand l'index vient du
+    `uv.toml` de la personne : les envoyer vers l'adresse qu'un fichier de la personne donne au nom,
+    comme Cargo, ou corriger la remarque ;
+  - un registre déclaré en http sur une autre machine est demandé (sans identifiant) ; la docstring
+    de `routing/__init__.py` dit « https seulement » : trancher (refuser, ou le dire), seul Bundler
+    le signale ;
+  - « Privé : non vérifié : l'index « X » n'est pas déclaré » (`routing/python.py`) ne peut pas
+    sortir (c'est « Non vérifiable : vient de l'index … ») : le retirer ou le brancher ;
+  - `include-tests` du projet ne peut pas valoir `false` contre les réglages (un OU) : le dire
+    (fait dans USAGE.md) ou faire primer le projet, comme pour le reste ;
+  - `.tool-versions` : `java 17` sans distribution n'est pas lu (il l'est dans `mise.toml`) ;
+  - le plan affiche pour Yarn 2+ la commande `yarn install --mode=update-lockfile` mais lance
+    `yarn up -R` (et npm `--no-audit --no-fund` en plus) : aligner la commande « à la main » ;
+  - `forceupdate --help` redirigé (un tube) sous Windows sort en cp1252 ; l'aide de typer dit
+    « Show this message and exit. » en anglais.
+- [ ] Cocher « Le livrable ». Passer à la version `1.0.0` (`pyproject.toml`, `uv lock`, `uv run python
+  -m forceupdate.web.openapi`, classifieur « Development Status :: 5 - Production/Stable », le
+  README et `docs/USAGE.md` sans la phrase de la pré-version, `CHANGELOG.md`), CI verte, puis taguer
+  `v1.0.0` avec l'accord de l'utilisateur : `publish.yml` publie sur PyPI ; vérifier
+  `uv tool install forceupdate` (sans `==`) depuis PyPI, sur une machine sans node.
 
 **Fini quand** : toutes les cases de « Le livrable » sont cochées.
 
@@ -3568,3 +3659,4 @@ En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.
 | 32 | 2026-11-02 | E32 | Fait. E31 déjà commitée (`44d5183`). Vérifié en vrai, dans le scratchpad : la table Node → npm (nodejs.org : Node 22 → npm 10, Node 24 et 26 → npm 11 ; la LTS 26 s'appelle « Lithium »), `npx -y npm@10` (npm 6 et 7 réécriraient le lockfile dans un format plus ancien), `npm ci --dry-run` qui relit vraiment, pnpm 12 et corepack qui suivent `packageManager`, les en-têtes de `uv export`, `pip-compile`, PDM (Poetry n'en écrit pas), `dotnet restore` après une `PackageVersion` épinglée ou une `PackageReference` ajoutée, `go mod vendor`, Composer 2.9.8 (qui ignore `COMPOSER_POLICY_ADVISORIES_BLOCK`), le workspace npm (trois formes de version forcée). L'élagage de npm 11 n'a pas pu être recréé ; npm 11 et 10 se disputent les `"peer": true` (le témoin du test `network`). `update/project_npm.py` (le npm qu'attend le projet), la CI comme runtime (`parsers/runtimes.ci`), `Job.extra` : une case cochée d'office (le npm du projet par `npx`, relu par son `npm ci --dry-run` ; `go mod vendor`, `vendor/` remis sur un échec), décochée par l'écran 5 (`declined`) ou `--no-extras`, toujours faite pour une PR ; les `requirements.txt` générés en lockfiles (refaits après le leur : `uv export`, `pdm export`, `poetry export`), `Dependency.manual` (`--hash`), l'indirecte NuGet ajoutée au projet (`EditKind.REFERENCE`, une réécriture qui insère, relue), Composer 2.9 dit, `$x` des versions forcées npm. Écrans 5 et 8 (avec le skill `ui-ux-pro-max`), mini-projet `exports` fait par les vrais outils. Critère de fin vérifié : une copie à CI en Node 22, mise à jour avec le npm 11 de la machine, donne un lockfile que le vrai `npm@10 ci` accepte. 4 864 tests Python verts (plus 23 réseau), 167 Vitest, 72 Playwright. Pas encore commitée. |
 | 33 | 2026-11-02 | E33 | Fait. Commit de E32 d'abord (`41f2fc8`, accord de l'utilisateur). Décidé avec lui : les identifiants des registres privés sont lus dans les fichiers de la personne et ne partent que vers l'hôte exact (https, ou la machine elle-même), jamais dans le cache, un rapport, un journal, l'API ni le navigateur ; les variables d'un fichier du projet ne sont jamais développées. Vérifié en vrai : `go env -w` et `GOENV`, le proxy public qui va chercher un module chez son hôte, `npm config`, un dépôt Composer local (Composer demande aussi Packagist), `dotnet nuget list source` et `<clear />`, uv et un index local à identifiants ; Maven et Gradle d'après leur documentation. `userfiles.py`, `net/auth.py` (un identifiant lié à son adresse ; `HttpClient` suit les redirections sans lui vers une autre origine), `routing/` (npm et `.yarnrc.yml`, Go, `.netrc`, Composer, NuGet, Python, Maven et Gradle, Ruby), `ComposerRepository`, `NuGetFeed`, `SimpleIndex` (JSON ou HTML) ; un paquet privé par son nom n'est jamais demandé au registre public ni à OSV ; un refus arrête la chaîne. Neuvième garde-fou des tests (`user_files`). Ajouté en route : la source globale d'un `Gemfile` (non vérifiée) ; à E34 : Ruby et Rust privés. Vérifié à la main : `forceupdate scan` contre six registres privés locaux, chacun avec son identifiant, aucun secret dans le rapport. Interface inchangée. 4987 tests Python verts (plus 23 réseau ; ceux des registres relancés), 167 Vitest, 72 Playwright. |
 | 34 | 2026-11-03 | E34 | Fait. Commit de E33 d'abord (`598468e`, accord de l'utilisateur) ; découpage proposé, refusé : E34 entière en une session. Vérifié en vrai : Bundler 4.0.20 et un serveur de gems local à identifiant (index compact, clés de `bundle config`, miroir), cargo 1.99.1 et un registre « sparse » local à jeton (`credentials.toml`, `replace-with`, résolveur 3 et `rust-version`), Go 1.27.3 (`go.work`), le proxy (blackfriday), `composer audit` (twig 3.4.1 : 17 failles, 15 chez OSV) et huit choix de `minimum-stability`, Maven Central (`<relocation>`, Spring Boot), le SDK .NET (`Directory.Build.targets`), endoflife.date et nodejs.org, uv (`exclude-newer`) ; Maven et Gradle d'après leur documentation. `routing/ruby.py` (réécrit), `routing/cargo.py`, `GemServer`, le runtime `rust` (sans fin de vie), la version construite d'un workspace Go, chaque majeure à `+incompatible`, `advisories/packagist.py`, `ComposerVersions.resolved` et `Project.resolution` (format JSON et API), `managed.py` (parent et BOM distants, « à la main »), `Maven.pom` et `CacheKind.FILES`, `gradle.lockfile`, `settings.gradle(.kts)`, versions riches, la variante de Guava, `Update=` de MSBuild, images, `mise.toml`, `required_ruby_version`, `setup-*`, les tests `network` des tables, carnets, `.vue`, `.svelte`, Deno, `tsconfig.json`, `importlib`, espace de noms local, `exclude-newer` ; « Rust » au front. Trouvé : l'aiguillage de Cargo lisait une raison que `routing.apply` efface (il renvoyait à crates.io). 5 103 tests Python verts (plus 28 réseau), 168 Vitest, 72 Playwright. Pas encore commitée. |
+| 35 | 2026-11-03 | E35 | En cours (reste la publication). Commit de E34 d'abord (`34b4c4f`, accord de l'utilisateur) ; découpage proposé, refusé. Décidé avec lui : la `1.0.0rc1` d'abord, la `1.0.0` à la recette ; pas de publication dans cette session. Trouvé : `main` pas poussé depuis E13, la CI de E13 en échec ; la suite sous Linux (Docker) : **toute analyse d'un dossier plantait hors Windows** (`stat.IO_REPARSE_TAG_MOUNT_POINT`, E30), corrigé ; `.gitattributes` (LF partout). Doc : `README.md` (cinq captures, dont l'écran 8 et une vraie PR), `docs/USAGE.md`, `docs/FORGES.md`, `CHANGELOG.md`, `docs/JSON_FORMAT.md` vérifié par script. En relisant le code pour la doc : un identifiant dans l'adresse d'un dépôt Gradle partait en http et restait dans la clé du cache (corrigé), le proxy des réglages du système est lu (dit), d'autres écarts portés à E36. Packaging : version `1.0.0rc1`, `uv tool install .` sans node vérifié, `LICENSE` dans le wheel. CI : macOS, Front sous Windows, `network.yml` hebdomadaire ; premier passage : un chemin coupé sous macOS et un délai sous Ubuntu, corrigés. Le serveur e2e balaie ses vieux dossiers. 5 110 tests Python (plus 28 réseau), 168 Vitest, 72 Playwright. Commits `be210cd` et le commit de la doc, poussés. |

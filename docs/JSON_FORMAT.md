@@ -220,6 +220,7 @@ arrive dans moins de 6 mois (`low`) et un cycle plus récent est à conseiller.
 | `advised_cycle` | chaîne ou `null` | le cycle conseillé : parmi les cycles plus récents et maintenus, ceux qui ne finissent pas dans les 6 mois (sinon tous ceux-là), le plus récent à support long (LTS) s'il y en a, sinon le plus récent ; `null` si aucun n'est maintenu |
 | `advised_version` | chaîne ou `null` | la dernière version publiée du cycle conseillé |
 | `advised_lts` | booléen | le cycle conseillé est à support long |
+| `advised_blocked` | chaîne ou `null` | pour un framework, pourquoi sa version conseillée n'est pas proposée : le runtime du projet ne la fait pas tourner (« 5.2.18 demande Python >=3.10 ; le projet : 3.8 et plus (pyproject.toml). Changer de Python d'abord. ») ; `null` sinon |
 | `runtime` | [runtime](#runtime) ou `null` | le runtime lu ; `null` pour un framework |
 
 Les frameworks suivis (`checks.eol.FRAMEWORKS`) : Django, Wagtail, NumPy, Airflow ;
@@ -256,6 +257,7 @@ Un runtime en fin de vie (le mini-projet `tests/projects/eol`, analysé le 2026-
     "advised_cycle": "3.15",
     "advised_version": "3.15.2",
     "advised_lts": false,
+    "advised_blocked": null,
     "runtime": {
       "product": "python",
       "version": "3.8",
@@ -343,8 +345,11 @@ un runtime n'a pas de mise à jour.
 **Pré-cochée** (décision n°12 du brief) : parmi les options qui ne sont pas
 majeures, ne reviennent pas en arrière, ne sont pas à faire à la main et n'ont pas
 de faille que la version utilisée n'a pas (`introduced`), celle qui corrige le plus
-de failles, puis la plus récente. Une majeure n'est jamais cochée d'office, même
-quand elle seule corrige une faille. En 0.x, ce qui sort de `^` est une majeure.
+de failles, puis la plus récente. Avec la sélection par défaut (correctifs et
+mineures), une majeure n'est jamais cochée d'office, même quand elle seule corrige
+une faille ; une sélection réglée à `major` (la configuration du projet, ou les
+réglages : voir `config.selection`) peut en cocher une. En 0.x, ce qui sort de `^`
+est une majeure.
 
 ### Option de mise à jour
 
