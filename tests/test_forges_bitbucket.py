@@ -468,6 +468,33 @@ def test_a_pull_request_opened_in_between_is_updated(
     assert [(p.number, p.title) for p in app.pulls] == [(7, "T")]
 
 
+@needs_git
+def test_a_merged_pull_request_is_not_the_open_one(remote_cloud: FakeBitbucket) -> None:
+    """Session 37 (le vrai Bitbucket) : avec ``q``, le paramètre ``state`` est ignoré ; la PR #1
+    fusionnée était prise pour l'ouverte, et sa mise à jour refusée (« Can only update an open
+    pull request »). Une nouvelle s'ouvre."""
+    app = remote_cloud.repositories["ecureuil/app"]
+    push_commit(
+        app, BRANCH, {"requirements.txt": "flask==2.3.3\n"}, "x\n\nGenerated-by: forceupdate"
+    )
+    app.pulls.append(
+        FakePull(number=1, title="T", body="B", head=BRANCH, base="main", state="MERGED")
+    )
+
+    async def work(http: HttpClient) -> Any:
+        forge = Bitbucket(http, TOKEN)
+        repo = await forge.repository("ecureuil/app")
+        found = await forge.find_open_request(repo, BRANCH)
+        opened = await forge.open_or_update_request(repo, branch=BRANCH, title="T2", body="B2")
+        return found, opened
+
+    found, opened = run(work)
+    assert found is None
+    assert opened.title == "T2"
+    # La fusionnée reste telle quelle ; une nouvelle est ouverte (le faux numérote à part).
+    assert [(p.state, p.title) for p in app.pulls] == [("MERGED", "T"), ("OPEN", "T2")]
+
+
 def test_the_last_pull_request_declined_is_found(remote_cloud: FakeBitbucket) -> None:
     """``closed_request`` : la dernière PR de la branche, tous états confondus, si elle est
     ``DECLINED`` (E31) ; sa date : sa dernière modification."""

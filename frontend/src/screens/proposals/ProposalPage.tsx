@@ -305,7 +305,7 @@ function Recap({ proposal }: { proposal: Proposal }) {
         </Section>
       )}
 
-      {skipped.length > 0 && <SkippedList items={skipped} />}
+      {skipped.length > 0 && <SkippedList items={skipped} proposalId={proposal.id} />}
 
       {send.error && (
         <Alert variant="danger" role="alert" className="mt-6">
@@ -579,7 +579,7 @@ function LockLine({ job, word }: { job: LockJob; word: string }) {
 }
 
 /** Les dépôts sans PR, et pourquoi. */
-function SkippedList({ items, title = 'Sautés' }: { items: ProposedRepository[]; title?: string }) {
+function SkippedList({ items, title = 'Sautés', proposalId }: { items: ProposedRepository[]; title?: string; proposalId?: string }) {
   const id = useId()
   return (
     <Section aria-labelledby={id}>
@@ -596,6 +596,17 @@ function SkippedList({ items, title = 'Sautés' }: { items: ProposedRepository[]
             {item.reason === 'pas encore analysé' && item.scan === null && (
               <Link to="/depots" className="text-link underline">
                 l'analyser
+              </Link>
+            )}
+            {/* Rien de pré-coché (il ne reste que des majeures) : les choisir, comme « Modifier la
+                sélection » d'un dépôt prêt (session 37). */}
+            {item.reason === 'aucune mise à jour cochée' && item.scan && proposalId && (
+              <Link
+                to={`/analyses/${item.scan}/mise-a-jour?pr=${proposalId}`}
+                className="text-link underline"
+                aria-label={`Choisir les mises à jour de ${item.full_name}`}
+              >
+                choisir les mises à jour
               </Link>
             )}
           </li>
@@ -808,7 +819,7 @@ function SentCard({ item, showForge }: { item: ProposedRepository; showForge: bo
                     {update.name} {update.version}
                   </span>
                   {update.project !== '.' && <span className="text-fg-muted">{` (${update.project})`}</span>}
-                  {`${NBSP}: pas faite, l'outil de ${update.lockfile} la refuse${NBSP}: `}
+                  {`${NBSP}: pas faite, ${update.tool ?? `l'outil de ${update.lockfile}`} la refuse${NBSP}: `}
                   <span lang="en" className="font-mono text-[13px] [overflow-wrap:anywhere]">
                     {update.reason}
                   </span>

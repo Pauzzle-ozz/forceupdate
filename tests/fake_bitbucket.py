@@ -451,14 +451,20 @@ class FakeBitbucket:
         self, repo: FakeRepo, rest: str, query: dict[str, list[str]], request: httpx.Request
     ) -> httpx.Response:
         if request.method == "GET" and rest == "/pullrequests":
-            states = query.get("state", ["OPEN"])
+            # Comme Bitbucket : avec ``q``, le paramètre ``state`` est ignoré (session 37 : la PR
+            # fusionnée revenait) ; l'état se filtre dans ``q``.
+            states = None if "q" in query else query.get("state", ["OPEN"])
             wanted = _bbql(query.get("q", [""])[0])
             found = [
                 self._document(repo, pull)
                 for pull in repo.pulls
-                if pull.state in states
+                if (states is None or pull.state in states)
                 and all(
-                    {"source.branch.name": pull.head, "destination.branch.name": pull.base}.get(key)
+                    {
+                        "source.branch.name": pull.head,
+                        "destination.branch.name": pull.base,
+                        "state": pull.state,
+                    }.get(key)
                     == value
                     for key, value in wanted.items()
                 )

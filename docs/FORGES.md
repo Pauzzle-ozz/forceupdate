@@ -601,6 +601,12 @@ Relancer (depuis « Mes dépôts », ou depuis le rapport du dépôt) met à jou
 la branche est refaite sur la branche par défaut du moment, la description aussi. Jamais une
 deuxième PR, même si une autre fenêtre l'a ouverte entre-temps.
 
+Un dépôt sauté parce que rien n'y est coché (« aucune mise à jour cochée » : la PR d'avant est
+fusionnée, il ne reste que des majeures, jamais pré-cochées) a un lien « choisir les mises à
+jour », qui mène au choix de ses mises à jour pour ce récapitulatif.
+
+Une PR de forceupdate fusionnée n'est jamais mise à jour : la suivante en ouvre une nouvelle (#2).
+
 Un dépôt en échec (la forge ne répondait pas, un token refusé puis reconnecté) se renvoie depuis
 le résultat : « Renvoyer le dépôt en échec » repart avec la même sélection, sans repasser par le
 récapitulatif ; les dépôts déjà envoyés ne bougent pas. Le titre du résultat dit l'échec (son

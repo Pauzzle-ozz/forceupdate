@@ -339,6 +339,7 @@ describe('PR (écran 8)', () => {
             minimatch('10.2.6'),
             { update: 'frontend|npm|typescript', name: 'typescript', ecosystem: 'npm', project: 'frontend', direct: true, current: '5.9.3', version: '7.0.2', gap: 'major', fixes: [], held_by: [] },
           ],
+          lockfiles: [{ ...proposedRepository().lockfiles[0], lockfile: 'frontend/package-lock.json', tool: 'npm' }],
           results: [
             {
               ...regenerated()[0],
@@ -359,7 +360,7 @@ describe('PR (écran 8)', () => {
     mockApi({ 'GET /api/proposals/pr1': done, 'GET /api/repositories': repositoryList() })
     renderApp('/pr/pr1')
     const refused = await screen.findByRole('list', { name: 'Majeures refusées de octo/forceupdate' })
-    expect(refused).toHaveTextContent("typescript 7.0.2 (frontend) : pas faite, l'outil de frontend/package-lock.json la refuse")
+    expect(refused).toHaveTextContent('typescript 7.0.2 (frontend) : pas faite, npm la refuse')
     expect(refused).toHaveTextContent('peer typescript@"^5.x" from openapi-typescript@7.13.0')
     expect(screen.getByText(/monter d'abord le paquet qui bloque/)).toBeInTheDocument()
     const notes = screen.getByRole('list', { name: 'En route, pour octo/forceupdate' })
@@ -399,6 +400,19 @@ describe('PR (écran 8)', () => {
     expect(JSON.parse(String(send.init.body))).toEqual({
       repositories: [{ forge: 'github', host: 'github.com', full_name: 'octo/vulnerable' }],
     })
+  })
+
+  it('un dépôt sauté sans rien de coché mène au choix de ses mises à jour (session 37)', async () => {
+    // La PR d'avant fusionnée : il ne reste que des majeures, jamais pré-cochées.
+    const empty = proposal({
+      repositories: [
+        proposedRepository({ full_name: 'octo/demo', scan: 's-demo', state: 'skipped', reason: 'aucune mise à jour cochée', checked: false }),
+      ],
+    })
+    mockApi({ 'GET /api/proposals/pr1': empty, 'GET /api/repositories': repositoryList() })
+    renderApp('/pr/pr1')
+    const link = await screen.findByRole('link', { name: 'Choisir les mises à jour de octo/demo' })
+    expect(link).toHaveAttribute('href', '/analyses/s-demo/mise-a-jour?pr=pr1')
   })
 
   it('un récapitulatif oublié (serveur redémarré) le dit', async () => {

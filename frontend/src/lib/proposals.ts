@@ -177,8 +177,10 @@ export interface DroppedUpdate {
   version: string
   /** Ce qu'en dit l'outil (en anglais, le plus souvent). */
   reason: string
-  /** Le lockfile, et l'outil qui le régénère. */
+  /** Le lockfile. */
   lockfile: string
+  /** L'outil qui le régénère (« uv pip compile ») ; `null` s'il n'est pas dans le récapitulatif. */
+  tool: string | null
 }
 
 /** Les majeures d'un dépôt envoyé que l'outil de lockfile refusait : remises comme avant. */
@@ -193,6 +195,7 @@ export function droppedUpdates(item: ProposedRepository): DroppedUpdate[] {
         version: dropped.version,
         reason: dropped.reason,
         lockfile: result.lockfile,
+        tool: item.lockfiles.find((job) => job.lockfile === result.lockfile)?.tool ?? null,
       }
     }),
   )

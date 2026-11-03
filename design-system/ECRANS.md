@@ -509,7 +509,9 @@ récapitulatif, et retrouver les liens.
   sont pas comptées. Un résultat avec des dépôts en échec : l'icône du titre dit l'échec (`circle-x` rouge si
   tous, `triangle-alert` sinon), et « Renvoyer le dépôt en échec » (principale ; « Retour à mes
   dépôts » devient secondaire) les renvoie avec la même sélection (`POST /send` d'un
-  récapitulatif fini : seulement ses dépôts en échec) ; hors ligne, désactivé avec la raison.
+  récapitulatif fini : seulement ses dépôts en échec) ; hors ligne, désactivé avec la raison. Un
+  dépôt sauté pour « aucune mise à jour cochée » a, dans « Sautés », le lien « choisir les mises à
+  jour » (vers l'écran 5 de son analyse, `?pr=<id>`).
 
 ## 9. Réglages (E29)
 

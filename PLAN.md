@@ -3890,6 +3890,41 @@ marche ; la CI est verte.
   en échec » avec une coche verte (l'icône dit l'échec) ; « Relancer » sans bouton : **« Renvoyer le
   dépôt en échec »** (le serveur renvoie les dépôts `failed` d'un récapitulatif fini, même
   sélection) ; le dossier de travail du serveur dans l'erreur de clone (`~`).
+- **Commit `d96a71f`** (accord de l'utilisateur) : 5 150 tests Python, 178 Vitest, 72 Playwright,
+  ruff ; **CI verte sur les huit jobs**.
+- **La recette, guidée** (l'outil réinstallé depuis le dépôt, `forceupdate ui` arrêté d'abord) :
+  - un clone de `sechunter` analysé dans l'interface (12 failles, 2 fins de vie, 7 majeures…),
+    mis à jour avec `redis` 8.1.0 et `python-dateutil` 4.0.0 cochées : « Appliquée, sauf 2
+    majeures » ; vérifié sur le clone (redis 5.3.1, dateutil 2.9.0.post0, pyasn1 0.6.5, pypdf
+    6.21.4, le reste monté) ;
+  - « Mes dépôts » : l'analyse de tous les dépôts ;
+  - les trois `forceupdate-demo` : rien de pré-coché (leurs PR #1 fusionnées le 3 novembre, il ne
+    reste que des majeures : juste) ; **ajouté** : le lien « choisir les mises à jour » d'un dépôt
+    sauté pour « aucune mise à jour cochée ». Majeures cochées : **PR #2 (GitHub) et MR !2
+    (gitlab.com) ouvertes**, `flask` 3.1.3 et `werkzeug` 3.1.9 retirées par la reprise (`uv pip
+    compile` : Python ≥ 3.9 ; werkzeug < 1.0 pour flask 0.12.5) — **la reprise marche aussi pour
+    pip-compile** ; le texte disait « l'outil de requirements.txt la refuse » : il nomme l'outil
+    (`DroppedUpdate.tool`, d'après les lockfiles du récapitulatif). **Bitbucket : un vrai défaut**,
+    « Can only update an open pull request » : avec `q` (BBQL), Bitbucket **ignore** le paramètre
+    `state`, et `find_open_request` prenait la PR #1 fusionnée pour l'ouverte (la branche, elle,
+    était poussée). Corrigé (`state="OPEN"` dans la requête BBQL, et l'état vérifié sur chaque PR) ;
+    le faux Bitbucket des tests appliquait `state` même avec `q` (d'où le défaut invisible) : il
+    l'ignore maintenant, comme le vrai ; un test. Renvoyé après réinstallation, par le nouveau lien :
+    **PR #2 ouverte** ;
+  - **« Se déconnecter… » en vrai** (GitLab, OAuth) : déconnecté, révoqué, puis reconnecté ;
+  - **un vrai projet par écosystème**, par moi, en ligne de commande, avec l'outil installé : des
+    clones publics (`sharkdp/hexyl`, `spf13/cobra`, `symfony/demo`, `rubygems/rubygems.org`,
+    `jasontaylordev/CleanArchitecture`, `spring-projects/spring-petclinic`) : analyses sans
+    « non concluant » (12, 11, 47, 30, 22, 37 à mettre à jour ; NuGet par
+    `Directory.Packages.props` ; `org.eclipse.m2e:lifecycle-mapping` non vérifiable : juste),
+    plans à blanc, puis **vraies mises à jour** Rust (Cargo), Go (`go.mod`, `go.sum`), PHP
+    (Composer), Java (`pom.xml`, `build.gradle` : seules les versions changent). Pas Ruby
+    (`bundle lock` exécute le Gemfile d'un projet inconnu) ni .NET (MSBuild évalue le projet).
+- **Revue d'interface** (ui-ux-pro-max, checklist de MASTER) des nouveaux états : le résultat des
+  PR avec une majeure refusée, « En route », un dépôt en échec et « Renvoyer » (un test Playwright
+  temporaire : la réponse de l'API enrichie) : axe-core sans violation et aucun défilement
+  horizontal, clair et sombre, 375 et 1 440 px ; captures relues. « Mes dépôts » à 2 560, 1 440 et
+  1 024 px : l'en-tête et les noms tiennent.
 
 ---
 

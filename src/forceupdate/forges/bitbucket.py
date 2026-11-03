@@ -542,12 +542,14 @@ class Bitbucket(Forge):
 
     async def find_open_request(self, repo: Repository, branch: str) -> ChangeRequest | None:
         """La PR ouverte depuis ``branch`` (du dépôt même, pas d'un fork) vers la branche par
-        défaut."""
+        défaut. Avec ``q``, Bitbucket ignore le paramètre ``state`` : l'état est dans la requête
+        BBQL, et vérifié sur chaque PR (session 37 : la PR #1 fusionnée était prise pour
+        l'ouverte, et sa mise à jour refusée, « Can only update an open pull request »)."""
         if repo.default_branch is None:
             return None
         condition = (
             f"source.branch.name={_bbql(branch)} AND "
-            f"destination.branch.name={_bbql(repo.default_branch)}"
+            f'destination.branch.name={_bbql(repo.default_branch)} AND state="OPEN"'
         )
         query = urllib.parse.urlencode({"q": condition, "state": "OPEN", "pagelen": "10"})
         page = await self.get(f"{_repo(repo)}/pullrequests?{query}")
@@ -556,7 +558,11 @@ class Bitbucket(Forge):
             raise ForgeError(f"Réponse inattendue de Bitbucket pour les PR de {repo.full_name}.")
         for item in values:
             request = _change_request(item)
-            if request is not None and _source_repository(item) in (None, repo.full_name.lower()):
+            if (
+                request is not None
+                and item.get("state") in (None, "OPEN")
+                and _source_repository(item) in (None, repo.full_name.lower())
+            ):
                 return request
         return None
 
