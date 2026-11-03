@@ -91,7 +91,11 @@ function opened(
   client: ReturnType<typeof useQueryClient>,
   navigate: ReturnType<typeof useNavigate>,
 ) {
-  client.setQueryData(queryKeys.scan(scan.id), { ...scan, report: null })
+  // En cours, le résumé suffit à l'écran 3. Déjà finie (un fichier seul : quelques
+  // millisecondes), il lui manque le rapport : la page le demande (GET /api/scans/{id}), au lieu
+  // de garder « finie, sans rapport », qu'elle dirait échouée.
+  if (scan.status === 'running') client.setQueryData(queryKeys.scan(scan.id), { ...scan, report: null })
+  else client.removeQueries({ queryKey: queryKeys.scan(scan.id) })
   void client.invalidateQueries({ queryKey: queryKeys.scans })
   void client.invalidateQueries({ queryKey: ['fs'] })
   void navigate(`/analyses/${scan.id}`)

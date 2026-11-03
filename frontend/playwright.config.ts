@@ -12,11 +12,9 @@ export default defineConfig({
   testDir: './e2e',
   timeout: 60_000,
   forbidOnly: !!process.env.CI,
-  // Tous les tests passent par le même serveur (ses analyses, ses mises à jour, ses comptes) : en
-  // parallèle sur une machine de CI lente, l'analyse d'un test attendait celles d'un autre au-delà
-  // de son délai (E35, Windows). Un seul à la fois sur la CI ; en parallèle ici.
-  workers: process.env.CI ? 1 : undefined,
-  // Sur la CI, la durée de chaque test aussi (list), pour comprendre un délai dépassé.
+  // Sur la CI, la durée de chaque test aussi (list), et les traces d'un échec sont gardées par
+  // ci.yml : c'est la trace qui a montré qu'une analyse finie en quelques millisecondes se disait
+  // « échouée » (E35), là où on croyait à un délai trop court.
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,

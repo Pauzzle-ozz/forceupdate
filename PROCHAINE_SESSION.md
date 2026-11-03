@@ -10,7 +10,7 @@ la CI sur Ubuntu, Windows et macOS (Python 3.11 et 3.14), le front sous Ubuntu e
 `network.yml` chaque lundi ; `.gitattributes` (LF partout). En faisant tourner la suite sous
 Linux, trouvé et corrigé un plantage de toute analyse hors Windows (E30). Poussé : `be210cd` et
 `7a6a670` ; les dernières notes de PLAN.md et ce prompt ont pu rester à commiter (`git status`).
-5 110 tests Python (plus 28 réseau), 168 Vitest, 72 Playwright.
+5 110 tests Python (plus 28 réseau), 169 Vitest, 72 Playwright.
 
 Lis CLAUDE.md, puis dans PLAN.md : la case « Publication sur PyPI » de E35 et les notes de E35,
 puis l'étape E36 (toutes ses cases, dont « Depuis E35 ») et « Le livrable » (en tête).
@@ -23,12 +23,12 @@ puis l'étape E36 (toutes ses cases, dont « Depuis E35 ») et « Le livrable »
 1. **Finir E35** :
    - vérifier la CI du dernier commit poussé (`gh run list`) : verte sur les trois systèmes et pour
      le front ; sinon, corriger d'abord (la suite sous Linux se lance en local par Docker :
-     CLAUDE.md, « La suite sous Linux, sans pousser » ; macOS seulement par la CI). Le front sous
-     Windows a échoué deux fois sur `e2e/code.spec.ts` (une analyse qui attendait le travail d'un
-     autre test sur le serveur partagé) : la CI fait maintenant tourner Playwright sur un seul
-     worker, et garde les traces d'un test en échec (l'artefact `traces-playwright-<os>` du job) ;
-     si un test échoue encore, lire sa trace (`npx playwright show-trace`) avant toute autre
-     chose ;
+     CLAUDE.md, « La suite sous Linux, sans pousser » ; macOS seulement par la CI). Un test
+     Playwright qui échouait par intermittence (`e2e/code.spec.ts`) cachait un vrai défaut du front
+     (une analyse finie en quelques millisecondes dite « échouée »), trouvé par sa trace et corrigé
+     à la fin de la session 35 ; la CI garde les traces d'un test en échec (l'artefact
+     `traces-playwright-<os>` du job) : si un test échoue encore, lire sa trace
+     (`npx playwright show-trace`) avant toute autre chose, et ne jamais relancer jusqu'au vert ;
    - **avec l'accord de l'utilisateur**, pousser l'étiquette `v1.0.0rc1` sur ce commit :
      `publish.yml` vérifie que l'étiquette est la version, teste, construit le front et publie par
      Trusted Publishing ; suivre le workflow « Publication » ;

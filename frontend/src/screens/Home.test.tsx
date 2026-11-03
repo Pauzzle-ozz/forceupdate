@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import { DOWN, accountList, Status, listing, mockApi, renderApp, scanSummary } from '@/test/api'
+import { DOWN, accountList, Status, listing, mockApi, renderApp, scanDetail, scanSummary } from '@/test/api'
 
 describe('l’accueil (écran 1)', () => {
   it('premier lancement : les trois sources, et « Aucune analyse pour l’instant »', async () => {
@@ -79,6 +79,24 @@ describe('l’accueil (écran 1)', () => {
       cache: true,
     })
     expect(await screen.findByRole('heading', { name: /Analyse de vulnerable/ })).toBeInTheDocument()
+  })
+
+  it('une analyse déjà finie quand le serveur répond (un fichier seul, quelques ms) : son rapport', async () => {
+    // Le résumé de POST /api/scans dit « done », sans le rapport : la page le demande, et ne
+    // conclut pas « L'analyse a échoué » (vu par la CI, E35).
+    const calls = mockApi({
+      'GET /api/scans': [],
+      'GET /api/fs': listing(),
+      'POST /api/scans': scanSummary({ id: 'b2' }),
+      'GET /api/scans/b2': scanDetail({ id: 'b2' }),
+    })
+    const user = userEvent.setup()
+    renderApp('/')
+    await user.type(screen.getByLabelText("Chemin absolu d'un dossier ou d'un fichier"), 'C:/Projets/vulnerable')
+    await user.click(screen.getByRole('button', { name: 'Analyser' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'vulnerable' })).toBeInTheDocument()
+    expect(screen.queryByText("L'analyse a échoué")).not.toBeInTheDocument()
+    expect(calls.some((call) => call.method === 'GET' && call.url.pathname === '/api/scans/b2')).toBe(true)
   })
 
   it('« Ou donner un chemin » : l’erreur du serveur sous le champ', async () => {
