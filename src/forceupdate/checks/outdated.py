@@ -100,17 +100,19 @@ def check(
             )
         ]
     gap = None if target is None else scheme.gap(current.version, target)
+    held = None
     if gap is None:
         # Aucune version plus récente ne convient au runtime du projet : on le dit seulement.
         if blocked is None or (gap := scheme.gap(current.version, blocked)) is None:
             return []
-        target = blocked
+        target = held = blocked
         message = _message(scheme, current, target, gap, wanted)
         message += f" Elle n'est pas proposée : {refused[blocked].reason}."
     else:
         assert target is not None
         message = _message(scheme, current, target, gap, wanted)
         if blocked is not None and scheme.compare(blocked, target) > 0:
+            held = blocked
             message += f" La {blocked} n'est pas proposée : {refused[blocked].reason}."
     moved = scheme.moved(dependency.name, target)
     if moved is not None:
@@ -127,8 +129,14 @@ def check(
             wanted_version=wanted,
             gap=gap,
             url=info.url,
+            blocked=None if held is None else _blocked(held, refused),
         )
     ]
+
+
+def _blocked(version: str, refused: Mapping[str, Refusal]) -> str:
+    """``Finding.blocked`` : « 5.1.0 : elle demande Node.js >=22 ; le projet : 20 (.nvmrc) »."""
+    return f"{version} : {refused[version].reason}"
 
 
 def _unpinned(
@@ -145,7 +153,9 @@ def _unpinned(
         message = f"Version non fixée{imported} ; le registre n'a pas de dernière version stable."
     else:
         message = f"Version non fixée{imported} : la dernière est {shown}."
+    held = None
     if target is None and blocked is not None:
+        held = _blocked(blocked, refused)
         message += f" Le runtime du projet ne la fait pas tourner : {refused[blocked].reason}."
     return Finding(
         kind=FindingKind.UNPINNED,
@@ -153,6 +163,7 @@ def _unpinned(
         dependency=dependency,
         target_version=shown,
         url=info.url,
+        blocked=held,
     )
 
 

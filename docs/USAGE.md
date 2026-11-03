@@ -1598,8 +1598,13 @@ Version 4.0.0 disponible (majeure) ; utilisée : au moins 3.1.0 d'après la cont
 ```
 
 Si aucune version plus récente ne convient, le constat cite la dernière sans la proposer (« Elle
-n'est pas proposée : … »). Si seule une version écartée corrige toutes les failles, le plan le
-dit : « La correction de toutes ses failles (…) n'est pas proposée : elle demande … ».
+n'est pas proposée : … »), et la colonne « Permise » reste vide. Si seule une version écartée
+corrige toutes les failles, le plan le dit : « La correction de toutes ses failles (…) n'est pas
+proposée : elle demande … ».
+
+Le tableau d'un projet ne donne que les versions : dans le terminal et le Markdown (et donc la
+description d'une PR), un constat qui écarte une version est aussi écrit sous le tableau, dans
+« Détails » ; dans l'interface, dans le détail du paquet ; dans le JSON, son champ `blocked`.
 
 **Le runtime du projet** est le plus ancien de ceux lus pour l'écosystème, versions choisies et
 bornes basses comprises, CI comprise. C'est le plus prudent : uv résout pour toutes les versions

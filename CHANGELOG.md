@@ -27,6 +27,8 @@ La première version complète, à essayer avant la 1.0.0 (`uv tool install forc
   retirée ou dépréciée, version plus récente (correctif, mineure, majeure).
 - Une erreur réseau donne « non concluant », jamais un faux constat ; `--offline` n'utilise que
   le cache.
+- Une version que le runtime du projet ne fait pas tourner (`engines.node`, `requires-python`,
+  `require.php`, `rust-version`…) n'est jamais proposée, et le rapport dit laquelle et pourquoi.
 - Un fichier de code seul (`app.py`, `index.ts`, `main.go`, un carnet…) : le projet trouvé en
   remontant les dossiers, son bloc PEP 723, ou ses imports.
 - Les registres privés et les miroirs déclarés dans la configuration des outils (`.npmrc`,

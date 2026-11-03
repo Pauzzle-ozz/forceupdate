@@ -201,6 +201,7 @@ describe('le rapport (écran 4)', () => {
       detail: null,
       url: null,
       eol: null,
+      blocked: null,
     })
     report.summary = { ...report.summary, findings: { ...report.summary.findings, inconclusive: 1 } }
     withReport(report)

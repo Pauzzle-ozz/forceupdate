@@ -3907,6 +3907,17 @@
                 "type": "null"
               }
             ]
+          },
+          "blocked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked"
           }
         },
         "type": "object",
@@ -3924,7 +3935,8 @@
           "cvss_score",
           "detail",
           "url",
-          "eol"
+          "eol",
+          "blocked"
         ],
         "title": "Finding",
         "description": "Un constat : quelque chose à mettre à jour, ou qui n'a pas pu être vérifié.\n\nCe sont les contrôles (``checks/``) qui les produisent ; E07, E08 et E27\ncomplètent ce que chaque type remplit."

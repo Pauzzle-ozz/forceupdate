@@ -194,8 +194,10 @@ def test_json(report: Report) -> None:
         "detail",
         "url",
         "eol",
+        "blocked",
     }
     assert yanked["eol"] is None
+    assert yanked["blocked"] is None
 
 
 def test_json_keeps_accents() -> None:

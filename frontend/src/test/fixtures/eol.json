@@ -2,7 +2,7 @@
   "schema_version": 1,
   "tool": {
     "name": "forceupdate",
-    "version": "0.1.0"
+    "version": "1.0.0rc1"
   },
   "source": "C:/Projets/eol",
   "languages": [
@@ -48,7 +48,8 @@
           "unverifiable_reason": null,
           "excluded": [],
           "imported": null,
-          "ignored": null
+          "ignored": null,
+          "manual": null
         },
         {
           "ecosystem": "npm",
@@ -68,7 +69,8 @@
           "unverifiable_reason": null,
           "excluded": [],
           "imported": null,
-          "ignored": null
+          "ignored": null,
+          "manual": null
         }
       ],
       "overrides": [],
@@ -95,7 +97,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": null,
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -111,7 +114,8 @@
           "cvss_score": 9.1,
           "detail": "Django vulnerable to SQL injection via _connector keyword argument in QuerySet and Q objects.",
           "url": "https://osv.dev/vulnerability/GHSA-frmv-pr5f-9mcr",
-          "eol": null
+          "eol": null,
+          "blocked": null
         },
         {
           "kind": "vulnerable",
@@ -135,7 +139,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": null,
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -151,7 +156,8 @@
           "cvss_score": 8.8,
           "detail": "Django GeoDjango spatial lookups allow file writes and outbound requests through GDAL raster parsing",
           "url": "https://osv.dev/vulnerability/GHSA-wvqv-fj8w-qmhm",
-          "eol": null
+          "eol": null,
+          "blocked": null
         },
         {
           "kind": "vulnerable",
@@ -175,7 +181,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": null,
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -191,7 +198,8 @@
           "cvss_score": 7.5,
           "detail": "Django has a denial-of-service vulnerability in HttpResponseRedirect and HttpResponsePermanentRedirect on Windows",
           "url": "https://osv.dev/vulnerability/GHSA-qw25-v68c-qjf3",
-          "eol": null
+          "eol": null,
+          "blocked": null
         },
         {
           "kind": "vulnerable",
@@ -215,7 +223,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": null,
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -231,7 +240,8 @@
           "cvss_score": 7.1,
           "detail": "Django is subject to SQL injection through its column aliases",
           "url": "https://osv.dev/vulnerability/GHSA-6w2r-r2m5-xq5w",
-          "eol": null
+          "eol": null,
+          "blocked": null
         },
         {
           "kind": "vulnerable",
@@ -255,7 +265,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": null,
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -271,7 +282,8 @@
           "cvss_score": 6.1,
           "detail": "Django: DomainNameValidator permits newline characters that may enable HTTP header injection",
           "url": "https://osv.dev/vulnerability/GHSA-8qcx-xf44-272x",
-          "eol": null
+          "eol": null,
+          "blocked": null
         },
         {
           "kind": "vulnerable",
@@ -295,7 +307,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": null,
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -311,7 +324,8 @@
           "cvss_score": 5.3,
           "detail": "Django GeoDjango vulnerable to denial of service through deeply nested geometry collections",
           "url": "https://osv.dev/vulnerability/GHSA-q238-5cxm-5c9h",
-          "eol": null
+          "eol": null,
+          "blocked": null
         },
         {
           "kind": "vulnerable",
@@ -335,7 +349,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": null,
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -351,7 +366,8 @@
           "cvss_score": 4.8,
           "detail": "Django: GDALRaster may over-read heap memory when constructed from bytes",
           "url": "https://osv.dev/vulnerability/GHSA-crhf-3pfg-w68w",
-          "eol": null
+          "eol": null,
+          "blocked": null
         },
         {
           "kind": "vulnerable",
@@ -375,7 +391,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": null,
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -391,7 +408,8 @@
           "cvss_score": 4.0,
           "detail": "Django Improper Output Neutralization for Logs vulnerability",
           "url": "https://osv.dev/vulnerability/GHSA-7xr5-9hcq-chf9",
-          "eol": null
+          "eol": null,
+          "blocked": null
         },
         {
           "kind": "vulnerable",
@@ -415,7 +433,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": null,
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -431,7 +450,8 @@
           "cvss_score": 3.7,
           "detail": "Django allows enumeration of user e-mail addresses",
           "url": "https://osv.dev/vulnerability/GHSA-rrqc-c2jx-6jgv",
-          "eol": null
+          "eol": null,
+          "blocked": null
         },
         {
           "kind": "vulnerable",
@@ -455,7 +475,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": null,
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -471,7 +492,8 @@
           "cvss_score": 3.1,
           "detail": "Django: has_vary_header may expose cached responses when Vary values contain whitespace",
           "url": "https://osv.dev/vulnerability/GHSA-923m-gv2p-w5qp",
-          "eol": null
+          "eol": null,
+          "blocked": null
         },
         {
           "kind": "vulnerable",
@@ -495,7 +517,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": null,
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -511,7 +534,8 @@
           "cvss_score": 3.1,
           "detail": "Django: cache middleware may expose private responses when unrelated request cookies are present",
           "url": "https://osv.dev/vulnerability/GHSA-3h9f-r86x-qvjx",
-          "eol": null
+          "eol": null,
+          "blocked": null
         },
         {
           "kind": "vulnerable",
@@ -535,7 +559,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": null,
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -551,7 +576,8 @@
           "cvss_score": 3.1,
           "detail": "Django: signed cookies are vulnerable to salt namespace collisions",
           "url": "https://osv.dev/vulnerability/GHSA-h7pc-vwp9-298g",
-          "eol": null
+          "eol": null,
+          "blocked": null
         },
         {
           "kind": "vulnerable",
@@ -575,7 +601,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": null,
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -591,7 +618,8 @@
           "cvss_score": 3.1,
           "detail": "Django: UpdateCacheMiddleware may disclose cached responses due to case-sensitive Cache-Control handling",
           "url": "https://osv.dev/vulnerability/GHSA-8cjm-8mp7-r2xf",
-          "eol": null
+          "eol": null,
+          "blocked": null
         },
         {
           "kind": "eol",
@@ -624,7 +652,8 @@
               "file": ".python-version",
               "source": "3.8"
             }
-          }
+          },
+          "blocked": null
         },
         {
           "kind": "eol",
@@ -657,7 +686,8 @@
               "file": ".nvmrc",
               "source": "16"
             }
-          }
+          },
+          "blocked": null
         },
         {
           "kind": "eol",
@@ -681,7 +711,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": null,
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -703,7 +734,8 @@
             "advised_lts": true,
             "advised_blocked": "5.2.18 demande Python >=3.10 ; le projet : 3.8 et plus (pyproject.toml). Changer de Python d'abord.",
             "runtime": null
-          }
+          },
+          "blocked": null
         },
         {
           "kind": "outdated",
@@ -727,7 +759,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": null,
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": "3.2.25",
           "current_is_approximate": false,
@@ -738,7 +771,8 @@
           "cvss_score": null,
           "detail": null,
           "url": "https://pypi.org/project/django/",
-          "eol": null
+          "eol": null,
+          "blocked": "6.1.2 : elle demande Python >=3.12 ; le projet : 3.8 et plus (pyproject.toml)"
         },
         {
           "kind": "outdated",
@@ -762,7 +796,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": null,
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": "3.1.0",
           "current_is_approximate": true,
@@ -773,7 +808,8 @@
           "cvss_score": null,
           "detail": null,
           "url": "https://www.npmjs.com/package/p-limit",
-          "eol": null
+          "eol": null,
+          "blocked": "7.3.3 : elle demande Node.js >=20 ; le projet : 16 et plus (package.json)"
         }
       ],
       "updates": [
@@ -801,7 +837,8 @@
               "unverifiable_reason": null,
               "excluded": [],
               "imported": null,
-              "ignored": null
+              "ignored": null,
+              "manual": null
             }
           ],
           "current_version": "3.2.25",
@@ -879,7 +916,8 @@
               "unverifiable_reason": null,
               "excluded": [],
               "imported": null,
-              "ignored": null
+              "ignored": null,
+              "manual": null
             }
           ],
           "current_version": "3.1.0",
@@ -968,7 +1006,8 @@
           "file": "Dockerfile",
           "source": "FROM python:3.8-slim"
         }
-      ]
+      ],
+      "resolution": {}
     }
   ],
   "ignored_manifests": [],

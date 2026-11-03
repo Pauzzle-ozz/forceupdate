@@ -17,7 +17,7 @@ from forceupdate.report import (
     Summary,
     code_reading,
     configuration,
-    distinct_findings,
+    details,
     format_date,
     format_share,
     label,
@@ -28,10 +28,6 @@ from forceupdate.report import (
 )
 
 _SPECIAL = re.compile(r"([\\`*_{}\[\]<>()#+!|~])")
-
-
-_IN_TABLE = (FindingKind.OUTDATED, FindingKind.UNPINNED)
-"""Les constats que dit le tableau (la dernière version), sans détail en dessous."""
 
 
 def render(report: Report) -> str:
@@ -135,10 +131,10 @@ def _project(project: Project, report: Report) -> list[str]:
     indirect_rows = rows(project, report, direct=False)
     if indirect_rows:
         lines += ["", "### Dépendances indirectes à signaler", "", *_table(indirect_rows)]
-    details = [f for f in distinct_findings([project]) if f.kind not in _IN_TABLE]
-    if details:
+    detailed = details(project)
+    if detailed:
         lines += ["", "### Détails", ""]
-        for finding in details:
+        for finding in detailed:
             dependency = finding.dependency
             name = ""
             if dependency is not None:

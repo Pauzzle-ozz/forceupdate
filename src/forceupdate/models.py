@@ -343,6 +343,12 @@ class Finding:
     """Une fin de vie (``eol``) : le cycle, sa date, le cycle conseillé, et pour un runtime
     (``dependency`` à ``None``) ce qui a été lu ; ``None`` pour les autres constats, et pour un
     « non concluant » (endoflife.date injoignable, version inconnue de lui)."""
+    blocked: str | None = None
+    """Pour un constat « plus récente » ou « version non fixée » : la version plus récente que
+    le runtime du projet ne fait pas tourner, et pourquoi (``checks.runtimes``) : « 5.1.0 :
+    elle demande Node.js ^22.12.0 || >=24.0.0 ; le projet : 20 (.github/workflows/ci.yml) » ;
+    ``None`` sinon. Le message le dit aussi ; le terminal et le Markdown, dont le tableau ne
+    donne que les versions, l'écrivent sous lui."""
 
 
 class UpdateReason(enum.StrEnum):

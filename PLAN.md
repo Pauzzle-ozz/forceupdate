@@ -3479,7 +3479,7 @@ public.
   - version `1.0.0` : `1.0.0rc1` d'abord (décision de l'utilisateur, session 35 : la 1.0.0 après
     la recette, E36) ;
   - licence MIT : le fichier `LICENSE` est bien inclus dans le paquet.
-- [ ] CI GitHub Actions :
+- [x] CI GitHub Actions :
   - ruff + pytest, sur Ubuntu, Windows et macOS, avec Python 3.11 et 3.14 ;
   - lint, tests et build du front : job « Front » ajouté à E14 (Ubuntu, node 24 ; types, oxlint, Vitest, build, Playwright) ; y ajouter Windows ;
   - un job hebdomadaire avec les tests `network`.
@@ -3571,10 +3571,51 @@ marche ; la CI est verte.
   la page restait sur « finie, sans rapport », qu'elle dit échouée. **Un vrai défaut**, qu'une
   personne pouvait voir sur un fichier seul. Corrigé : le résumé n'est rangé que pour une
   analyse en cours, sinon la page demande l'analyse entière (un test Vitest le reproduisait
-  avant). Le worker unique retiré (la cause n'était pas là), les traces et les durées gardées.
+  avant). Le worker unique retiré (la cause n'était pas là), les traces et les durées gardées. **CI verte** sur les huit jobs au commit `0425828` (Python sous Ubuntu, Windows et macOS, 3.11 et 3.14 ; le front sous Ubuntu et Windows).
 - **Tests** : 5 110 tests Python (plus 28 réseau, pas relancés), verts sous Windows et sous Linux
   (Docker) — sauf les quelques-uns que chaque système saute (liens symboliques, droits POSIX) ;
   168 Vitest, 72 Playwright.
+
+**Notes** (session 36) :
+
+- **Les essais de l'utilisateur, faits ensemble** : il ne les avait pas faits seul ; il a voulu être
+  guidé, étape par étape (la commande, puis ce qu'il doit voir). L'outil installé depuis le dépôt
+  (`uv tool install .`, le front construit vérifié à jour), dans un PowerShell hors de VS Code (le
+  `.venv` activé y prendrait la version de développement). Huit étapes, toutes conformes :
+  - `ui` (le jeton échangé contre un cookie, le thème, le menu replié) ;
+  - l'analyse de forceupdate et d'Argos (`the good guy`) : les mêmes chiffres que `scan` ;
+  - la mise à jour d'une copie d'Argos (un clone dans le scratchpad, son chemin collé à
+    l'accueil) : 21 cochées sur 27, `anthropic` majeure ajoutée à la main ; `pyproject.toml`
+    réécrit sur sa seule ligne, `uv.lock` (les 16 paquets choisis, plus `botocore` et
+    `pydantic-core`), `package-lock.json` par npm 10 via `npx` (la case du npm du projet) ;
+  - un fichier de code : `server.js` de radar-pros, lu via son `package.json` (Node.js 20 en fin de
+    vie d'après `engines.node = ">=20.3"`, une borne basse : voulu, E27) ; `pep723.py` déposé, mis
+    à jour, téléchargé (seule la ligne de flask change) ;
+  - les trois forges connectées par OAuth ; 11 dépôts (10 analysés, 1 vide), 466 failles, les
+    chiffres de forceupdate et de sechunter identiques au local ; les trois `forceupdate-demo`
+    envoyés : la même PR #1 (et MR !1), contenu inchangé depuis le 29 octobre, donc rien de
+    poussé et la description refaite (« forceupdate 1.0.0rc1 ») ;
+  - les réglages : une valeur refusée, un dépôt exclu, un paquet ignoré (aussi en ligne de
+    commande) ; le vrai fichier, qui n'existait pas, effacé après ;
+  - `scan` en terminal, Markdown, JSON ; `--fail-on` (1, 1, 2 : un fichier du dépôt est lu via
+    le `pyproject.toml` de forceupdate, ma consigne attendait 0 à tort) ; `update --security-only`
+    (non, oui, puis le garde-fou git, code 2).
+- **Un défaut, corrigé** : le terminal et le Markdown (donc la description d'une PR) ne disaient
+  pas pourquoi une version plus récente n'est pas proposée quand le runtime du projet ne la fait
+  pas tourner (vitest 5.1.0 demande Node 22, Argos est en Node 20 : « Permise » vide, « mineure »,
+  sans raison) ; seule l'interface montrait le message. `Finding.blocked` (la version écartée et
+  pourquoi ; un champ ajouté au JSON, `schema_version` inchangé) ; `report.details` écrit sous le
+  tableau, en plus des autres, un constat « plus récente » ou « version non fixée » qui en a un.
+  Tests dans `test_eol_project.py` (django 6.1.2, p-limit 7.3.3 : terminal, Markdown, champ) et
+  la liste des clés de `test_report.py` ; `openapi.json`, `schema.d.ts`, `JSON_FORMAT.md`,
+  `USAGE.md`. **Les rapports d'exemple du front** (`frontend/src/test/fixtures/`) étaient périmés
+  depuis E34 (`manual`, `resolution` manquaient ; aucun test ne le voit) : régénérés, en LF, celui
+  de `imports.py` depuis une copie hors du dépôt (sinon il est lu via le `pyproject.toml` de
+  forceupdate).
+- **L'outil d'édition écrit en CRLF** sous Windows tout fichier qu'il touche : repassés en LF
+  (`sed -i 's/\r$//'`) ; git les aurait normalisés au commit (`.gitattributes`).
+- **Pour E36** (ajouté à « Depuis la session 36 ») : deux détails du tableau de « Mes dépôts »,
+  la déconnexion pas essayée, les autres écosystèmes sur de vrais projets.
 
 ### E36 — Recette finale
 
@@ -3605,6 +3646,13 @@ marche ; la CI est verte.
     `yarn up -R` (et npm `--no-audit --no-fund` en plus) : aligner la commande « à la main » ;
   - `forceupdate --help` redirigé (un tube) sous Windows sort en cp1252 ; l'aide de typer dit
     « Show this message and exit. » en anglais.
+- [ ] Depuis la session 36 (les essais de l'utilisateur) :
+  - « Mes dépôts » sur un grand écran (2 560 px) : l'en-tête « PR / MR » se coupe sur deux lignes,
+    le cadenas et le lien d'un nom long (`Pauzzle-ozz/forceupdate-demo`) passent à la ligne ; le
+    tableau reste étroit (le conteneur) : à revoir avec la revue ui-ux-pro-max ;
+  - « Se déconnecter… » : pas essayé en vrai (les trois comptes de l'utilisateur sont connectés) ;
+  - le fichier de réglages écrit par l'écran 9 finit par une table `[selection]` vide : sans effet,
+    la retirer quand elle n'a rien.
 - [ ] Cocher « Le livrable ». Passer à la version `1.0.0` (`pyproject.toml`, `uv lock`, `uv run python
   -m forceupdate.web.openapi`, classifieur « Development Status :: 5 - Production/Stable », le
   README et `docs/USAGE.md` sans la phrase de la pré-version, `CHANGELOG.md`), CI verte, puis taguer

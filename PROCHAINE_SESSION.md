@@ -8,8 +8,9 @@ complète), `docs/FORGES.md`, `CHANGELOG.md`, `docs/JSON_FORMAT.md` vérifié ; 
 `1.0.0rc1` (décision de l'utilisateur : une pré-version d'abord, la 1.0.0 au tag de la recette) ;
 la CI sur Ubuntu, Windows et macOS (Python 3.11 et 3.14), le front sous Ubuntu et Windows,
 `network.yml` chaque lundi ; `.gitattributes` (LF partout). En faisant tourner la suite sous
-Linux, trouvé et corrigé un plantage de toute analyse hors Windows (E30). Poussé : `be210cd` et
-`7a6a670` ; les dernières notes de PLAN.md et ce prompt ont pu rester à commiter (`git status`).
+Linux, trouvé et corrigé un plantage de toute analyse hors Windows (E30). Poussé : `be210cd`,
+`7a6a670`, `739a3c8` et `0425828` (CI verte sur les huit jobs) ; la case CI de PLAN.md, cochée
+après, peut ne pas être commitée (`git status`).
 5 110 tests Python (plus 28 réseau), 169 Vitest, 72 Playwright.
 
 Lis CLAUDE.md, puis dans PLAN.md : la case « Publication sur PyPI » de E35 et les notes de E35,

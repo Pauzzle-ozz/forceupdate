@@ -38,7 +38,7 @@ from forceupdate.report import (
     Summary,
     code_reading,
     configuration,
-    distinct_findings,
+    details,
     format_date,
     format_share,
     label,
@@ -72,10 +72,6 @@ _SEVERITY_STYLES = {
     Severity.LOW: "cyan",
     Severity.INFO: "dim",
 }
-
-
-_IN_TABLE = (FindingKind.OUTDATED, FindingKind.UNPINNED)
-"""Les constats que dit le tableau (la dernière version), sans détail en dessous."""
 
 
 def render(report: Report, console: Console) -> None:
@@ -166,11 +162,11 @@ def _print_project(project: Project, report: Report, console: Console) -> None:
     if indirect_rows:
         console.print(Text("  Dépendances indirectes à signaler", style="bold"))
         console.print(_table(indirect_rows))
-    details = [f for f in distinct_findings([project]) if f.kind not in _IN_TABLE]
-    if details:
+    detailed = details(project)
+    if detailed:
         console.print(Text("  Détails", style="bold"))
         grid = _grid()
-        for finding in details:
+        for finding in detailed:
             message = Text()
             if finding.dependency is not None:
                 message.append(f"{subject(finding)} : ", style="bold")

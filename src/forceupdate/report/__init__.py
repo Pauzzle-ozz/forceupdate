@@ -313,6 +313,22 @@ def distinct_findings(projects: Iterable[Project]) -> list[Finding]:
     return checks.sort_findings(kept)
 
 
+_IN_TABLE = (FindingKind.OUTDATED, FindingKind.UNPINNED)
+"""Les constats que dit le tableau (la dernière version)."""
+
+
+def details(project: Project) -> list[Finding]:
+    """Les constats de ``project`` à écrire sous son tableau : tous, sauf ceux que le tableau
+    dit en entier (une version plus récente, une version non fixée), à moins que le runtime du
+    projet n'écarte une version plus récente (``Finding.blocked``) : le tableau n'en dit pas la
+    raison."""
+    return [
+        finding
+        for finding in distinct_findings([project])
+        if finding.kind not in _IN_TABLE or finding.blocked is not None
+    ]
+
+
 @dataclass(frozen=True, kw_only=True)
 class Row:
     """Une ligne du tableau d'un projet : un paquet, avec toutes ses déclarations."""

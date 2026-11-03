@@ -188,19 +188,20 @@ deux extras) donne deux dépendances, chacune avec son emplacement.
 | `detail` | chaîne ou `null` | ce que dit la source, tel quel, souvent en anglais : la raison d'un retrait, le message de dépréciation, le titre de l'avis de sécurité |
 | `url` | chaîne ou `null` | pour en savoir plus : la page du paquet ; pour une faille, celle de l'avis sur osv.dev ; pour une fin de vie, la page du produit sur endoflife.date |
 | `eol` | [fin de vie](#fin-de-vie) ou `null` | `eol` : le cycle, sa date, le cycle conseillé ; `null` pour les autres types |
+| `blocked` | chaîne ou `null` | `outdated`, `unpinned` : la version plus récente que le runtime du projet ne fait pas tourner, et pourquoi (« 6.1.2 : elle demande Python >=3.12 ; le projet : 3.8 et plus (pyproject.toml) ») ; `message` le dit aussi. `null` sinon |
 
 Ce que remplit chaque type :
 
 | `kind` | `target_version` | Autres champs |
 |---|---|---|
-| `outdated` | la dernière version stable (pour npm : `dist-tags.latest`) | `current_version`, `gap`, `wanted_version` |
+| `outdated` | la dernière version stable (pour npm : `dist-tags.latest`) ; la plus haute que le runtime du projet fait tourner, s'il en écarte une plus récente | `current_version`, `gap`, `wanted_version`, `blocked` |
 | `vulnerable` | la plus petite version qui corrige la faille, au-dessus de la version utilisée ; `null` si aucune n'est connue (paquet malveillant, faille jamais corrigée, avis illisible) | `identifiers`, `cvss_score`, `detail` (le titre de l'avis), `url` (l'avis), `gap` |
 | `yanked` | la plus proche version non retirée ; `null` s'il n'y en a pas | `detail` : la raison du retrait |
 | `deprecated` (paquet) | `null` : le remplacer est un choix humain | `detail` : le message du registre |
 | `deprecated` (version, npm) | la plus proche version non dépréciée | `detail` : le message du registre |
 | `eol` (runtime) | la dernière version du cycle conseillé (`3.15.2`) ; `null` s'il n'y en a pas | `dependency` à `null`, `eol` (avec `runtime`), `current_version` (la version lue), `url` |
 | `eol` (framework) | de même (`5.2.18` pour Django 3.2) | `dependency` (le premier paquet du produit dans le projet : un constat par cycle), `eol`, `gap` |
-| `unpinned` | la dernière version stable, si le registre en a une | `message` : « Version non fixée : la dernière est X. » (« (importé : cv2) » pour un import) |
+| `unpinned` | la dernière version stable, si le registre en a une | `message` : « Version non fixée : la dernière est X. » (« (importé : cv2) » pour un import) ; `blocked` |
 | `unverifiable` | `null` | `message` : la raison (paquet introuvable, dépendance git, paquet d'un registre privé qu'on ne peut pas demander : « Privé : non vérifié : … », « Registre privé : non vérifié : … refuse l'accès »…) |
 | `inconclusive` | la dernière, si on la connaît | `message` : pourquoi (réseau, hors ligne sans cache, version utilisée inconnue, version inconnue du registre, failles non vérifiées, fin de vie non vérifiée : endoflife.date injoignable, ou une version qu'il ne connaît pas) |
 
@@ -265,7 +266,8 @@ Un runtime en fin de vie (le mini-projet `tests/projects/eol`, analysé le 2026-
       "file": ".python-version",
       "source": "3.8"
     }
-  }
+  },
+  "blocked": null
 }
 ```
 
@@ -524,7 +526,8 @@ chaque constat, abrégée ici) :
           "cvss_score": 5.5,
           "detail": "Requests has Insecure Temp File Reuse in its extract_zipped_paths() utility function",
           "url": "https://osv.dev/vulnerability/GHSA-gc5v-m9x4-r6x2",
-          "eol": null
+          "eol": null,
+          "blocked": null
         },
         {
           "kind": "vulnerable",
@@ -540,7 +543,8 @@ chaque constat, abrégée ici) :
           "cvss_score": 5.3,
           "detail": "Requests vulnerable to .netrc credentials leak via malicious URLs",
           "url": "https://osv.dev/vulnerability/GHSA-9hjg-9r4m-mvj7",
-          "eol": null
+          "eol": null,
+          "blocked": null
         },
         {
           "kind": "yanked",
@@ -556,7 +560,8 @@ chaque constat, abrégée ici) :
           "cvss_score": null,
           "detail": "Yanked due to conflicts with CVE-2024-35195 mitigation",
           "url": "https://pypi.org/project/requests/",
-          "eol": null
+          "eol": null,
+          "blocked": null
         },
         {
           "kind": "outdated",
@@ -572,7 +577,8 @@ chaque constat, abrégée ici) :
           "cvss_score": null,
           "detail": null,
           "url": "https://pypi.org/project/requests/",
-          "eol": null
+          "eol": null,
+          "blocked": null
         }
       ],
       "updates": [

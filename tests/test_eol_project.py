@@ -81,6 +81,16 @@ def test_versions_the_runtime_cannot_run_are_not_proposed(recorded: Routes) -> N
         "La 7.3.3 n'est pas proposée : elle demande Node.js >=20 ; le projet : 16 et plus "
         "(package.json)."
     )
+    assert outdated["django"].blocked == (
+        "6.1.2 : elle demande Python >=3.12 ; le projet : 3.8 et plus (pyproject.toml)"
+    )
+    assert outdated["p-limit"].blocked == (
+        "7.3.3 : elle demande Node.js >=20 ; le projet : 16 et plus (package.json)"
+    )
+    # Une version plus récente que le runtime fait tourner n'a rien d'écarté.
+    assert all(
+        f.blocked is None for name, f in outdated.items() if name not in {"django", "p-limit"}
+    )
     updates = {u.name: u for u in project.updates}
     assert [o.version for o in updates["django"].options] == ["4.2.30"]
     assert updates["django"].note == (
@@ -101,6 +111,13 @@ def test_scan_on_the_command_line(recorded: Routes) -> None:
     assert "fin de vie Node.js 16 : fin de vie depuis le 11/09/2023." in text
     assert "fin de vie django : Django 3.2 : fin de vie depuis le 01/04/2024." in text
     assert "3 fins de vie" in text
+    # Le tableau dit 4.0.0 pour p-limit, pas pourquoi la 7.3.3 n'est pas proposée : les
+    # détails le disent (session 36).
+    assert (
+        "La 7.3.3 n'est pas proposée : elle demande Node.js >=20 ; le projet : 16 et plus "
+        "(package.json)." in text
+    )
+    assert "La 6.1.2 n'est pas proposée : elle demande Python >=3.12" in text
     # --fail-on major : une fin de vie compte.
     failing = runner.invoke(app, ["scan", str(PROJECT), "--no-cache", "--fail-on", "major"])
     assert failing.exit_code == 1
@@ -147,6 +164,16 @@ def test_markdown(recorded: Routes) -> None:
     assert "- Runtimes : Python 3.8 \\(.python-version\\), Node.js 16 \\(.nvmrc\\)" in text
     assert "- **fin de vie** — Python 3.8 : fin de vie depuis le 07/10/2024." in text
     assert "- **fin de vie** — `django` : Django 3.2 : fin de vie depuis le 01/04/2024." in text
+    # Ce que le tableau ne dit pas : la version plus récente que le runtime écarte.
+    assert "La 7.3.3 n'est pas proposée : elle demande Node.js \\>=20" in text
+    # Les autres « plus récente » restent dans le tableau seulement.
+    details = text.split("### Détails", 1)[1].split("\n## ", 1)[0]
+    assert (
+        details.count("- **majeure**")
+        + details.count("- **mineure**")
+        + details.count("- **correctif**")
+        == 2
+    )
 
 
 def test_offline_without_cache_is_inconclusive(recorded: Routes) -> None:

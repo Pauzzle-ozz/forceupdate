@@ -2,13 +2,13 @@
   "schema_version": 1,
   "tool": {
     "name": "forceupdate",
-    "version": "0.1.0"
+    "version": "1.0.0rc1"
   },
   "source": "C:/Projets/scripts/imports.py",
   "languages": [
     {
       "name": "Python",
-      "bytes": 308,
+      "bytes": 307,
       "ecosystem": "PyPI"
     }
   ],
@@ -37,7 +37,8 @@
           "unverifiable_reason": null,
           "excluded": [],
           "imported": "requests",
-          "ignored": null
+          "ignored": null,
+          "manual": null
         },
         {
           "ecosystem": "PyPI",
@@ -53,7 +54,8 @@
           "unverifiable_reason": null,
           "excluded": [],
           "imported": "dateutil",
-          "ignored": null
+          "ignored": null,
+          "manual": null
         },
         {
           "ecosystem": "PyPI",
@@ -69,7 +71,8 @@
           "unverifiable_reason": null,
           "excluded": [],
           "imported": "flask",
-          "ignored": null
+          "ignored": null,
+          "manual": null
         },
         {
           "ecosystem": "PyPI",
@@ -85,7 +88,8 @@
           "unverifiable_reason": null,
           "excluded": [],
           "imported": "jinja2",
-          "ignored": null
+          "ignored": null,
+          "manual": null
         }
       ],
       "overrides": [],
@@ -108,7 +112,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": "flask",
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": null,
           "current_is_approximate": false,
@@ -119,7 +124,8 @@
           "cvss_score": null,
           "detail": null,
           "url": "https://pypi.org/project/flask/",
-          "eol": null
+          "eol": null,
+          "blocked": null
         },
         {
           "kind": "unpinned",
@@ -139,7 +145,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": "jinja2",
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": null,
           "current_is_approximate": false,
@@ -150,7 +157,8 @@
           "cvss_score": null,
           "detail": null,
           "url": "https://pypi.org/project/jinja2/",
-          "eol": null
+          "eol": null,
+          "blocked": null
         },
         {
           "kind": "unpinned",
@@ -170,7 +178,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": "dateutil",
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": null,
           "current_is_approximate": false,
@@ -181,7 +190,8 @@
           "cvss_score": null,
           "detail": null,
           "url": "https://pypi.org/project/python-dateutil/",
-          "eol": null
+          "eol": null,
+          "blocked": null
         },
         {
           "kind": "unpinned",
@@ -201,7 +211,8 @@
             "unverifiable_reason": null,
             "excluded": [],
             "imported": "requests",
-            "ignored": null
+            "ignored": null,
+            "manual": null
           },
           "current_version": null,
           "current_is_approximate": false,
@@ -212,7 +223,8 @@
           "cvss_score": null,
           "detail": null,
           "url": "https://pypi.org/project/requests/",
-          "eol": null
+          "eol": null,
+          "blocked": null
         }
       ],
       "updates": [],
@@ -223,7 +235,8 @@
         }
       ],
       "runtime_files": [],
-      "runtimes": []
+      "runtimes": [],
+      "resolution": {}
     }
   ],
   "ignored_manifests": [],

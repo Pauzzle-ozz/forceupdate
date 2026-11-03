@@ -1114,6 +1114,8 @@ export interface components {
             /** Url */
             url: string | null;
             eol: components["schemas"]["EndOfLife"] | null;
+            /** Blocked */
+            blocked: string | null;
         };
         /**
          * FindingKind

@@ -95,6 +95,7 @@ describe('les lignes du rapport', () => {
         detail: null,
         url: null,
         eol: null,
+        blocked: null,
       })
     const row = rows(report).find((each) => each.dependency.name === 'lodash')!
     expect(row.severity).toBeNull()
