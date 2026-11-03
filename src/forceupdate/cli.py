@@ -328,8 +328,8 @@ def update(
 
     Montre les mises à jour choisies, le diff des manifestes et les lockfiles à régénérer ;
     après confirmation, réécrit les manifestes puis régénère les lockfiles avec l'outil de
-    chacun (npm, pnpm, Yarn, uv, Poetry, PDM, pipenv, pip-compile), sans les scripts du projet.
-    Sans l'outil, la commande à lancer est donnée.
+    chacun (npm, pnpm, Yarn, uv, Poetry, PDM, pipenv, pip-compile, cargo, go, Composer,
+    Bundler, dotnet), sans les scripts du projet. Sans l'outil, la commande à lancer est donnée.
     """
     try:
         source = LocalSource(path)

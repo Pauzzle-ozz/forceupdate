@@ -477,10 +477,10 @@ export interface paths {
         put?: never;
         /**
          * Scan Repository
-         * @description Analyse un dépôt donné par son nom (``owner/nom``) ou son adresse, même d'un autre compte
-         *     s'il est public (sur GitLab : ``groupe/sous-groupe/projet`` ou son adresse) : avec le token
-         *     du compte connecté à sa forge, sans token sinon (GitHub : 60 requêtes par heure). Se suit
-         *     comme une autre analyse.
+         * @description Analyse un dépôt donné par son nom (``owner/nom``, toujours sur GitHub) ou son adresse
+         *     (``https://gitlab.com/groupe/sous-groupe/projet``, ``https://bitbucket.org/espace/depot``),
+         *     même d'un autre compte s'il est public : avec le token du compte connecté à sa forge, sans
+         *     token sinon (GitHub : 60 requêtes par heure). Se suit comme une autre analyse.
          */
         post: operations["scan_repository"];
         delete?: never;

@@ -46,6 +46,7 @@ from forceupdate.forges.base import (
     ChangeRequest,
     Forge,
     ForgeError,
+    ForgeKind,
     Identity,
     Repository,
     TokenRefused,
@@ -165,7 +166,10 @@ async def deliver(
     s'arrête là (``INTERRUPTED``). Une branche déjà poussée sans sa PR est reprise par l'envoi
     suivant : la branche est de forceupdate, la PR s'ouvre."""
     step = on_step or _ignore
-    hint = FINE_GRAINED if author.access is Access.UNKNOWN else ""
+    # Des droits inconnus : un token fine-grained de GitHub. Ailleurs (un token d'API Atlassian,
+    # un token GitLab), le conseil ne s'applique pas.
+    unknown = author.access is Access.UNKNOWN and forge.kind is ForgeKind.GITHUB
+    hint = FINE_GRAINED if unknown else ""
     base: str | None = None
     prepared: Prepared | None = None
     results: tuple[Regenerated, ...] = ()

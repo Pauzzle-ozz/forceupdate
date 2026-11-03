@@ -1,0 +1,4 @@
+# Les fichiers du dépôt en LF partout, Windows compris (core.autocrlf n'y change rien) : les
+# tests comparent des octets, et les mini-projets (tests/projects) doivent être les mêmes sur
+# les trois systèmes de la CI. Un test qui veut du CRLF l'écrit lui-même.
+* text=auto eol=lf

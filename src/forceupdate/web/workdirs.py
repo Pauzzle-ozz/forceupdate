@@ -41,8 +41,8 @@ def default_base() -> Path:
 class Workdirs:
     """Le dossier de travail de ce serveur, verrouillé tant qu'il tourne."""
 
-    def __init__(self, base: Path | None = None) -> None:
-        self.path = Path(tempfile.mkdtemp(prefix=PREFIX, dir=base or default_base()))
+    def __init__(self, base: Path | None = None, prefix: str = PREFIX) -> None:
+        self.path = Path(tempfile.mkdtemp(prefix=prefix, dir=base or default_base()))
         self._lock: int | None = os.open(self.path / LOCK, os.O_RDWR | os.O_CREAT, 0o600)
         os.write(self._lock, b"\0")
         os.lseek(self._lock, 0, os.SEEK_SET)
@@ -66,10 +66,11 @@ class Workdirs:
             logger.warning("dossier de travail pas entièrement effacé (%s) : %s", self.path, err)
 
 
-def sweep(base: Path | None = None) -> int:
-    """Efface les dossiers laissés par des serveurs arrêtés brutalement ; rend leur nombre."""
+def sweep(base: Path | None = None, prefix: str = PREFIX) -> int:
+    """Efface les dossiers laissés par des serveurs arrêtés brutalement ; rend leur nombre.
+    ``prefix`` : celui des dossiers à balayer (le serveur des tests de bout en bout a le sien)."""
     removed = 0
-    for directory in sorted((base or default_base()).glob(f"{PREFIX}*")):
+    for directory in sorted((base or default_base()).glob(f"{prefix}*")):
         try:
             if directory.is_symlink() or not directory.is_dir() or not _abandoned(directory):
                 continue

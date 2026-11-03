@@ -2473,8 +2473,8 @@ def test_dotnet_says_what_it_does_not_do(tmp_path: Path, fake_tools: Tools) -> N
         DOTNET_RUNS_CODE,
         "global.json demande le SDK .NET 9.0.100 : dotnet échoue s'il n'est pas installé (rien "
         "ne change alors).",
-        "src/nuget.config : ses sources de paquets servent à la restauration ; forceupdate a "
-        "cherché les versions sur nuget.org.",
+        "src/nuget.config : dotnet restaure depuis ses sources de paquets (celles où forceupdate "
+        "a cherché les versions), avec leurs identifiants.",
     )
 
 

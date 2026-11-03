@@ -295,8 +295,10 @@ async def disconnect(
         )
     else:
         message = (
-            f"Déconnecté de {name} : token effacé de cet ordinateur, mais {name} ne l'a pas "
-            f"révoqué (injoignable). Le révoquer dans ses réglages : {APPLICATIONS_URLS[forge]}"
+            # La forge injoignable, ou une application enregistrée sans son secret
+            # (FORCEUPDATE_GITHUB_CLIENT_SECRET absent) : ne pas deviner laquelle.
+            f"Déconnecté de {name} : token effacé de cet ordinateur, mais il n'a pas pu être "
+            f"révoqué sur {name}. Le révoquer dans ses réglages : {APPLICATIONS_URLS[forge]}"
         )
     return respond(
         Disconnection(forge=forge, host=host, login=account.login, revoked=revoked, message=message)

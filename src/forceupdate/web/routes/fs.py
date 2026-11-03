@@ -61,7 +61,7 @@ def _roots(recent: tuple[RecentPath, ...]) -> Listing:
         )
     ]
     entries += [
-        Entry(name=drive.rstrip("/"), path=drive, kind=EntryKind.DRIVE, hidden=False)
+        Entry(name=drive.rstrip("/") or drive, path=drive, kind=EntryKind.DRIVE, hidden=False)
         for drive in _drives()
     ]
     return Listing(

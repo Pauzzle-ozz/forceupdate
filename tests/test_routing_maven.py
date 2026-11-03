@@ -295,6 +295,41 @@ def test_gradle_repositories(make_tree: MakeTree) -> None:
     assert any("ne les lit pas" in n.message for n in project.notices)
 
 
+def kotlin_build(repository: str) -> str:
+    return (
+        f'repositories {{\n    maven("{repository}")\n}}\n\n'
+        'dependencies {\n    implementation("com.acme:billing:1.0.0")\n}\n'
+    )
+
+
+def test_gradle_credentials_written_in_the_address(make_tree: MakeTree) -> None:
+    """``maven("https://jo:pw@…")`` : l'identifiant sort de l'adresse et part vers elle seule."""
+    root = make_tree(
+        {"build.gradle.kts": kotlin_build(NEXUS.replace("https://", "https://jo:pw@"))}
+    )
+    with nexus() as routes:
+        analyze(root)
+    request = routes["releases"].calls.last.request
+    assert request.headers["authorization"] == "Basic am86cHc="
+    assert "jo" not in str(request.url)
+
+
+def test_gradle_credentials_never_go_in_clear(make_tree: MakeTree) -> None:
+    """En http vers une autre machine, l'identifiant écrit dans l'adresse ne part pas."""
+    root = make_tree({"build.gradle.kts": kotlin_build(NEXUS.replace("https://", "http://jo:pw@"))})
+    insecure: list[respx.Route] = []
+
+    def add(router: respx.MockRouter) -> None:
+        insecure.append(router.get(url__regex=r"^http://nexus\.corp\.example/").respond(404))
+
+    with recorded_responses(add):
+        analyze(root)
+    (route,) = insecure
+    assert route.call_count >= 1
+    assert all("authorization" not in call.request.headers for call in route.calls)
+    assert all("jo" not in str(call.request.url) for call in route.calls)
+
+
 def test_gradle_exclusive_content_makes_groups_private(make_tree: MakeTree) -> None:
     script = f"""\
 repositories {{

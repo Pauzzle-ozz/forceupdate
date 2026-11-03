@@ -313,7 +313,9 @@ class _Listing:
 
 def _is_junction(path: Path) -> bool:
     """Vrai pour une jonction Windows (``mklink /J``). ``Path.is_junction`` n'existe qu'à partir
-    de Python 3.12."""
+    de Python 3.12. Ailleurs, jamais (``stat.IO_REPARSE_TAG_MOUNT_POINT`` n'y existe pas)."""
+    if os.name != "nt":
+        return False
     try:
         info = path.lstat()
     except OSError:

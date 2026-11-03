@@ -31,7 +31,7 @@ l'environnement, que le script lit en s'exécutant : ils ne sont pas lus (dit).
 import posixpath
 import re
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from urllib.parse import urlsplit
 
 from forceupdate import userfiles
@@ -96,7 +96,7 @@ def read(project: Project, read_text: ReadText, user: User) -> Reading | None:
         maven = _maven(names[MANIFEST], read_text, settings, credentials, notices)
     gradle: Router | None = None
     if any(posixpath.basename(p) in SCRIPTS for p in project.manifests):
-        gradle = _gradle(project, read_text, notices)
+        gradle = _gradle(project, read_text, credentials, notices)
     if maven is None and gradle is None:
         return None
 
@@ -299,7 +299,9 @@ def _server_credentials(
 # -- Gradle ----------------------------------------------------------------------------
 
 
-def _gradle(project: Project, read_text: ReadText, notices: list[Notice]) -> Router:
+def _gradle(
+    project: Project, read_text: ReadText, credentials: list[Credential], notices: list[Notice]
+) -> Router:
     repositories: list[Repository] = []
     public = False
     seen_block = False
@@ -314,8 +316,13 @@ def _gradle(project: Project, read_text: ReadText, notices: list[Notice]) -> Rou
             found = tokens(text)
         except ParseError:
             continue
-        for kind, repository, credentials in _repositories_blocks(found, path):
+        for kind, repository, declares_credentials in _repositories_blocks(found, path):
             seen_block = True
+            if repository is not None:
+                # maven("https://nom:secret@…") : l'identifiant sort de l'adresse (ni dans le
+                # cache ni dans un message), et ne part que vers elle, en https.
+                clean = _without_userinfo(repository.url, path, credentials)
+                repository = replace(repository, id=clean, url=clean)
             if kind == "public":
                 public = True
             elif repository is not None and all(r.url != repository.url for r in repositories):
@@ -323,7 +330,7 @@ def _gradle(project: Project, read_text: ReadText, notices: list[Notice]) -> Rou
                     public = True
                 else:
                     repositories.append(repository)
-            if credentials:
+            if declares_credentials:
                 message = (
                     "les identifiants d'un dépôt Gradle viennent de propriétés ou de "
                     "l'environnement, que le script lit en s'exécutant : forceupdate ne les lit "

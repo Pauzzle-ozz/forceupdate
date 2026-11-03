@@ -85,10 +85,10 @@ async def cancel_batch(batch_id: str, repositories: CurrentRepositories) -> JSON
 async def scan_repository(
     body: RepositoryRequest, repositories: CurrentRepositories
 ) -> JSONResponse:
-    """Analyse un dépôt donné par son nom (``owner/nom``) ou son adresse, même d'un autre compte
-    s'il est public (sur GitLab : ``groupe/sous-groupe/projet`` ou son adresse) : avec le token
-    du compte connecté à sa forge, sans token sinon (GitHub : 60 requêtes par heure). Se suit
-    comme une autre analyse."""
+    """Analyse un dépôt donné par son nom (``owner/nom``, toujours sur GitHub) ou son adresse
+    (``https://gitlab.com/groupe/sous-groupe/projet``, ``https://bitbucket.org/espace/depot``),
+    même d'un autre compte s'il est public : avec le token du compte connecté à sa forge, sans
+    token sinon (GitHub : 60 requêtes par heure). Se suit comme une autre analyse."""
     try:
         scan = await repositories.start_scan(body.repository, _options(body, repositories))
     except RepositoryError as err:

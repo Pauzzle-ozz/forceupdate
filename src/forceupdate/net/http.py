@@ -16,8 +16,11 @@ Tout ce qui parle au réseau passe par ``HttpClient`` :
 - une réponse de plus de 128 Mo est refusée (le document npm de ``next`` en fait 32) ;
 - les certificats du système (``truststore``, comme pip), plus ceux de ``SSL_CERT_FILE`` et
   ``SSL_CERT_DIR`` (``ssl_context``) ; un certificat refusé n'est pas réessayé ;
-- un proxy : celui de ``HTTPS_PROXY`` (``ALL_PROXY``, ``NO_PROXY``), suivi par httpx. Celui des
-  réglages de Windows (WinINet, PAC) n'est pas lu, comme par uv ;
+- un proxy : celui de ``HTTPS_PROXY`` (``ALL_PROXY``, ``NO_PROXY``), suivi par httpx. Sans
+  aucune de ces variables, httpx prend celui des réglages du système (``urllib.request.
+  getproxies`` : sous Windows, le proxy réglé à la main dans le registre, sans sa liste
+  d'exceptions ; sous macOS, ceux des réglages réseau) ; un script PAC ou la détection
+  automatique ne sont jamais lus (relu dans les sources à E35 ; E30 le croyait ignoré) ;
 - les identifiants d'un registre privé (``auth``, E33) : chaque requête prend celui qui est lié à
   son adresse (``net.auth``) ; les redirections sont alors suivies ici, et une redirection vers
   une autre origine part sans identifiant.

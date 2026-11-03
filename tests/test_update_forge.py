@@ -403,6 +403,25 @@ def test_a_fine_grained_token_refused_says_what_it_lacks(
     assert "« Contents » et « Pull requests » en écriture" in (done.error or "")
 
 
+def test_unknown_rights_elsewhere_get_no_github_advice(
+    github: FakeGitHubRepos,
+    report: Report,
+    deliver: Run,
+    monkeypatch: pytest.MonkeyPatch,
+    fake_tools: Callable[..., FakeTools],
+) -> None:
+    """Un token d'API Atlassian (Bitbucket) n'a pas de droits connus non plus, mais le conseil du
+    token fine-grained de GitHub ne s'y applique pas."""
+    tools(fake_tools, "npm", "uv")
+    github.repos[NAME].push = False
+    monkeypatch.setattr(GitHub, "kind", ForgeKind.BITBUCKET)
+    repo = deliver.repository()
+    unknown = dataclasses.replace(AUTHOR, access=Access.UNKNOWN, scopes=None)
+    done = deliver(report, repo=dataclasses.replace(repo, can_push=True), author=unknown)
+    assert done.outcome is Outcome.FAILED
+    assert done.error and "Contents" not in done.error
+
+
 def test_a_long_report_is_shortened(
     github: FakeGitHubRepos, report: Report, monkeypatch: pytest.MonkeyPatch
 ) -> None:

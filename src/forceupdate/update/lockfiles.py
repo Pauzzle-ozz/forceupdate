@@ -1008,8 +1008,8 @@ def _dotnet_warnings(read_text: ReadText, directory: str) -> list[str]:
         )
         if found is not None:
             warnings.append(
-                f"{found} : ses sources de paquets servent à la restauration ; forceupdate a "
-                "cherché les versions sur nuget.org."
+                f"{found} : dotnet restaure depuis ses sources de paquets (celles où forceupdate "
+                "a cherché les versions), avec leurs identifiants."
             )
             break
     return warnings

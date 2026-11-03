@@ -3,7 +3,7 @@
   "info": {
     "title": "forceupdate",
     "description": "L'API du serveur local de forceupdate : analyser un dossier, un fichier ou les dépôts des comptes connectés, préparer et appliquer les mises à jour, ouvrir une PR par dépôt. Chaque requête porte le jeton de session (cookie posé par l'adresse que donne « forceupdate ui », ou « Authorization: Bearer <jeton> »).",
-    "version": "0.1.0"
+    "version": "1.0.0rc1"
   },
   "paths": {
     "/api/fs": {
@@ -2036,7 +2036,7 @@
           "dépôts"
         ],
         "summary": "Scan Repository",
-        "description": "Analyse un dépôt donné par son nom (``owner/nom``) ou son adresse, même d'un autre compte\ns'il est public (sur GitLab : ``groupe/sous-groupe/projet`` ou son adresse) : avec le token\ndu compte connecté à sa forge, sans token sinon (GitHub : 60 requêtes par heure). Se suit\ncomme une autre analyse.",
+        "description": "Analyse un dépôt donné par son nom (``owner/nom``, toujours sur GitHub) ou son adresse\n(``https://gitlab.com/groupe/sous-groupe/projet``, ``https://bitbucket.org/espace/depot``),\nmême d'un autre compte s'il est public : avec le token du compte connecté à sa forge, sans\ntoken sinon (GitHub : 60 requêtes par heure). Se suit comme une autre analyse.",
         "operationId": "scan_repository",
         "requestBody": {
           "content": {

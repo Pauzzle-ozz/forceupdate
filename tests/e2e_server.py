@@ -49,15 +49,16 @@ pour les tests du front (``frontend/src/test/fixtures/``) ::
 """
 
 import argparse
+import contextlib
 import http.server
 import itertools
 import json
 import re
 import subprocess
 import sys
-import tempfile
 import threading
 import urllib.parse
+from collections.abc import Iterator
 from pathlib import Path, PurePath
 from typing import Any
 
@@ -82,7 +83,7 @@ from forceupdate.net import cache as cache_module
 from forceupdate.report import json as json_report
 from forceupdate.sources.local import LocalSource
 from forceupdate.update import lockfiles
-from forceupdate.web import app, security
+from forceupdate.web import app, security, workdirs
 
 FAKE_TOOLS = ("npm", "npx", "uv")
 
@@ -342,6 +343,20 @@ def report(path: Path, source: str) -> None:
     sys.stdout.write(json.dumps(document, ensure_ascii=False, indent=2) + "\n")
 
 
+E2E_PREFIX = "forceupdate-e2e-"
+
+
+@contextlib.contextmanager
+def _e2e_dir() -> Iterator[str]:
+    """Le dossier temporaire du serveur, verrouillé tant qu'il tourne (``workdirs.Workdirs``),
+    effacé à un arrêt normal."""
+    held = workdirs.Workdirs(prefix=E2E_PREFIX)
+    try:
+        yield str(held.path)
+    finally:
+        held.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--port", type=int, default=8799)
@@ -351,7 +366,12 @@ def main() -> None:
     options = parser.parse_args()
     # Les fins de vie se jugent au jour où les réponses d'endoflife.date ont été enregistrées.
     eol.today = lambda: RECORDED_ON
-    with tempfile.TemporaryDirectory(prefix="forceupdate-e2e-") as tmp:
+    # Playwright arrête le serveur en le tuant, en fin de série : son dossier reste. Celui des
+    # séries d'avant (plus verrouillé) s'efface ici, comme ceux de « forceupdate ui ».
+    workdirs.sweep(prefix=E2E_PREFIX)
+    with _e2e_dir() as tmp:
+        # Le dossier de travail du serveur va dans le sien (pas dans le dossier temporaire).
+        workdirs.default_base = lambda: Path(tmp)
         cache_module.default_cache_path = lambda: Path(tmp) / "cache.sqlite3"
         preferences.default_path = lambda: Path(tmp) / "réglages" / "forceupdate.toml"
         (Path(tmp) / "personnel").mkdir()

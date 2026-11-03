@@ -23,8 +23,9 @@ Les dépôts : **Google Maven** (``https://dl.google.com/android/maven2``, ``max
 ``com.google.gms``, qui n'y sont que là ; **le portail des plugins Gradle**
 (``https://plugins.gradle.org/m2``, ``max-age=43200``) pour un plugin, nommé par son ``id`` :
 l'artefact « marqueur » ``{id}:{id}.gradle.plugin`` (le portail renvoie à Maven Central ce qu'il
-n'a pas) ; **Maven Central** (``https://repo1.maven.org/maven2``) pour le reste. Un dépôt privé
-(``<repositories>``, ``repositories { }``) n'est pas lu : ses artefacts sont cherchés là.
+n'a pas) ; **Maven Central** (``https://repo1.maven.org/maven2``) pour le reste. Un dépôt déclaré
+(``<repositories>``, ``repositories { }``, ``settings.xml``) : l'aiguillage (``routing/maven.py``,
+E33) y demande ses artefacts, par ces mêmes classes à son adresse.
 """
 
 import asyncio

@@ -1,0 +1,67 @@
+name: Réseau
+
+# Les tests marqués network (pytest --run-network) : les vrais registres, OSV, endoflife.date,
+# GitHub sans token, les tables tenues à la main (tests/test_tables_network.py), et les vrais
+# outils de lockfile (npm, pnpm, uv, cargo, go, Composer, Bundler, dotnet). Chaque semaine, et à
+# la demande (« Run workflow ») : ils disent quand un registre ou un outil a changé. Un outil
+# absent fait sauter son test, il ne le fait pas échouer.
+
+on:
+  schedule:
+    - cron: "17 5 * * 1" # le lundi, 5 h 17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  network:
+    name: Tests network
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.14"
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+
+      - name: pnpm
+        run: npm install --global pnpm@latest
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Rust
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.5"
+          tools: composer
+          coverage: none
+
+      - uses: ruby/setup-ruby@v1.336.0
+        with:
+          ruby-version: "4.0"
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Dépendances
+        run: uv sync --locked
+
+      - name: Outils
+        run: |
+          npm --version; pnpm --version; uv --version; cargo --version; go version
+          php --version | head -1; composer --version; ruby --version; bundle --version
+          dotnet --version
+
+      - name: Tests network
+        run: uv run pytest --run-network -m network

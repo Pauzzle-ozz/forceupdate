@@ -19,7 +19,7 @@ Mis de côté :
 - un paquet venu d'un autre dépôt que Packagist, quand ``repositories`` en déclare un ``vcs``
   (``git``, ``github``…), ``package`` ou ``artifact`` : le lockfile n'y a pas l'adresse de
   Packagist (``notification-url``). Un dépôt ``composer`` (miroir, Satis, Private Packagist) n'est
-  pas distingué : ses paquets sont cherchés sur Packagist, un paquet privé y est introuvable.
+  pas distingué ici : l'aiguillage (``routing/composer.py``, E33) y demande ses paquets.
 
 ``conflict`` donne les versions que le projet refuse : ``Dependency.excluded`` (des
 contraintes), jamais proposées. ``minimum-stability`` (``stable`` par défaut) et ``prefer-stable``
