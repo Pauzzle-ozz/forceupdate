@@ -4,6 +4,22 @@ Les versions de forceupdate publiées sur [PyPI](https://pypi.org/project/forceu
 numéros suivent [SemVer](https://semver.org/lang/fr/) : à partir de la 1.0.0, une majeure peut
 casser la ligne de commande, le format JSON du rapport (`schema_version`) ou la configuration.
 
+## Non publié
+
+### Ajouté
+
+- « Parcourir… » (écran de choix) : la fenêtre de choix d'un dossier ou d'un fichier de
+  l'ordinateur (l'Explorateur sous Windows), ouverte par le serveur local.
+- Télécharger le rapport depuis l'interface : en Markdown, en JSON, et les dépendances à mettre
+  à jour en CSV pour un tableur ; `forceupdate scan --format csv`.
+
+### Corrigé
+
+- Un `package-lock.json` que `npm ci` refuse n'est plus envoyé tel quel : tout lockfile npm est
+  relu par `npm ci --dry-run`, et refait par une vraie installation (sans les scripts) quand npm
+  a écrit un lockfile incomplet (npm 11.6.2 et les dépendances embarquées de
+  `@tailwindcss/oxide-wasm32-wasi`).
+
 ## 1.0.0rc1 — 2026-11-03
 
 La première version complète, à essayer avant la 1.0.0 (`uv tool install forceupdate==1.0.0rc1`).

@@ -148,10 +148,12 @@ def test_the_schema_describes_every_route() -> None:
     }
     assert operations == {
         ("GET", "/api/fs"): "list_folder",
+        ("POST", "/api/fs/pick"): "pick_path",
         ("POST", "/api/scans"): "start_scan",
         ("GET", "/api/scans"): "list_scans",
         ("GET", "/api/scans/{scan_id}"): "get_scan",
         ("GET", "/api/scans/{scan_id}/events"): "scan_events",
+        ("GET", "/api/scans/{scan_id}/download"): "download_report",
         ("DELETE", "/api/scans/{scan_id}"): "cancel_scan",
         ("POST", "/api/updates/plan"): "plan_update",
         ("POST", "/api/updates/apply"): "apply_update",

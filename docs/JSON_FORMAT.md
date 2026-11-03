@@ -690,10 +690,12 @@ curl -H "Authorization: Bearer $JETON" "http://127.0.0.1:$PORT/api/scans"
 | Méthode et chemin | Corps | Réponse |
 |---|---|---|
 | `GET /api/fs?path=` | | `200` [liste de dossier](#liste-de-dossier) ; sans `path`, les points de départ |
+| `POST /api/fs/pick` | `{"kind": "folder" \| "file", "start": dossier ou null}` | `200` `{"path": chemin ou null}` : ouvre la fenêtre de choix du système sur l'ordinateur du serveur et attend la personne (`null` : annulée) ; `409` si une fenêtre est déjà ouverte ; `503` sans affichage ou sans Tk, avec la raison |
 | `POST /api/scans` | [demande d'analyse](#demande-danalyse) | `202` [analyse](#analyse), lancée en tâche de fond |
 | `GET /api/scans` | | `200` les [analyses](#analyse) de la session, de la plus récente à la plus ancienne |
 | `GET /api/scans/{id}` | | `200` [analyse](#analyse), avec `report` une fois finie |
 | `GET /api/scans/{id}/events` | | `200` [progression](#progression-sse) en Server-Sent Events |
+| `GET /api/scans/{id}/download?format=` | | `200` en pièce jointe : le rapport en Markdown (`md`, par défaut) ou en JSON (`json`), ou les dépendances à mettre à jour en CSV (`csv`, avec BOM) ; `409` sans rapport (analyse pas finie, ou échouée) |
 | `DELETE /api/scans/{id}` | | `200` [analyse](#analyse) annulée ; `409` si elle est déjà finie |
 | `POST /api/updates/plan` | `{"scan": id, "selection": {…}}` | `201` [plan](#plan-de-mise-à-jour) |
 | `POST /api/updates/apply` | `{"plan": id, "force": false, "declined": []}` | `202` [plan](#plan-de-mise-à-jour), appliqué en tâche de fond ; `declined` (facultatif, E32) : les lockfiles dont la case `extra` est décochée ; `409` pour un lockfile qui n'est pas du plan |

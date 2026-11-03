@@ -96,6 +96,88 @@
         }
       }
     },
+    "/api/fs/pick": {
+      "post": {
+        "tags": [
+          "dossiers"
+        ],
+        "summary": "Pick Path",
+        "description": "Ouvre la fenêtre de choix d'un dossier (ou d'un fichier) du système, sur l'ordinateur où\ntourne le serveur, et attend la personne : le chemin choisi, ou ``null`` si elle a annulé\n(``web.picker``).",
+        "operationId": "pick_path",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PickRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Picked"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Impossible dans l'état actuel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Pas de fenêtre de choix sur cet ordinateur",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/scans": {
       "get": {
         "tags": [
@@ -319,6 +401,108 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ScanSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Jeton de session manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Requête venue d'un autre site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Impossible dans l'état actuel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/scans/{scan_id}/download": {
+      "get": {
+        "tags": [
+          "analyses"
+        ],
+        "summary": "Download Report",
+        "description": "Le rapport d'une analyse finie, en pièce jointe : en Markdown (``md``), en JSON\n(``json``), ou les dépendances à mettre à jour en CSV (``csv``, pour un tableur).",
+        "operationId": "download_report",
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DownloadFormat",
+              "default": "md"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Le rapport, ou les dépendances à mettre à jour, à télécharger.",
+            "content": {
+              "text/markdown; charset=utf-8": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/csv; charset=utf-8": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -3440,6 +3624,16 @@
         "title": "Document",
         "description": "Le rapport tel que le rend ``build`` : ``schema_version``, ``tool``, tous les champs de\n``Report``, puis ``summary``. Il ne sert qu'à décrire le JSON."
       },
+      "DownloadFormat": {
+        "type": "string",
+        "enum": [
+          "md",
+          "json",
+          "csv"
+        ],
+        "title": "DownloadFormat",
+        "description": "Ce qui se télécharge d'un rapport (session 36), comme ``scan --format``."
+      },
       "Ecosystem": {
         "type": "string",
         "enum": [
@@ -4584,6 +4778,57 @@
         ],
         "title": "Override",
         "description": "Une version forcée : ``overrides`` (npm), ``resolutions`` (Yarn), ``pnpm.overrides``,\nou ``overrides`` de ``pnpm-workspace.yaml`` (pnpm 10+).\n\nElle s'impose à toutes les copies du paquet dans l'arbre (ou à celles que tire un paquet\nprécis), quoi que demandent les paquets qui le tirent. Une indirecte forcée ne bouge pas\navec ``npm update x`` : c'est la version forcée qu'il faut réécrire."
+      },
+      "PickKind": {
+        "type": "string",
+        "enum": [
+          "folder",
+          "file"
+        ],
+        "title": "PickKind"
+      },
+      "PickRequest": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/PickKind",
+            "default": "folder"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          }
+        },
+        "type": "object",
+        "title": "PickRequest",
+        "description": "La fenêtre de choix du système à ouvrir (session 36) : pour un dossier ou un fichier, et\nle dossier où elle s'ouvre."
+      },
+      "Picked": {
+        "properties": {
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "Picked",
+        "description": "Ce que la personne a choisi dans la fenêtre du système."
       },
       "PlanRequest": {
         "properties": {

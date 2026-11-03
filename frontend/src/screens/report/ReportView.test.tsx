@@ -56,6 +56,19 @@ describe('le rapport (écran 4)', () => {
     expect(within(table).getByRole('columnheader', { name: /Gravité/ })).toHaveAttribute('aria-sort', 'descending')
   })
 
+  it('télécharge le rapport, et les dépendances à mettre à jour pour un tableur (session 36)', async () => {
+    withReport(VULNERABLE)
+    renderApp('/analyses/a1')
+    const group = await screen.findByRole('group', { name: 'Télécharger' })
+    const links = within(group).getAllByRole('link')
+    expect(links.map((link) => [link.textContent, link.getAttribute('href')])).toEqual([
+      ['Le rapport (Markdown)', '/api/scans/a1/download?format=md'],
+      ['Le rapport (JSON)', '/api/scans/a1/download?format=json'],
+      ['Les dépendances à mettre à jour (CSV)', '/api/scans/a1/download?format=csv'],
+    ])
+    for (const link of links) expect(link).toHaveAttribute('download')
+  })
+
   it('filtre le tableau par un compteur, et le dit', async () => {
     withReport(VULNERABLE)
     const user = userEvent.setup()

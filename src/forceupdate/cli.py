@@ -25,7 +25,7 @@ from forceupdate import __version__, checks, engine, preferences
 from forceupdate.checks import FailOn
 from forceupdate.models import Ecosystem, Event, EventKind, Gap, ScanOptions, SelectionRule
 from forceupdate.report import json as json_report
-from forceupdate.report import markdown, plural, terminal
+from forceupdate.report import markdown, plural, spreadsheet, terminal
 from forceupdate.sources.base import SourceError
 from forceupdate.sources.local import LocalSource
 from forceupdate.update import local, lockfiles, planner, writers
@@ -53,6 +53,7 @@ class OutputFormat(enum.StrEnum):
     TERMINAL = "terminal"
     JSON = "json"
     MD = "md"
+    CSV = "csv"
 
 
 def _print_version(value: bool) -> None:
@@ -123,7 +124,14 @@ def scan(
     path: PathArgument = Path("."),
     output_format: Annotated[
         OutputFormat,
-        typer.Option("--format", "-f", help="Forme du rapport : terminal, json ou md."),
+        typer.Option(
+            "--format",
+            "-f",
+            help=(
+                "Forme du rapport : terminal, json, md, ou csv (les dépendances à mettre à jour, "
+                "pour un tableur)."
+            ),
+        ),
     ] = OutputFormat.TERMINAL,
     output: Annotated[
         Path | None,
@@ -205,6 +213,11 @@ def scan(
         text = json_report.render(report)
     elif output_format is OutputFormat.MD:
         text = markdown.render(report)
+    elif output_format is OutputFormat.CSV:
+        # Dans un fichier, le BOM qu'attend Excel ; pas sur la sortie standard (un script la lit).
+        text = spreadsheet.render(report)
+        if output is not None:
+            text = spreadsheet.BOM + text
     elif output is not None:
         buffer = io.StringIO()
         terminal.render(report, Console(file=buffer, width=FILE_WIDTH, color_system=None))

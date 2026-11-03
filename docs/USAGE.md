@@ -88,8 +88,17 @@ Le navigateur ne peut pas donner un chemin à une page : c'est le serveur qui li
 (les noms seulement, sans suivre les liens ni les jonctions). Départ : le dossier personnel,
 les lecteurs, les dossiers récents. Chaque dossier montre ses sous-dossiers, ses fichiers de
 dépendances et ses fichiers de code ; les éléments cachés sont repliés ; un filtre par nom ; au
-clavier : flèches, Entrée pour ouvrir, Retour arrière pour remonter. « Analyser ce dossier » ou
-« Analyser ce fichier ».
+clavier : flèches, Entrée pour ouvrir, Retour arrière pour remonter. Le champ « Dossier ouvert »
+prend un chemin collé (« Aller »). « Analyser ce dossier » ou « Analyser ce fichier ».
+
+**« Parcourir… »** ouvre la fenêtre de choix de l'ordinateur : celle de l'Explorateur sous
+Windows (« Sélectionner un dossier », ou « Ouvrir » pour un fichier), du Finder sous macOS, celle
+de Tk sous Linux. C'est le serveur qui l'ouvre, sur l'ordinateur où tourne `forceupdate ui`, avec
+le Tk de Python (`tkinter`), dans un programme à part, au premier plan ; la page attend, et dit
+que la fenêtre peut se trouver derrière le navigateur. Le dossier choisi s'ouvre dans la liste
+(un fichier : dans son dossier, choisi) ; annuler ne change rien. Sans affichage (un serveur,
+WSL) ou sans Tk, la page le dit, et la liste reste. Une seule fenêtre à la fois ; elle se ferme
+seule au bout d'une demi-heure, ou à l'arrêt de `ui`.
 
 Un fichier **déposé** ou choisi par « Choisir un fichier » est envoyé au serveur, pas désigné
 par son chemin : il est analysé seul (sans son lockfile voisin), et sa version mise à jour se
@@ -106,7 +115,10 @@ des paquets avec le paquet en cours, failles), la barre de progression, le temps
 - **En tête** : la source, la date, les options ; « Relancer l'analyse » ; « Mettre à jour »
   avec le nombre de mises à jour cochées d'office. Pour un fichier de code, comment il a été lu
   (via quel manifeste, son bloc PEP 723, ou ses imports). La configuration du projet et les
-  réglages qui ont joué sont dits sous la source.
+  réglages qui ont joué sont dits sous la source. **Télécharger** : le rapport en Markdown ou en
+  JSON (les mêmes que `scan --format md` et `json`), et les dépendances à mettre à jour en CSV
+  pour un tableur (`scan --format csv`, voir [la ligne de commande](#forceupdate-scan-chemin)) ;
+  le fichier s'appelle `forceupdate-<source>-<date>.md` (`…-a-mettre-a-jour-<date>.csv`).
 - **Synthèse** : un compteur par type de constat (failles, plus récentes, fins de vie,
   retirées, dépréciées, versions non fixées, non vérifiables, non concluants), la répartition
   des gravités, ce qui a été vérifié et audité. Un compteur filtre le tableau.
@@ -176,7 +188,7 @@ Analyse un dossier ou un fichier (par défaut, le dossier courant) et écrit le 
 
 | Option | Effet |
 |---|---|
-| `--format`, `-f` `terminal\|json\|md` | La forme du rapport (par défaut `terminal`). Le JSON est décrit dans [JSON_FORMAT.md](JSON_FORMAT.md) (`schema_version: 1`). |
+| `--format`, `-f` `terminal\|json\|md\|csv` | La forme du rapport (par défaut `terminal`). Le JSON est décrit dans [JSON_FORMAT.md](JSON_FORMAT.md) (`schema_version: 1`). `csv` : seulement les dépendances à mettre à jour, pour un tableur (voir ci-dessous). |
 | `--output`, `-o` *fichier* | Écrit le rapport dans ce fichier, en UTF-8, au lieu de la sortie standard. |
 | `--dev` / `--no-dev` | Vérifie aussi les dépendances de développement (par défaut), ou non. |
 | `--transitive` | Cherche aussi les versions plus récentes, retirées ou dépréciées des dépendances indirectes. Leurs failles sont toujours cherchées. |
@@ -187,6 +199,16 @@ Analyse un dossier ou un fichier (par défaut, le dossier courant) et écrit le 
 
 Dans un terminal, une barre de progression s'affiche sur la sortie d'erreur ; rien ne s'y écrit
 quand la sortie est redirigée.
+
+**Le CSV** (`--format csv`, ou « Télécharger » dans le rapport) : les dépendances à mettre à
+jour, une ligne par paquet (une par version installée d'une indirecte) et une par runtime en fin
+de vie ; pas ce qui ne dit rien à faire (version non fixée, non vérifiable, non concluant).
+Colonnes : Projet, Écosystème (`runtime` pour un runtime), Paquet, Dépendance (directe,
+indirecte), Portée, Contrainte, Utilisée, Permise, Dernière, Constats (« faille, majeure »),
+Gravité (la plus grave : critique, élevée, moyenne, faible, information), Failles (combien),
+Identifiants (CVE, GHSA…), Corrigée en (la version qui corrige toutes ses failles), Fichier.
+Séparé par des points-virgules ; dans un fichier (`--output`), en UTF-8 précédé d'un BOM, comme
+Excel l'ouvre en français ; sur la sortie standard, sans BOM.
 
 ### `forceupdate update [chemin]`
 
@@ -1214,8 +1236,20 @@ Le lockfile est alors régénéré par `npx -y npm@10`, sans toucher au npm de l
 télécharge le dernier npm 10 dans son cache la première fois), puis **relu** par ce npm :
 `npx -y npm@10 ci --dry-run --ignore-scripts --no-audit --no-fund`, qui n'installe rien. Le
 résultat dit « Relu par … : accepté. », ou ce que `npm ci` reproche, avec la commande qui le
-reproduit. Un refus n'est pas un échec : le lockfile reste régénéré (par le npm qu'attend le
-projet, c'est le meilleur qu'on ait).
+reproduit.
+
+**Tout `package-lock.json` régénéré est relu ainsi**, par le npm qui l'a écrit (celui du projet,
+ou celui de l'ordinateur quand c'est le même ou que la case est décochée). Il arrive que npm
+écrive en mode « lockfile seul » un lockfile que son propre `npm ci` refuse : npm 11.6.2 n'y met
+qu'une partie des dépendances embarquées d'un paquet (`@tailwindcss/oxide-wasm32-wasi` 4.3.4 :
+« Missing: @emnapi/wasi-threads@1.2.3 from lock file »), et la CI du projet échouerait. Sur un
+refus, forceupdate le refait par une vraie installation, toujours sans les scripts
+(`npm install --ignore-scripts --no-audit --no-fund` : elle écrit le lockfile en entier, sans
+changer une version), puis le relit ; les `node_modules` qu'elle a créés sont effacés ensuite
+(ceux qui étaient là restent, mis à jour). Le résultat le dit (« npm refusait le lockfile qu'il
+venait d'écrire (…) : refait par … »). Toujours refusé, ce n'est pas un échec : le lockfile
+reste régénéré (c'est le meilleur qu'on ait), et le refus est dit. Un arrêt (Ctrl+C) pendant que
+npm finit garde le lockfile, sans le relire.
 
 - `--no-extras` décoche la case : le npm de la machine régénère le lockfile. Dans
   l'interface, la case se décoche à l'étape « Vérifier » de l'écran de mise à jour ;

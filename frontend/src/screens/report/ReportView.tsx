@@ -1,6 +1,7 @@
 import {
   CircleCheck,
   CircleHelp,
+  Download,
   FileCode,
   FolderGit2,
   FolderOpen,
@@ -14,8 +15,9 @@ import {
   Upload,
   WifiOff,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
+import { api } from '@/api/client'
 import type { CodeFile, Configuration, FindingKind, ForgeKind, Report, ReportOptions, ScanDetail } from '@/api/types'
 import { EmptyState } from '@/components/EmptyState'
 import { OptionBadges } from '@/components/OptionBadges'
@@ -201,6 +203,7 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
               }`}
         </p>
         {options && <OptionBadges options={options} />}
+        <Downloads scanId={scan.id} />
       </PageHead>
 
       {start.error && (
@@ -359,6 +362,32 @@ export function ReportView({ scan, report, focusTitle }: { scan: ScanDetail; rep
 
       <DependencyDetail rows={opened} report={report} scanId={scan.id} onClose={closeDetail} />
     </Container>
+  )
+}
+
+/**
+ * Télécharger le rapport (session 36) : en Markdown, en JSON, et les dépendances à mettre à jour en
+ * CSV, pour un tableur. Le serveur nomme le fichier (`forceupdate-boutique-2026-11-03.md`).
+ */
+function Downloads({ scanId }: { scanId: string }) {
+  const id = useId()
+  const link = buttonVariants({ variant: 'ghost', size: 'sm' })
+  return (
+    <div role="group" aria-labelledby={`${id}-titre`} className="flex flex-col items-start gap-1 text-sm sm:flex-row sm:flex-wrap sm:items-center">
+      <span id={`${id}-titre`} className="mr-1 inline-flex items-center gap-1.5 text-fg-muted">
+        <Download className="size-4" aria-hidden="true" />
+        Télécharger
+      </span>
+      <a href={api.downloadUrl(scanId, 'md')} download className={link}>
+        Le rapport (Markdown)
+      </a>
+      <a href={api.downloadUrl(scanId, 'json')} download className={link}>
+        Le rapport (JSON)
+      </a>
+      <a href={api.downloadUrl(scanId, 'csv')} download className={link}>
+        Les dépendances à mettre à jour (CSV)
+      </a>
+    </div>
   )
 }
 

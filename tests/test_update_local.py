@@ -71,7 +71,8 @@ def test_apply_writes_regenerates_and_tells(
     events: list[Event] = []
     results = local.apply(source, report, prepared, on_event=events.append)
     assert [r.status for r in results] == [LockStatus.REGENERATED] * 2
-    assert [call.program for call in tools.calls] == ["npm", "uv"]
+    # npm, puis sa relecture (npm ci --dry-run), puis uv.
+    assert [call.program for call in tools.calls] == ["npm", "npm", "uv"]
     assert events == [
         Event(kind=EventKind.WRITTEN, total=2),
         Event(kind=EventKind.REGENERATING, name="package-lock.json", done=0, total=2),

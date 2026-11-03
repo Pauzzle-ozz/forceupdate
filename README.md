@@ -74,7 +74,7 @@ simulée), sauf la dernière : la description de la PR #1 du dépôt de test, re
 
 ```bash
 forceupdate scan .                                 # le rapport dans le terminal
-forceupdate scan . --format json -o rapport.json   # ou --format md ; toujours en UTF-8
+forceupdate scan . --format json -o rapport.json   # ou --format md, ou csv (pour un tableur) ; en UTF-8
 forceupdate scan . --fail-on vuln                  # code 1 si une faille est connue
 
 forceupdate update . --dry-run                     # le plan et le diff, sans rien écrire

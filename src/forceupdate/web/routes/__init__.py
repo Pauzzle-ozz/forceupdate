@@ -9,6 +9,7 @@ Pas de logique métier ici : les routes appellent ``engine`` (par ``web.jobs``),
 rend ``{"detail": "…"}``, en français (``schemas.Error``).
 """
 
+import urllib.parse
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request
@@ -26,6 +27,7 @@ _ERRORS = {
     409: "Impossible dans l'état actuel",
     413: "Fichier trop gros",
     502: "La forge ne répond pas",
+    503: "Pas de fenêtre de choix sur cet ordinateur",
 }
 
 
@@ -59,6 +61,15 @@ def sentence(message: str) -> str:
     """Un message du moteur (« le chemin … n'existe pas ») en phrase : majuscule, point."""
     message = message.rstrip(" .")
     return f"{message[:1].upper()}{message[1:]}."
+
+
+def attachment(name: str) -> str:
+    """L'en-tête ``Content-Disposition`` d'un fichier à télécharger sous ``name`` (un nom
+    accentué passe par ``filename*``)."""
+    quoted = urllib.parse.quote(name)
+    if quoted == name:
+        return f'attachment; filename="{name}"'
+    return f"attachment; filename*=utf-8''{quoted}"
 
 
 def find_scan(jobs: Jobs, scan_id: str) -> Scan:

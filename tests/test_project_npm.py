@@ -424,7 +424,10 @@ def test_declined_the_npm_of_the_machine(make_tree: MakeTree, fake_tools: Tools)
     _, result = regenerated(root, declined=True)
     assert result.status is LockStatus.REGENERATED
     assert {call.program for call in tools.calls} == {"npm"}
-    assert result.verified is None
+    # Relu quand même, par le npm de l'ordinateur (session 36) : pas par npx.
+    assert result.verified == lockfiles.Verified(
+        command="npm ci --dry-run --ignore-scripts --no-audit --no-fund"
+    )
 
 
 def plan_of(root: Path) -> lockfiles.Job:

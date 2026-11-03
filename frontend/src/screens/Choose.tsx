@@ -1,12 +1,12 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import {
+  ArrowRight,
   CircleX,
   CornerLeftUp,
   Eye,
   File,
   FileCode,
   Folder,
-  FolderOpen,
   FolderSearch,
   HardDrive,
   House,
@@ -15,7 +15,7 @@ import {
   Search,
   Upload,
 } from 'lucide-react'
-import { useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router'
 import { cn } from 'cn'
 import { ApiError, api, queryKeys } from '@/api/client'
@@ -66,6 +66,17 @@ export function Choose() {
   const shown = listing.data && !listing.isPlaceholderData ? listing.data : null
   const folder = shown?.path ?? null
 
+  // « Parcourir… » : la fenêtre de choix du système, ouverte par le serveur (session 36).
+  const browse = useMutation({
+    mutationFn: () =>
+      api.pick({ kind: mode === 'fichier' ? 'file' : 'folder', start: folder ?? listing.data?.home ?? null }),
+    onSuccess: ({ path: chosen }) => {
+      if (!chosen) return
+      if (mode === 'fichier') open(parentOf(chosen), chosen)
+      else open(chosen)
+    },
+  })
+
   return (
     <>
       <FileDrop onFile={(file) => upload.mutate(file)} />
@@ -86,7 +97,30 @@ export function Choose() {
             path={path ?? ''}
             onOpen={(next) => open(next)}
             busy={listing.isFetching}
+            browse={
+              <Button type="button" onClick={() => browse.mutate()} disabled={browse.isPending}>
+                {browse.isPending ? (
+                  <LoaderCircle className="motion-safe:animate-spin" aria-hidden="true" />
+                ) : (
+                  <FolderSearch aria-hidden="true" />
+                )}
+                Parcourir…
+              </Button>
+            }
           />
+          {browse.isPending && (
+            <p role="status" className="text-sm text-fg-muted">
+              {fr(
+                `La fenêtre de choix ${mode === 'fichier' ? "d'un fichier" : "d'un dossier"} est ouverte : elle peut se trouver derrière le navigateur.`,
+              )}
+            </p>
+          )}
+          {browse.error && (
+            <p role="alert" className="flex items-center gap-2 text-sm text-danger">
+              <CircleX className="size-4 shrink-0" aria-hidden="true" />
+              {browse.error.message}
+            </p>
+          )}
           {listing.isError && <ListingError error={listing.error} path={path} />}
           <Card className="p-0">
             {shown ? (
@@ -152,8 +186,18 @@ export function Choose() {
   )
 }
 
-/** Le chemin courant, éditable : coller un chemin et l'ouvrir. */
-function PathField({ path, onOpen, busy }: { path: string; onOpen: (path: string | null) => void; busy: boolean }) {
+/** Le chemin courant, éditable : coller un chemin et y aller ; `browse`, la fenêtre du système. */
+function PathField({
+  path,
+  onOpen,
+  busy,
+  browse,
+}: {
+  path: string
+  onOpen: (path: string | null) => void
+  busy: boolean
+  browse: ReactNode
+}) {
   const id = useId()
   const [value, setValue] = useState(path)
 
@@ -178,13 +222,16 @@ function PathField({ path, onOpen, busy }: { path: string; onOpen: (path: string
           spellCheck={false}
           aria-describedby={`${id}-aide`}
         />
-        <Button type="submit" disabled={busy}>
-          <FolderOpen aria-hidden="true" />
-          Ouvrir
+        <Button type="submit" variant="ghost" disabled={busy}>
+          <ArrowRight aria-hidden="true" />
+          Aller
         </Button>
+        {browse}
       </div>
       <p id={`${id}-aide`} className="text-sm text-fg-muted">
-        Coller un chemin absolu pour y aller ; vide : les points de départ.
+        {fr(
+          "Coller un chemin absolu pour y aller ; vide : les points de départ. « Parcourir… » ouvre la fenêtre de choix de l'ordinateur.",
+        )}
       </p>
     </form>
   )

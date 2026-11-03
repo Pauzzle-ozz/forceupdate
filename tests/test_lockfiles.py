@@ -53,6 +53,8 @@ UV_BUILDS = (
     "uv construit les paquets publiés sans wheel dont il lit les dépendances, et le projet si "
     "elles sont dynamiques : leur code de construction s'exécute."
 )
+NPM_CI = "npm ci --dry-run --ignore-scripts --no-audit --no-fund"
+"""La relecture d'un ``package-lock.json`` régénéré : toujours faite depuis la session 36."""
 MakeTree = Callable[..., Path]
 Tools = Callable[..., FakeTools]
 
@@ -640,8 +642,9 @@ def test_npm_pins_the_chosen_version_then_puts_the_range_back(
     _, _, (result,) = apply(root, [choice], report, source)
 
     install = "npm install --package-lock-only --ignore-scripts --no-audit --no-fund"
-    assert tools.commands() == [install, install]
-    pinned, synced = (json.loads(c.files["package.json"]) for c in tools.calls)
+    # Puis la relecture, toujours faite depuis la session 36.
+    assert tools.commands() == [install, install, NPM_CI]
+    pinned, synced = (json.loads(c.files["package.json"]) for c in tools.calls[:2])
     assert pinned["dependencies"]["lodash"] == "4.17.21"
     assert synced["dependencies"]["lodash"] == "^4.17.15"
     assert (root / "package.json").read_text(encoding="utf-8") == PACKAGE_JSON
@@ -649,6 +652,84 @@ def test_npm_pins_the_chosen_version_then_puts_the_range_back(
     (installed,) = result.installed
     assert (installed.versions, installed.reach) == (("4.17.21",), Reach.EXACT)
     assert result.changed == ()
+
+
+MISSING = "Missing: @emnapi/wasi-threads@1.2.3 from lock file"
+
+
+class RefusingNpm(FakeNpm):
+    """npm 11.6.2 et ``@tailwindcss/oxide-wasm32-wasi`` 4.3.4 (session 36) : ``npm ci`` refuse le
+    lockfile écrit en mode « lockfile seul » (des dépendances embarquées y manquent) ; une vraie
+    installation l'écrit en entier (``repaired``), et crée ``node_modules``."""
+
+    def __init__(self, root: Path, *, repaired: bool = True) -> None:
+        super().__init__(root)
+        self.repaired = repaired
+        self.complete = False
+
+    def __call__(self, call: ToolCall) -> tuple[int, str, str] | None:
+        if call.arguments[0] == "ci":
+            if self.complete:
+                return None
+            return 1, "", f"npm error code EUSAGE\nnpm error\nnpm error {MISSING}\nnpm error\n"
+        super().__call__(call)
+        if call.arguments[0] == "install" and "--package-lock-only" not in call.arguments:
+            (call.cwd / "node_modules" / "lodash").mkdir(parents=True, exist_ok=True)
+            self.complete = self.repaired
+        return None
+
+
+def test_a_lockfile_npm_ci_refuses_is_redone_by_an_install(
+    make_tree: MakeTree, fake_tools: Tools
+) -> None:
+    """La PR #1 de forceupdate (session 36) : le lockfile écrit par npm, que son ``npm ci``
+    refusait, partait tel quel. Il est refait par une vraie installation, relu, et c'est dit."""
+    root = npm_project(make_tree)
+    tools = fake_tools("npm")
+    tools.handlers["npm"] = RefusingNpm(root)
+    source, report = analyse(root)
+
+    _, _, (result,) = apply(root, [wanted(project_of(report), "lodash", "4.17.21")], report, source)
+
+    lock_only = "npm install --package-lock-only --ignore-scripts --no-audit --no-fund"
+    repair = "npm install --ignore-scripts --no-audit --no-fund"
+    assert tools.commands() == [lock_only, lock_only, NPM_CI, repair, NPM_CI]
+    assert result.status is LockStatus.REGENERATED
+    assert result.verified == lockfiles.Verified(command=NPM_CI)
+    assert result.warnings == (
+        f"npm refusait le lockfile qu'il venait d'écrire ({MISSING}) : refait par « {repair} », "
+        "sans les scripts du projet, puis relu.",
+    )
+    # Les node_modules de l'installation sont effacés : ils n'existaient pas avant.
+    assert not (root / "node_modules").exists()
+    # La description d'une PR le dit, sous le lockfile.
+    lines = forge._lockfile_lines(result)
+    assert f"  Relu par `{NPM_CI}` : accepté." in lines
+    assert any(line.startswith("  npm refusait le lockfile") for line in lines)
+
+
+def test_a_lockfile_still_refused_stays_regenerated_and_says_it(
+    make_tree: MakeTree, fake_tools: Tools
+) -> None:
+    """L'installation n'y change rien : le lockfile reste régénéré, refusé (comme à E32), et les
+    ``node_modules`` qui étaient là avant restent."""
+    root = npm_project(make_tree)
+    (root / "node_modules" / "kept").mkdir(parents=True)
+    tools = fake_tools("npm")
+    tools.handlers["npm"] = RefusingNpm(root, repaired=False)
+    source, report = analyse(root)
+
+    _, _, (result,) = apply(root, [wanted(project_of(report), "lodash", "4.17.21")], report, source)
+
+    assert tools.commands()[-3:] == [
+        NPM_CI,
+        "npm install --ignore-scripts --no-audit --no-fund",
+        NPM_CI,
+    ]
+    assert result.status is LockStatus.REGENERATED
+    assert result.verified == lockfiles.Verified(command=NPM_CI, error=f"{MISSING}.")
+    assert result.warnings == ()
+    assert (root / "node_modules" / "kept").is_dir()
 
 
 def test_each_tool_run_is_announced(make_tree: MakeTree, fake_tools: Tools) -> None:
@@ -686,6 +767,7 @@ def test_an_indirect_held_by_its_parent(make_tree: MakeTree, fake_tools: Tools) 
     assert tools.commands() == [
         "npm update ms --package-lock-only --ignore-scripts --no-audit --no-fund",
         "npm install --package-lock-only --ignore-scripts --no-audit --no-fund",
+        NPM_CI,
     ]
     (installed,) = result.installed
     assert (installed.versions, installed.reach, installed.held_by) == (
@@ -725,6 +807,7 @@ def test_a_refused_pin_falls_back_to_npm_update(make_tree: MakeTree, fake_tools:
     assert tools.commands()[1:] == [
         "npm update lodash --package-lock-only --ignore-scripts --no-audit --no-fund",
         "npm install --package-lock-only --ignore-scripts --no-audit --no-fund",
+        NPM_CI,
     ]
     assert result.status is LockStatus.REGENERATED
     assert result.warnings == (

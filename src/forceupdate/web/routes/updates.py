@@ -7,7 +7,6 @@ son diff ; le navigateur ne renvoie jamais les réécritures.
 """
 
 import asyncio
-import urllib.parse
 from pathlib import PurePosixPath
 from typing import Annotated
 
@@ -17,7 +16,15 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from forceupdate.update import local
 from forceupdate.web import sse
 from forceupdate.web.jobs import Plan
-from forceupdate.web.routes import CurrentJobs, errors, find_plan, find_scan, respond, sentence
+from forceupdate.web.routes import (
+    CurrentJobs,
+    attachment,
+    errors,
+    find_plan,
+    find_scan,
+    respond,
+    sentence,
+)
 from forceupdate.web.routes.settings import CurrentPreferences
 from forceupdate.web.schemas import (
     ApplyRequest,
@@ -159,12 +166,5 @@ async def download_file(plan_id: str, path: str, jobs: CurrentJobs) -> Response:
     return Response(
         change.after.encode("utf-8"),
         media_type="application/octet-stream",
-        headers={"Content-Disposition": _attachment(name)},
+        headers={"Content-Disposition": attachment(name)},
     )
-
-
-def _attachment(name: str) -> str:
-    quoted = urllib.parse.quote(name)
-    if quoted == name:
-        return f'attachment; filename="{name}"'
-    return f"attachment; filename*=utf-8''{quoted}"

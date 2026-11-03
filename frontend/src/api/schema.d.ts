@@ -25,6 +25,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/fs/pick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pick Path
+         * @description Ouvre la fenêtre de choix d'un dossier (ou d'un fichier) du système, sur l'ordinateur où
+         *     tourne le serveur, et attend la personne : le chemin choisi, ou ``null`` si elle a annulé
+         *     (``web.picker``).
+         */
+        post: operations["pick_path"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scans": {
         parameters: {
             query?: never;
@@ -69,6 +91,27 @@ export interface paths {
          * @description Annule l'analyse si elle tourne encore.
          */
         delete: operations["cancel_scan"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scans/{scan_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Report
+         * @description Le rapport d'une analyse finie, en pièce jointe : en Markdown (``md``), en JSON
+         *     (``json``), ou les dépendances à mettre à jour en CSV (``csv``, pour un tableur).
+         */
+        get: operations["download_report"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -937,6 +980,12 @@ export interface components {
             summary: components["schemas"]["SummaryDocument"];
         };
         /**
+         * DownloadFormat
+         * @description Ce qui se télécharge d'un rapport (session 36), comme ``scan --format``.
+         * @enum {string}
+         */
+        DownloadFormat: "md" | "json" | "csv";
+        /**
          * Ecosystem
          * @description Un écosystème de paquets. Les valeurs sont les noms qu'utilise OSV.
          * @enum {string}
@@ -1356,6 +1405,30 @@ export interface components {
             /** File */
             file: string;
             location: components["schemas"]["Location"] | null;
+        };
+        /**
+         * PickKind
+         * @enum {string}
+         */
+        PickKind: "folder" | "file";
+        /**
+         * PickRequest
+         * @description La fenêtre de choix du système à ouvrir (session 36) : pour un dossier ou un fichier, et
+         *     le dossier où elle s'ouvre.
+         */
+        PickRequest: {
+            /** @default folder */
+            kind: components["schemas"]["PickKind"];
+            /** Start */
+            start?: string | null;
+        };
+        /**
+         * Picked
+         * @description Ce que la personne a choisi dans la fenêtre du système.
+         */
+        Picked: {
+            /** Path */
+            path: string | null;
         };
         /**
          * PlanRequest
@@ -2438,6 +2511,75 @@ export interface operations {
             };
         };
     };
+    pick_path: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PickRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Picked"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Impossible dans l'état actuel */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Pas de fenêtre de choix sur cet ordinateur */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     list_scans: {
         parameters: {
             query?: never;
@@ -2621,6 +2763,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScanSummary"];
+                };
+            };
+            /** @description Jeton de session manquant ou invalide */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requête venue d'un autre site */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Introuvable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Impossible dans l'état actuel */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_report: {
+        parameters: {
+            query?: {
+                format?: components["schemas"]["DownloadFormat"];
+            };
+            header?: never;
+            path: {
+                scan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Le rapport, ou les dépendances à mettre à jour, à télécharger. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/markdown; charset=utf-8": string;
+                    "application/json": string;
+                    "text/csv; charset=utf-8": string;
                 };
             };
             /** @description Jeton de session manquant ou invalide */

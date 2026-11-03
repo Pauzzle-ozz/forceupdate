@@ -37,6 +37,7 @@ from forceupdate.update.lockfiles import (
     decline,
 )
 from forceupdate.update.writers import Choice, Skipped
+from forceupdate.web.picker import PickKind
 
 # -- Requêtes ---------------------------------------------------------------------
 
@@ -457,6 +458,24 @@ class Entry:
     kind: EntryKind
     hidden: bool
     """Nom en ``.``, ou caché pour Windows."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class PickRequest:
+    """La fenêtre de choix du système à ouvrir (session 36) : pour un dossier ou un fichier, et
+    le dossier où elle s'ouvre."""
+
+    kind: PickKind = PickKind.FOLDER
+    start: str | None = None
+    """Un dossier absolu ; sans lui, celui que choisit le système."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class Picked:
+    """Ce que la personne a choisi dans la fenêtre du système."""
+
+    path: str | None
+    """Le chemin absolu, au format POSIX ; ``null`` si elle a annulé."""
 
 
 @dataclass(frozen=True, kw_only=True)

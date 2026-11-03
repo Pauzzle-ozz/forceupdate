@@ -331,8 +331,9 @@ class Extra:
 
 @dataclass(frozen=True, kw_only=True)
 class Verified:
-    """Le lockfile régénéré, relu par l'outil qu'attend le projet (``ExtraKind.PROJECT_NPM`` :
-    ``npm ci --dry-run`` de son npm, qui n'installe rien)."""
+    """Le lockfile régénéré, relu par l'outil qui l'a écrit : ``npm ci --dry-run``, qui n'installe
+    rien, du npm qui l'a régénéré (celui du projet, ``ExtraKind.PROJECT_NPM``, ou celui de
+    l'ordinateur ; tous les ``package-lock.json`` depuis la session 36)."""
 
     command: str
     """La commande, à lancer dans le dossier du lockfile pour reproduire."""
@@ -2235,7 +2236,16 @@ class _Npm(_Driver):
     _ARGS = ("--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund")
     _VERIFY = ("ci", "--dry-run", "--ignore-scripts", "--no-audit", "--no-fund")
     """``npm ci`` relit le lockfile et refuse s'il ne colle pas au ``package.json`` (« Missing: …
-    from lock file ») ; ``--dry-run`` n'installe rien (vérifié avec npm 10 et 11)."""
+    from lock file ») ; ``--dry-run`` n'installe rien (vérifié avec npm 10 et 11). Toujours fait
+    (session 36), pas seulement pour le npm du projet."""
+    _REPAIR = ("install", "--ignore-scripts", "--no-audit", "--no-fund")
+    """Une vraie installation, sans les scripts : sur un lockfile que ``npm ci`` refuse. En mode
+    « lockfile seul », npm 11.6.2 n'écrit qu'une partie des dépendances embarquées d'un paquet
+    (``bundleDependencies`` de ``@tailwindcss/oxide-wasm32-wasi`` 4.3.4 : 4 sur 6), et son propre
+    ``npm ci`` le refuse (« Missing: @emnapi/wasi-threads@1.2.3 from lock file ») ; une seconde
+    passe n'y change rien. Installer les écrit toutes, sans rien changer d'autre au lockfile
+    (vérifié sur le front de forceupdate, session 36). Les ``node_modules`` qu'elle crée sont
+    effacés ensuite."""
 
     def manual(self, job: Job) -> list[str]:
         npm = ["npx", *job.launcher[1:]] if job.launcher else ["npm"]
@@ -2255,8 +2265,41 @@ class _Npm(_Driver):
             )
             context.run("update", *names, *everywhere, *self._ARGS)
         context.run(*base)
-        if context.job.doing is ExtraKind.PROJECT_NPM:
-            context.verify(*self._VERIFY)
+        if context.cancel is not None and context.cancel.is_set():
+            # L'arrêt demandé pendant que npm finissait : son lockfile est fait, gardé sans être
+            # relu ; la suite s'arrête avant l'outil suivant (``regenerate``).
+            return
+        context.verify(*self._VERIFY)
+        if context.verified is not None and context.verified.error is not None:
+            self._repair(context, context.verified.error)
+
+    def _repair(self, context: _Context, refused: str) -> None:
+        """Refait le lockfile que ``npm ci`` refuse par une vraie installation (``_REPAIR``), puis
+        le relit. Toujours refusé, le lockfile reste régénéré, et ``verified`` le dit (E32)."""
+        folder = context.root / context.job.directory
+        before = _node_modules(folder)
+        try:
+            context.run(*self._REPAIR)
+        finally:
+            for created in _node_modules(folder) - before:
+                shutil.rmtree(created, ignore_errors=True)
+        context.verify(*self._VERIFY)
+        assert context.verified is not None
+        if context.verified.error is None:
+            context.warnings.append(
+                f"npm refusait le lockfile qu'il venait d'écrire ({refused.rstrip('.')}) : refait "
+                f"par « {context.shown(*self._REPAIR)} », sans les scripts du projet, puis relu."
+            )
+
+
+def _node_modules(folder: Path) -> set[Path]:
+    """Les dossiers ``node_modules`` sous ``folder`` (sans entrer dedans, ni dans ``.git``)."""
+    found = set()
+    for current, directories, _ in os.walk(folder):
+        if "node_modules" in directories:
+            found.add(Path(current) / "node_modules")
+        directories[:] = [d for d in directories if d not in ("node_modules", ".git")]
+    return found
 
 
 class _Pnpm(_Driver):

@@ -149,4 +149,58 @@ describe('choisir un dossier ou un fichier (écran 2)', () => {
     expect(alert).toHaveTextContent('Fichier trop gros : 2 Mo au plus.')
     expect(alert).toHaveTextContent('50 Mo pour un lockfile')
   })
+
+  it('« Parcourir… » ouvre la fenêtre du système, puis le dossier choisi (session 36)', async () => {
+    const calls = mockApi({
+      'GET /api/fs': ({ url }) => folders(url.searchParams.get('path')),
+      'POST /api/fs/pick': { path: 'C:/Projets/vulnerable' },
+    })
+    const user = userEvent.setup()
+    renderApp('/choisir?mode=dossier')
+    await screen.findByRole('list', { name: 'Points de départ' })
+    await user.click(screen.getByRole('button', { name: 'Parcourir…' }))
+    // Le dossier choisi s'ouvre dans la liste, prêt à analyser.
+    expect(await screen.findByRole('list', { name: 'Contenu de C:/Projets/vulnerable' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Dossier ouvert')).toHaveValue('C:/Projets/vulnerable')
+    expect(screen.getByRole('button', { name: 'Analyser ce dossier' })).toBeEnabled()
+    const pick = calls.find((call) => call.method === 'POST')!
+    expect(pick.url.pathname).toBe('/api/fs/pick')
+    // Elle s'ouvre dans le dossier personnel, faute de dossier ouvert.
+    expect(JSON.parse(String(pick.init.body))).toEqual({ kind: 'folder', start: 'C:/Users/moi' })
+  })
+
+  it('« Parcourir… » pour un fichier : le fichier choisi, dans son dossier', async () => {
+    const calls = mockApi({
+      'GET /api/fs': ({ url }) => folders(url.searchParams.get('path')),
+      'POST /api/fs/pick': { path: 'C:/Projets/vulnerable/package.json' },
+    })
+    const user = userEvent.setup()
+    renderApp('/choisir?mode=fichier&chemin=C:/Projets')
+    await screen.findByRole('list', { name: 'Contenu de C:/Projets' })
+    await user.click(screen.getByRole('button', { name: 'Parcourir…' }))
+    expect(await screen.findByRole('button', { name: 'Analyser ce fichier' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Dossier ouvert')).toHaveValue('C:/Projets/vulnerable')
+    const pick = calls.find((call) => call.method === 'POST')!
+    expect(JSON.parse(String(pick.init.body))).toEqual({ kind: 'file', start: 'C:/Projets' })
+  })
+
+  it('« Parcourir… » annulé ne change rien ; sans fenêtre possible, la raison', async () => {
+    mockApi({ 'GET /api/fs': ({ url }) => folders(url.searchParams.get('path')), 'POST /api/fs/pick': { path: null } })
+    const user = userEvent.setup()
+    const { unmount } = renderApp('/choisir?mode=dossier&chemin=C:/Projets')
+    await screen.findByRole('list', { name: 'Contenu de C:/Projets' })
+    await user.click(screen.getByRole('button', { name: 'Parcourir…' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Parcourir…' })).toBeEnabled())
+    expect(screen.getByLabelText('Dossier ouvert')).toHaveValue('C:/Projets')
+    unmount()
+
+    mockApi({
+      'GET /api/fs': ({ url }) => folders(url.searchParams.get('path')),
+      'POST /api/fs/pick': new Status(503, { detail: "Pas de fenêtre de choix : pas d'affichage." }),
+    })
+    renderApp('/choisir?mode=dossier')
+    await screen.findByRole('list', { name: 'Points de départ' })
+    await user.click(screen.getByRole('button', { name: 'Parcourir…' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent("Pas de fenêtre de choix : pas d'affichage.")
+  })
 })

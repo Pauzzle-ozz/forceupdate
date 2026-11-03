@@ -17,6 +17,9 @@ export type Listing = Response<'list_folder'>
 export type Entry = Schemas['Entry']
 export type EntryKind = Schemas['EntryKind']
 export type RecentPath = Schemas['RecentPath']
+export type PickRequest = Schemas['PickRequest']
+export type Picked = Schemas['Picked']
+export type DownloadFormat = Schemas['DownloadFormat']
 
 export type ScanRequest = Schemas['ScanRequest']
 /** Les options d'une analyse, comme les choisit l'interface (celles de `ScanRequest`). */

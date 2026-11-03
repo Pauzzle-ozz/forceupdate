@@ -560,7 +560,9 @@ Titre : « Mise à jour des dépendances (forceupdate) ». La description, en fr
 - « Mises à jour » : un tableau (paquet, projet, version, failles corrigées, état : « faite »,
   « faite, en … » si l'outil a pris plus haut, « retenue en … par … », « lockfile à régénérer
   (npm absent) », « pas faite : lockfile en échec ») ;
-- « Lockfiles » : régénéré par quel outil et relu par quoi, la commande à lancer, l'erreur de
+- « Lockfiles » : régénéré par quel outil et relu par quoi (tout `package-lock.json` est relu
+  par `npm ci --dry-run`, et refait par une vraie installation si npm le refuse : voir « Le npm
+  du projet » dans USAGE.md), ce que l'outil a dit en plus, la commande à lancer, l'erreur de
   l'outil ;
 - « Non appliquées » : les options sautées, et pourquoi ;
 - « Rapport de l'analyse » : le rapport Markdown du dépôt, raccourci au-delà de 60 000

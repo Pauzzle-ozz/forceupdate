@@ -519,7 +519,7 @@ def test_apply_writes_then_regenerates(
             "held_by": [],
         }
     ]
-    assert [call.program for call in tools.calls] == ["npm", "uv"]
+    assert [call.program for call in tools.calls] == ["npm", "npm", "uv"]  # npm, sa relecture, uv
     assert '"lodash": "4.18.1"' in (root / "package.json").read_text(encoding="utf-8")
     assert "flask==0.12.5" in (root / "requirements.txt").read_text(encoding="utf-8")
     received = events(api.get(f"/api/updates/{planned['id']}/events").text)
@@ -595,8 +595,12 @@ def test_the_npm_of_the_project_is_a_case_of_the_plan(
     assert response.json()["lockfiles"][0]["accepted"] is False
     document = finished(f"/api/updates/{planned['id']}")
     assert document["results"][0]["status"] == "regenerated"
-    assert document["results"][0]["verified"] is None
-    assert [call.program for call in tools.calls[1:]] == ["npm", "uv"]
+    # Décliné : régénéré et relu par le npm de l'ordinateur (session 36), pas par npx.
+    assert document["results"][0]["verified"] == {
+        "command": "npm ci --dry-run --ignore-scripts --no-audit --no-fund",
+        "error": None,
+    }
+    assert [call.program for call in tools.calls[1:]] == ["npm", "npm", "uv"]
 
     # Une autre copie, la case laissée cochée : tout par npx, puis npm ci --dry-run de npm 10.
     root, tools = ci_copy("b")

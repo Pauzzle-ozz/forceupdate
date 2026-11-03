@@ -17,17 +17,23 @@ import ctypes
 import os
 import stat
 import string
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
+from forceupdate import processes
 from forceupdate.detect.code import is_code_file
 from forceupdate.detect.manifests import match_dependency_file
+from forceupdate.web import picker
 from forceupdate.web.routes import CurrentJobs, errors, respond
-from forceupdate.web.schemas import Entry, EntryKind, Listing, RecentPath
+from forceupdate.web.schemas import Entry, EntryKind, Listing, Picked, PickRequest, RecentPath
 
 router = APIRouter(prefix="/api/fs", tags=["dossiers"])
+
+_picking = threading.Lock()
+"""Une seule fenêtre de choix à la fois : un second clic ne l'ouvre pas deux fois."""
 
 MAX_ENTRIES = 5000
 """Entrées listées au plus dans un dossier."""
@@ -48,6 +54,24 @@ async def list_folder(jobs: CurrentJobs, path: str | None = None) -> JSONRespons
     if not path:
         return respond(await asyncio.to_thread(_roots, recent))
     return respond(await asyncio.to_thread(_listing, path, recent))
+
+
+@router.post("/pick", response_model=Picked, responses=errors(401, 403, 409, 503))
+async def pick_path(body: PickRequest, jobs: CurrentJobs) -> JSONResponse:
+    """Ouvre la fenêtre de choix d'un dossier (ou d'un fichier) du système, sur l'ordinateur où
+    tourne le serveur, et attend la personne : le chemin choisi, ou ``null`` si elle a annulé
+    (``web.picker``)."""
+    if not _picking.acquire(blocking=False):
+        raise HTTPException(409, "Une fenêtre de choix est déjà ouverte : y choisir, ou la fermer.")
+    try:
+        chosen = await asyncio.to_thread(picker.pick, body.kind, body.start, cancel=jobs.stopping)
+    except picker.Unavailable as err:
+        raise HTTPException(503, str(err)) from err
+    except processes.Interrupted:
+        chosen = None  # le serveur s'arrête
+    finally:
+        _picking.release()
+    return respond(Picked(path=chosen))
 
 
 def _roots(recent: tuple[RecentPath, ...]) -> Listing:

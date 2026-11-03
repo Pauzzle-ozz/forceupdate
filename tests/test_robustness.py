@@ -223,7 +223,7 @@ def test_ctrl_c_in_the_second_tool_keeps_the_first_group(
     prepared = local.prepare(source, report, planner.select(report))
     with pytest.raises(KeyboardInterrupt):
         local.apply(source, report, prepared)
-    assert [call.program for call in tools.calls] == ["npm", "uv"]
+    assert [call.program for call in tools.calls] == ["npm", "npm", "uv"]  # npm, sa relecture, uv
     assert '"lodash": "4.18.1"' in (source.root / "package.json").read_text(encoding="utf-8")
     assert _unchanged(source.root, "requirements.in", "requirements.txt")
 

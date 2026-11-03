@@ -104,6 +104,14 @@ une page, c'est le serveur qui liste.
 | Hors ligne | Rien ne change (lister ne demande pas de réseau) ; l'option « Hors ligne » est cochée |
 | Non concluant | Sans objet (rien n'est vérifié ici) |
 
+**Fait à la session 36** (les essais de l'utilisateur : « le bouton Ouvrir n'ouvre pas
+l'explorateur ») : à droite du champ « Dossier ouvert », « Aller » (bouton discret, flèche : suit le
+chemin collé, l'ancien « Ouvrir ») et « Parcourir… » (secondaire, `folder-search`), qui demande au
+serveur la fenêtre de choix du système (`POST /api/fs/pick`) : le dossier choisi s'ouvre dans la
+liste ; un fichier, dans son dossier, choisi. Pendant que la fenêtre est ouverte : le bouton
+tourne, et « La fenêtre de choix … est ouverte : elle peut se trouver derrière le navigateur »
+(`role=status`) ; sans fenêtre possible, la raison sous le champ (`role=alert`).
+
 ## 3. Analyse en cours
 
 **But** : voir avancer l'analyse, pouvoir l'annuler. Page à part :
@@ -186,6 +194,11 @@ une page, c'est le serveur qui liste.
 | Erreur | `failed` (« L'analyse a échoué » et `error`), `404` (« Cette analyse n'existe plus » : le serveur garde 20 analyses le temps de sa session), `cancelled` (« Analyse annulée ») |
 | Hors ligne | Alerte : données du cache, la plus ancienne du … ; « Relancer en ligne » |
 | Non concluant | Compteur violet « Non concluants » cliquable ; alerte qui dit lesquels et pourquoi, « ce n'est pas à jour » ; badges violets dans le tableau |
+
+**Fait à la session 36** : sous les options en badges, le groupe « Télécharger » (icône
+`download`, trois liens discrets) : « Le rapport (Markdown) », « Le rapport (JSON) », « Les
+dépendances à mettre à jour (CSV) » (`GET /api/scans/{id}/download?format=`, le serveur nomme le
+fichier).
 
 ## 5. Mise à jour
 

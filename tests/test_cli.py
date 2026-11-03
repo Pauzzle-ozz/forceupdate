@@ -485,11 +485,12 @@ def test_update_regenerates_the_lockfiles(
         "Fichiers réécrits : package.json, requirements.in.",
         "package-lock.json : régénéré (npm).",
         "lodash 4.18.1",
+        "Relu par npm ci --dry-run --ignore-scripts --no-audit --no-fund : accepté.",
         "requirements.txt : régénéré (uv pip compile).",
         "flask              0.12.5",
         "jinja2 (indirecte) 2.11.3",
     ]
-    assert [call.program for call in tools.calls] == ["npm", "uv"]
+    assert [call.program for call in tools.calls] == ["npm", "npm", "uv"]
     assert "flask==0.12.5" in (root / "requirements.txt").read_text(encoding="utf-8")
 
 

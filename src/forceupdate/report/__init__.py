@@ -353,6 +353,8 @@ class Row:
     """Vérifiée auprès du registre."""
     unverifiable: str | None = None
     """Pourquoi on ne peut pas la vérifier (``Dependency.unverifiable_reason``)."""
+    dependencies: tuple[Dependency, ...] = ()
+    """Ses déclarations : un paquet peut l'être dans plusieurs fichiers, ou plusieurs scopes."""
 
     @property
     def states(self) -> list[str]:
@@ -426,6 +428,7 @@ def _row(
         findings=tuple(unique.values()),
         checked=checked and all(d.verifiable for d in group),
         unverifiable=next((d.unverifiable_reason for d in group if not d.verifiable), None),
+        dependencies=tuple(group),
     )
 
 

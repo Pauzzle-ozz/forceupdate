@@ -427,6 +427,7 @@ def _lockfile_lines(result: Regenerated) -> list[str]:
             lines.append(
                 f"  **Refusé par `{code(verified.command)}`** : {escape(verified.error or '')}"
             )
+        lines += [f"  {escape(warning)}" for warning in result.warnings]
         if result.changed:
             lines.append(f"  Aussi changé : {escape(', '.join(result.changed))}.")
         return lines

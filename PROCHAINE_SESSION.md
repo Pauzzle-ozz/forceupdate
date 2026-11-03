@@ -5,9 +5,24 @@ Contexte : E01 à E35 sont faites. **La 1.0.0rc1 est publiée sur PyPI** (sessio
 ses essais, guidé étape par étape (interface, analyse, mise à jour locale, fichier de code, forges,
 réglages, ligne de commande) : deux défauts corrigés (la raison d'une version écartée par le runtime
 dans le terminal et le Markdown ; l'écran de résultat des PR qui disait « rien à faire » quand npm
-gardait des indirectes retenues par leur parent), et cinq points portés à E36 (« Depuis la session
+gardait des indirectes retenues par leur parent), et des points portés à E36 (« Depuis la session
 36 »), dont deux fonctions décidées avec lui. CI verte sur les huit jobs. 5 107 tests Python, 170
-Vitest, 72 Playwright.
+Vitest, 72 Playwright. **Test final de l'utilisateur**, avec la 1.0.0rc1 de PyPI : une PR sur
+quatre de ses dépôts GitHub, toutes les majeures cochées — `Omnividens-argos/argos-ops` #98,
+`Omnividens-argos/sechunter` #661, `Pauzzle-ozz/forceupdate` #1, `Pauzzle-ozz/TITIrelire` #1 :
+ouvertes, propres (un commit, `Generated-by`, branche `forceupdate/dependencies`), CI vertes ;
+TITIrelire (sans CI) vérifiée sur un clone (tsc de TypeScript 7, 524 tests sous vitest 4, build).
+TITIrelire #1 fusionnée par lui. Défauts relevés : **un lockfile npm refusé par `npm ci` envoyé
+tel quel** (forceupdate #1, sa CI du front en échec) — **corrigé à la fin de la session 36**
+(toujours relu ; refusé, refait par une vraie installation) ; portés à E36 : une majeure
+incompatible fait tomber tout son lockfile (redis 8, pillow 13, typescript 7, puis
+python-dateutil 4, @types/react-dom 19 : des dizaines de mises à jour perdues, dont des failles),
+le message du commit qui compte une version retenue comme faite, un chemin de l'ordinateur dans
+une description de PR. **Faits aussi à la fin de la session 36, à sa demande** : télécharger le
+rapport (Markdown, JSON, et les dépendances à mettre à jour en CSV ; `scan --format csv`) et
+« Parcourir… » (la fenêtre de choix du système, Tk, `web/picker.py`). Poussés, CI à vérifier
+(`gh run list`) ; l'outil de l'utilisateur réinstallé depuis le dépôt. Rien de publié après la
+1.0.0rc1 : ces ajouts partiront avec la 1.0.0.
 
 Lis CLAUDE.md, puis dans PLAN.md : « Le livrable » (en tête), l'étape E36 (toutes ses cases, dont
 « Depuis E35 » et « Depuis la session 36 ») et les notes de E35 (sessions 35 et 36).
@@ -15,20 +30,29 @@ Lis CLAUDE.md, puis dans PLAN.md : « Le livrable » (en tête), l'étape E36 (t
 livraison »), puis `design-system/ECRANS.md` pour chaque écran touché.
 
 À faire :
-- **E36 est grosse** (la recette, la revue, huit écarts « Depuis E35 », cinq points « Depuis la
-  session 36 » dont deux fonctions, la 1.0.0) : proposer d'abord un découpage à l'utilisateur, par
-  exemple E36 = les écarts et les deux fonctions (la fenêtre de choix d'un dossier du système ;
-  l'indirecte retenue dite d'avance), E37 = la recette, la revue et la 1.0.0. S'il refuse, tout
-  dans l'ordre du plan.
+- **Demander d'abord à l'utilisateur** comment s'est passé « Parcourir… » chez lui (la fenêtre de
+  Windows : au premier plan ? derrière le navigateur ?) et les téléchargements (le CSV dans Excel),
+  et s'il a renvoyé la PR #1 de forceupdate avec l'outil corrigé (son lockfile doit passer `npm ci`
+  et la CI du front).
+- **E36 est grosse** (la recette, la revue, huit écarts « Depuis E35 », les points « Depuis la
+  session 36 », la 1.0.0) : proposer d'abord un découpage à l'utilisateur, par exemple E36 = les
+  écarts et les fonctions (l'indirecte retenue dite d'avance ; le lockfile qui ne tombe plus pour
+  une majeure), E37 = la recette, la revue et la 1.0.0. S'il refuse, tout dans l'ordre du plan.
+- Les quatre PR du test final sont ouvertes sur ses dépôts : ne rien y pousser ni les fermer sans
+  son accord ; une fois le lockfile corrigé, les renvoyer (avec lui) met à jour les mêmes PR, et
+  c'est la meilleure recette de la correction.
 - Les cases de E36 :
   - les écarts « Depuis E35 » (le jeton dans le chemin d'une adresse de registre et la clé du
     cache, `UV_INDEX_<NOM>_USERNAME`, un registre en http, « Privé : non vérifié » jamais émis,
     `include-tests` du projet, `java` de `.tool-versions`, la commande Yarn 2+ affichée, l'aide de
     `--help` en cp1252 et en anglais) ;
   - « Depuis la session 36 » : « Mes dépôts » sur un grand écran, « Se déconnecter… » en vrai, la
-    table `[selection]` vide des réglages, **la fenêtre « Sélectionner un dossier » du système**
-    (écran 2 ; ses points à trancher sont dans le plan), **l'indirecte retenue dite d'avance**
-    (écran 5 et récapitulatif des PR : le lockfile dit la plage de chaque parent) ;
+    table `[selection]` vide des réglages, la fenêtre de choix du système (faite : à essayer sous
+    macOS et Linux), **l'indirecte retenue dite d'avance**
+    (écran 5 et récapitulatif des PR : le lockfile dit la plage de chaque parent), **une majeure
+    incompatible qui fait tomber tout son lockfile** (réessayer sans les majeures, puis dire
+    laquelle bloque : le plus utile), le message du commit qui compte une version retenue, un
+    chemin de l'ordinateur dans une description de PR ;
   - dérouler « Le livrable » dans l'interface (un vrai projet par écosystème disponible, un fichier
     de code et un fichier déposé, les trois forges : analyse de tous les dépôts, une PR / MR sur
     chaque dépôt de test) ; la revue finale ui-ux-pro-max (accessibilité, clair et sombre, 375 px et

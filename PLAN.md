@@ -3661,6 +3661,47 @@ marche ; la CI est verte.
   200 avec le cookie, 401 sans) ; le front publié contient les correctifs de la session. Linux :
   par la CI (le paquet est le même, pur Python). L'outil de l'utilisateur
   (`~/.local/bin/forceupdate`) reste celui installé depuis le dépôt (`uv tool install .`).
+- **Le test final de l'utilisateur** (avec la 1.0.0rc1 de PyPI) : une PR sur quatre de ses dépôts
+  GitHub, toutes les majeures cochées ; relues par `gh` (commit, fichiers, description, CI) ;
+  TITIrelire (sans CI) vérifiée sur un clone (tsc de TypeScript 7, 524 tests, build), fusionnée
+  par lui. Défauts relevés, portés à E36 (« Depuis la session 36 ») : une majeure incompatible
+  fait tomber tout son lockfile, le message du commit qui compte une version retenue, un chemin
+  de l'ordinateur dans une description. **Le quatrième, corrigé tout de suite** (à sa demande :
+  « il faut régler le pb de la PR de forceupdate ») : la PR #1 de `forceupdate` portait un
+  `package-lock.json` que `npm ci` refuse (sa CI du front échouait). Reproduit : npm 11.6.2 en
+  « lockfile seul » n'écrit que 4 des 6 dépendances embarquées de
+  `@tailwindcss/oxide-wasm32-wasi` 4.3.4 ; une seconde passe n'y change rien ; retirer les entrées
+  à la main est refusé (un lockfile est écrit par son outil) ; npm 12 ne fait rien d'utile ; **une
+  vraie installation** (`npm install --ignore-scripts`) écrit exactement le même lockfile, plus
+  les deux entrées. D'où : tout `package-lock.json` est relu (`npm ci --dry-run`, pas seulement le
+  npm du projet par `npx`) ; refusé, refait par une vraie installation, relu, et c'est dit (un
+  avertissement, aussi dans la description d'une PR) ; les `node_modules` qu'elle crée sont effacés
+  (ceux d'avant restent) ; toujours refusé, régénéré et dit (comme à E32) ; un arrêt pendant que
+  npm finit garde le lockfile sans le relire (sinon la relecture lèverait l'arrêt et défaisait un
+  npm fini). Vérifié en vrai sur un clone de forceupdate (refusé, refait, accepté ; un `npm ci`
+  à part l'accepte aussi). Onze tests mis à jour (la relecture de plus), deux nouveaux.
+- **Deux demandes de l'utilisateur, faites dans la session** (« voilà le travail que tu fais ») :
+  - **télécharger le rapport** depuis l'interface : le Markdown, le JSON, et **les dépendances à
+    mettre à jour en CSV** pour un tableur (`report/spreadsheet.py` : une ligne par paquet, une
+    par runtime en fin de vie, sans version non fixée ni non vérifiable ni non concluant ;
+    points-virgules, BOM dans un fichier pour Excel ; la version qui corrige toutes les failles) ;
+    `GET /api/scans/{id}/download?format=md|json|csv` (le serveur nomme le fichier), le groupe
+    « Télécharger » sous les badges du rapport (empilé à 375 px) ; `scan --format csv` ;
+    `Row.dependencies` (les déclarations d'un paquet : la portée et les fichiers exacts) ;
+  - **« Parcourir… »**, la fenêtre de choix du système (`web/picker.py`) : `POST /api/fs/pick` ;
+    Tk (`askdirectory`, `askopenfilename`) dans un programme à part, le même Python (`-I -c`),
+    au premier plan (`-topmost`) ; une seule fenêtre à la fois (409) ; sans affichage ou sans Tk,
+    la raison (503) ; l'arrêt du serveur la ferme ; une demi-heure au plus. L'écran 2 : « Aller »
+    (l'ancien « Ouvrir », discret) et « Parcourir… » ; la page dit que la fenêtre peut être
+    derrière le navigateur. Tk 8.6 vérifié dans le Python de l'outil installé ; **la vraie
+    fenêtre n'a pas été ouverte par moi** (elle s'ouvrirait sur l'écran de l'utilisateur) : à
+    essayer par lui, et sous macOS et Linux à E36.
+  Tests : `tests/test_downloads.py` (16 : le CSV, `--format csv`, la route, le nom du fichier, la
+  fenêtre simulée, le script sans Tk, la route et ses erreurs), 3 Vitest de l'écran 2, 1 du
+  rapport. Captures vérifiées (serveur de `e2e_server.py`) : écrans 2 et 4, clair et sombre,
+  1440 et 375 px. Doc : `USAGE.md` (écrans 2 et 4, le CSV, `--format csv`, la relecture npm),
+  `FORGES.md`, `JSON_FORMAT.md` (les deux routes), `ECRANS.md`, `CHANGELOG.md` (« Non publié »),
+  le README.
 
 ### E36 — Recette finale
 
@@ -3698,7 +3739,9 @@ marche ; la CI est verte.
   - « Se déconnecter… » : pas essayé en vrai (les trois comptes de l'utilisateur sont connectés) ;
   - le fichier de réglages écrit par l'écran 9 finit par une table `[selection]` vide : sans effet,
     la retirer quand elle n'a rien ;
-  - **choisir un dossier par la fenêtre du système** (décision de l'utilisateur) : sur l'écran 2,
+  - ~~**choisir un dossier par la fenêtre du système**~~ **fait à la fin de la session 36** (à sa
+    demande : « Parcourir… », `web.picker`, Tk dans un programme à part) ; reste à l'essayer sous
+    macOS et Linux. Le texte d'avant : (décision de l'utilisateur) : sur l'écran 2,
     un bouton (« Parcourir… ») ouvre la fenêtre « Sélectionner un dossier » de Windows (celles de
     macOS et de Linux de même : `osascript`, `zenity` ou `kdialog`, sinon tkinter), ouverte par le
     serveur local, qui tourne sur l'ordinateur de la personne ; le dossier choisi s'ouvre dans la
@@ -3714,7 +3757,38 @@ marche ; la CI est verte.
     d'abord ») au lieu de « devra peut-être monter aussi », ne plus la compter dans « failles
     corrigées », et proposer le parent s'il a une version qui accepte la correction (ou dire
     qu'aucune ne l'accepte). Pour npm d'abord (pnpm, Yarn, uv, Poetry : leurs lockfiles le disent
-    aussi). Le résultat le dit déjà (session 36).
+    aussi). Le résultat le dit déjà (session 36) ;
+  - **une majeure incompatible fait tomber tout son lockfile** (les PR de l'utilisateur, fin de la
+    session 36, toutes les majeures cochées) : `sechunter` #661, `redis` 8.1.0 que `arq` refuse
+    (`redis<6`) : `uv lock` échoue, les 20 mises à jour Python tombent, dont les failles de pyasn1
+    et pypdf ; `argos-ops` #98, `pillow` 13 que `fastembed` refuse (`<13`) : 41 tombent ;
+    `forceupdate` #1, `typescript` 7 que `openapi-typescript` refuse (peer `^5`) : les 15 du front
+    tombent. Les fichiers remis et la description honnête (« pas faite : lockfile en échec », la
+    sortie de l'outil) sont justes, le résultat est mauvais. Sur un échec, **réessayer sans les
+    majeures** (les correctifs, mineures et failles partent), puis isoler celle qui bloque et la
+    dire (« redis 8.1.0 : arq 0.28.0 demande redis<6 ») ; voir aussi si les métadonnées du registre
+    (`peerDependencies` de npm, `requires_dist` de PyPI) le prévoient avant de lancer l'outil ;
+    Au renvoi (l'utilisateur a décoché redis 8, pillow 13, typescript 7, coché d'autres majeures),
+    le même mal ailleurs : `sechunter`, `python-dateutil` 4.0.0 que `botocore` refuse (`<3`) ;
+    `argos-ops`, `@types/react-dom` 19 sans `@types/react` 19 (peer) : le front, qui était dans la
+    PR au premier envoi, en sort (la branche est refaite à chaque envoi) — le dire aussi (« cette
+    PR perd … ») ;
+  - ~~**un lockfile npm toujours relu par `npm ci --dry-run`**~~ **fait à la fin de la session 36**
+    (relu toujours ; refusé, refait par une vraie installation sans les scripts, puis relu) : la relecture n'est faite que pour le
+    npm du projet lancé par `npx` (E32). `forceupdate` #1 : npm 11.6.2 (celui de l'ordinateur, le
+    bon) a écrit un `package-lock.json` que `npm ci` refuse (« Missing: @emnapi/wasi-threads@1.2.3
+    from lock file » : les paquets embarqués de `@tailwindcss/oxide-wasm32-wasi`, tailwindcss
+    4.3.4) ; une seconde passe de `npm install --package-lock-only` n'y change rien ; la CI du
+    front de la PR échoue (« Dépendances »). Relire toujours, et sur un refus : le dire, ne pas
+    l'envoyer tel quel (le remettre, comme un échec), chercher ce qui le répare ;
+  - **le message du commit compte une version retenue comme faite** : `sechunter` #661 dit
+    « minimatch 10.2.6 → 11.0.1 », le lockfile a gardé 10.2.6 (retenue par eslint 10.14.0, la
+    description le dit bien) : `forge._done` ne doit garder que ce que le lockfile a atteint
+    (`EXACT`, `ABOVE`), ou dire « retenue » ;
+  - **un chemin de l'ordinateur dans la description d'une PR** : l'erreur de npm cite
+    `C:\Users\<nom>\AppData\Local\npm-cache\_logs\…` (la PR #1 du dépôt public `forceupdate`) :
+    remplacer le dossier personnel par `~` (et le dossier de travail par le chemin du dépôt) dans
+    la sortie d'un outil avant de l'écrire sur une forge.
 - [ ] Cocher « Le livrable ». Passer à la version `1.0.0` (`pyproject.toml`, `uv lock`, `uv run python
   -m forceupdate.web.openapi`, classifieur « Development Status :: 5 - Production/Stable », le
   README et `docs/USAGE.md` sans la phrase de la pré-version, `CHANGELOG.md`), CI verte, puis taguer
@@ -3789,4 +3863,4 @@ En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.
 | 33 | 2026-11-02 | E33 | Fait. Commit de E32 d'abord (`41f2fc8`, accord de l'utilisateur). Décidé avec lui : les identifiants des registres privés sont lus dans les fichiers de la personne et ne partent que vers l'hôte exact (https, ou la machine elle-même), jamais dans le cache, un rapport, un journal, l'API ni le navigateur ; les variables d'un fichier du projet ne sont jamais développées. Vérifié en vrai : `go env -w` et `GOENV`, le proxy public qui va chercher un module chez son hôte, `npm config`, un dépôt Composer local (Composer demande aussi Packagist), `dotnet nuget list source` et `<clear />`, uv et un index local à identifiants ; Maven et Gradle d'après leur documentation. `userfiles.py`, `net/auth.py` (un identifiant lié à son adresse ; `HttpClient` suit les redirections sans lui vers une autre origine), `routing/` (npm et `.yarnrc.yml`, Go, `.netrc`, Composer, NuGet, Python, Maven et Gradle, Ruby), `ComposerRepository`, `NuGetFeed`, `SimpleIndex` (JSON ou HTML) ; un paquet privé par son nom n'est jamais demandé au registre public ni à OSV ; un refus arrête la chaîne. Neuvième garde-fou des tests (`user_files`). Ajouté en route : la source globale d'un `Gemfile` (non vérifiée) ; à E34 : Ruby et Rust privés. Vérifié à la main : `forceupdate scan` contre six registres privés locaux, chacun avec son identifiant, aucun secret dans le rapport. Interface inchangée. 4987 tests Python verts (plus 23 réseau ; ceux des registres relancés), 167 Vitest, 72 Playwright. |
 | 34 | 2026-11-03 | E34 | Fait. Commit de E33 d'abord (`598468e`, accord de l'utilisateur) ; découpage proposé, refusé : E34 entière en une session. Vérifié en vrai : Bundler 4.0.20 et un serveur de gems local à identifiant (index compact, clés de `bundle config`, miroir), cargo 1.99.1 et un registre « sparse » local à jeton (`credentials.toml`, `replace-with`, résolveur 3 et `rust-version`), Go 1.27.3 (`go.work`), le proxy (blackfriday), `composer audit` (twig 3.4.1 : 17 failles, 15 chez OSV) et huit choix de `minimum-stability`, Maven Central (`<relocation>`, Spring Boot), le SDK .NET (`Directory.Build.targets`), endoflife.date et nodejs.org, uv (`exclude-newer`) ; Maven et Gradle d'après leur documentation. `routing/ruby.py` (réécrit), `routing/cargo.py`, `GemServer`, le runtime `rust` (sans fin de vie), la version construite d'un workspace Go, chaque majeure à `+incompatible`, `advisories/packagist.py`, `ComposerVersions.resolved` et `Project.resolution` (format JSON et API), `managed.py` (parent et BOM distants, « à la main »), `Maven.pom` et `CacheKind.FILES`, `gradle.lockfile`, `settings.gradle(.kts)`, versions riches, la variante de Guava, `Update=` de MSBuild, images, `mise.toml`, `required_ruby_version`, `setup-*`, les tests `network` des tables, carnets, `.vue`, `.svelte`, Deno, `tsconfig.json`, `importlib`, espace de noms local, `exclude-newer` ; « Rust » au front. Trouvé : l'aiguillage de Cargo lisait une raison que `routing.apply` efface (il renvoyait à crates.io). 5 103 tests Python verts (plus 28 réseau), 168 Vitest, 72 Playwright. Pas encore commitée. |
 | 35 | 2026-11-03 | E35 | En cours (reste la publication, après les essais de l'utilisateur). Commit de E34 d'abord (`34b4c4f`, accord de l'utilisateur) ; découpage proposé, refusé. Décidé avec lui : la `1.0.0rc1` d'abord, la `1.0.0` à la recette ; pas de publication dans cette session. Trouvé : `main` pas poussé depuis E13, la CI de E13 en échec ; la suite sous Linux (Docker) : **toute analyse d'un dossier plantait hors Windows** (`stat.IO_REPARSE_TAG_MOUNT_POINT`, E30), corrigé ; `.gitattributes` (LF partout). Doc : `README.md` (cinq captures, dont l'écran 8 et une vraie PR), `docs/USAGE.md`, `docs/FORGES.md`, `CHANGELOG.md`, `docs/JSON_FORMAT.md` vérifié par script. En relisant le code pour la doc : un identifiant dans l'adresse d'un dépôt Gradle partait en http et restait dans la clé du cache (corrigé), le proxy des réglages du système est lu (dit), d'autres écarts portés à E36. Packaging : version `1.0.0rc1`, `uv tool install .` sans node vérifié, `LICENSE` dans le wheel. CI : macOS, Front sous Windows, `network.yml` hebdomadaire ; premier passage : un chemin coupé sous macOS (corrigé) ; un test Playwright qui échouait par intermittence cachait un vrai défaut du front, trouvé par sa trace (les traces sont maintenant gardées) : une analyse finie en quelques millisecondes se disait « échouée » (corrigé, un test). Le serveur e2e balaie ses vieux dossiers. 5 110 tests Python (plus 28 réseau), 169 Vitest, 72 Playwright. Commits `be210cd`, `7a6a670`, `739a3c8` et le correctif du front, poussés. |
-| 36 | 2026-11-03 | E35 | Fait. Les essais de l'utilisateur, faits ensemble, guidés étape par étape (installé depuis le dépôt) : lancement, analyse de forceupdate et d'Argos (mêmes chiffres qu'en ligne de commande), mise à jour d'une copie d'Argos (uv, npm 10 par npx), un fichier de code et un fichier déposé, les trois forges connectées par OAuth, 11 dépôts analysés, la PR #1 et la MR !1 mises à jour (sans nouvelle PR), les réglages, `scan` et `update` en ligne de commande, Ctrl+C. Deux défauts corrigés : le terminal et le Markdown (donc les PR) ne disaient pas pourquoi une version plus récente n'est pas proposée quand le runtime ne la fait pas tourner (`Finding.blocked`) ; l'écran de résultat des PR disait « rien à faire » quand npm avait gardé les versions choisies (des indirectes retenues par leur parent, le dépôt `mew` de l'utilisateur), il dit maintenant lesquelles et par qui. Une course dans trois tests Vitest de l'écran 8, révélée en route, corrigée ; les rapports d'exemple du front régénérés (périmés depuis E34). Portés à E36 (décidé avec l'utilisateur) : la fenêtre de choix d'un dossier du système, l'indirecte retenue dite d'avance, deux détails de « Mes dépôts », la déconnexion. Commits `bdb1b05` et `b9aacaf`, poussés, CI verte sur les huit jobs ; **la 1.0.0rc1 publiée sur PyPI** (accord de l'utilisateur), vérifiée depuis PyPI sans node. 5 107 tests Python, 170 Vitest, 72 Playwright. |
+| 36 | 2026-11-03 | E35 | Fait. Les essais de l'utilisateur, faits ensemble, guidés étape par étape (installé depuis le dépôt) : lancement, analyse de forceupdate et d'Argos (mêmes chiffres qu'en ligne de commande), mise à jour d'une copie d'Argos (uv, npm 10 par npx), un fichier de code et un fichier déposé, les trois forges connectées par OAuth, 11 dépôts analysés, la PR #1 et la MR !1 mises à jour (sans nouvelle PR), les réglages, `scan` et `update` en ligne de commande, Ctrl+C. Deux défauts corrigés : le terminal et le Markdown (donc les PR) ne disaient pas pourquoi une version plus récente n'est pas proposée quand le runtime ne la fait pas tourner (`Finding.blocked`) ; l'écran de résultat des PR disait « rien à faire » quand npm avait gardé les versions choisies (des indirectes retenues par leur parent, le dépôt `mew` de l'utilisateur), il dit maintenant lesquelles et par qui. Une course dans trois tests Vitest de l'écran 8, révélée en route, corrigée ; les rapports d'exemple du front régénérés (périmés depuis E34). Portés à E36 (décidé avec l'utilisateur) : la fenêtre de choix d'un dossier du système, l'indirecte retenue dite d'avance, deux détails de « Mes dépôts », la déconnexion. Commits `bdb1b05` et `b9aacaf`, poussés, CI verte sur les huit jobs ; **la 1.0.0rc1 publiée sur PyPI** (accord de l'utilisateur), vérifiée depuis PyPI sans node. Puis son test final (une PR sur quatre de ses dépôts, relues par `gh`) : un lockfile npm que `npm ci` refuse partait tel quel (corrigé : toujours relu, refait par une vraie installation) ; trois défauts portés à E36. À sa demande : télécharger le rapport (Markdown, JSON, les dépendances à mettre à jour en CSV ; `scan --format csv`) et « Parcourir… », la fenêtre de choix du système (Tk). Commits `bdb1b05`, `b9aacaf`, `3007959` et celui de la fin, poussés. 5 125 tests Python, 174 Vitest, 72 Playwright. |

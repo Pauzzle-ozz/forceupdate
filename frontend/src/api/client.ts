@@ -14,9 +14,12 @@ import type {
   BatchRequest,
   CacheState,
   Disconnection,
+  DownloadFormat,
   FieldError,
   ForgeKind,
   Listing,
+  PickRequest,
+  Picked,
   PlanRequest,
   Proposal,
   ProposalRequest,
@@ -118,6 +121,13 @@ export const api = {
   /** Le contenu d'un dossier ; sans chemin, les points de départ (dossier personnel, lecteurs). */
   listFolder: (path?: string | null) =>
     request<Listing>('GET', path ? `/api/fs?${new URLSearchParams({ path })}` : '/api/fs'),
+
+  /** Ouvre la fenêtre de choix du système (session 36) et attend : le chemin choisi, ou `null`. */
+  pick: (body: PickRequest) => request<Picked>('POST', '/api/fs/pick', json(body)),
+
+  /** Le rapport d'une analyse, à télécharger : Markdown, JSON, ou les dépendances à mettre à jour en CSV. */
+  downloadUrl: (id: string, format: DownloadFormat) =>
+    `/api/scans/${encodeURIComponent(id)}/download?${new URLSearchParams({ format })}`,
 
   startScan: (body: ScanRequest) => request<ScanSummary>('POST', '/api/scans', json(body)),
 
