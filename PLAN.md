@@ -12,19 +12,19 @@ sessions ». L'idée et les décisions sont dans [docs/BRIEF.md](docs/BRIEF.md).
 Ce qui doit être vrai à la fin. Coché seulement à l'étape E36 (recette), après
 vérification à la main.
 
-- [ ] `uv tool install forceupdate` installe l'outil depuis PyPI, interface comprise (pas besoin de node pour l'utiliser), sous Windows et sous Linux.
-- [ ] `forceupdate ui` ouvre l'interface web dans le navigateur. Dans l'interface, on peut :
+- [x] `uv tool install forceupdate` installe l'outil depuis PyPI, interface comprise (pas besoin de node pour l'utiliser), sous Windows et sous Linux.
+- [x] `forceupdate ui` ouvre l'interface web dans le navigateur. Dans l'interface, on peut :
   - choisir un dossier ou un fichier de l'ordinateur, ou glisser-déposer un fichier ;
   - voir les langages, les projets, les dépendances directes avec leur version installée, et les constats des 4 types (version plus récente, faille, fin de vie, déprécié ou retiré), du plus grave au moins grave ;
   - cocher les mises à jour (les sûres sont pré-cochées), voir le diff et appliquer : manifestes réécrits sans casser leur mise en forme, lockfiles régénérés quand l'outil natif est installé, commande à lancer indiquée sinon ;
   - connecter son compte GitHub, GitLab ou Bitbucket en quelques clics, et le déconnecter ;
   - voir tous ses dépôts, les analyser sans les cloner : un rapport par dépôt, plus une synthèse ;
   - ouvrir une PR (une MR sur GitLab) par dépôt à mettre à jour. Relancé, l'outil met à jour la même PR ; il ne pousse jamais sur la branche par défaut.
-- [ ] L'interface suit `design-system/MASTER.md`. Elle est accessible (contraste, clavier), en clair et en sombre, en français.
-- [ ] En ligne de commande, `forceupdate scan` (terminal, JSON, Markdown, `--fail-on`) et `forceupdate update` marchent sur un chemin local, pour les scripts et la CI.
-- [ ] Les 8 écosystèmes (Python, JS/npm, Rust, Go, PHP, Ruby, Java, .NET) sont couverts en analyse et en mise à jour. Les limites restantes sont écrites dans la doc.
-- [ ] Sans réseau, les tests passent. Une erreur réseau donne « non concluant », jamais un faux constat.
-- [ ] La doc utilisateur est complète, la CI est verte, la version 1.0.0 est taguée.
+- [x] L'interface suit `design-system/MASTER.md`. Elle est accessible (contraste, clavier), en clair et en sombre, en français.
+- [x] En ligne de commande, `forceupdate scan` (terminal, JSON, Markdown, `--fail-on`) et `forceupdate update` marchent sur un chemin local, pour les scripts et la CI.
+- [x] Les 8 écosystèmes (Python, JS/npm, Rust, Go, PHP, Ruby, Java, .NET) sont couverts en analyse et en mise à jour. Les limites restantes sont écrites dans la doc.
+- [x] Sans réseau, les tests passent. Une erreur réseau donne « non concluant », jamais un faux constat.
+- [x] La doc utilisateur est complète, la CI est verte, la version 1.0.0 est taguée.
 
 ## Architecture cible
 
@@ -129,7 +129,8 @@ Statuts : `à faire`, `en cours`, `fait`.
 | E33 | H | Registres et dépôts privés | fait |
 | E34 | H | Compléments d'analyse | fait |
 | E35 | H | Documentation, packaging, CI | fait |
-| E36 | H | Recette finale | à faire |
+| E36 | H | Recette finale | fait |
+| E37 | I. Après la 1.0.0 | Indirectes retenues et majeures refusées, plus loin (1.1.0) | à faire |
 
 **Jalons** :
 
@@ -3715,13 +3716,13 @@ marche ; la CI est verte.
 
 ### E36 — Recette finale
 
-- [ ] Dérouler « Le livrable », case par case, dans l'interface :
+- [x] Dérouler « Le livrable », case par case, dans l'interface :
   - un vrai projet local par écosystème disponible ;
   - un fichier de code isolé, et un fichier glissé-déposé ;
   - les comptes GitHub, GitLab et Bitbucket de l'utilisateur : analyse de tous les dépôts, puis une PR / MR sur un dépôt de test de chaque forge (`Pauzzle-ozz/forceupdate-demo` sur GitHub et sur gitlab.com, `pauzzle/forceupdate-demo` sur Bitbucket ; leur PR #1 et MR !1 y sont déjà) ; les supprimer ensuite, avec l'accord de l'utilisateur.
-- [ ] Revue finale avec le skill `ui-ux-pro-max` : accessibilité, clair et sombre, petites et grandes fenêtres.
-- [ ] Corriger les écarts. Un écart trop gros pour cette session devient une nouvelle étape (E37…) dans ce plan.
-- [ ] Depuis E35 (relevé en écrivant la doc ; chaque point est dit dans `docs/USAGE.md` ou
+- [x] Revue finale avec le skill `ui-ux-pro-max` : accessibilité, clair et sombre, petites et grandes fenêtres.
+- [x] Corriger les écarts. Un écart trop gros pour cette session devient une nouvelle étape (E37…) dans ce plan.
+- [x] Depuis E35 (relevé en écrivant la doc ; chaque point est dit dans `docs/USAGE.md` ou
   `docs/FORGES.md`, à mettre à jour s'il change) :
   - un identifiant écrit dans le **chemin** d'une adresse de registre (`https://pypi.fury.io/<jeton>/…`)
     fait partie de la clé du cache (SQLite) : contraire à « jamais dans le cache » (E33) ; le
@@ -3742,7 +3743,9 @@ marche ; la CI est verte.
     `yarn up -R` (et npm `--no-audit --no-fund` en plus) : aligner la commande « à la main » ;
   - `forceupdate --help` redirigé (un tube) sous Windows sort en cp1252 ; l'aide de typer dit
     « Show this message and exit. » en anglais.
-- [ ] Depuis la session 36 (les essais de l'utilisateur) :
+- [x] Depuis la session 36 (les essais de l'utilisateur) — faits à la session 37, sauf ce qui est
+  porté à E37 (la version du parent qui accepterait la correction, les autres lockfiles que
+  `package-lock.json`, le refus prévu d'après le registre, « Parcourir… » sous macOS) :
   - « Mes dépôts » sur un grand écran (2 560 px) : l'en-tête « PR / MR » se coupe sur deux lignes,
     le cadenas et le lien d'un nom long (`Pauzzle-ozz/forceupdate-demo`) passent à la ligne ; le
     tableau reste étroit (le conteneur) : à revoir avec la revue ui-ux-pro-max ;
@@ -3799,7 +3802,7 @@ marche ; la CI est verte.
     `C:\Users\<nom>\AppData\Local\npm-cache\_logs\…` (la PR #1 du dépôt public `forceupdate`) :
     remplacer le dossier personnel par `~` (et le dossier de travail par le chemin du dépôt) dans
     la sortie d'un outil avant de l'écrire sur une forge.
-- [ ] Cocher « Le livrable ». Passer à la version `1.0.0` (`pyproject.toml`, `uv lock`, `uv run python
+- [x] Cocher « Le livrable ». Passer à la version `1.0.0` (`pyproject.toml`, `uv lock`, `uv run python
   -m forceupdate.web.openapi`, classifieur « Development Status :: 5 - Production/Stable », le
   README et `docs/USAGE.md` sans la phrase de la pré-version, `CHANGELOG.md`), CI verte, puis taguer
   `v1.0.0` avec l'accord de l'utilisateur : `publish.yml` publie sur PyPI ; vérifier
@@ -3925,6 +3928,55 @@ marche ; la CI est verte.
   temporaire : la réponse de l'API enrichie) : axe-core sans violation et aucun défilement
   horizontal, clair et sombre, 375 et 1 440 px ; captures relues. « Mes dépôts » à 2 560, 1 440 et
   1 024 px : l'en-tête et les noms tiennent.
+- **Commits et publication** (accord de l'utilisateur pour chacun) : `cd096ff` (la recette,
+  Bitbucket, le lien des sautés), `9c37b39` (la 1.0.0 : `pyproject.toml`, `uv lock`,
+  `openapi.json`, classifieur « 5 - Production/Stable », README et USAGE sans la phrase de la
+  pré-version, CHANGELOG « 1.0.0 — 2026-11-04 »), avant eux 5 151 tests Python, 179 Vitest, 72
+  Playwright verts ; **CI verte sur les huit jobs** ; l'étiquette annotée **`v1.0.0`** sur
+  `9c37b39`, le workflow « Publication » vert à chaque étape. **Sur PyPI** : le wheel (991 Ko) et le
+  sdist (2,6 Mo), « Production/Stable ».
+- **Vérifié depuis PyPI, sans node** : sous Windows (dossiers d'outils à part, `PATH` sans node),
+  `uv tool install --refresh forceupdate` **sans `==`** : 1.0.0, un scan de `vulnerable` (27
+  failles, 29 à mettre à jour, code 0), `ui --no-browser` (la page, l'API : 200 avec le cookie,
+  401 sans). **Piège** : le premier essai, quelques minutes après la publication, a installé la
+  **0.1.0** (celle de E09, qui réservait le nom) : le CDN de PyPI servait encore l'ancien index ;
+  avec l'index relu (`--refresh`), la 1.0.0. Sous **Linux** (Docker, `ghcr.io/astral-sh/uv:python3.14-
+  bookworm`, utilisateur non root, ni node ni affichage ; dans cette image, `UV_TOOL_DIR` et
+  `UV_TOOL_BIN_DIR` sous `HOME`, sinon uv vise `/usr/local/bin`) : `uv tool install forceupdate`,
+  1.0.0, le même scan (27 failles), `ui` (page, 200, 401), et **« Parcourir… » sans affichage :
+  503**, « Pas de fenêtre de choix : pas d'affichage sur l'ordinateur où tourne forceupdate (un
+  serveur, WSL). Choisir dans la liste, ou coller le chemin. » macOS : par la CI seulement.
+- **Décisions de l'utilisateur en fin de session** : les PR #2 (GitHub, Bitbucket) et la MR !2
+  (gitlab.com) des `forceupdate-demo` **restent ouvertes** ; `~/sdk` et Rust **gardés** (le scratchpad
+  seul est vidé) ; les quatre points non faits de E36 deviennent **l'étape E37** (la 1.1.0).
+- **Pour plus tard** : retirer (« yank ») la 0.1.0 sur PyPI éviterait qu'un index pas encore à jour
+  la donne à la place de la dernière (la page du projet, « Options », par l'utilisateur ;
+  réversible).
+
+---
+
+## Phase I — Après la 1.0.0
+
+### E37 — Indirectes retenues et majeures refusées, plus loin (1.1.0)
+
+Ce que E36 a laissé (session 37, décidé avec l'utilisateur) ; la 1.0.0 est livrée sans.
+
+- [ ] **La version du parent qui accepte la correction** d'une indirecte retenue (`held_by`) : lire
+  au registre les versions du paquet qui la tire et la plage que chacune demande (le document npm
+  du paquet : `dependencies` de chaque version) ; la proposer (« monter nodemon en 4.0.1, qui
+  accepte minimatch 11 »), ou dire qu'aucune ne l'accepte. Écran 5, récapitulatif des PR, terminal.
+- [ ] **Les indirectes retenues dites d'avance pour pnpm, Yarn (1 et 2+), uv et Poetry** : leurs
+  lockfiles disent la plage de chaque parent (`LockedPackage.requires`, aujourd'hui rempli pour
+  `package-lock.json` seulement) ; chaque parseur, ses tests, les mini-projets.
+- [ ] **Prévoir le refus d'une majeure avant de lancer l'outil** : les `peerDependencies` de npm, les
+  `requires_dist` de PyPI (`redis` 8 que `arq` refuse, `typescript` 7 que `openapi-typescript`
+  refuse) ; le dire dès l'écran 5, à côté de la reprise de `lockfiles._retry` (qui reste).
+- [ ] **« Parcourir… » sous macOS** (une personne avec un Mac : `osascript` ou Tk) et sous Linux avec
+  un affichage ; corriger ce qui doit l'être.
+- [ ] Doc (`USAGE.md` : les limites retirées), CHANGELOG, puis la **1.1.0** : CI verte, l'étiquette
+  `v1.1.0` avec l'accord de l'utilisateur, vérifiée depuis PyPI.
+
+**Fini quand** : les quatre points sont faits (ou décidés avec l'utilisateur) et la 1.1.0 publiée.
 
 ---
 
@@ -3993,3 +4045,4 @@ En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.
 | 34 | 2026-11-03 | E34 | Fait. Commit de E33 d'abord (`598468e`, accord de l'utilisateur) ; découpage proposé, refusé : E34 entière en une session. Vérifié en vrai : Bundler 4.0.20 et un serveur de gems local à identifiant (index compact, clés de `bundle config`, miroir), cargo 1.99.1 et un registre « sparse » local à jeton (`credentials.toml`, `replace-with`, résolveur 3 et `rust-version`), Go 1.27.3 (`go.work`), le proxy (blackfriday), `composer audit` (twig 3.4.1 : 17 failles, 15 chez OSV) et huit choix de `minimum-stability`, Maven Central (`<relocation>`, Spring Boot), le SDK .NET (`Directory.Build.targets`), endoflife.date et nodejs.org, uv (`exclude-newer`) ; Maven et Gradle d'après leur documentation. `routing/ruby.py` (réécrit), `routing/cargo.py`, `GemServer`, le runtime `rust` (sans fin de vie), la version construite d'un workspace Go, chaque majeure à `+incompatible`, `advisories/packagist.py`, `ComposerVersions.resolved` et `Project.resolution` (format JSON et API), `managed.py` (parent et BOM distants, « à la main »), `Maven.pom` et `CacheKind.FILES`, `gradle.lockfile`, `settings.gradle(.kts)`, versions riches, la variante de Guava, `Update=` de MSBuild, images, `mise.toml`, `required_ruby_version`, `setup-*`, les tests `network` des tables, carnets, `.vue`, `.svelte`, Deno, `tsconfig.json`, `importlib`, espace de noms local, `exclude-newer` ; « Rust » au front. Trouvé : l'aiguillage de Cargo lisait une raison que `routing.apply` efface (il renvoyait à crates.io). 5 103 tests Python verts (plus 28 réseau), 168 Vitest, 72 Playwright. Pas encore commitée. |
 | 35 | 2026-11-03 | E35 | En cours (reste la publication, après les essais de l'utilisateur). Commit de E34 d'abord (`34b4c4f`, accord de l'utilisateur) ; découpage proposé, refusé. Décidé avec lui : la `1.0.0rc1` d'abord, la `1.0.0` à la recette ; pas de publication dans cette session. Trouvé : `main` pas poussé depuis E13, la CI de E13 en échec ; la suite sous Linux (Docker) : **toute analyse d'un dossier plantait hors Windows** (`stat.IO_REPARSE_TAG_MOUNT_POINT`, E30), corrigé ; `.gitattributes` (LF partout). Doc : `README.md` (cinq captures, dont l'écran 8 et une vraie PR), `docs/USAGE.md`, `docs/FORGES.md`, `CHANGELOG.md`, `docs/JSON_FORMAT.md` vérifié par script. En relisant le code pour la doc : un identifiant dans l'adresse d'un dépôt Gradle partait en http et restait dans la clé du cache (corrigé), le proxy des réglages du système est lu (dit), d'autres écarts portés à E36. Packaging : version `1.0.0rc1`, `uv tool install .` sans node vérifié, `LICENSE` dans le wheel. CI : macOS, Front sous Windows, `network.yml` hebdomadaire ; premier passage : un chemin coupé sous macOS (corrigé) ; un test Playwright qui échouait par intermittence cachait un vrai défaut du front, trouvé par sa trace (les traces sont maintenant gardées) : une analyse finie en quelques millisecondes se disait « échouée » (corrigé, un test). Le serveur e2e balaie ses vieux dossiers. 5 110 tests Python (plus 28 réseau), 169 Vitest, 72 Playwright. Commits `be210cd`, `7a6a670`, `739a3c8` et le correctif du front, poussés. |
 | 36 | 2026-11-03 | E35 | Fait. Les essais de l'utilisateur, faits ensemble, guidés étape par étape (installé depuis le dépôt) : lancement, analyse de forceupdate et d'Argos (mêmes chiffres qu'en ligne de commande), mise à jour d'une copie d'Argos (uv, npm 10 par npx), un fichier de code et un fichier déposé, les trois forges connectées par OAuth, 11 dépôts analysés, la PR #1 et la MR !1 mises à jour (sans nouvelle PR), les réglages, `scan` et `update` en ligne de commande, Ctrl+C. Deux défauts corrigés : le terminal et le Markdown (donc les PR) ne disaient pas pourquoi une version plus récente n'est pas proposée quand le runtime ne la fait pas tourner (`Finding.blocked`) ; l'écran de résultat des PR disait « rien à faire » quand npm avait gardé les versions choisies (des indirectes retenues par leur parent, le dépôt `mew` de l'utilisateur), il dit maintenant lesquelles et par qui. Une course dans trois tests Vitest de l'écran 8, révélée en route, corrigée ; les rapports d'exemple du front régénérés (périmés depuis E34). Portés à E36 (décidé avec l'utilisateur) : la fenêtre de choix d'un dossier du système, l'indirecte retenue dite d'avance, deux détails de « Mes dépôts », la déconnexion. Commits `bdb1b05` et `b9aacaf`, poussés, CI verte sur les huit jobs ; **la 1.0.0rc1 publiée sur PyPI** (accord de l'utilisateur), vérifiée depuis PyPI sans node. Puis son test final (une PR sur quatre de ses dépôts, relues par `gh`) : un lockfile npm que `npm ci` refuse partait tel quel (corrigé : toujours relu, refait par une vraie installation) ; trois défauts portés à E36. À sa demande : télécharger le rapport (Markdown, JSON, les dépendances à mettre à jour en CSV ; `scan --format csv`) et « Parcourir… », la fenêtre de choix du système (Tk). Commits `bdb1b05`, `b9aacaf`, `3007959` et celui de la fin, poussés. 5 125 tests Python, 174 Vitest, 72 Playwright. |
+| 37 | 2026-11-03 → 04 | E36 | Fait. **La 1.0.0 est publiée sur PyPI** et vérifiée depuis PyPI, sans node, sous Windows et sous Linux (Docker) ; « Le livrable » coché. Découpage proposé, refusé. La PR #1 de `forceupdate` renvoyée avec l'utilisateur : le lockfile refait par npm passe ; deux causes de plus dans notre code (la règle `react(immutability)` d'oxlint 1.91, une course dans un test Vitest), corrigées, CI de la PR verte. **Une majeure que l'outil refuse ne fait plus tomber tout le lockfile** (relancé sans les majeures, puis avec chacune ; celles qu'il refuse retirées avec sa raison) : vérifié avec le vrai uv sur `sechunter` (redis 8, python-dateutil 4) et sur les dépôts de test (pip-compile : flask 3, werkzeug 3). **L'indirecte retenue dite d'avance** (`package-lock.json` : `Dependency.required_by`, `UpdateOption.held_by`). Les huit écarts de E35, les points de la session 36 (commit, chemins `~`, `[selection]`, « Mes dépôts »), le résultat des PR (renvoyer un dépôt en échec, « En route », l'icône). Trouvé à la recette : Bitbucket prenait une PR fusionnée pour l'ouverte (le paramètre `state` ignoré avec `q`), corrigé ; un lien pour choisir les mises à jour d'un dépôt sauté. Recette guidée (clone de `sechunter`, les trois forges, PR #2 / MR !2 / PR #2, la déconnexion), un vrai projet par écosystème (six projets publics ; vraies mises à jour Rust, Go, PHP, Java), revue d'interface (axe-core, clair et sombre, 375 et 1 440 px). Ajoutée : E37 (la 1.1.0). Commits `06d9c3c`, `153c67d`, `d96a71f`, `cd096ff`, `9c37b39`, étiquette `v1.0.0`. 5 151 tests Python, 179 Vitest, 72 Playwright. |

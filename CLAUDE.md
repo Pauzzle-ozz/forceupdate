@@ -11,9 +11,9 @@ fichiers, sur une forge il ouvre une PR.
 
 ## État
 
-**En construction.** L'avancement est dans [PLAN.md](PLAN.md) (tableau « Vue
-d'ensemble »). L'idée et les décisions prises sont dans
-[docs/BRIEF.md](docs/BRIEF.md).
+**Livré : la 1.0.0 est sur PyPI** (session 37). Reste l'étape E37, pour la 1.1.0.
+L'avancement est dans [PLAN.md](PLAN.md) (tableau « Vue d'ensemble »). L'idée et les
+décisions prises sont dans [docs/BRIEF.md](docs/BRIEF.md).
 
 ## Travail par sessions (règle obligatoire)
 
@@ -157,7 +157,7 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   │                         projet trouvé en remontant les dossiers, E28), forge.py (un dépôt lu par
 │   │                         l'API : seuls les fichiers que lisent les parseurs sont téléchargés ; un
 │   │                         clone superficiel si l'arborescence est tronquée)
-│   ├── update/             ← planner, writers/, lockfiles, local.py (mise à jour d'un dossier), forge.py
+│   ├── update/             ← planner, writers/, lockfiles (une majeure refusée retirée, le reste fait : `_retry`, session 37), local.py (mise à jour d'un dossier), forge.py
 │   │                         (une PR par dépôt : clone, mise à jour, commit, push, PR), project_npm.py (le
 │   │                         npm qu'attend le projet, E32 : régénéré par npx -y npm@10, relu par npm ci)
 │   └── web/                ← le serveur de ui (FastAPI) ; repositories.py : les dépôts des comptes et leurs
@@ -225,6 +225,11 @@ uv run --isolated --python 3.11 --group dev pytest
 cd reference && python -m pytest argos_sca_parsers_tests.py
 ```
 
+- **Vérifier une version publiée** : quelques minutes après `uv publish`, le CDN de PyPI peut encore
+  servir l'ancien index, et `uv tool install forceupdate` donner une version plus ancienne (la
+  0.1.0, session 37) : `--refresh`, et vérifier `--version`. Sous Linux, l'image
+  `ghcr.io/astral-sh/uv` met les outils de uv dans `/usr/local/bin` : en utilisateur non root,
+  `UV_TOOL_DIR` et `UV_TOOL_BIN_DIR` sous `HOME`.
 - **La suite sous Linux, sans pousser** (E35 : elle y cassait sans qu'on le voie) : Docker
   Desktop est installé (le démarrer). Une archive fidèle du dépôt (`git -c core.autocrlf=false
   archive` de `git stash create`, sinon de `HEAD` : sans `-c`, `archive` applique l'`autocrlf`
