@@ -11,7 +11,8 @@ fichiers, sur une forge il ouvre une PR.
 
 ## État
 
-**Livré : la 1.0.0 est sur PyPI** (session 37). Reste l'étape E37, pour la 1.1.0.
+**Livré : la 1.1.0 est sur PyPI** (session 38 ; la 1.0.0 à la session 37). Reste l'étape E38,
+l'entretien (un test instable, le clavier de « Parcourir… » sous macOS).
 L'avancement est dans [PLAN.md](PLAN.md) (tableau « Vue d'ensemble »). L'idée et les
 décisions prises sont dans [docs/BRIEF.md](docs/BRIEF.md).
 
@@ -55,7 +56,8 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 ├── .github/workflows/      ← ci.yml : ruff + pytest (Ubuntu, Windows, macOS ; Python 3.11 et 3.14), et le
 │                             front sous Ubuntu et Windows (types, lint, Vitest, Playwright) ; network.yml :
 │                             les tests network chaque lundi et à la demande, vrais outils installés ;
-│                             publish.yml : PyPI à une étiquette v*, front compris
+│                             publish.yml : PyPI à une étiquette v*, front compris ; picker.yml :
+│                             « Parcourir… » avec une vraie fenêtre (macOS, Linux), à la demande (E37)
 ├── design-system/          ← produit à E13 avec le skill ui-ux-pro-max
 │   ├── MASTER.md           ← les règles de l'interface : tokens, typo, composants, accessibilité
 │   ├── ECRANS.md           ← les 9 écrans : contenu, appels à l'API, états, adresses
@@ -159,7 +161,10 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │   │                         clone superficiel si l'arborescence est tronquée)
 │   ├── update/             ← planner, writers/, lockfiles (une majeure refusée retirée, le reste fait : `_retry`, session 37), local.py (mise à jour d'un dossier), forge.py
 │   │                         (une PR par dépôt : clone, mise à jour, commit, push, PR), project_npm.py (le
-│   │                         npm qu'attend le projet, E32 : régénéré par npx -y npm@10, relu par npm ci)
+│   │                         npm qu'attend le projet, E32 : régénéré par npx -y npm@10, relu par npm ci),
+│   │                         blockers.py (E37 : ce que demandent les autres paquets, lu dans les lockfiles
+│   │                         ou aux registres : une version retenue ou que l'outil refusera, et la
+│   │                         version du parent qui l'accepterait ; après planner.plan et audit)
 │   └── web/                ← le serveur de ui (FastAPI) ; repositories.py : les dépôts des comptes et leurs
 │                             analyses groupées ; proposals.py : le récapitulatif des PR et leur envoi ;
 │                             preferences.py : les réglages côté serveur (routes/settings.py : écran 9) ;
@@ -168,6 +173,7 @@ update-checker/             ← dossier du projet ; l'outil s'appelle forceupdat
 │                             openapi.json, exporté, donne les types du front ;
 │                             static/ : le front construit (npm run build), ignoré par git, livré dans le paquet
 └── tests/                  ← les tests ; conftest.py gère le marqueur network
+    ├── picker_desktop.py   ← pas un test de la suite : l'essai de picker.yml (une vraie fenêtre de choix)
     ├── e2e_server.py       ← le serveur de ui hors ligne pour Playwright (npm, uv, gh, GitHub, GitLab
     │                         et une instance, Bitbucket, leurs dépôts, trousseau simulés ; des dépôts
     │                         « bare » où git pousse), et les

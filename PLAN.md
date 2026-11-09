@@ -130,7 +130,8 @@ Statuts : `à faire`, `en cours`, `fait`.
 | E34 | H | Compléments d'analyse | fait |
 | E35 | H | Documentation, packaging, CI | fait |
 | E36 | H | Recette finale | fait |
-| E37 | I. Après la 1.0.0 | Indirectes retenues et majeures refusées, plus loin (1.1.0) | à faire |
+| E37 | I. Après la 1.0.0 | Indirectes retenues et majeures refusées, plus loin (1.1.0) | fait |
+| E38 | I | Entretien après la 1.1.0 | à faire |
 
 **Jalons** :
 
@@ -3973,7 +3974,7 @@ Ce que E36 a laissé (session 37, décidé avec l'utilisateur) ; la 1.0.0 est li
   refuse) ; le dire dès l'écran 5, à côté de la reprise de `lockfiles._retry` (qui reste).
 - [x] **« Parcourir… » sous macOS** (une personne avec un Mac : `osascript` ou Tk) et sous Linux avec
   un affichage ; corriger ce qui doit l'être.
-- [ ] Doc (`USAGE.md` : les limites retirées), CHANGELOG, puis la **1.1.0** : CI verte, l'étiquette
+- [x] Doc (`USAGE.md` : les limites retirées), CHANGELOG, puis la **1.1.0** : CI verte, l'étiquette
   `v1.1.0` avec l'accord de l'utilisateur, vérifiée depuis PyPI.
 
 **Fini quand** : les quatre points sont faits (ou décidés avec l'utilisateur) et la 1.1.0 publiée.
@@ -4059,7 +4060,58 @@ Ce que E36 a laissé (session 37, décidé avec l'utilisateur) ; la 1.0.0 est li
   Events), elle rend le dossier choisi, et `None` à l'annulation (-128). La porter au premier plan
   demanderait de piloter System Events, donc une autorisation de macOS : pas fait. Sous Linux, en
   CI : taper un chemin dans `zenity` par `xdotool` n'est pas fiable (l'autocomplétion de GTK ajoute
-  des lettres) : l'essai l'ouvre dans le dossier à choisir et valide (`--filename` vérifié aussi).
+  des lettres) : l'essai l'ouvre dans le dossier à choisir, et clique « OK » (Entrée ne le valide
+  pas sous GTK 4, Ubuntu 24.04) ; `--filename` vérifié aussi. **Les trois essais verts**
+  (`42660645001`).
+- **Doc** : USAGE.md (« Parcourir… » par système, l'indirecte retenue avec la version qui
+  l'accepte, « Une version que l'outil refusera », « Les majeures »), JSON_FORMAT.md
+  (`required_by`, `refused_by`, `blockers`, le récapitulatif des PR), FORGES.md, ECRANS.md (écrans
+  2, 5 et 8), le CHANGELOG. Revue d'interface (skill `ui-ux-pro-max`, checklist de MASTER) : aucun
+  nouveau composant ; les phrases passent dans les avertissements et la ligne d'une mise à jour
+  déjà revus à la session 37 (axe-core sans violation dans Playwright, 375 et 1 440 px, clair et
+  sombre) ; un test Vitest de rendu du récapitulatif (« retenue par … : monter d'abord … en … »,
+  « refusée à cause de … », failles pas comptées).
+- **Tests** : 5 190 Python (31 sautés : network), 182 Vitest, 72 Playwright ; ruff, types, lint.
+  Nouveaux : `test_blockers.py`, `test_registries_requires.py`, `test_required_by.py`, ceux du
+  sélecteur dans `test_downloads.py`.
+- **Commits** (accord de l'utilisateur : le travail de E37, puis la publication) : `b57f50a` (E37),
+  `79e8866`, `7fc6089`, `9eca848`, `122a898` (« Parcourir… » sous macOS et l'essai de la CI :
+  `activate` essayé puis retiré), `45c8584` (la 1.1.0 : `pyproject.toml`, `uv lock`,
+  `openapi.json`, CHANGELOG « 1.1.0 — 2026-11-09 »). **CI verte sur les huit jobs** pour
+  `b57f50a`, `7fc6089`, `122a898` et `45c8584` ; celle de `9eca848` a échoué une fois sur
+  « Front · windows-latest » (`e2e/report.spec.ts:24`, la liste du dossier `vulnerable` sans
+  `requirements.in` en 5 s), un aléa sans lien avec le commit (doc et script d'essai), vert au
+  commit suivant : porté à E38.
+- **Publication** : l'étiquette annotée **`v1.1.0`** sur `45c8584`, le workflow « Publication »
+  vert ; **sur PyPI** : le wheel et le sdist. **Vérifié depuis PyPI, sans node** : sous Windows
+  (dossiers d'outils à part, `uv tool install --refresh forceupdate` sans `==`) : 1.1.0, le scan de
+  `vulnerable` (27 failles, code 0, `refused_by` et `blockers` dans le JSON), `ui --no-browser`
+  (la page 200, l'API 200 avec le cookie, 401 sans) ; sous Linux (Docker, utilisateur non root) :
+  1.1.0, le même scan.
+- **Pour plus tard** : le « yank » de la 0.1.0 (l'utilisateur, sur pypi.org : le projet,
+  « Manage », la version 0.1.0, « Options », « Yank » ; réversible).
+
+### E38 — Entretien après la 1.1.0
+
+Ce que la session 38 a vu en route, hors de E37 ; aucune nouvelle fonction prévue.
+
+- [ ] **Un test Playwright instable sous Windows, en CI** : `e2e/report.spec.ts:24` (« choisir un
+  mini-projet… ») n'a pas trouvé `requirements.in` dans la liste du dossier `vulnerable` en 5 s,
+  une fois (CI de `9eca848`), puis est repassé : trouver pourquoi (la liste lue avant la fin du
+  chargement ? l'antivirus de la machine Windows ?) et le rendre sûr, sans allonger l'attente
+  à l'aveugle.
+- [ ] **« Parcourir… » sous macOS : le clavier** : la fenêtre du Finder s'affiche devant le
+  navigateur, mais le clavier reste au navigateur jusqu'à un clic dedans (`osascript` est un
+  programme d'arrière-plan). La porter au premier plan demanderait de piloter System Events, donc
+  une autorisation de macOS au premier usage : décider avec l'utilisateur (le faire, avec repli
+  sans autorisation ; ou le laisser, c'est dit dans USAGE.md).
+- [ ] Les tests `network` du lundi (`network.yml`) : regarder le dernier passage, corriger ce
+  qu'un registre ou un outil a changé.
+- [ ] Le « yank » de la 0.1.0 sur PyPI : le rappeler à l'utilisateur (c'est lui qui le fait).
+- [ ] Une 1.1.1 seulement si une correction le demande (CHANGELOG, CI verte, accord de
+  l'utilisateur).
+
+**Fini quand** : les points sont faits ou décidés avec l'utilisateur.
 
 ---
 
@@ -4129,3 +4181,4 @@ En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.
 | 35 | 2026-11-03 | E35 | En cours (reste la publication, après les essais de l'utilisateur). Commit de E34 d'abord (`34b4c4f`, accord de l'utilisateur) ; découpage proposé, refusé. Décidé avec lui : la `1.0.0rc1` d'abord, la `1.0.0` à la recette ; pas de publication dans cette session. Trouvé : `main` pas poussé depuis E13, la CI de E13 en échec ; la suite sous Linux (Docker) : **toute analyse d'un dossier plantait hors Windows** (`stat.IO_REPARSE_TAG_MOUNT_POINT`, E30), corrigé ; `.gitattributes` (LF partout). Doc : `README.md` (cinq captures, dont l'écran 8 et une vraie PR), `docs/USAGE.md`, `docs/FORGES.md`, `CHANGELOG.md`, `docs/JSON_FORMAT.md` vérifié par script. En relisant le code pour la doc : un identifiant dans l'adresse d'un dépôt Gradle partait en http et restait dans la clé du cache (corrigé), le proxy des réglages du système est lu (dit), d'autres écarts portés à E36. Packaging : version `1.0.0rc1`, `uv tool install .` sans node vérifié, `LICENSE` dans le wheel. CI : macOS, Front sous Windows, `network.yml` hebdomadaire ; premier passage : un chemin coupé sous macOS (corrigé) ; un test Playwright qui échouait par intermittence cachait un vrai défaut du front, trouvé par sa trace (les traces sont maintenant gardées) : une analyse finie en quelques millisecondes se disait « échouée » (corrigé, un test). Le serveur e2e balaie ses vieux dossiers. 5 110 tests Python (plus 28 réseau), 169 Vitest, 72 Playwright. Commits `be210cd`, `7a6a670`, `739a3c8` et le correctif du front, poussés. |
 | 36 | 2026-11-03 | E35 | Fait. Les essais de l'utilisateur, faits ensemble, guidés étape par étape (installé depuis le dépôt) : lancement, analyse de forceupdate et d'Argos (mêmes chiffres qu'en ligne de commande), mise à jour d'une copie d'Argos (uv, npm 10 par npx), un fichier de code et un fichier déposé, les trois forges connectées par OAuth, 11 dépôts analysés, la PR #1 et la MR !1 mises à jour (sans nouvelle PR), les réglages, `scan` et `update` en ligne de commande, Ctrl+C. Deux défauts corrigés : le terminal et le Markdown (donc les PR) ne disaient pas pourquoi une version plus récente n'est pas proposée quand le runtime ne la fait pas tourner (`Finding.blocked`) ; l'écran de résultat des PR disait « rien à faire » quand npm avait gardé les versions choisies (des indirectes retenues par leur parent, le dépôt `mew` de l'utilisateur), il dit maintenant lesquelles et par qui. Une course dans trois tests Vitest de l'écran 8, révélée en route, corrigée ; les rapports d'exemple du front régénérés (périmés depuis E34). Portés à E36 (décidé avec l'utilisateur) : la fenêtre de choix d'un dossier du système, l'indirecte retenue dite d'avance, deux détails de « Mes dépôts », la déconnexion. Commits `bdb1b05` et `b9aacaf`, poussés, CI verte sur les huit jobs ; **la 1.0.0rc1 publiée sur PyPI** (accord de l'utilisateur), vérifiée depuis PyPI sans node. Puis son test final (une PR sur quatre de ses dépôts, relues par `gh`) : un lockfile npm que `npm ci` refuse partait tel quel (corrigé : toujours relu, refait par une vraie installation) ; trois défauts portés à E36. À sa demande : télécharger le rapport (Markdown, JSON, les dépendances à mettre à jour en CSV ; `scan --format csv`) et « Parcourir… », la fenêtre de choix du système (Tk). Commits `bdb1b05`, `b9aacaf`, `3007959` et celui de la fin, poussés. 5 125 tests Python, 174 Vitest, 72 Playwright. |
 | 37 | 2026-11-03 → 04 | E36 | Fait. **La 1.0.0 est publiée sur PyPI** et vérifiée depuis PyPI, sans node, sous Windows et sous Linux (Docker) ; « Le livrable » coché. Découpage proposé, refusé. La PR #1 de `forceupdate` renvoyée avec l'utilisateur : le lockfile refait par npm passe ; deux causes de plus dans notre code (la règle `react(immutability)` d'oxlint 1.91, une course dans un test Vitest), corrigées, CI de la PR verte. **Une majeure que l'outil refuse ne fait plus tomber tout le lockfile** (relancé sans les majeures, puis avec chacune ; celles qu'il refuse retirées avec sa raison) : vérifié avec le vrai uv sur `sechunter` (redis 8, python-dateutil 4) et sur les dépôts de test (pip-compile : flask 3, werkzeug 3). **L'indirecte retenue dite d'avance** (`package-lock.json` : `Dependency.required_by`, `UpdateOption.held_by`). Les huit écarts de E35, les points de la session 36 (commit, chemins `~`, `[selection]`, « Mes dépôts »), le résultat des PR (renvoyer un dépôt en échec, « En route », l'icône). Trouvé à la recette : Bitbucket prenait une PR fusionnée pour l'ouverte (le paramètre `state` ignoré avec `q`), corrigé ; un lien pour choisir les mises à jour d'un dépôt sauté. Recette guidée (clone de `sechunter`, les trois forges, PR #2 / MR !2 / PR #2, la déconnexion), un vrai projet par écosystème (six projets publics ; vraies mises à jour Rust, Go, PHP, Java), revue d'interface (axe-core, clair et sombre, 375 et 1 440 px). Ajoutée : E37 (la 1.1.0). Commits `06d9c3c`, `153c67d`, `d96a71f`, `cd096ff`, `9c37b39`, étiquette `v1.0.0`. 5 151 tests Python, 179 Vitest, 72 Playwright. |
+| 38 | 2026-11-09 | E37 | Fait. **La 1.1.0 est publiée sur PyPI** (`v1.1.0` sur `45c8584`) et vérifiée depuis PyPI, sans node, sous Windows et Linux. Début : deux tests `network` restés en arrière corrigés ; les PR #2 et la MR !2 des `forceupdate-demo` fermées sans fusion (à la demande de l'utilisateur). Toute E37 dans la session (découpage refusé). Trouvé : `uv.lock` et `pnpm-lock.yaml` n'écrivent pas les plages, d'où une base commune : ce que demande chaque version, lu au registre (document npm, API JSON de PyPI). Les plages de Yarn 1 et 2+ et Poetry ; la passe `update/blockers` : l'indirecte retenue avec la version du parent qui l'accepte, le refus prévu (`refused_by` : Python, pairs de npm, la dépendance pair de la version visée), pour l'écran 5, le récapitulatif des PR, le terminal, la description de PR ; vérifié sur le front de forceupdate, `sechunter` et `argos-ops` (redis 8, python-dateutil 4, typescript 7, pillow 13, React 19). « Parcourir… » : osascript (macOS), zenity ou kdialog (Linux), Tk ; vérifié sous Linux (Docker, Xvfb) et sur la machine macOS de la CI (le workflow « Fenêtre de choix ») : la fenêtre devant Safari, le clavier après un clic. 5 190 tests Python, 182 Vitest, 72 Playwright. Ajouté : E38 (entretien : un test Playwright instable sous Windows, le clavier sous macOS) |
