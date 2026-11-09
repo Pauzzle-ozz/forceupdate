@@ -84,7 +84,6 @@ choisi (``null`` : annulé), ou pourquoi il n'y a pas de fenêtre."""
 
 OSASCRIPT = """\
 on run argv
-    activate
     set thePrompt to item 1 of argv
     set theKind to item 2 of argv
     if (count of argv) > 2 then
@@ -103,9 +102,10 @@ on run argv
 end run
 """
 """Le script AppleScript de macOS (``osascript -e``) : le titre, le genre, puis le dossier de
-départ, en arguments. Il écrit le chemin POSIX choisi (``/Users/…/projet/``). ``activate`` d'abord :
-sans lui, la fenêtre s'affiche devant le navigateur mais le clavier reste au navigateur (vu sur la
-machine macOS de la CI, E37)."""
+départ, en arguments. Il écrit le chemin POSIX choisi (``/Users/…/projet/``). La fenêtre s'affiche
+devant le navigateur, mais le clavier lui reste jusqu'à un clic dans la fenêtre : ``osascript`` est
+un programme d'arrière-plan, ``activate`` n'y change rien (vu sur la machine macOS de la CI, E37) ;
+l'amener au premier plan demanderait de piloter System Events, et une autorisation."""
 
 _CANCELLED = "(-128)"
 """L'erreur d'``osascript`` quand la personne annule (« User canceled. (-128) »)."""

@@ -66,6 +66,14 @@ def attempt(label: str, fill: bool) -> object:
     print(label, "au premier plan :", frontmost(), flush=True)
     shot(f"{label}-ouverte")
     if MAC:
+        # Le clic de la personne dans la fenêtre : osascript, programme d'arrière-plan, ne prend
+        # pas le clavier seul (le navigateur le garde).
+        keys(
+            'tell application "System Events" to set frontmost of '
+            '(first process whose name is "osascript") to true'
+        )
+        time.sleep(1)
+        print(label, "après le clic, au premier plan :", frontmost(), flush=True)
         if fill:
             keys(
                 'tell application "System Events" to keystroke "g" using {command down, shift down}'
