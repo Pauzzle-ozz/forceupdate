@@ -95,7 +95,9 @@ fenêtre peut se trouver derrière le navigateur :
 
 - sous **Windows**, celle de l'Explorateur (« Sélectionner un dossier », ou « Ouvrir » pour un
   fichier), par le Tk de Python (`tkinter`), au premier plan ;
-- sous **macOS**, celle du Finder, par `osascript` (« choose folder », « choose file ») ;
+- sous **macOS**, celle du Finder, par `osascript` (« choose folder », « choose file ») : elle
+  s'affiche devant le navigateur, mais le clavier reste au navigateur jusqu'à un clic dans la
+  fenêtre ;
 - sous **Linux**, celle du bureau : `zenity` (GNOME) ou `kdialog` (KDE) s'il est installé, sinon
   celle de Tk.
 

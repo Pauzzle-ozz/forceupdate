@@ -3971,7 +3971,7 @@ Ce que E36 a laissé (session 37, décidé avec l'utilisateur) ; la 1.0.0 est li
 - [x] **Prévoir le refus d'une majeure avant de lancer l'outil** : les `peerDependencies` de npm, les
   `requires_dist` de PyPI (`redis` 8 que `arq` refuse, `typescript` 7 que `openapi-typescript`
   refuse) ; le dire dès l'écran 5, à côté de la reprise de `lockfiles._retry` (qui reste).
-- [ ] **« Parcourir… » sous macOS** (une personne avec un Mac : `osascript` ou Tk) et sous Linux avec
+- [x] **« Parcourir… » sous macOS** (une personne avec un Mac : `osascript` ou Tk) et sous Linux avec
   un affichage ; corriger ce qui doit l'être.
 - [ ] Doc (`USAGE.md` : les limites retirées), CHANGELOG, puis la **1.1.0** : CI verte, l'étiquette
   `v1.1.0` avec l'accord de l'utilisateur, vérifiée depuis PyPI.
@@ -4052,7 +4052,14 @@ Ce que E36 a laissé (session 37, décidé avec l'utilisateur) ; la 1.0.0 est li
   remplit comme une personne) : `zenity` rend le dossier choisi, l'annulation `None`, Tk aussi.
   `tests/picker_desktop.py` et le workflow **« Fenêtre de choix »** (`picker.yml`, à la demande :
   macOS devant Safari, Linux avec `zenity`, Linux avec Tk ; captures en artefacts) : le seul Mac à
-  portée est celui de la CI.
+  portée est celui de la CI. **Vérifié sur la machine macOS de la CI** : la fenêtre du Finder
+  s'ouvre devant Safari, sur le dossier de départ, avec son titre ; mais Safari garde le clavier
+  (`osascript` est un programme d'arrière-plan ; `activate` n'y change rien, essayé puis retiré) :
+  une personne clique dans la fenêtre avant de taper (dit dans USAGE.md). Ce clic simulé (System
+  Events), elle rend le dossier choisi, et `None` à l'annulation (-128). La porter au premier plan
+  demanderait de piloter System Events, donc une autorisation de macOS : pas fait. Sous Linux, en
+  CI : taper un chemin dans `zenity` par `xdotool` n'est pas fiable (l'autocomplétion de GTK ajoute
+  des lettres) : l'essai l'ouvre dans le dossier à choisir et valide (`--filename` vérifié aussi).
 
 ---
 

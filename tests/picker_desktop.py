@@ -53,10 +53,14 @@ def frontmost() -> str:
 def attempt(label: str, fill: bool) -> object:
     result: dict[str, object] = {}
     stop = threading.Event()
+    # zenity : taper un chemin dans GTK n'est pas fiable (son autocomplétion ajoute des lettres) :
+    # la fenêtre s'ouvre dans le dossier à choisir, Entrée le choisit.
+    gtk = fill and not MAC and shutil.which("zenity") is not None
+    start = CHOSEN if gtk else START
 
     def go() -> None:
         try:
-            result["path"] = picker.pick(picker.PickKind.FOLDER, str(START), cancel=stop)
+            result["path"] = picker.pick(picker.PickKind.FOLDER, str(start), cancel=stop)
         except Exception as err:  # on le dit : c'est un essai
             result["error"] = repr(err)
 
@@ -90,15 +94,12 @@ def attempt(label: str, fill: bool) -> object:
     else:
         window = run("xdotool", "search", "--sync", "--name", "forceupdate").split()[-1]
         run("xdotool", "windowactivate", "--sync", window)
-        if fill and shutil.which("zenity"):
-            run("xdotool", "key", "ctrl+l")  # la barre d'adresse de GTK
-            time.sleep(1)
-            run("xdotool", "type", "--delay", "150", f"{CHOSEN}/")
-            run("xdotool", "key", "Delete")  # ce que l'autocomplétion de GTK a ajouté
+        if gtk:
+            shot(f"{label}-remplie")
+            run("xdotool", "key", "Return")  # le dossier ouvert
         elif fill:
             run("xdotool", "key", "End")  # Tk : « Selection » dit déjà le dossier de départ
             run("xdotool", "type", "--delay", "150", f"/{CHOSEN.name}")
-        if fill:
             time.sleep(1)
             shot(f"{label}-remplie")
             run("xdotool", "key", "Return")  # y aller
