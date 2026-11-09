@@ -96,7 +96,24 @@ def attempt(label: str, fill: bool) -> object:
         run("xdotool", "windowactivate", "--sync", window)
         if gtk:
             shot(f"{label}-remplie")
-            run("xdotool", "key", "Return")  # le dossier ouvert
+            # « OK », en bas à droite : Entrée ne le valide pas sous GTK 4 (la liste vide a le
+            # focus).
+            size = dict(
+                line.split("=", 1)
+                for line in run("xdotool", "getwindowgeometry", "--shell", window).splitlines()
+                if "=" in line
+            )
+            width, height = int(size.get("WIDTH", "0")), int(size.get("HEIGHT", "0"))
+            run(
+                "xdotool",
+                "mousemove",
+                "--window",
+                window,
+                str(width - 40),
+                str(height - 30),
+                "click",
+                "1",
+            )
         elif fill:
             run("xdotool", "key", "End")  # Tk : « Selection » dit déjà le dossier de départ
             run("xdotool", "type", "--delay", "150", f"/{CHOSEN.name}")
