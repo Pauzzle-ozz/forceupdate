@@ -353,7 +353,10 @@ def test_a_real_public_repository(tmp_path: Path) -> None:
     assert report.projects[0].lockfiles == ["uv.lock"]
     assert report.projects[0].dependencies
     assert not (tmp_path / "setup.py").exists()
-    assert requests <= 6
+    # Le dépôt, son arborescence, puis un fichier par requête : ceux que lisent les parseurs
+    # (les workflows aussi, depuis E32), rien de plus.
+    fetched = [path for path in tmp_path.rglob("*") if path.is_file()]
+    assert requests <= 3 + len(fetched)
 
 
 # -- GitLab (E19) : une arborescence paginée, sans les tailles ------------------------------

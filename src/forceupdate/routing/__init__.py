@@ -36,7 +36,7 @@ from forceupdate.models import Dependency, Ecosystem, Notice, Project, Report
 from forceupdate.net import Cache, HttpClient
 from forceupdate.net.auth import Credential, Credentials, is_loopback
 from forceupdate.parsers.base import ReadText
-from forceupdate.registries import PackageInfo, PackageNotFound, Registry
+from forceupdate.registries import PackageInfo, PackageNotFound, Registry, Requires
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -251,4 +251,22 @@ class Clients:
         public = self.client(ecosystem) if route.public else None
         if public is not None:
             return await public.package(name)
+        raise PackageNotFound(f"{name} est introuvable sur {route.hosts}.")
+
+    async def requires(
+        self, ecosystem: Ecosystem, route: Route, name: str, version: str
+    ) -> Requires | None:
+        """Ce que demande la version ``version`` du paquet ``name`` (E37), d'après le registre de
+        ``route`` qui le connaît (comme ``package``) ; ``None`` s'il ne le dit pas. Lève
+        ``PackageNotFound`` ou ``RegistryError`` comme ``package``."""
+        for registry in route.registries:
+            client = self.declared(ecosystem, registry)
+            try:
+                await client.package(name)
+            except PackageNotFound:
+                continue
+            return await client.requires(name, version)
+        public = self.client(ecosystem) if route.public else None
+        if public is not None:
+            return await public.requires(name, version)
         raise PackageNotFound(f"{name} est introuvable sur {route.hosts}.")

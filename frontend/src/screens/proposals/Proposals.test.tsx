@@ -277,8 +277,8 @@ describe('PR (écran 8)', () => {
           full_name: 'octo/mew',
           state: 'nothing',
           applied: [
-            { update: 'backend|npm|minimatch|10.2.6', name: 'minimatch', ecosystem: 'npm', project: 'backend', direct: false, current: '10.2.6', version: '11.0.1', gap: 'major', fixes: ['CVE-2026-118764'], held_by: [] },
-            { update: 'backend|npm|basic-ftp|5.3.1', name: 'basic-ftp', ecosystem: 'npm', project: 'backend', direct: false, current: '5.3.1', version: '6.2.1', gap: 'major', fixes: ['CVE-2026-1'], held_by: [] },
+            { update: 'backend|npm|minimatch|10.2.6', name: 'minimatch', ecosystem: 'npm', project: 'backend', direct: false, current: '10.2.6', version: '11.0.1', gap: 'major', fixes: ['CVE-2026-118764'], held_by: [], refused_by: [], blockers: [] },
+            { update: 'backend|npm|basic-ftp|5.3.1', name: 'basic-ftp', ecosystem: 'npm', project: 'backend', direct: false, current: '5.3.1', version: '6.2.1', gap: 'major', fixes: ['CVE-2026-1'], held_by: [], refused_by: [], blockers: [] },
           ],
           results: [
             {
@@ -323,6 +323,8 @@ describe('PR (écran 8)', () => {
       gap: 'major' as const,
       fixes: ['CVE-2026-118764'],
       held_by: [],
+      refused_by: [],
+      blockers: [],
     })
     const done = proposal({
       status: 'done',
@@ -337,7 +339,7 @@ describe('PR (écran 8)', () => {
           applied: [
             minimatch('5.1.9'),
             minimatch('10.2.6'),
-            { update: 'frontend|npm|typescript', name: 'typescript', ecosystem: 'npm', project: 'frontend', direct: true, current: '5.9.3', version: '7.0.2', gap: 'major', fixes: [], held_by: [] },
+            { update: 'frontend|npm|typescript', name: 'typescript', ecosystem: 'npm', project: 'frontend', direct: true, current: '5.9.3', version: '7.0.2', gap: 'major', fixes: [], held_by: [], refused_by: [], blockers: [] },
           ],
           lockfiles: [{ ...proposedRepository().lockfiles[0], lockfile: 'frontend/package-lock.json', tool: 'npm' }],
           results: [
@@ -370,6 +372,36 @@ describe('PR (écran 8)', () => {
     expect(held.map((line) => line.textContent)).toEqual([
       'minimatch 5.1.9, 10.2.6, pas 11.0.1 (frontend) : retenue par @redocly/openapi-core 1.34.22, @ts-morph/common 0.27.0',
     ])
+  })
+
+  it('au récapitulatif, ce qui retiendra ou fera refuser une version, et la version qui l’accepterait (E37)', async () => {
+    const blocker = { peer: false, companion: false, checked: true, held: true }
+    const ready = proposal({
+      repositories: [
+        proposedRepository({
+          applied: [
+            {
+              update: '.|npm|minimatch|10.2.6', name: 'minimatch', ecosystem: 'npm', project: '.', direct: false,
+              current: '10.2.6', version: '11.0.1', gap: 'major', fixes: ['CVE-2026-118764'],
+              held_by: ['nodemon 3.1.14'], refused_by: [],
+              blockers: [{ ...blocker, name: 'nodemon', version: '3.1.14', range: '^10.2.1', accepting: '4.0.1' }],
+            },
+            {
+              update: '.|PyPI|redis', name: 'redis', ecosystem: 'PyPI', project: '.', direct: true,
+              current: '5.3.1', version: '8.1.0', gap: 'major', fixes: ['CVE-2026-2'],
+              held_by: [], refused_by: ['arq 0.28.0'],
+              blockers: [{ ...blocker, held: false, name: 'arq', version: '0.28.0', range: '<6,>=4.2.0', accepting: null }],
+            },
+          ],
+        }),
+      ],
+    })
+    mockApi({ 'GET /api/proposals/pr1': ready, 'GET /api/repositories': repositoryList() })
+    renderApp('/pr/pr1')
+    expect(await screen.findByText("retenue par nodemon 3.1.14 : monter d'abord nodemon en 4.0.1")).toBeInTheDocument()
+    expect(screen.getByText("refusée à cause de arq 0.28.0 : aucune de ses versions ne l'accepte")).toBeInTheDocument()
+    // Leurs failles ne sont pas comptées.
+    expect(screen.queryByText(/failles? corrigées?/)).not.toBeInTheDocument()
   })
 
   it('un dépôt en échec se renvoie, avec la même sélection ; l’icône dit l’échec (session 37)', async () => {

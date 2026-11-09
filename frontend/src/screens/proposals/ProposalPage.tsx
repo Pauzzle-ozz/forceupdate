@@ -54,7 +54,7 @@ import {
   resultSummary,
   sent,
 } from '@/lib/proposals'
-import { lastLines } from '@/lib/update'
+import { blockedText, isBlocked, lastLines } from '@/lib/update'
 import { Breadcrumb, Container, Section, useDocumentTitle } from '@/shell/Page'
 import { errorText } from '@/screens/accounts/ForgeCard'
 import { PreparingPlan, REQUEST_STEPS, Stepper } from '@/screens/update/Layout'
@@ -362,8 +362,9 @@ function RecapCard({
 }) {
   const id = useId()
   const word = requestWord(item.forge)
-  // Une indirecte que son parent retiendra ne corrige rien par le lockfile seul (session 37).
-  const fixes = new Set(item.applied.flatMap((update) => (update.held_by.length > 0 ? [] : update.fixes))).size
+  // Une indirecte que son parent retiendra ne corrige rien par le lockfile seul (session 37), ni
+  // une version que l'outil refusera à cause d'un paquet installé (E37).
+  const fixes = new Set(item.applied.flatMap((update) => (isBlocked(update) ? [] : update.fixes))).size
   return (
     <Card className={cn('flex flex-col gap-4', checked && 'border-control bg-primary-soft')} aria-labelledby={`${id}-nom`}>
       <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2">
@@ -450,10 +451,10 @@ function RecapCard({
               </span>
               {update.gap && <GapBadge gap={update.gap} />}
               {!update.direct && <Badge variant="outline">indirecte</Badge>}
-              {update.held_by.length > 0 ? (
+              {isBlocked(update) ? (
                 <span className="inline-flex items-center gap-1 text-warning">
                   <TriangleAlert className="size-4 shrink-0" aria-hidden="true" />
-                  {`retenue par ${update.held_by.join(', ')} : monter ce paquet d'abord`}
+                  {blockedText(update)}
                 </span>
               ) : (
                 update.fixes.length > 0 && <span className="text-fg-muted">{count(update.fixes.length, 'faille corrigée', 'failles corrigées')}</span>

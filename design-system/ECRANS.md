@@ -110,7 +110,9 @@ chemin collé, l'ancien « Ouvrir ») et « Parcourir… » (secondaire, `folder
 serveur la fenêtre de choix du système (`POST /api/fs/pick`) : le dossier choisi s'ouvre dans la
 liste ; un fichier, dans son dossier, choisi. Pendant que la fenêtre est ouverte : le bouton
 tourne, et « La fenêtre de choix … est ouverte : elle peut se trouver derrière le navigateur »
-(`role=status`) ; sans fenêtre possible, la raison sous le champ (`role=alert`).
+(`role=status`) ; sans fenêtre possible, la raison sous le champ (`role=alert`). **E37** : la fenêtre
+est celle du Finder sous macOS (`osascript`), de GNOME ou KDE sous Linux (`zenity`, `kdialog`),
+Tk sinon ; rien ne change dans la page.
 
 ## 3. Analyse en cours
 
@@ -239,7 +241,17 @@ imports à changer). **Session 37** : une indirecte que son parent retiendra (`h
 d'après les plages d'un `package-lock.json`) : l'avertissement le nomme (« nodemon 3.1.14
 demande ^10.2.1 : le lockfile seul ne la fera pas monter ; monter nodemon d'abord. »), la
 phrase des failles devient « Corrigerait 2 failles, mais nodemon 3.1.14 la retiendra »,
-jamais pré-cochée, pas comptée dans « failles corrigées » du récapitulatif.
+jamais pré-cochée, pas comptée dans « failles corrigées » du récapitulatif. **E37** : l'avertissement
+dit aussi la version du parent qui l'accepterait (« … ; monter d'abord nodemon en 4.0.1 (la première
+version qui l'accepte). », ou « …, et aucune de ses versions publiées ne l'accepte. »), pour tous
+les lockfiles npm et Python à graphe (les plages de pnpm et uv lues au registre). Et une version que
+l'outil **refusera** (`refused_by` : un paquet installé ne l'accepte pas et une seule version est
+possible, Python ou une dépendance pair de npm ; ou elle demande une dépendance pair plus haute que
+l'installée) : l'avertissement le dit (« arq 0.28.0 demande <6,>=4.2.0 : uv la refusera, et aucune
+de ses versions publiées ne l'accepte. », « … sauf si fastembed monte aussi (en 0.9.1, …) »), la
+phrase des failles devient « Corrigerait 2 failles, mais arq 0.28.0 la fera refuser », jamais
+pré-cochée, pas comptée. Rien de nouveau à l'écran : les avertissements (`triangle-alert`) et la
+phrase des failles existaient.
 
 **Résultat, session 37** : une majeure que l'outil de lockfile refuse est retirée et le reste
 se fait (`results[].dropped`) : l'alerte d'en tête devient un avertissement « Appliquée, sauf
@@ -506,7 +518,9 @@ récapitulatif, et retrouver les liens.
   régénéré (`info`, « npm refusait le lockfile qu'il venait d'écrire … refait par … », que seule
   la description de la PR disait). Au récapitulatif, une indirecte que son parent retiendra dit
   « retenue par nodemon 3.1.14 : monter ce paquet d'abord » à la place de ses failles, qui ne
-  sont pas comptées. Un résultat avec des dépôts en échec : l'icône du titre dit l'échec (`circle-x` rouge si
+  sont pas comptées. **E37** : avec la version qui l'accepterait (« retenue par nodemon 3.1.14 :
+  monter d'abord nodemon en 4.0.1 », « … : aucune de ses versions ne l'accepte ») ; une version que
+  l'outil refusera, de même (« refusée à cause de arq 0.28.0 : monter aussi arq en 0.30.0 »). Un résultat avec des dépôts en échec : l'icône du titre dit l'échec (`circle-x` rouge si
   tous, `triangle-alert` sinon), et « Renvoyer le dépôt en échec » (principale ; « Retour à mes
   dépôts » devient secondaire) les renvoie avec la même sélection (`POST /send` d'un
   récapitulatif fini : seulement ses dépôts en échec) ; hors ligne, désactivé avec la raison. Un

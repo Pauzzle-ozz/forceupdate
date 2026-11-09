@@ -92,7 +92,6 @@ from forceupdate.models import (
     Override,
     Project,
     Report,
-    Requirement,
     Scope,
     SelectionRule,
     Update,
@@ -314,10 +313,21 @@ def chosen(report: Report, selection: Selection) -> list[tuple[Project, Update, 
     return found
 
 
+def reselect(report: Report, rules: Rules = DEFAULT_RULES) -> None:
+    """Refait la pré-sélection de chaque mise à jour selon ``rules`` (``Update.selected``) : après
+    ``audit``, ou ``blockers.constrain``."""
+    for project in report.projects:
+        project.updates = [
+            dataclasses.replace(update, selected=choose(update, rules))
+            for update in project.updates
+        ]
+
+
 def choose(update: Update, rules: Rules = DEFAULT_RULES) -> str | None:
     """La version que ``rules`` cochent pour ``update`` ; ``None`` pour aucune. Jamais une option
     à faire à la main, ni une dont la version a une faille que la version utilisée n'a pas, ni
-    une indirecte que le paquet qui la tire retiendra (``UpdateOption.held_by``)."""
+    une que des paquets installés retiendront ou feront refuser (``UpdateOption.held_by``,
+    ``refused_by``)."""
     if not _kept(update, rules):
         return None
     scheme = versions.for_ecosystem(update.ecosystem)
@@ -330,6 +340,7 @@ def choose(update: Update, rules: Rules = DEFAULT_RULES) -> str | None:
         and option.manual is None
         and not option.introduced
         and not option.held_by
+        and not option.refused_by
     ]
     if security_only:
         eligible = [option for option in eligible if option.fixes]
@@ -614,16 +625,14 @@ class _Group:
             edits, lockfile, manual = self._indirect_edits(version, floor=bool(fixes))
         if not edits and lockfile is None and manual is None:
             return None  # sans lockfile, la contrainte accepte déjà cette version : rien à faire
-        held = self._held(version) if not self.lead.direct and not edits else []
         warnings = []
         if gap is Gap.MAJOR:
             warnings.append(MAJOR_WARNING)
-            if not self.lead.direct and not self._required:
+            if not self.lead.direct:
+                # Retiré quand on sait ce que demandent ceux qui la tirent (``blockers``).
                 warnings.append(INDIRECT_MAJOR_WARNING)
         elif gap is None:
             warnings.append(DOWNGRADE_WARNING)
-        if held:
-            warnings.append(_held_warning(held, all_held=len(held) == len(self._required)))
         published = self.info.get(version)
         if published is not None and published.deprecated:
             warnings.append(f"Version dépréciée : {published.deprecated}")
@@ -640,26 +649,7 @@ class _Group:
             lockfile=lockfile,
             manual=manual,
             warnings=tuple(warnings),
-            held_by=tuple(dict.fromkeys(f"{r.name} {r.version}".strip() for r in held)),
         )
-
-    @property
-    def _required(self) -> list[Requirement]:
-        """Une indirecte : les paquets du lockfile qui la requièrent, et leurs plages."""
-        return list(dict.fromkeys(r for d in self.dependencies for r in d.required_by))
-
-    def _held(self, version: str) -> list[Requirement]:
-        """Ceux dont la plage n'accepte pas ``version`` : par le lockfile seul, ils la
-        retiendront (session 36 : ``nodemon`` demande ``minimatch ^10.2.1``, la correction est
-        en 11.0.1). Une plage illisible ne retient rien."""
-        held = []
-        for requirement in self._required:
-            try:
-                if not self.scheme.satisfies(requirement.range, version):
-                    held.append(requirement)
-            except (InvalidConstraint, InvalidVersion):
-                continue
-        return held
 
     def _shared_warnings(self, edits: Iterable[Edit]) -> list[str]:
         """Une version écrite une fois pour plusieurs paquets (une propriété Maven, une variable
@@ -769,19 +759,6 @@ class _Group:
             override=override,
         )
         return [edit], lockfile, None
-
-
-def _held_warning(held: Sequence[Requirement], *, all_held: bool) -> str:
-    """« nodemon 3.1.14 demande ^10.2.1 : le lockfile seul ne la fera pas monter ; monter
-    nodemon d'abord. »"""
-    said = ", ".join(f"{r.name} {r.version} demande {r.range}".replace("  ", " ") for r in held)
-    parents = ", ".join(dict.fromkeys(r.name for r in held))
-    outcome = (
-        "le lockfile seul ne la fera pas monter"
-        if all_held
-        else "une de ses copies restera en dessous"
-    )
-    return f"{said} : {outcome} ; monter {parents} d'abord."
 
 
 def _advisories(

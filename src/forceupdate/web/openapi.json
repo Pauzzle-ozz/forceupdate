@@ -3066,6 +3066,66 @@
         ],
         "title": "BatchStatus"
       },
+      "Blocker": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "range": {
+            "type": "string",
+            "title": "Range"
+          },
+          "peer": {
+            "type": "boolean",
+            "title": "Peer",
+            "default": false
+          },
+          "companion": {
+            "type": "boolean",
+            "title": "Companion",
+            "default": false
+          },
+          "accepting": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepting"
+          },
+          "checked": {
+            "type": "boolean",
+            "title": "Checked",
+            "default": false
+          },
+          "held": {
+            "type": "boolean",
+            "title": "Held",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "range",
+          "peer",
+          "companion",
+          "accepting",
+          "checked",
+          "held"
+        ],
+        "title": "Blocker",
+        "description": "Un paquet installé qui n'accepte pas la version d'une option (E37) : il la retient\n(``UpdateOption.held_by``) ou l'outil du lockfile la refusera (``UpdateOption.refused_by``)."
+      },
       "CacheState": {
         "properties": {
           "path": {
@@ -5526,6 +5586,22 @@
             },
             "type": "array",
             "title": "Held By"
+          },
+          "refused_by": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Refused By",
+            "default": []
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/Blocker"
+            },
+            "type": "array",
+            "title": "Blockers",
+            "default": []
           }
         },
         "type": "object",
@@ -5539,7 +5615,9 @@
           "version",
           "gap",
           "fixes",
-          "held_by"
+          "held_by",
+          "refused_by",
+          "blockers"
         ],
         "title": "ProposedUpdate",
         "description": "Une mise à jour qu'une PR porte, avec ce qu'il faut pour la dire."
@@ -6249,16 +6327,22 @@
           "range": {
             "type": "string",
             "title": "Range"
+          },
+          "peer": {
+            "type": "boolean",
+            "title": "Peer",
+            "default": false
           }
         },
         "type": "object",
         "required": [
           "name",
           "version",
-          "range"
+          "range",
+          "peer"
         ],
         "title": "Requirement",
-        "description": "Un paquet du lockfile qui requiert une dépendance indirecte, et la plage qu'il en demande\n(session 37) : par le lockfile seul, elle ne sortira pas de cette plage."
+        "description": "Un paquet du lockfile qui requiert une dépendance, et la plage qu'il en demande (session\n37, E37) : par le lockfile seul, une indirecte ne sortira pas de cette plage ; une version\nhors de la plage, l'outil du lockfile la refuse (une seule version pour tous : Python, une\ndépendance pair de npm)."
       },
       "Restriction": {
         "properties": {
@@ -7247,6 +7331,22 @@
             "type": "array",
             "title": "Held By",
             "default": []
+          },
+          "refused_by": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Refused By",
+            "default": []
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/Blocker"
+            },
+            "type": "array",
+            "title": "Blockers",
+            "default": []
           }
         },
         "type": "object",
@@ -7261,7 +7361,9 @@
           "lockfile",
           "manual",
           "warnings",
-          "held_by"
+          "held_by",
+          "refused_by",
+          "blockers"
         ],
         "title": "UpdateOption",
         "description": "Une version vers laquelle monter un paquet : une case à cocher de l'interface."

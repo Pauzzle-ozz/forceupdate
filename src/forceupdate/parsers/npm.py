@@ -80,7 +80,9 @@ from forceupdate.parsers.lockfiles import (
     in_workspace,
     join,
     relative_to,
+    required_by,
     transitives,
+    with_required_by,
 )
 from forceupdate.parsers.toml_spans import StringSpan
 from forceupdate.parsers.yaml_spans import YamlPath
@@ -529,10 +531,13 @@ def _npm_lockfile(
     *,
     importers: Mapping[str, Mapping[str, str | None]] | None = None,
     descriptors: Mapping[str, str] | None = None,
+    ranges: bool = True,
 ) -> NpmLockfile:
     locked = tuple(packages)
     return NpmLockfile(
-        lockfile=Lockfile(path=path, ecosystem=Ecosystem.NPM, packages=locked, graph=True),
+        lockfile=Lockfile(
+            path=path, ecosystem=Ecosystem.NPM, packages=locked, graph=True, ranges=ranges
+        ),
         importers=importers or {},
         descriptors=descriptors or {},
         nodes={package.node: package for package in locked},
@@ -625,15 +630,35 @@ def _package_lock(path: str, raw: Mapping[str, Any]) -> NpmLockfile:
                 local=installed_name is None or entry.get("link") is True or reason == REASON_LOCAL,
                 unverifiable_reason=reason,
                 key=key or ".",
-                requires={
-                    dependency: wanted
-                    for section in ("peerDependencies", "optionalDependencies", "dependencies")
-                    for dependency, wanted in _mapping(entry.get(section)).items()
-                    if isinstance(wanted, str) and wanted
-                },
+                requires=_ranges(entry, "optionalDependencies", "dependencies"),
+                peers=_peers(entry),
             )
         )
     return _npm_lockfile(path, locked, importers=importers)
+
+
+def _ranges(entry: Mapping[str, Any], *sections: str, strip: str = "") -> dict[str, str]:
+    """La plage que demande un paquet de chaque dépendance des ``sections`` de son entrée, par
+    nom ; ``strip`` retiré devant (``npm:`` de Yarn 2+). La dernière section l'emporte."""
+    return {
+        name: wanted.removeprefix(strip)
+        for section in sections
+        for name, wanted in _mapping(entry.get(section)).items()
+        if isinstance(wanted, str) and wanted
+    }
+
+
+def _peers(entry: Mapping[str, Any], *, strip: str = "") -> dict[str, str]:
+    """Les dépendances pair d'un paquet et leurs plages, sans les optionnelles
+    (``peerDependenciesMeta``) : npm ne les impose que si le paquet les voit installées, ce
+    qu'on ne sait pas dire."""
+    optional = {
+        name
+        for name, meta in _mapping(entry.get("peerDependenciesMeta")).items()
+        if isinstance(meta, dict) and meta.get("optional") in (True, "true")
+    }
+    found = _ranges(entry, "peerDependencies", strip=strip)
+    return {name: wanted for name, wanted in found.items() if name not in optional}
 
 
 def _installed_name(key: str) -> str | None:
@@ -752,6 +777,7 @@ def _yarn_v1(path: str, content: str) -> NpmLockfile:
                 local=reason in (REASON_LOCAL, REASON_WORKSPACE),
                 unverifiable_reason=reason or _resolved_reason(entry.get("resolved")),
                 key=keys,
+                requires=_ranges(entry, "optionalDependencies", "dependencies"),
             )
         )
     return _npm_lockfile(path, locked, descriptors=descriptors)
@@ -875,6 +901,8 @@ def _yarn_berry(path: str, content: str) -> NpmLockfile:
                 local=local,
                 unverifiable_reason=reason,
                 key=keys,
+                requires=_ranges(entry, "dependencies", strip="npm:"),
+                peers=_peers(entry, strip="npm:"),
             )
         )
     return _npm_lockfile(path, locked, importers=importers, descriptors=descriptors)
@@ -981,9 +1009,10 @@ def parse_pnpm_lock_yaml(path: str, content: str) -> NpmLockfile:
                 local=reason in (REASON_LOCAL, REASON_WORKSPACE),
                 unverifiable_reason=reason,
                 key=key,
+                peers=_peers(details),
             )
         )
-    return _npm_lockfile(path, locked, importers=importers)
+    return _npm_lockfile(path, locked, importers=importers, ranges=False)
 
 
 def _importer_node(project: str) -> str:
@@ -1364,6 +1393,7 @@ class _ProjectParser:
         # Un paquet en double à la même version (les « patch: » que Yarn met d'office) n'est
         # pas une transitive non plus.
         pairs = {(d.name, d.installed) for d in directs if d.installed}
+        directs = with_required_by(directs, required_by(lock.lockfile))
         found = transitives(
             lock.lockfile,
             starts,

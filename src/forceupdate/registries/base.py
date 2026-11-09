@@ -26,6 +26,7 @@ VERSIONS``, 1 h), un « introuvable » aussi. Une erreur ne l'est pas.
 
 import asyncio
 import functools
+import json
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -39,9 +40,10 @@ from forceupdate.net.cache import Cache, CacheEntry, CacheKind
 from forceupdate.net.http import HttpClient, NetworkError, Response
 from forceupdate.versions import InvalidVersion
 
-_FORMAT = 3
+_FORMAT = 4
 """Version du format des entrées du cache : une autre est ignorée, et le registre réinterrogé
-(2 : le runtime que demande chaque version, E27 ; 3 : celui des crates, E34)."""
+(2 : le runtime que demande chaque version, E27 ; 3 : celui des crates, E34 ; 4 : ce que demande
+chaque version, E37)."""
 
 
 class PackageNotFound(LookupError):
@@ -68,6 +70,30 @@ class AccessRefused(RegistryError):
 
 
 @dataclass(frozen=True, kw_only=True)
+class Requires:
+    """Ce que demande une version d'un paquet, d'après son registre (E37) : la plage de chaque
+    paquet qu'elle requiert, par nom (normalisé selon PEP 503 pour PyPI, comme dans les
+    lockfiles)."""
+
+    dependencies: Mapping[str, str] = field(default_factory=dict)
+    """npm : ``dependencies`` et ``optionalDependencies`` ; PyPI : ``requires_dist``, les lignes
+    d'un même paquet réunies par ``||`` (les marqueurs en gardent une seule, qu'on ne sait pas
+    choisir : la version est acceptée si l'une l'accepte). Une plage vide accepte tout."""
+    peers: Mapping[str, str] = field(default_factory=dict)
+    """npm : ``peerDependencies``, les paquets qu'elle partage avec le projet (une seule version
+    pour tous). Vide ailleurs."""
+
+    def wants(self, name: str) -> tuple[str, bool] | None:
+        """La plage qu'elle demande de ``name``, et si c'est une dépendance pair ; ``None`` si elle
+        ne le requiert pas."""
+        if name in self.dependencies:
+            return self.dependencies[name], False
+        if name in self.peers:
+            return self.peers[name], True
+        return None
+
+
+@dataclass(frozen=True, kw_only=True)
 class PackageVersion:
     """Une version publiée d'un paquet."""
 
@@ -86,6 +112,9 @@ class PackageVersion:
     """Le runtime qu'elle demande, tel que le registre l'écrit : ``engines.node`` (npm),
     ``require.php`` (Packagist), ``ruby`` (RubyGems), ``requires-python`` (PyPI), ``rust_version``
     (crates.io) ; ``None`` si elle n'en dit rien (``checks.runtimes``)."""
+    requires: Requires | None = None
+    """Ce qu'elle demande, quand le document du paquet le dit (npm, pour ses versions stables :
+    E37) ; ``None`` sinon. PyPI le dit version par version (``Registry.requires``)."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -181,6 +210,9 @@ class Registry(ABC):
             self.label = label
         self._auth = auth
         self._lookups: dict[str, asyncio.Future[PackageInfo]] = {}
+        self._requires_lookups: dict[tuple[str, str], asyncio.Future[Requires | None]] = {}
+        """Pour un registre qui dit ``requires`` version par version (PyPI) : une requête par
+        version dans la session."""
 
     # -- à écrire pour chaque registre ------------------------------------------
 
@@ -228,6 +260,14 @@ class Registry(ABC):
         # shield : un appelant annulé n'annule pas la requête que d'autres attendent.
         return await asyncio.shield(lookup)
 
+    async def requires(self, name: str, version: str) -> Requires | None:
+        """Ce que demande la version ``version`` du paquet ``name`` (E37) ; ``None`` si le registre
+        ne le dit pas, ou ne connaît pas cette version. Par défaut, d'après le document du paquet
+        (``package``) ; PyPI le demande version par version. Lève ``PackageNotFound`` ou
+        ``RegistryError`` comme ``package``."""
+        found = (await self.package(name)).get(version)
+        return None if found is None else found.requires
+
     async def _lookup(self, name: str) -> PackageInfo:
         url = await self._url(name)
         entry = self._cache.get(CacheKind.VERSIONS, url, stale_ok=self._http.offline)
@@ -257,12 +297,22 @@ class Registry(ABC):
         self._cache.set(CacheKind.VERSIONS, url, _info_to_cache(info))
         return info
 
-    async def _get(self, url: str, name: str, *, found: bool = False) -> Response | None:
+    async def _get(
+        self,
+        url: str,
+        name: str,
+        *,
+        found: bool = False,
+        headers: Mapping[str, str] | None = None,
+    ) -> Response | None:
         """La réponse 200 du registre à ``url`` (pour le paquet ``name``) ; ``None`` pour un statut
         de ``not_found_statuses`` si ``found``. Lève ``AccessRefused`` pour un registre déclaré
-        qui refuse l'accès, ``RegistryError`` sinon."""
+        qui refuse l'accès, ``RegistryError`` sinon. ``headers`` : à la place de ceux du
+        registre."""
         try:
-            response = await self._http.get(url, headers=self.headers, auth=self._auth)
+            response = await self._http.get(
+                url, headers=self.headers if headers is None else headers, auth=self._auth
+            )
         except NetworkError as error:
             raise RegistryError(f"{self.label} : {error}") from error
         status = response.status_code
@@ -317,6 +367,21 @@ def parse_time(value: object) -> datetime | None:
 
 
 def _info_to_cache(info: PackageInfo) -> dict[str, Any]:
+    # Ce que demandent les versions : chaque ensemble distinct une fois, et chaque version son
+    # numéro dans la liste (des centaines de versions de suite demandent souvent la même chose).
+    requires: list[list[dict[str, str]]] = []
+    numbers: dict[str, int] = {}
+
+    def number(found: Requires | None) -> int | None:
+        if found is None:
+            return None
+        pair = [dict(found.dependencies), dict(found.peers)]
+        key = json.dumps(pair, sort_keys=True)
+        if key not in numbers:
+            numbers[key] = len(requires)
+            requires.append(pair)
+        return numbers[key]
+
     return {
         "format": _FORMAT,
         "name": info.name,
@@ -328,9 +393,11 @@ def _info_to_cache(info: PackageInfo) -> dict[str, Any]:
                 v.yanked_reason,
                 v.deprecated,
                 v.requires_runtime,
+                number(v.requires),
             ]
             for v in info.versions
         ],
+        "requires": requires,
         "latest": info.latest,
         "deprecated": info.deprecated,
         "tags": dict(info.tags),
@@ -341,6 +408,10 @@ def _info_to_cache(info: PackageInfo) -> dict[str, Any]:
 def _info_from_cache(
     ecosystem: Ecosystem, value: dict[str, Any], stored_at: datetime
 ) -> PackageInfo:
+    requires = [
+        Requires(dependencies=dict(dependencies), peers=dict(peers))
+        for dependencies, peers in value["requires"]
+    ]
     found = tuple(
         PackageVersion(
             version=version,
@@ -348,9 +419,10 @@ def _info_from_cache(
             yanked=yanked,
             yanked_reason=reason,
             deprecated=deprecated,
-            requires_runtime=requires,
+            requires_runtime=runtime,
+            requires=None if number is None else requires[number],
         )
-        for version, published, yanked, reason, deprecated, requires in value["versions"]
+        for version, published, yanked, reason, deprecated, runtime, number in value["versions"]
     )
     return PackageInfo(
         ecosystem=ecosystem,

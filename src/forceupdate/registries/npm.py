@@ -15,6 +15,9 @@ Ce qu'on en tire :
 - le ``deprecated`` de chaque version (une chaîne vide veut dire « plus dépréciée ») ;
 - le Node que demande chaque version (``engines.node``), pour ne pas proposer à un projet une
   version que son Node ne fait pas tourner (``checks.runtimes``, E27) ;
+- ce que demande chaque version stable (``dependencies``, ``optionalDependencies``,
+  ``peerDependencies``) : la version d'un paquet qui accepte la correction d'une indirecte qu'il
+  retient, le refus d'une version prévu avant de lancer npm (E37) ;
 - les étiquettes (``dist-tags``), pour une dépendance écrite avec une étiquette ;
 - **la dernière stable** : ``dist-tags.latest`` si c'est une version stable. C'est celle que
   choisit ``npm install``, et celle que suivent Renovate et Dependabot. Une version plus
@@ -40,6 +43,7 @@ from forceupdate.registries.base import (
     PackageInfo,
     PackageVersion,
     Registry,
+    Requires,
     parse_time,
     sorted_versions,
 )
@@ -88,6 +92,7 @@ class Npm(Registry):
                     published=parse_time(times.get(version)),
                     deprecated=_deprecation(manifest),
                     requires_runtime=_engines_node(manifest),
+                    requires=_requires(version, manifest),
                 )
                 for version, manifest in manifests.items()
             ),
@@ -128,6 +133,36 @@ def _engines_node(manifest: Mapping[str, Any]) -> str | None:
     if not isinstance(node, str):
         return None
     return node.strip() or None
+
+
+def _requires(version: str, manifest: Mapping[str, Any]) -> Requires | None:
+    """Ce que demande une version stable (E37) : ses ``dependencies`` et ``optionalDependencies``,
+    ses ``peerDependencies``. Pas pour une pré-version : on n'en propose pas, et les canaris
+    (``next``, des milliers) gonfleraient le cache pour rien."""
+    try:
+        if NPM.is_prerelease(version):
+            return None
+    except InvalidVersion:
+        return None
+
+    def ranges(*sections: str) -> dict[str, str]:
+        found: dict[str, str] = {}
+        for section in sections:
+            values = manifest.get(section)
+            if isinstance(values, dict):
+                found |= {k: v for k, v in values.items() if isinstance(v, str)}
+        return found
+
+    meta = manifest.get("peerDependenciesMeta")
+    optional = {
+        name
+        for name, fields in (meta.items() if isinstance(meta, dict) else ())
+        if isinstance(fields, dict) and fields.get("optional") is True
+    }
+    # Une dépendance pair optionnelle n'est imposée que si le paquet la voit installée, ce
+    # qu'on ne sait pas dire (une copie rangée sous un autre paquet ne compte pas) : laissée.
+    peers = {k: v for k, v in ranges("peerDependencies").items() if k not in optional}
+    return Requires(dependencies=ranges("optionalDependencies", "dependencies"), peers=peers)
 
 
 def _latest(published: list[str], tag: str | None) -> str | None:

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "tool": {
     "name": "forceupdate",
-    "version": "1.0.0rc1"
+    "version": "1.0.0"
   },
   "source": "C:/Projets/eol",
   "languages": [
@@ -906,7 +906,9 @@
               "warnings": [
                 "Majeure : peut demander d'adapter le code."
               ],
-              "held_by": []
+              "held_by": [],
+              "refused_by": [],
+              "blockers": []
             }
           ],
           "selected": null,
@@ -972,7 +974,9 @@
               "warnings": [
                 "Majeure : peut demander d'adapter le code."
               ],
-              "held_by": []
+              "held_by": [],
+              "refused_by": [],
+              "blockers": []
             }
           ],
           "selected": null,

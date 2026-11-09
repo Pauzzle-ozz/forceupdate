@@ -1,0 +1,59 @@
+name: Fenêtre de choix
+
+# « Parcourir… » (web.picker, E37) avec une vraie fenêtre, là où on n'a pas d'ordinateur sous la
+# main : macOS (osascript, la fenêtre du Finder, devant Safari) et Linux (zenity sous Xvfb, puis
+# Tk sans zenity). tests/picker_desktop.py ouvre la fenêtre, la remplit comme une personne,
+# vérifie le chemin rendu, puis l'annule ; les captures sont gardées (artefact « captures-… »).
+# À la demande seulement (« Run workflow »).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  picker:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+          - name: Linux, zenity
+            os: ubuntu-latest
+            packages: xvfb zenity xdotool imagemagick dbus-x11
+          - name: Linux, Tk
+            os: ubuntu-latest
+            packages: xvfb xdotool imagemagick
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.14"
+
+      - name: Dépendances
+        run: uv sync --locked
+
+      - name: Outils de l'écran virtuel
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ${{ matrix.packages }}
+
+      - name: La fenêtre (macOS)
+        if: runner.os == 'macOS'
+        run: uv run python tests/picker_desktop.py captures
+
+      - name: La fenêtre (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" uv run python tests/picker_desktop.py captures
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: captures-${{ runner.os }}-${{ strategy.job-index }}
+          path: captures/

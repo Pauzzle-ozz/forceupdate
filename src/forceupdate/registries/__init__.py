@@ -22,6 +22,7 @@ from forceupdate.registries.base import (
     PackageVersion,
     Registry,
     RegistryError,
+    Requires,
 )
 from forceupdate.registries.composer import ComposerRepository
 from forceupdate.registries.crates import Crates
@@ -40,6 +41,7 @@ __all__ = [
     "PackageVersion",
     "Registry",
     "RegistryError",
+    "Requires",
     "declared",
     "for_ecosystem",
 ]

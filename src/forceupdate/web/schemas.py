@@ -21,7 +21,15 @@ from datetime import datetime
 
 from forceupdate.forges.accounts import Account, ConnectMethod
 from forceupdate.forges.base import Access, ChangeRequest, ForgeKind, RateLimit, Restriction
-from forceupdate.models import Ecosystem, Event, FindingKind, Gap, ScanOptions, Severity
+from forceupdate.models import (
+    Blocker,
+    Ecosystem,
+    Event,
+    FindingKind,
+    Gap,
+    ScanOptions,
+    Severity,
+)
 from forceupdate.net import CacheStats
 from forceupdate.preferences import DEFAULTS, Preferences
 from forceupdate.report.json import Document, SummaryDocument
@@ -848,6 +856,12 @@ class ProposedUpdate:
     held_by: tuple[str, ...]
     """Une indirecte que des paquets retiendront (``UpdateOption.held_by``) : ses failles ne
     seront pas corrigées par le lockfile seul."""
+    refused_by: tuple[str, ...] = ()
+    """Les paquets installés à cause desquels l'outil du lockfile la refusera, sauf s'ils montent
+    aussi (``UpdateOption.refused_by``, E37)."""
+    blockers: tuple[Blocker, ...] = ()
+    """Le détail des deux (``UpdateOption.blockers``) : ce que chacun demande, et la version de ce
+    paquet qui l'accepterait."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -1080,6 +1094,8 @@ def proposed_update(choice: Choice) -> ProposedUpdate:
         gap=option.gap,
         fixes=option.fixes,
         held_by=option.held_by,
+        refused_by=option.refused_by,
+        blockers=option.blockers,
     )
 
 

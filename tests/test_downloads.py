@@ -195,7 +195,7 @@ def answering(stdout: str, code: int = 0, stderr: str = "") -> Callable[..., Any
 
 def test_the_window_gives_the_chosen_folder() -> None:
     run = answering('{"path": "C:/Users/moi/Projets/boutique"}\n')
-    assert picker.pick(picker.PickKind.FOLDER, "C:/Users/moi", run=run) == (
+    assert picker.pick(picker.PickKind.FOLDER, "C:/Users/moi", run=run, system="win32") == (
         "C:/Users/moi/Projets/boutique"
     )
     (command,) = run.calls  # type: ignore[attr-defined]
@@ -206,7 +206,8 @@ def test_the_window_gives_the_chosen_folder() -> None:
 
 
 def test_cancelled_gives_nothing() -> None:
-    assert picker.pick(picker.PickKind.FILE, run=answering('{"path": null}\n')) is None
+    found = picker.pick(picker.PickKind.FILE, run=answering('{"path": null}\n'), system="win32")
+    assert found is None
 
 
 @pytest.mark.parametrize(
@@ -219,7 +220,108 @@ def test_cancelled_gives_nothing() -> None:
 )
 def test_no_window_says_why(stdout: str, says: str) -> None:
     with pytest.raises(picker.Unavailable, match=says):
-        picker.pick(picker.PickKind.FOLDER, run=answering(stdout))
+        picker.pick(picker.PickKind.FOLDER, run=answering(stdout), system="win32")
+
+
+def tools(*found: str) -> Callable[[str], str | None]:
+    """Un faux ``shutil.which`` : ``found`` sont installés, dans ``/usr/bin``."""
+    return lambda name: f"/usr/bin/{name}" if name in found else None
+
+
+def test_macos_asks_the_finder() -> None:
+    """E37 : ``osascript``, la fenêtre du Finder, sans Tk ; le titre et le dossier de départ en
+    arguments, jamais dans le script."""
+    run = answering("/Users/moi/Projets/boutique/\n")
+    found = picker.pick(
+        picker.PickKind.FOLDER, "/Users/moi", run=run, system="darwin", which=tools("osascript")
+    )
+    assert found == "/Users/moi/Projets/boutique"
+    (command,) = run.calls  # type: ignore[attr-defined]
+    assert command == [
+        "/usr/bin/osascript",
+        "-e",
+        picker.OSASCRIPT,
+        picker.TITLES[picker.PickKind.FOLDER],
+        "folder",
+        "/Users/moi",
+    ]
+    run = answering("/Users/moi/app.py\n")
+    assert (
+        picker.pick(picker.PickKind.FILE, run=run, system="darwin", which=tools("osascript"))
+        == "/Users/moi/app.py"
+    )
+    assert run.calls[0][-1] == "file"  # type: ignore[attr-defined]
+
+
+def test_macos_cancelled_or_failing() -> None:
+    cancelled = answering("", 1, "0:120: execution error: User canceled. (-128)\n")
+    mac = {"system": "darwin", "which": tools("osascript")}
+    assert picker.pick(picker.PickKind.FOLDER, run=cancelled, **mac) is None  # type: ignore[arg-type]
+    failing = answering("", 1, "execution error: Can't make file (-1700)\n")
+    with pytest.raises(picker.Unavailable, match="-1700"):
+        picker.pick(picker.PickKind.FOLDER, run=failing, **mac)  # type: ignore[arg-type]
+
+
+def test_linux_without_a_display_has_no_window() -> None:
+    run = answering("")
+    with pytest.raises(picker.Unavailable, match="pas d'affichage"):
+        picker.pick(
+            picker.PickKind.FOLDER, run=run, system="linux", which=tools("zenity"), environ={}
+        )
+    assert run.calls == []  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(
+    ("installed", "kind", "expected"),
+    [
+        (
+            "zenity",
+            picker.PickKind.FOLDER,
+            [
+                "/usr/bin/zenity",
+                "--file-selection",
+                f"--title={picker.TITLES[picker.PickKind.FOLDER]}",
+                "--directory",
+                "--filename=/home/moi/",
+            ],
+        ),
+        (
+            "kdialog",
+            picker.PickKind.FILE,
+            [
+                "/usr/bin/kdialog",
+                "--title",
+                picker.TITLES[picker.PickKind.FILE],
+                "--getopenfilename",
+                "/home/moi",
+            ],
+        ),
+    ],
+)
+def test_linux_asks_the_desktop(installed: str, kind: picker.PickKind, expected: list[str]) -> None:
+    run = answering("/home/moi/projets/boutique\n")
+    found = picker.pick(
+        kind,
+        "/home/moi",
+        run=run,
+        system="linux",
+        which=tools(installed),
+        environ={"WAYLAND_DISPLAY": "wayland-0"},
+    )
+    assert found == "/home/moi/projets/boutique"
+    assert run.calls == [expected]  # type: ignore[attr-defined]
+    cancelled = answering("", 1)
+    linux = {"system": "linux", "which": tools(installed), "environ": {"DISPLAY": ":0"}}
+    assert picker.pick(kind, run=cancelled, **linux) is None  # type: ignore[arg-type]
+
+
+def test_linux_without_zenity_nor_kdialog_uses_tk() -> None:
+    run = answering('{"path": "/home/moi/projet"}\n')
+    found = picker.pick(
+        picker.PickKind.FOLDER, run=run, system="linux", which=tools(), environ={"DISPLAY": ":0"}
+    )
+    assert found == "/home/moi/projet"
+    assert run.calls[0][:3] == [sys.executable, "-I", "-c"]  # type: ignore[attr-defined]
 
 
 def test_the_script_runs(tmp_path: Path) -> None:

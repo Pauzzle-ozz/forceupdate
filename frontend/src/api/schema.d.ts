@@ -777,6 +777,41 @@ export interface components {
          */
         BatchStatus: "running" | "done" | "cancelled";
         /**
+         * Blocker
+         * @description Un paquet installé qui n'accepte pas la version d'une option (E37) : il la retient
+         *     (``UpdateOption.held_by``) ou l'outil du lockfile la refusera (``UpdateOption.refused_by``).
+         */
+        Blocker: {
+            /** Name */
+            name: string;
+            /** Version */
+            version: string;
+            /** Range */
+            range: string;
+            /**
+             * Peer
+             * @default false
+             */
+            peer: boolean;
+            /**
+             * Companion
+             * @default false
+             */
+            companion: boolean;
+            /** Accepting */
+            accepting: string | null;
+            /**
+             * Checked
+             * @default false
+             */
+            checked: boolean;
+            /**
+             * Held
+             * @default false
+             */
+            held: boolean;
+        };
+        /**
          * CacheState
          * @description Le cache disque : où il est, ce qu'il contient (``net.cache.Cache.stats``).
          */
@@ -1693,6 +1728,16 @@ export interface components {
             fixes: string[];
             /** Held By */
             held_by: string[];
+            /**
+             * Refused By
+             * @default []
+             */
+            refused_by: string[];
+            /**
+             * Blockers
+             * @default []
+             */
+            blockers: components["schemas"]["Blocker"][];
         };
         /**
          * RateLimit
@@ -1962,8 +2007,10 @@ export interface components {
         };
         /**
          * Requirement
-         * @description Un paquet du lockfile qui requiert une dépendance indirecte, et la plage qu'il en demande
-         *     (session 37) : par le lockfile seul, elle ne sortira pas de cette plage.
+         * @description Un paquet du lockfile qui requiert une dépendance, et la plage qu'il en demande (session
+         *     37, E37) : par le lockfile seul, une indirecte ne sortira pas de cette plage ; une version
+         *     hors de la plage, l'outil du lockfile la refuse (une seule version pour tous : Python, une
+         *     dépendance pair de npm).
          */
         Requirement: {
             /** Name */
@@ -1972,6 +2019,11 @@ export interface components {
             version: string;
             /** Range */
             range: string;
+            /**
+             * Peer
+             * @default false
+             */
+            peer: boolean;
         };
         /**
          * Restriction
@@ -2416,6 +2468,16 @@ export interface components {
              * @default []
              */
             held_by: string[];
+            /**
+             * Refused By
+             * @default []
+             */
+            refused_by: string[];
+            /**
+             * Blockers
+             * @default []
+             */
+            blockers: components["schemas"]["Blocker"][];
         };
         /**
          * UpdatePlan

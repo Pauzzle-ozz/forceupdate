@@ -56,11 +56,17 @@ from forceupdate.parsers import code as code_parser
 from forceupdate.parsers import python
 from forceupdate.parsers.base import REASON_WORKSPACE, ReadText
 from forceupdate.parsers.lockfiles import dirname
-from forceupdate.registries import AccessRefused, PackageInfo, PackageNotFound, RegistryError
+from forceupdate.registries import (
+    AccessRefused,
+    PackageInfo,
+    PackageNotFound,
+    RegistryError,
+    Requires,
+)
 from forceupdate.registries.maven import Maven
 from forceupdate.routing import Clients, Route, Routing
 from forceupdate.sources.base import ChosenCode, Source
-from forceupdate.update import planner
+from forceupdate.update import blockers, planner
 
 EventCallback = Callable[[Event], None]
 
@@ -426,6 +432,11 @@ async def _check(
     ]
     found |= await packagist.merge(await osv.vulnerabilities(proposed)) if proposed else {}
     planner.audit(report, found, rules)
+    # Ce que demandent les autres paquets : une version qu'ils retiendront, ou feront refuser
+    # (E37) ; les plages que le lockfile ne dit pas, et les versions qui les accepteraient, lues
+    # aux registres.
+    await blockers.constrain(report, _RegistryLookup(clients, routes))
+    planner.reselect(report, rules)
 
     dates = [o.fetched_at for o in outcomes.values() if isinstance(o, PackageInfo)]
     dates += [f.fetched_at for f in found.values() if isinstance(f, Vulnerabilities)]
@@ -789,6 +800,45 @@ async def _lookup_all(
         ):
             raise result
     return dict(zip(keys, results, strict=True))  # type: ignore[arg-type]
+
+
+class _RegistryLookup:
+    """Ce que disent les registres pour ``blockers`` : chaque paquet par sa route dans son projet
+    (E33) ; ``None`` pour un paquet qu'on ne vérifie pas, introuvable, ou un registre en erreur."""
+
+    def __init__(self, clients: Clients, routes: Routing) -> None:
+        self._clients = clients
+        self._routes = routes
+
+    def _route(self, project: Project, ecosystem: Ecosystem, name: str) -> Route | None:
+        dependency = next(
+            (d for d in project.dependencies if d.ecosystem is ecosystem and d.name == name),
+            None,
+        ) or Dependency(ecosystem=ecosystem, name=name, file="", direct=False)
+        route = self._routes.route(project, dependency)
+        return None if route.unchecked is not None else route
+
+    async def package(
+        self, project: Project, ecosystem: Ecosystem, name: str
+    ) -> PackageInfo | None:
+        route = self._route(project, ecosystem, name)
+        if route is None:
+            return None
+        try:
+            return await self._clients.package(ecosystem, route, name)
+        except (PackageNotFound, RegistryError):
+            return None
+
+    async def requires(
+        self, project: Project, ecosystem: Ecosystem, name: str, version: str
+    ) -> Requires | None:
+        route = self._route(project, ecosystem, name)
+        if route is None:
+            return None
+        try:
+            return await self._clients.requires(ecosystem, route, name, version)
+        except (PackageNotFound, RegistryError):
+            return None
 
 
 def _findings(project: Project, dependency: Dependency, outcome: _Outcome) -> list[Finding]:

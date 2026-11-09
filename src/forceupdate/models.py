@@ -150,13 +150,18 @@ class Location:
 
 @dataclass(frozen=True, kw_only=True)
 class Requirement:
-    """Un paquet du lockfile qui requiert une dépendance indirecte, et la plage qu'il en demande
-    (session 37) : par le lockfile seul, elle ne sortira pas de cette plage."""
+    """Un paquet du lockfile qui requiert une dépendance, et la plage qu'il en demande (session
+    37, E37) : par le lockfile seul, une indirecte ne sortira pas de cette plage ; une version
+    hors de la plage, l'outil du lockfile la refuse (une seule version pour tous : Python, une
+    dépendance pair de npm)."""
 
     name: str
     version: str
     range: str
-    """Telle qu'écrite dans le lockfile (``^10.2.1``)."""
+    """Telle qu'écrite dans le lockfile (``^10.2.1``) ; vide si le lockfile ne la dit pas
+    (``uv.lock``, ``pnpm-lock.yaml`` : elle est lue au registre, E37)."""
+    peer: bool = False
+    """npm : une dépendance pair (``peerDependencies``) ; une seule version pour tout le projet."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -215,8 +220,9 @@ class Dependency:
     de ``requirements`` à empreintes, ``--hash``) : ses options sont à faire à la main, jamais
     pré-cochées. ``None`` si elle se réécrit."""
     required_by: tuple[Requirement, ...] = ()
-    """Une indirecte : les paquets du lockfile qui la requièrent à cette version, et la plage
-    que chacun demande (``package-lock.json`` ; vide ailleurs, et pour une directe)."""
+    """Les paquets du lockfile qui la requièrent à cette version, et la plage que chacun demande
+    (npm, Yarn, pnpm, uv, Poetry ; vide ailleurs). Ni le projet ni un membre du workspace : ce
+    sont les contraintes des manifestes."""
 
     @property
     def verifiable(self) -> bool:
@@ -426,6 +432,35 @@ class Edit:
 
 
 @dataclass(frozen=True, kw_only=True)
+class Blocker:
+    """Un paquet installé qui n'accepte pas la version d'une option (E37) : il la retient
+    (``UpdateOption.held_by``) ou l'outil du lockfile la refusera (``UpdateOption.refused_by``)."""
+
+    name: str
+    version: str
+    """Sa version installée."""
+    range: str
+    """Ce qu'il demande du paquet mis à jour (``^10.2.1``) ; pour un ``companion``, ce que la
+    version visée demande de lui."""
+    peer: bool = False
+    """npm : une dépendance pair."""
+    companion: bool = False
+    """La version visée le demande comme dépendance pair, dans une plage que sa version installée
+    ne satisfait pas : il doit monter avec elle (``@types/react`` pour ``@types/react-dom``
+    19)."""
+    accepting: str | None = None
+    """La plus basse version publiée de ce paquet, au-dessus de l'installée, qui accepte la
+    version visée (pour un ``companion`` : qui satisfait ``range``) ; ``None`` si aucune, ou si on
+    ne le sait pas (``checked``)."""
+    checked: bool = False
+    """Vrai si ses versions publiées ont pu être lues : ``accepting`` à ``None`` veut alors dire
+    qu'aucune ne convient."""
+    held: bool = False
+    """Vrai s'il retient la version (``held_by``), faux si l'outil la refusera
+    (``refused_by``)."""
+
+
+@dataclass(frozen=True, kw_only=True)
 class UpdateOption:
     """Une version vers laquelle monter un paquet : une case à cocher de l'interface."""
 
@@ -458,6 +493,16 @@ class UpdateOption:
     n'accepte pas cette version (``nodemon 3.1.14``), d'après ``Dependency.required_by``. Ils la
     retiendront : ses failles ne sont pas comptées corrigées, et elle n'est jamais
     pré-cochée."""
+    refused_by: tuple[str, ...] = ()
+    """Les paquets installés à cause desquels l'outil du lockfile refusera cette version (E37 :
+    ``arq 0.26.3``, qui demande ``redis<6``), sauf s'ils montent aussi : leur plage ne l'accepte
+    pas, et une seule version est possible (Python, une dépendance pair de npm, uv qui la vise
+    exactement) ; ou elle demande une dépendance pair que la version installée ne satisfait pas.
+    Comme ``held_by`` : ses failles ne sont pas comptées corrigées, et elle n'est jamais
+    pré-cochée. Le reprise de l'outil (``update.lockfiles``) reste."""
+    blockers: tuple[Blocker, ...] = ()
+    """Le détail de ``held_by`` et ``refused_by`` : pour chacun, ce qu'il demande, et la version
+    de ce paquet qui accepterait celle-ci."""
 
 
 @dataclass(frozen=True, kw_only=True)

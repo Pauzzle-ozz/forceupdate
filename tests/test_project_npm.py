@@ -496,7 +496,7 @@ TAILWIND = """\
 def test_the_real_npm_of_the_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Le critère de E32 : npm 11 sur la machine, une CI en Node 22 ; la mise à jour donne un
     lockfile que le vrai ``npm@10 ci`` accepte. Avec ``--no-extras``, c'est npm 11 qui l'écrit
-    (il y ajoute des ``"peer": true`` que npm 10 retire). Le cache de npm et de npx est celui du
+    (sans npx). Le cache de npm et de npx est celui du
     test."""
     npm, npx = shutil.which("npm"), shutil.which("npx")
     if npm is None or npx is None:
@@ -554,11 +554,14 @@ def test_the_real_npm_of_the_project(tmp_path: Path, monkeypatch: pytest.MonkeyP
     )
     assert check.returncode == 0, check.stderr
 
-    # La case décochée : npm 11 réécrit le lockfile à sa façon.
+    # La case décochée : npm 11, celui de la machine, réécrit le lockfile (les "peer": true
+    # qu'il ajoutait dépendent des versions publiées : npm 11.19 ne les met plus ici).
     (declined,) = lockfiles.decline([job], [job.lockfile])
+    assert not declined.accepted and declined.launcher == ()
     (again,) = lockfiles.regenerate(
         source, engine.inventory(source), writers.Changes(), (declined,)
     )
     assert again.status is LockStatus.REGENERATED, again.error
-    assert again.verified is None
-    assert '"peer": true' in (root / "package-lock.json").read_text(encoding="utf-8")
+    # Relu lui aussi (session 36 : tout lockfile npm l'est), par le npm de l'ordinateur.
+    assert again.verified is not None and again.verified.error is None, again.verified
+    assert "npm@10" not in again.verified.command

@@ -37,12 +37,16 @@ qu'on ne sait pas ranger est ignoré, et une version sans fichier rangé n'est n
 retirée : un nom de fichier mal lu ne doit pas donner un faux « retiré ».
 """
 
+import asyncio
 from collections.abc import Iterable, Mapping
 from datetime import datetime
 from html.parser import HTMLParser
 from typing import Any, ClassVar
 from urllib.parse import quote, unquote, urlsplit
 
+from packaging.requirements import InvalidRequirement
+from packaging.requirements import Requirement as PackagingRequirement
+from packaging.specifiers import SpecifierSet
 from packaging.utils import (
     InvalidSdistFilename,
     InvalidWheelFilename,
@@ -50,13 +54,18 @@ from packaging.utils import (
     parse_sdist_filename,
     parse_wheel_filename,
 )
+from packaging.version import InvalidVersion as PackagingInvalidVersion
+from packaging.version import Version
 
 from forceupdate.models import Ecosystem
+from forceupdate.net.cache import CacheKind
 from forceupdate.net.http import Response
 from forceupdate.registries.base import (
     PackageInfo,
     PackageVersion,
     Registry,
+    RegistryError,
+    Requires,
     parse_time,
     sorted_versions,
 )
@@ -149,6 +158,101 @@ class PyPI(Registry):
             url=self.page_url(name),
             fetched_at=fetched_at,
         )
+
+    async def requires(self, name: str, version: str) -> Requires | None:
+        """Ce que demande la version ``version`` (``requires_dist``, E37), lu dans l'API JSON de
+        PyPI pour cette version (``/pypi/{nom}/{version}/json``) : l'API Simple ne le dit pas. Une
+        requête par version, une fois par session ; rangée 7 jours dans le cache (``FILES`` : ce
+        que demande une version publiée ne change pas). Seulement sur pypi.org : un index déclaré
+        n'a pas cette API (``None``), ni une version que PyPI ne connaît pas."""
+        if self.base_url != PyPI.base_url:
+            return None
+        key = (self.normalize(name), version)
+        lookup = self._requires_lookups.get(key)
+        if lookup is None:
+            lookup = self._requires_lookups[key] = asyncio.ensure_future(self._requires_of(*key))
+        return await asyncio.shield(lookup)
+
+    async def _requires_of(self, name: str, version: str) -> Requires | None:
+        url = f"{self.base_url}/pypi/{quote(name)}/{quote(version)}/json"
+        entry = self._cache.get(CacheKind.FILES, url, stale_ok=self._http.offline)
+        cached = entry.value if entry is not None else None
+        if isinstance(cached, dict) and cached.get("format") == _REQUIRES_FORMAT:
+            found = cached.get("requires")
+            return None if found is None else Requires(dependencies=dict(found))
+        if self._http.offline:
+            raise RegistryError(
+                f"{self.label} : mode hors ligne, et {name} {version} n'est pas dans le cache."
+            )
+        response = await self._get(url, name, found=True, headers={"Accept": "application/json"})
+        requires = None
+        if response is not None:
+            try:
+                info = _mapping(_mapping(response.json()).get("info"))
+                requires = requires_dist(info.get("requires_dist"))
+            except (ValueError, TypeError) as error:
+                raise RegistryError(
+                    f"{self.label} : réponse illisible pour {name} {version} ({error})."
+                ) from error
+        self._cache.set(
+            CacheKind.FILES,
+            url,
+            {
+                "format": _REQUIRES_FORMAT,
+                "requires": None if requires is None else dict(requires.dependencies),
+            },
+        )
+        return requires
+
+
+_REQUIRES_FORMAT = 1
+"""Version du format des entrées du cache de ``PyPI.requires``."""
+
+
+def requires_dist(lines: Any) -> Requires:
+    """``requires_dist`` (des lignes de PEP 508) en plages par paquet : les lignes d'un même paquet
+    réunies par ``||`` (leurs marqueurs n'en gardent qu'une, qu'on ne sait pas choisir sans
+    l'environnement) ; une ligne sans contrainte accepte tout (plage vide). ``null`` : aucune
+    dépendance. Une ligne illisible est ignorée."""
+    if lines is None:
+        return Requires()
+    if not isinstance(lines, list):
+        raise ValueError(f"liste attendue pour requires_dist, pas {type(lines).__name__}")
+    found: dict[str, list[SpecifierSet]] = {}
+    for line in lines:
+        if not isinstance(line, str):
+            continue
+        try:
+            requirement = PackagingRequirement(line)
+        except InvalidRequirement:
+            continue
+        ranges = found.setdefault(canonicalize_name(requirement.name), [])
+        if requirement.specifier not in ranges:
+            ranges.append(requirement.specifier)
+    return Requires(dependencies={name: _union(ranges) for name, ranges in found.items()})
+
+
+def _union(ranges: list[SpecifierSet]) -> str:
+    """Les plages des lignes d'un même paquet, réunies : vide si l'une accepte tout ; une seule si
+    elles ne diffèrent que par leur borne basse ``>=`` (``<13,>=10.3`` et ``<13,>=12``, selon la
+    version de Python : la plus basse les contient toutes) ; sinon ``a || b``."""
+    if any(not str(r) for r in ranges):
+        return ""
+    if len(ranges) > 1:
+        rest = {frozenset(str(s) for s in r if s.operator != ">=") for r in ranges}
+        lows = [[s for s in r if s.operator == ">="] for r in ranges]
+        if len(rest) == 1 and all(len(low) <= 1 for low in lows):
+            if any(not low for low in lows):
+                return str(SpecifierSet(",".join(rest.pop())))
+            try:
+                return str(min(ranges, key=_lower_bound))
+            except PackagingInvalidVersion:
+                pass
+    return " || ".join(str(r) for r in ranges)
+
+
+def _lower_bound(specifiers: SpecifierSet) -> Version:
+    return Version(next(s for s in specifiers if s.operator == ">=").version)
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:

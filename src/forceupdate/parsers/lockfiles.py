@@ -56,8 +56,11 @@ class LockedPackage:
     (npm : ``node_modules/a/node_modules/x``, descripteur Yarn, clé pnpm). Vide : le nom."""
     requires: Mapping[str, str] = field(default_factory=dict)
     """La plage qu'il demande de chaque paquet qu'il requiert, par nom, si le lockfile la dit
-    (``package-lock.json`` : ``{"minimatch": "^10.2.1"}``) ; elle va dans
-    ``Dependency.required_by``."""
+    (``package-lock.json`` : ``{"minimatch": "^10.2.1"}`` ; ``yarn.lock``, ``poetry.lock``) ;
+    elle va dans ``Dependency.required_by``."""
+    peers: Mapping[str, str] = field(default_factory=dict)
+    """npm : la plage de chacune de ses dépendances pair (``peerDependencies``), si le lockfile
+    la dit (``package-lock.json``, Yarn 2+, ``pnpm-lock.yaml``)."""
 
     @property
     def node(self) -> str:
@@ -77,6 +80,10 @@ class Lockfile:
     shared: bool = False
     """Vrai s'il contient les paquets d'autres projets (workspace) : seuls ceux que
     tirent les dépendances du projet sont à lui."""
+    ranges: bool = True
+    """Faux si le lockfile ne dit jamais la plage qu'un paquet demande de ceux qu'il requiert
+    (``uv.lock``, ``pnpm-lock.yaml`` : seulement leurs noms, ou leurs versions) : chaque lien
+    donne alors un ``Requirement`` sans plage, à lire au registre (E37)."""
 
 
 SCOPE_ORDER = (Scope.RUNTIME, Scope.PEER, Scope.OPTIONAL, Scope.DEV)
@@ -130,7 +137,7 @@ def transitives(
     qu'une fois.
     """
     scopes = reachable_scopes(starts, lock, order=order) if lock.graph else {}
-    required = _required_by(lock)
+    required = required_by(lock)
     result = []
     seen: set[tuple[str, str]] = set()
     for package in lock.packages:
@@ -159,24 +166,71 @@ def transitives(
     return result
 
 
-def _required_by(lock: Lockfile) -> dict[tuple[str, str], list[Requirement]]:
+def required_by(lock: Lockfile) -> dict[tuple[str, str], list[Requirement]]:
     """Pour chaque paquet du lockfile (nom, version), ceux qui le requièrent et la plage que
-    chacun demande (``LockedPackage.requires``), toutes ses copies confondues ; vide sans
-    graphe ou sans plages."""
-    if not lock.graph or not any(package.requires for package in lock.packages):
+    chacun demande, toutes ses copies confondues (``Dependency.required_by``) : par les liens du
+    graphe, avec ``LockedPackage.requires`` ou ``peers`` ; sans plage si le lockfile n'en dit
+    jamais (``Lockfile.ranges``). Une dépendance pair que le lockfile ne relie pas (Yarn 2+,
+    pnpm) va à toutes les copies du paquet de ce nom. Pas le projet lui-même ni un membre du
+    workspace (``local``) : leurs plages sont les contraintes de leurs manifestes. Vide sans
+    graphe."""
+    if not lock.graph:
         return {}
     by_node = {package.node: package for package in lock.packages}
+    by_name: dict[str, list[LockedPackage]] = defaultdict(list)
+    for package in lock.packages:
+        if not package.local:
+            by_name[package.name].append(package)
     found: dict[tuple[str, str], list[Requirement]] = defaultdict(list)
+
+    def add(child: LockedPackage, requirement: Requirement) -> None:
+        if requirement not in found[(child.name, child.version)]:
+            found[(child.name, child.version)].append(requirement)
+
     for parent in lock.packages:
+        if parent.local:
+            continue
+        linked = set()
         for node, _ in parent.dependencies:
             child = by_node.get(node)
-            wanted = parent.requires.get(child.name) if child is not None else None
-            if child is None or wanted is None:
+            if child is None or child.local:
                 continue
-            requirement = Requirement(name=parent.name, version=parent.version, range=wanted)
-            if requirement not in found[(child.name, child.version)]:
-                found[(child.name, child.version)].append(requirement)
+            linked.add(child.name)
+            if child.name in parent.requires:
+                wanted, peer = parent.requires[child.name], False
+            elif child.name in parent.peers:
+                wanted, peer = parent.peers[child.name], True
+            elif not lock.ranges:
+                wanted, peer = "", False
+            else:
+                continue
+            add(
+                child,
+                Requirement(name=parent.name, version=parent.version, range=wanted, peer=peer),
+            )
+        for name, wanted in parent.peers.items():
+            if name in linked:
+                continue
+            for child in by_name.get(name, ()):
+                add(
+                    child,
+                    Requirement(name=parent.name, version=parent.version, range=wanted, peer=True),
+                )
     return found
+
+
+def with_required_by(
+    dependencies: Iterable[Dependency], required: Mapping[tuple[str, str], Sequence[Requirement]]
+) -> list[Dependency]:
+    """``dependencies`` (des directes), chacune avec les paquets du lockfile qui requièrent sa
+    version installée (``required``, de ``required_by``)."""
+    result = []
+    for dependency in dependencies:
+        found = required.get((dependency.name, dependency.installed or ""))
+        if found and dependency.installed:
+            dependency = replace(dependency, required_by=tuple(found))
+        result.append(dependency)
+    return result
 
 
 def reachable_scopes(

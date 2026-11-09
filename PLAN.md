@@ -3961,14 +3961,14 @@ marche ; la CI est verte.
 
 Ce que E36 a laissé (session 37, décidé avec l'utilisateur) ; la 1.0.0 est livrée sans.
 
-- [ ] **La version du parent qui accepte la correction** d'une indirecte retenue (`held_by`) : lire
+- [x] **La version du parent qui accepte la correction** d'une indirecte retenue (`held_by`) : lire
   au registre les versions du paquet qui la tire et la plage que chacune demande (le document npm
   du paquet : `dependencies` de chaque version) ; la proposer (« monter nodemon en 4.0.1, qui
   accepte minimatch 11 »), ou dire qu'aucune ne l'accepte. Écran 5, récapitulatif des PR, terminal.
-- [ ] **Les indirectes retenues dites d'avance pour pnpm, Yarn (1 et 2+), uv et Poetry** : leurs
+- [x] **Les indirectes retenues dites d'avance pour pnpm, Yarn (1 et 2+), uv et Poetry** : leurs
   lockfiles disent la plage de chaque parent (`LockedPackage.requires`, aujourd'hui rempli pour
   `package-lock.json` seulement) ; chaque parseur, ses tests, les mini-projets.
-- [ ] **Prévoir le refus d'une majeure avant de lancer l'outil** : les `peerDependencies` de npm, les
+- [x] **Prévoir le refus d'une majeure avant de lancer l'outil** : les `peerDependencies` de npm, les
   `requires_dist` de PyPI (`redis` 8 que `arq` refuse, `typescript` 7 que `openapi-typescript`
   refuse) ; le dire dès l'écran 5, à côté de la reprise de `lockfiles._retry` (qui reste).
 - [ ] **« Parcourir… » sous macOS** (une personne avec un Mac : `osascript` ou Tk) et sous Linux avec
@@ -3977,6 +3977,82 @@ Ce que E36 a laissé (session 37, décidé avec l'utilisateur) ; la 1.0.0 est li
   `v1.1.0` avec l'accord de l'utilisateur, vérifiée depuis PyPI.
 
 **Fini quand** : les quatre points sont faits (ou décidés avec l'utilisateur) et la 1.1.0 publiée.
+
+**Notes** (session 38) :
+
+- **Début** : rien à commiter ; CI de `d170147` verte. Les tests `network` du lundi (le premier
+  passage planifié de `network.yml`) échouaient sur deux tests restés en arrière, en local aussi :
+  `test_the_real_npm_of_the_project` attendait un lockfile du npm de l'ordinateur non relu (il
+  l'est depuis la session 36) et des `"peer": true` que npm 11.19 n'écrit plus ici (le test vérifie
+  maintenant que c'est le npm de l'ordinateur qui relit) ; `test_a_real_public_repository`
+  comptait 6 requêtes au plus pour `pallets/markupsafe`, qui a maintenant 5 workflows (lus depuis
+  E32) : une requête par fichier lu, plus le dépôt et l'arborescence. **Décisions de
+  l'utilisateur** : toute E37 dans la session (découpage proposé, refusé) ; les PR #2 (GitHub,
+  Bitbucket) et la MR !2 (gitlab.com) des `forceupdate-demo` **fermées sans fusion**, à sa demande
+  (gh, et l'API avec les comptes du trousseau) ; le « yank » de la 0.1.0 : expliqué (il ne savait
+  pas ce que c'était), à faire par lui sur pypi.org ; « Parcourir… » sous macOS : « tu testes
+  toi » (pas de Mac : la CI). Le skill `ui-ux-pro-max` est rangé dans
+  `~/.claude/skills-archive/ui-ux-pro-max-v2.5.0` (plus chargé comme skill) : son `SKILL.md` lu là.
+- **Trouvé en lisant le code** : `uv.lock` et `pnpm-lock.yaml` **n'écrivent pas les plages** (uv :
+  les noms seulement ; pnpm : les versions résolues, et les plages des pairs) ; seuls
+  `package-lock.json`, `yarn.lock` (1 et 2+) et `poetry.lock` les donnent. D'où une base commune
+  aux trois premiers points : **ce que demande chaque version d'un paquet, lu au registre**
+  (`registries.Requires`, `PackageVersion.requires`, `Registry.requires`, `Clients.requires`) :
+  npm, dans le document du paquet déjà téléchargé (`dependencies`, `optionalDependencies`,
+  `peerDependencies` sans les optionnelles ; pour les versions stables seulement : les canaris de
+  `next` gonfleraient le cache), rangé au format 4 du cache (chaque ensemble distinct une fois) ;
+  PyPI, par l'API JSON d'une version (`/pypi/{nom}/{version}/json`, `requires_dist` : les lignes
+  d'un même paquet réunies par `||`, ou fusionnées quand elles ne diffèrent que par leur borne
+  basse, `fastembed` 0.8.0 et `pillow`), une requête par version, cache `FILES` (7 jours) ;
+  seulement sur pypi.org (un index déclaré n'a pas cette API : on n'en sait rien).
+- **Les lockfiles** (`parsers/lockfiles.required_by`, public) : `LockedPackage.peers`,
+  `Lockfile.ranges` (faux pour uv et pnpm : chaque lien donne un `Requirement` sans plage) ;
+  `Requirement.peer` ; une dépendance pair que le lockfile ne relie pas (Yarn 2+) va aux copies du
+  paquet de ce nom ; ni le projet ni un membre du workspace (leurs plages sont les contraintes des
+  manifestes, réécrites) ; **les directes aussi** (`with_required_by`, pour le refus prévu). Pas de
+  nouveau mini-projet : ceux de E04 et E03 (npm, Yarn 1, Yarn 4, pnpm 9, Poetry, uv, faits par les
+  vrais outils) couvrent tout (`tests/test_required_by.py`).
+- **La passe `update/blockers.constrain`** (après `planner.audit`, puis `planner.reselect`) : le
+  planner ne calcule plus l'indirecte retenue lui-même. Pour chaque option npm ou PyPI : les
+  plages inconnues lues au registre (la version installée du paquet qui la tire) ; **retenue**
+  (`held_by`) pour une indirecte par le lockfile seul quand l'outil la monte « aussi haut que
+  possible » (npm, pnpm, Yarn, Poetry, PDM, pipenv : `MOVES_UP`) ; **refusée** (`refused_by`,
+  nouveau) sinon : une directe, ou une indirecte que uv et pip-compile visent exactement
+  (`--upgrade-package x==V`), refusée par une plage en Python (une version pour tout le projet),
+  par une dépendance pair seulement en npm (une dépendance ordinaire : une copie à part) ; une
+  version forcée (`overrides`) passe outre. npm, en plus : **la dépendance pair que la version
+  visée demande** et que l'installée ne satisfait pas (`Blocker.companion`), sauf si la version
+  utilisée la demandait déjà (le projet vit avec : `vite` et `yaml`, faux positif trouvé sur
+  `sechunter`, corrigé avec les pairs optionnels). Pour chacun, **la plus basse version publiée
+  qui l'accepterait** (`Blocker.accepting`, `checked`) : tout le document npm ; PyPI, la dernière
+  puis par dichotomie (`MAX_LOOKUPS` = 8). « Dépendance indirecte : … devra peut-être monter
+  aussi » est retiré quand les plages sont connues. Jamais pré-cochée (`choose`), failles pas
+  comptées ; `_retry` reste.
+- **Affichage** : les avertissements disent tout (« … ; monter d'abord nodemon en 4.0.1 (la
+  première version qui l'accepte). », « … : uv la refusera, et aucune de ses versions publiées ne
+  l'accepte. », « Demande @types/react ^19.3.0 (dépendance pair), et @types/react 18.3.28 est
+  installée : npm la refusera, sauf si @types/react monte aussi (19.3.0 au moins). ») : écran 5 et
+  terminal sans nouveau composant ; « Corrigerait …, mais X la fera refuser » ; le récapitulatif des
+  PR (`ProposedUpdate.refused_by`, `blockers` ; `blockedText` : « retenue par … : monter d'abord …
+  en … », « refusée à cause de … ») ; la description de PR et le terminal après la mise à jour
+  (« retenue en … par … (nodemon 4.0.1 l'accepte) », `report.option_unblock`). API : `Blocker`,
+  `UpdateOption.refused_by`, `blockers` ; `schema_version` reste 1 (des champs en plus).
+- **Vérifié en vrai** (vrais registres, l'outil du dépôt) : le front de forceupdate (`typescript`
+  7.0.2 refusée, `openapi-typescript` 7.13.0 demande `^5.x` en pair, aucune version ne l'accepte ;
+  `minimatch` 11.0.1 retenue par `@ts-morph/common` 0.27.0, aucune ne l'accepte : vérifié avec
+  `npm view`) ; un clone de `sechunter` (`redis` 8.1.0 et `python-dateutil` 4.0.0, les deux
+  majeures que la reprise retirait à la session 37, dites d'avance ; `minimatch` du front) ; un
+  clone d'`argos-ops` (`pillow` 13.0.0, `fastembed` 0.9.1 l'accepterait ; `@types/react` et
+  `@types/react-dom`, `react` et `react-dom`, `vite` 8 et `@vitejs/plugin-react` et `esbuild`).
+  Une analyse prend quelques secondes de plus (les requêtes de PyPI vont dans le cache).
+- **« Parcourir… »** (`web.picker`) : macOS par `osascript` (`choose folder`, `choose file`, la
+  fenêtre du Finder, sans Tk ; le titre et le dossier de départ en arguments ; annuler = -128) ;
+  Linux : rien sans `DISPLAY` ni `WAYLAND_DISPLAY`, sinon `zenity`, `kdialog`, puis Tk ; Windows :
+  Tk, inchangé. **Vérifié sous Linux** avec une vraie fenêtre (Docker, Xvfb, `xdotool` qui la
+  remplit comme une personne) : `zenity` rend le dossier choisi, l'annulation `None`, Tk aussi.
+  `tests/picker_desktop.py` et le workflow **« Fenêtre de choix »** (`picker.yml`, à la demande :
+  macOS devant Safari, Linux avec `zenity`, Linux avec Tk ; captures en artefacts) : le seul Mac à
+  portée est celui de la CI.
 
 ---
 

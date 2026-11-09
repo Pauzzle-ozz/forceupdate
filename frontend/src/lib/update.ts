@@ -6,6 +6,7 @@
  * découper un diff unifié en lignes.
  */
 import type {
+  Blocker,
   Edit,
   Finding,
   LockJob,
@@ -44,10 +45,14 @@ export function fixesSentence(option: UpdateOption): { text: string; full: boole
   const left = option.unfixed.length
   if (fixed + left === 0) return null
   // Une indirecte que son parent retiendra (session 37) : la version corrige, le lockfile ne
-  // la prendra pas.
+  // la prendra pas. Une version que l'outil refusera à cause d'un paquet installé (E37) : de même.
   if (fixed > 0 && option.held_by.length > 0) {
     const verb = option.held_by.length >= 2 ? 'la retiendront' : 'la retiendra'
     return { text: `Corrigerait ${count(fixed, 'faille')}, mais ${listText(option.held_by)} ${verb}`, full: false }
+  }
+  if (fixed > 0 && option.refused_by.length > 0) {
+    const verb = option.refused_by.length >= 2 ? 'la feront refuser' : 'la fera refuser'
+    return { text: `Corrigerait ${count(fixed, 'faille')}, mais ${listText(option.refused_by)} ${verb}`, full: false }
   }
   if (left === 0) return { text: fixed === 1 ? 'Corrige la faille' : `Corrige les ${fixed} failles`, full: true }
   if (fixed === 0) return { text: `Laisse ${count(left, 'faille')}`, full: false }
@@ -203,8 +208,9 @@ export function recap(report: Report, selection: Selection): Recap {
       const option = chosenOption(update, selection[update.id])
       if (!option) continue
       result.chosen += 1
-      // Retenue par le paquet qui la tire : ses failles resteront (session 37).
-      if (option.held_by.length === 0) result.fixed += option.fixes.length
+      // Retenue par le paquet qui la tire (session 37), ou refusée à cause d'un paquet installé
+      // (E37) : ses failles resteront.
+      if (!isBlocked(option)) result.fixed += option.fixes.length
       result.introduced += option.introduced.length
       if (option.gap === 'major') result.majors += 1
       for (const edit of option.edits) files.add(editTarget(edit))
@@ -232,6 +238,32 @@ export function runnableTools(jobs: LockJob[]): string[] {
 }
 
 /** « a », « a et b », « a, b et c ». */
+/** Des paquets installés retiennent la version, ou la feront refuser (`held_by`, `refused_by`). */
+export function isBlocked(item: { held_by: string[]; refused_by: string[] }): boolean {
+  return item.held_by.length > 0 || item.refused_by.length > 0
+}
+
+/**
+ * Ce qui retient une version ou la fera refuser (E37), pour une ligne : « retenue par nodemon
+ * 3.1.14 : monter d'abord nodemon en 3.2.0 », « refusée à cause de arq 0.26.3 : aucune de ses
+ * versions ne l'accepte », « … : monter ce paquet d'abord » quand on ne sait pas laquelle.
+ * `null` si rien ne la bloque.
+ */
+export function blockedText(item: { held_by: string[]; refused_by: string[]; blockers: Blocker[] }): string | null {
+  const held = item.held_by.length > 0
+  const who = held ? item.held_by : item.refused_by
+  if (who.length === 0) return null
+  const head = held ? `retenue par ${who.join(', ')}` : `refusée à cause de ${who.join(', ')}`
+  const mine = item.blockers.filter((blocker) => blocker.held === held)
+  const moves = [...new Set(mine.flatMap((blocker) => (blocker.accepting ? [`${blocker.name} en ${blocker.accepting}`] : [])))]
+  if (moves.length > 0) return `${head} : monter ${held ? "d'abord" : 'aussi'} ${listText(moves)}`
+  if (mine.length > 0 && mine.every((blocker) => blocker.checked)) {
+    return `${head} : aucune de ${who.length >= 2 ? 'leurs' : 'ses'} versions ne l'accepte`
+  }
+  const these = who.length >= 2 ? 'ces paquets' : 'ce paquet'
+  return `${head} : monter ${these} ${held ? "d'abord" : 'aussi'}`
+}
+
 export function listText(items: string[]): string {
   if (items.length <= 1) return items.join('')
   return `${items.slice(0, -1).join(', ')} et ${items.at(-1)}`

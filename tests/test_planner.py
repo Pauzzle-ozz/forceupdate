@@ -4,6 +4,7 @@ sélection par défaut (brief, décision n°12).
 Les constats viennent des vrais contrôles (``checks``, ``checks.vulns``), sur des versions
 publiées et des avis d'OSV écrits à la main."""
 
+import asyncio
 import dataclasses
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
@@ -30,7 +31,7 @@ from forceupdate.models import (
 )
 from forceupdate.parsers.python import HASHED
 from forceupdate.registries import PackageInfo, PackageVersion
-from forceupdate.update import planner
+from forceupdate.update import blockers, planner
 from forceupdate.update.planner import (
     DOWNGRADE_WARNING,
     INDIRECT_MAJOR_WARNING,
@@ -142,8 +143,11 @@ def plan(
     infos: Iterable[PackageInfo] = (),
     advisories: Iterable[Advisory] = (),
     overrides: Iterable[Override] = (),
+    lookup: blockers.Lookup | None = None,
 ) -> Project:
-    """Le projet de ``dependencies``, vérifié comme le fait le moteur, puis planifié."""
+    """Le projet de ``dependencies``, vérifié comme le fait le moteur, puis planifié ; ce que
+    demandent les autres paquets d'après ``lookup`` (``tests/test_blockers.py``), sinon d'après
+    les lockfiles seuls."""
     project = Project(path=".", dependencies=list(dependencies), overrides=list(overrides))
     by_name = {(i.ecosystem, i.name): i for i in infos}
     advisories = list(advisories)
@@ -164,7 +168,11 @@ def plan(
         found[(dependency.ecosystem, dependency.name, current.version)] = result
         project.findings += vulns.check(dependency, current, result)
     project.findings = checks.sort_findings(project.findings)
-    planner.plan(Report(source=".", projects=[project]), by_name, found)
+    report = Report(source=".", projects=[project])
+    planner.plan(report, by_name, found)
+    # Comme le moteur : ce que demandent les autres paquets (E37).
+    asyncio.run(blockers.constrain(report, lookup or blockers.NoLookup()))
+    planner.reselect(report)
     return project
 
 

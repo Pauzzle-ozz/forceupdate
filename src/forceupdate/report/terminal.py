@@ -46,6 +46,7 @@ from forceupdate.report import (
     option_fixed,
     option_fixes,
     option_gap,
+    option_unblock,
     plural,
     rows,
     runtimes,
@@ -446,7 +447,9 @@ def _installed(installed: Installed, job: Job) -> Text:
     elif installed.reach is Reach.BELOW:
         text.append(f", pas {wanted} : ", style="yellow")
         if installed.held_by:
-            text.append(f"retenue par {', '.join(installed.held_by)}.", style="yellow")
+            unblock = option_unblock(installed.option)
+            hint = f" ({unblock})" if unblock else ""
+            text.append(f"retenue par {', '.join(installed.held_by)}{hint}.", style="yellow")
         else:
             text.append("quelque chose la retient.", style="yellow")
     elif installed.reach is Reach.UNKNOWN:

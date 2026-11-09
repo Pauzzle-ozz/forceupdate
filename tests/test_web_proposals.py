@@ -346,6 +346,8 @@ def test_files_changed_since_the_analysis_are_left_out(
             "gap": "minor",
             "fixes": ["CVE-2019-10906", "CVE-2020-28493"],
             "held_by": [],
+            "refused_by": [],
+            "blockers": [],
         }
     ]
     assert done["committed"] == ["requirements.txt"]

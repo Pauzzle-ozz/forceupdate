@@ -554,7 +554,11 @@ total : « 1 PR ouverte · 1 MR ouverte · 1 mise à jour · 1 en échec ».
   : « aucune mise à jour n'a pu se faire : d'autres paquets retiennent les versions choisies ;
   rien n'est poussé », puis chaque paquet, « minimatch 10.2.6, pas 11.0.1 (backend) : retenue
   par nodemon 3.1.14 », et quoi faire (monter ce paquet, ou forcer sa version). Dans une PR qui
-  part, une version retenue est dite de même, dans la description (« retenue en … par … »).
+  part, une version retenue est dite de même, dans la description (« retenue en … par … »,
+  avec la version de ce paquet qui l'accepterait : « (nodemon 4.0.1 l'accepte) »). Au
+  récapitulatif, avant l'envoi, une version que d'autres paquets retiendront ou feront refuser est
+  déjà dite (« retenue par nodemon 3.1.14 : monter d'abord nodemon en 4.0.1 », « refusée à cause
+  de arq 0.28.0 : aucune de ses versions ne l'accepte »).
 
 ### La description
 
@@ -562,7 +566,7 @@ Titre : « Mise à jour des dépendances (forceupdate) ». La description, en fr
 
 - la version de forceupdate, le commit et la branche de départ ;
 - « Mises à jour » : un tableau (paquet, projet, version, failles corrigées, état : « faite »,
-  « faite, en … » si l'outil a pris plus haut, « retenue en … par … », « lockfile à régénérer
+  « faite, en … » si l'outil a pris plus haut, « retenue en … par … (… l'accepte) », « lockfile à régénérer
   (npm absent) », « pas faite : uv la refuse (Because arq==0.28.0 depends on redis<6…) » pour
   une majeure retirée, « pas faite : lockfile en échec ») ;
 - « Lockfiles » : régénéré par quel outil et relu par quoi (tout `package-lock.json` est relu

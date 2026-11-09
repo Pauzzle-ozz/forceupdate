@@ -134,12 +134,27 @@ def update_subject(update: Update) -> str:
 
 
 def option_fixed(option: UpdateOption) -> str:
-    """Les failles corrigées, en toutes lettres : ``corrige 2 failles sur 6`` ; vide si le
-    paquet n'en a pas."""
+    """Les failles corrigées, en toutes lettres : ``corrige 2 failles sur 6`` ; ``corrigerait``
+    quand des paquets installés retiennent la version ou la feront refuser (``held_by``,
+    ``refused_by`` : un avertissement dit lesquels) ; vide si le paquet n'en a pas."""
     total = len(option.fixes) + len(option.unfixed)
     if not total:
         return ""
-    return f"corrige {len(option.fixes)} faille{'s' if len(option.fixes) > 1 else ''} sur {total}"
+    verb = "corrigerait" if option.held_by or option.refused_by else "corrige"
+    return f"{verb} {len(option.fixes)} faille{'s' if len(option.fixes) > 1 else ''} sur {total}"
+
+
+def option_unblock(option: UpdateOption) -> str:
+    """Pour une version que des paquets retiennent ou feront refuser (E37), la version de chacun
+    qui l'accepterait : « nodemon 3.2.0 l'accepte », « aucune version de arq ne l'accepte » ;
+    vide si on n'en sait rien."""
+    said = []
+    for blocker in option.blockers:
+        if blocker.accepting is not None:
+            said.append(f"{blocker.name} {blocker.accepting} l'accepte")
+        elif blocker.checked:
+            said.append(f"aucune version de {blocker.name} ne l'accepte")
+    return " ; ".join(dict.fromkeys(said))
 
 
 def option_gap(option: UpdateOption) -> str:

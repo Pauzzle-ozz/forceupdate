@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import type { Edit, Update } from '@/api/types'
+import type { Blocker, Edit, Update } from '@/api/types'
 import { VULNERABLE, planDocument } from '@/test/api'
 import {
+  blockedText,
   choose,
   commandDirectory,
   defaultSelection,
   editFile,
   editTarget,
   fixesSentence,
+  isBlocked,
   isCargoManifest,
   groups,
   lastLines,
@@ -81,6 +83,49 @@ describe('l’écran 5, prêt à afficher', () => {
     const selection = { [jinja2.id]: option.version }
     expect(recap(VULNERABLE, selection).fixed).toBe(option.fixes.length)
     expect(recap(report, selection).fixed).toBe(0)
+  })
+
+  it('une version que l’outil refusera : ses failles ne sont pas comptées non plus (E37)', () => {
+    const jinja2 = update('.|PyPI|jinja2|2.10')
+    const option = jinja2.options[jinja2.options.length - 1]
+    const refused = { ...option, refused_by: ['flask 0.12.5'] }
+    expect(fixesSentence(refused)?.text).toBe(`Corrigerait ${option.fixes.length} failles, mais flask 0.12.5 la fera refuser`)
+    const report = structuredClone(VULNERABLE)
+    report.projects[0].updates = report.projects[0].updates.map((item) =>
+      item.id === jinja2.id ? { ...item, options: item.options.map((o) => (o.version === option.version ? refused : o)) } : item,
+    )
+    expect(recap(report, { [jinja2.id]: option.version }).fixed).toBe(0)
+  })
+
+  it('dit ce qui retient une version, ou la fera refuser, et la version qui l’accepte (E37)', () => {
+    const blocker = (fields: Partial<Blocker>): Blocker => ({
+      name: 'nodemon',
+      version: '3.1.14',
+      range: '^10.2.1',
+      peer: false,
+      companion: false,
+      accepting: null,
+      checked: false,
+      held: true,
+      ...fields,
+    })
+    const held = { held_by: ['nodemon 3.1.14'], refused_by: [] }
+    expect(blockedText({ held_by: [], refused_by: [], blockers: [] })).toBeNull()
+    expect(blockedText({ ...held, blockers: [] })).toBe("retenue par nodemon 3.1.14 : monter ce paquet d'abord")
+    expect(blockedText({ ...held, blockers: [blocker({ accepting: '3.2.0', checked: true })] })).toBe(
+      "retenue par nodemon 3.1.14 : monter d'abord nodemon en 3.2.0",
+    )
+    expect(blockedText({ ...held, blockers: [blocker({ checked: true })] })).toBe(
+      "retenue par nodemon 3.1.14 : aucune de ses versions ne l'accepte",
+    )
+    const arq = blocker({ name: 'arq', version: '0.26.3', range: '<6,>=4.2.0', held: false, checked: true })
+    expect(blockedText({ held_by: [], refused_by: ['arq 0.26.3'], blockers: [arq] })).toBe(
+      "refusée à cause de arq 0.26.3 : aucune de ses versions ne l'accepte",
+    )
+    expect(blockedText({ held_by: [], refused_by: ['arq 0.26.3'], blockers: [{ ...arq, accepting: '0.38.0' }] })).toBe(
+      'refusée à cause de arq 0.26.3 : monter aussi arq en 0.38.0',
+    )
+    expect(isBlocked({ held_by: [], refused_by: ['arq 0.26.3'] })).toBe(true)
   })
 
   it('dit quels fichiers touche une option du plan', () => {

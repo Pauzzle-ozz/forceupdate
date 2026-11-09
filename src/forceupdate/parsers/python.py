@@ -69,8 +69,10 @@ from forceupdate.parsers.lockfiles import (
     in_workspace,
     join,
     relative_to,
+    required_by,
     transitives,
     with_installed,
+    with_required_by,
 )
 from forceupdate.parsers.toml_spans import StringSpan, TomlPath, string_spans
 from forceupdate.versions import InvalidVersion
@@ -1070,8 +1072,15 @@ def parse_uv_lock(path: str, content: str) -> Lockfile:
                 unverifiable_reason=_uv_lock_reason(source),
             )
         )
+    # uv n'écrit pas les plages des dépendances d'un paquet (seulement leurs noms) : elles sont
+    # lues au registre (E37).
     return Lockfile(
-        path=path, ecosystem=Ecosystem.PYPI, packages=tuple(packages), graph=True, shared=True
+        path=path,
+        ecosystem=Ecosystem.PYPI,
+        packages=tuple(packages),
+        graph=True,
+        shared=True,
+        ranges=False,
     )
 
 
@@ -1115,8 +1124,12 @@ def parse_poetry_lock(path: str, content: str) -> Lockfile:
     packages = []
     for entry in _entries(data.get("package")):
         dependencies = []
+        requires = {}
         for raw_name, spec in _table(entry, "dependencies").items():
             specs = spec if isinstance(spec, list) else [spec]
+            wanted = _poetry_range(specs)
+            if wanted is not None:
+                requires[canonicalize_name(raw_name)] = wanted
             tables = [item for item in specs if isinstance(item, dict)]
             if (
                 tables
@@ -1143,9 +1156,27 @@ def parse_poetry_lock(path: str, content: str) -> Lockfile:
                 extras=extras_edges,
                 scope=_poetry_lock_scope(entry),
                 unverifiable_reason=_poetry_lock_reason(_table(entry, "source")),
+                requires=requires,
             )
         )
     return Lockfile(path=path, ecosystem=Ecosystem.PYPI, packages=tuple(packages), graph=True)
+
+
+def _poetry_range(specs: Sequence[Any]) -> str | None:
+    """La plage qu'un paquet de ``poetry.lock`` demande d'une dépendance : sa contrainte
+    (``"^1.2"``, ``{version = ">=1.0", markers = …}``), ou plusieurs selon les marqueurs, réunies
+    par ``||`` (on ne sait pas laquelle s'applique). ``None`` sans contrainte lisible."""
+    ranges = []
+    for spec in specs:
+        wanted = spec.get("version") if isinstance(spec, dict) else spec
+        if not isinstance(wanted, str):
+            return None
+        wanted = wanted.strip()
+        if wanted in ("", "*"):
+            return "*"
+        if wanted not in ranges:
+            ranges.append(wanted)
+    return " || ".join(ranges) if ranges else None
 
 
 def _poetry_lock_scope(entry: Mapping[str, Any]) -> Scope | None:
@@ -1727,7 +1758,10 @@ class _ProjectParser:
 
     def _link(self, declared: list[Declared], lock: Lockfile | None) -> None:
         locks = [lock] if lock is not None else []
-        self.directs.extend(_with_installed(declared, locks))
+        directs = _with_installed(declared, locks)
+        if lock is not None:
+            directs = with_required_by(directs, required_by(lock))
+        self.directs.extend(directs)
         if lock is not None:
             # Une dépendance de build (hatchling…) n'est pas installée avec le projet :
             # le même paquet, tiré à l'exécution, reste une transitive.

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "tool": {
     "name": "forceupdate",
-    "version": "1.0.0rc1"
+    "version": "1.0.0"
   },
   "source": "C:/Projets/scripts/imports.py",
   "languages": [

@@ -89,14 +89,21 @@ dépendances et ses fichiers de code ; les éléments cachés sont repliés ; un
 clavier : flèches, Entrée pour ouvrir, Retour arrière pour remonter. Le champ « Dossier ouvert »
 prend un chemin collé (« Aller »). « Analyser ce dossier » ou « Analyser ce fichier ».
 
-**« Parcourir… »** ouvre la fenêtre de choix de l'ordinateur : celle de l'Explorateur sous
-Windows (« Sélectionner un dossier », ou « Ouvrir » pour un fichier), du Finder sous macOS, celle
-de Tk sous Linux. C'est le serveur qui l'ouvre, sur l'ordinateur où tourne `forceupdate ui`, avec
-le Tk de Python (`tkinter`), dans un programme à part, au premier plan ; la page attend, et dit
-que la fenêtre peut se trouver derrière le navigateur. Le dossier choisi s'ouvre dans la liste
-(un fichier : dans son dossier, choisi) ; annuler ne change rien. Sans affichage (un serveur,
-WSL) ou sans Tk, la page le dit, et la liste reste. Une seule fenêtre à la fois ; elle se ferme
-seule au bout d'une demi-heure, ou à l'arrêt de `ui`.
+**« Parcourir… »** ouvre la fenêtre de choix de l'ordinateur. C'est le serveur qui l'ouvre, sur
+l'ordinateur où tourne `forceupdate ui`, dans un programme à part ; la page attend, et dit que la
+fenêtre peut se trouver derrière le navigateur :
+
+- sous **Windows**, celle de l'Explorateur (« Sélectionner un dossier », ou « Ouvrir » pour un
+  fichier), par le Tk de Python (`tkinter`), au premier plan ;
+- sous **macOS**, celle du Finder, par `osascript` (« choose folder », « choose file ») ;
+- sous **Linux**, celle du bureau : `zenity` (GNOME) ou `kdialog` (KDE) s'il est installé, sinon
+  celle de Tk.
+
+Le dossier choisi s'ouvre dans la liste (un fichier : dans son dossier, choisi) ; annuler ne
+change rien. Sans affichage (un serveur, WSL sans WSLg : ni `DISPLAY` ni `WAYLAND_DISPLAY`), ou
+sans fenêtre possible (Linux sans `zenity`, `kdialog` ni Tk), la page le dit, et la liste reste.
+Une seule fenêtre à la fois ; elle se ferme seule au bout d'une demi-heure, ou à l'arrêt de
+`ui`.
 
 Un fichier **déposé** ou choisi par « Choisir un fichier » est envoyé au serveur, pas désigné
 par son chemin : il est analysé seul (sans son lockfile voisin), et sa version mise à jour se
@@ -698,16 +705,51 @@ monte pas au-delà de la plage que demande le paquet qui la tire. `nodemon` 3.1.
 `minimatch ^10.2.1` : la correction d'une faille de minimatch, publiée en 11.0.1 (une
 majeure), reste hors d'atteinte, et le lockfile ne change pas.
 
-**Le plan le dit d'avance** pour un `package-lock.json`, qui écrit la plage que chaque paquet
-demande : « nodemon 3.1.14 demande ^10.2.1 : le lockfile seul ne la fera pas monter ; monter
-nodemon d'abord. » (« une de ses copies restera en dessous » si un seul des paquets qui la
+**Le plan le dit d'avance**, avec la version du paquet qui la tire qui l'accepterait :
+« nodemon 3.1.14 demande ^10.2.1 : le lockfile seul ne la fera pas monter ; monter d'abord
+nodemon en 4.0.1 (la première version qui l'accepte). », ou « …, et aucune de ses versions
+publiées ne l'accepte. » (« une de ses copies restera en dessous » si un seul des paquets qui la
 tirent la retient). Une telle option n'est jamais pré-cochée, et ses failles ne sont pas
-comptées corrigées (récapitulatif de l'écran 5, récapitulatif des PR). Ailleurs (pnpm, Yarn, uv,
-Poetry), le plan ne connaît pas ces plages : « Dépendance indirecte : le paquet qui la tire devra
-peut-être monter aussi », pour une majeure. forceupdate ne cherche pas quelle version du paquet
-qui la tire accepterait la correction : pour aller plus loin, monter d'abord ce paquet (une
-version plus récente de nodemon qui accepte minimatch 11), ou forcer la version dans le
-manifeste (`overrides` de npm, `resolutions` de Yarn), à ses risques.
+comptées corrigées (récapitulatif de l'écran 5, récapitulatif des PR, où la même indication
+suit : « retenue par nodemon 3.1.14 : monter d'abord nodemon en 4.0.1 »).
+
+La plage que chaque paquet demande vient du lockfile quand il l'écrit (`package-lock.json`,
+`yarn.lock` de Yarn 1 et 2+, `poetry.lock`) ; `pnpm-lock.yaml` et `uv.lock` ne disent que qui
+requiert quoi : la plage est lue au registre, dans ce que demande la version installée de ce
+paquet (le document npm du paquet ; pour PyPI, l'API JSON de cette version, une requête par
+version, gardée 7 jours dans le cache). La version qui accepterait la correction se cherche de
+même : toutes les versions du document npm ; pour PyPI, la dernière d'abord, puis par dichotomie
+(huit versions lues au plus). Sans réponse du registre (hors ligne sans cache, un index privé qui
+n'a pas l'API JSON de PyPI), le plan en reste à ce qu'il sait : « monter nodemon d'abord. », ou,
+sans aucune plage, « Dépendance indirecte : le paquet qui la tire devra peut-être monter aussi »
+pour une majeure. Pour aller plus loin, on peut aussi forcer la version dans le manifeste
+(`overrides` de npm, `resolutions` de Yarn), à ses risques : une version forcée passe outre les
+plages, et le plan ne dit alors rien.
+
+**Une version que l'outil refusera** est dite d'avance aussi : quand un paquet installé ne
+l'accepte pas et qu'il n'y a qu'une version pour tout le projet. C'est le cas en Python, d'une
+dépendance pair de npm (`peerDependencies` ; pour une dépendance ordinaire, npm installe une
+copie à part), et d'une indirecte que uv ou pip-compile visent exactement
+(`--upgrade-package x==V`) :
+
+```
+redis 5.3.1 → 8.1.0   arq 0.28.0 demande <6,>=4.2.0 : uv la refusera, et aucune de ses
+                      versions publiées ne l'accepte.
+pillow 12.2.0 → 13.0.0  fastembed 0.8.0 demande <13.0,>=10.3.0 : uv la refusera, sauf si
+                      fastembed monte aussi (en 0.9.1, la première version qui l'accepte).
+typescript 5.9.3 → 7.0.2  openapi-typescript 7.13.0 demande ^5.x (dépendance pair) : npm la
+                      refusera, et aucune de ses versions publiées ne l'accepte.
+```
+
+npm : la version visée peut aussi demander une dépendance pair que le projet a dans une version
+trop basse (« Demande @types/react ^19.3.0 (dépendance pair), et @types/react 18.3.28 est
+installée : npm la refusera, sauf si @types/react monte aussi (19.3.0 au moins). ») : cocher les
+deux. Une dépendance pair optionnelle (`peerDependenciesMeta`) ne compte pas : npm ne l'impose que
+si le paquet la voit installée. Une telle option n'est jamais pré-cochée, ses failles ne sont pas
+comptées corrigées, et « corrige » devient « corrigerait » (`refused_by` dans le JSON). Cochée
+quand même, la reprise de l'outil la retire si elle échoue (ci-dessous). Ce que demande une
+version Python elle-même n'est pas vérifié (uv fait monter ce qu'il faut), ni les autres
+écosystèmes (leurs lockfiles ne disent pas ces plages).
 
 Commandes vérifiées avec npm 11.6, pnpm 12.15, Yarn 1.22 et 4.18, uv 0.10, Poetry 1.8 et
 2.5, PDM 2.29, pipenv 2026.10, pip-tools 7.6, cargo 1.99, Go 1.27, Composer 2.11, Bundler 4.0
@@ -1440,8 +1482,9 @@ Avec la sélection par défaut (`--level minor`), une majeure est proposée, jam
 « Majeure : peut demander d'adapter le code. » Une faille que seule une majeure corrige est
 proposée de même, avec les deux mentions. En 0.x, ce qui sort de `^` est une majeure
 (`0.2.3` → `0.3.0`). Une indirecte majeure ajoute : « Dépendance indirecte : le paquet qui la
-tire devra peut-être monter aussi. », ou, quand le `package-lock.json` dit sa plage, lequel la
-retiendra (voir [La régénération](#ce-qui-vaut-pour-tous)).
+tire devra peut-être monter aussi. », ou, quand on connaît sa plage (le lockfile ou le
+registre), lequel la retiendra ; une majeure qu'un paquet installé refuse le dit aussi (voir [La
+régénération](#ce-qui-vaut-pour-tous)).
 
 `--level major` (ou `level = "major"` dans la sélection de `forceupdate.toml` ou des réglages)
 les fait cocher. Une majeure Go publiée sous un autre module reste toujours « à la main ».

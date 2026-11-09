@@ -520,9 +520,9 @@ export function proposedRepository(overrides: Partial<ProposedRepository> = {}):
     closed: null,
     selection: plan.selection,
     applied: [
-      { update: '.|npm|lodash', name: 'lodash', ecosystem: 'npm', project: '.', direct: true, current: '4.17.15', version: '4.18.1', gap: 'minor', fixes: ['CVE-2021-23337', 'CVE-2020-8203'], held_by: [] },
-      { update: '.|PyPI|flask', name: 'flask', ecosystem: 'PyPI', project: '.', direct: true, current: '0.12', version: '0.12.5', gap: 'patch', fixes: ['CVE-2018-1000656'], held_by: [] },
-      { update: '.|PyPI|jinja2|2.10', name: 'jinja2', ecosystem: 'PyPI', project: '.', direct: false, current: '2.10', version: '2.11.3', gap: 'minor', fixes: ['CVE-2019-10906'], held_by: [] },
+      { update: '.|npm|lodash', name: 'lodash', ecosystem: 'npm', project: '.', direct: true, current: '4.17.15', version: '4.18.1', gap: 'minor', fixes: ['CVE-2021-23337', 'CVE-2020-8203'], held_by: [], refused_by: [], blockers: [] },
+      { update: '.|PyPI|flask', name: 'flask', ecosystem: 'PyPI', project: '.', direct: true, current: '0.12', version: '0.12.5', gap: 'patch', fixes: ['CVE-2018-1000656'], held_by: [], refused_by: [], blockers: [] },
+      { update: '.|PyPI|jinja2|2.10', name: 'jinja2', ecosystem: 'PyPI', project: '.', direct: false, current: '2.10', version: '2.11.3', gap: 'minor', fixes: ['CVE-2019-10906'], held_by: [], refused_by: [], blockers: [] },
     ],
     skipped: [],
     files: plan.files,

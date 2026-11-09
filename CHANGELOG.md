@@ -4,6 +4,27 @@ Les versions de forceupdate publiées sur [PyPI](https://pypi.org/project/forceu
 numéros suivent [SemVer](https://semver.org/lang/fr/) : à partir de la 1.0.0, une majeure peut
 casser la ligne de commande, le format JSON du rapport (`schema_version`) ou la configuration.
 
+## Non publié
+
+### Ajouté
+
+- Une indirecte qu'un paquet retiendra est dite avec la version de ce paquet qui accepterait la
+  correction (« monter d'abord nodemon en 4.0.1 »), ou qu'aucune ne l'accepte, d'après le
+  registre (le document npm ; l'API JSON de PyPI, version par version). Au choix des mises à jour,
+  au récapitulatif des PR, dans le terminal et la description d'une PR.
+- Les indirectes retenues sont dites pour tous les lockfiles npm et Python à graphe : `yarn.lock`
+  (Yarn 1 et 2+) et `poetry.lock` disent les plages ; pour `pnpm-lock.yaml` et `uv.lock`, qui ne
+  les disent pas, elles sont lues au registre.
+- Une version que l'outil de lockfile refusera est dite avant de le lancer : un paquet installé
+  qui ne l'accepte pas quand il n'y a qu'une version pour tout le projet (Python, une dépendance
+  pair de npm : `redis` 8 qu'`arq` refuse, `typescript` 7 qu'`openapi-typescript` refuse), ou une
+  dépendance pair que la version visée demande plus haute (`@types/react-dom` 19 et
+  `@types/react` 18). Jamais pré-cochée, ses failles pas comptées corrigées ; la reprise de
+  l'outil reste. Dans le JSON : `UpdateOption.refused_by` et `blockers`, `Requirement.peer`, et
+  `Dependency.required_by` aussi pour les directes.
+- « Parcourir… » sous macOS par `osascript` (la fenêtre du Finder), sous Linux par `zenity` ou
+  `kdialog` (celle du bureau), Tk restant le recours.
+
 ## 1.0.0 — 2026-11-04
 
 La première version stable : la 1.0.0rc1, plus ce qu'en ont montré les essais.

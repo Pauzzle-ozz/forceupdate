@@ -53,7 +53,7 @@ from forceupdate.forges.base import (
 )
 from forceupdate.models import Event, Report, Update, UpdateOption
 from forceupdate.net import NetworkError
-from forceupdate.report import markdown
+from forceupdate.report import markdown, option_unblock
 from forceupdate.report.markdown import code, escape
 from forceupdate.sources.base import SourceError
 from forceupdate.sources.local import LocalSource
@@ -340,7 +340,7 @@ def request_body(
         lines.append(
             f"| `{code(update.name)}` | `{code(project.path)}` "
             f"| {escape(update.current_version or '?')} → {escape(option.version)} "
-            f"| {escape(fixes) or '-'} | {_state(update.id, result)} |"
+            f"| {escape(fixes) or '-'} | {_state(update.id, result, option)} |"
         )
     lockfile_lines = [line for result in results for line in _lockfile_lines(result)]
     if lockfile_lines:
@@ -399,8 +399,9 @@ def _done(
     return found
 
 
-def _state(update_id: str, result: Regenerated | None) -> str:
-    """Ce qu'il est advenu d'une mise à jour, en quelques mots."""
+def _state(update_id: str, result: Regenerated | None, option: UpdateOption) -> str:
+    """Ce qu'il est advenu d'une mise à jour, en quelques mots ; pour une version retenue, la
+    version du paquet qui l'accepterait (``option.blockers``, E37)."""
     if result is None:
         return "faite"
     if result.status is LockStatus.TOOL_MISSING:
@@ -417,8 +418,13 @@ def _state(update_id: str, result: Regenerated | None) -> str:
         return f"faite, en {escape(', '.join(installed.versions))}"
     if installed.reach is Reach.BELOW:
         held = f" par {escape(', '.join(installed.held_by))}" if installed.held_by else ""
-        return f"retenue en {escape(', '.join(installed.versions))}{held}"
+        return f"retenue en {escape(', '.join(installed.versions))}{held}{_unblock(option)}"
     return "faite, version non relue"
+
+
+def _unblock(option: UpdateOption) -> str:
+    said = option_unblock(option)
+    return f" ({escape(said)})" if said else ""
 
 
 def _lockfile_lines(result: Regenerated) -> list[str]:
