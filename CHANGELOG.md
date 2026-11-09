@@ -4,7 +4,10 @@ Les versions de forceupdate publiées sur [PyPI](https://pypi.org/project/forceu
 numéros suivent [SemVer](https://semver.org/lang/fr/) : à partir de la 1.0.0, une majeure peut
 casser la ligne de commande, le format JSON du rapport (`schema_version`) ou la configuration.
 
-## Non publié
+## 1.1.0 — 2026-11-09
+
+Ce que la 1.0.0 avait laissé : les indirectes retenues et les majeures refusées, dites avant de
+lancer l'outil, et « Parcourir… » sous macOS et Linux.
 
 ### Ajouté
 
@@ -22,8 +25,9 @@ casser la ligne de commande, le format JSON du rapport (`schema_version`) ou la 
   `@types/react` 18). Jamais pré-cochée, ses failles pas comptées corrigées ; la reprise de
   l'outil reste. Dans le JSON : `UpdateOption.refused_by` et `blockers`, `Requirement.peer`, et
   `Dependency.required_by` aussi pour les directes.
-- « Parcourir… » sous macOS par `osascript` (la fenêtre du Finder), sous Linux par `zenity` ou
-  `kdialog` (celle du bureau), Tk restant le recours.
+- « Parcourir… » sous macOS par `osascript` (la fenêtre du Finder, devant le navigateur ; un clic
+  dedans avant de taper), sous Linux par `zenity` ou `kdialog` (celle du bureau), Tk restant le
+  recours ; sans affichage sous Linux, la page le dit sans rien lancer.
 
 ## 1.0.0 — 2026-11-04
 

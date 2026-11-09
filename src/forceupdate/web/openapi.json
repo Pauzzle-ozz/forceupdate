@@ -3,7 +3,7 @@
   "info": {
     "title": "forceupdate",
     "description": "L'API du serveur local de forceupdate : analyser un dossier, un fichier ou les dépôts des comptes connectés, préparer et appliquer les mises à jour, ouvrir une PR par dépôt. Chaque requête porte le jeton de session (cookie posé par l'adresse que donne « forceupdate ui », ou « Authorization: Bearer <jeton> »).",
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "paths": {
     "/api/fs": {
