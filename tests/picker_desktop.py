@@ -86,6 +86,7 @@ def attempt(label: str, fill: bool) -> object:
             run("xdotool", "key", "ctrl+l")  # la barre d'adresse de GTK
             time.sleep(1)
             run("xdotool", "type", "--delay", "150", f"{CHOSEN}/")
+            run("xdotool", "key", "Delete")  # ce que l'autocomplétion de GTK a ajouté
         elif fill:
             run("xdotool", "key", "End")  # Tk : « Selection » dit déjà le dossier de départ
             run("xdotool", "type", "--delay", "150", f"/{CHOSEN.name}")
