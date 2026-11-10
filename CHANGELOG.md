@@ -4,6 +4,18 @@ Les versions de forceupdate publiées sur [PyPI](https://pypi.org/project/forceu
 numéros suivent [SemVer](https://semver.org/lang/fr/) : à partir de la 1.0.0, une majeure peut
 casser la ligne de commande, le format JSON du rapport (`schema_version`) ou la configuration.
 
+## 1.1.1 — 2026-11-10
+
+Deux corrections de « Parcourir… » et de l'écran de choix d'un dossier.
+
+### Corrigé
+
+- « Parcourir… » sous macOS : la fenêtre du Finder prend le clavier dès qu'elle s'ouvre, sans
+  clic dedans ni autorisation à donner (`osascript` se met lui-même au premier plan).
+- Choisir un dossier : un chemin collé puis validé par Entrée pendant qu'une liste se charge
+  (les points de départ, un lecteur réseau lent) n'est plus perdu sans rien dire ; « Aller »
+  n'est plus désactivé pendant un chargement.
+
 ## 1.1.0 — 2026-11-09
 
 Ce que la 1.0.0 avait laissé : les indirectes retenues et les majeures refusées, dites avant de

@@ -119,7 +119,9 @@ tel programme ne peut pas passer au premier plan ; vu sur la machine macOS de la
 déclare donc d'abord programme de premier plan, sans icône dans le Dock (AppKit :
 ``setActivationPolicy:`` 1, « accessory »), puis passe devant (E38). Il ne touche qu'à lui-même :
 aucune autorisation de macOS, contrairement à System Events. Si macOS le refuse (``try``), la
-fenêtre s'ouvre comme avant ; à sa fermeture, macOS rend la main au navigateur."""
+fenêtre s'ouvre comme avant. Vérifié sur la machine macOS de la CI, sans clic : elle reçoit les
+frappes (la barre de menus reste celle du navigateur : c'est le propre d'un programme
+« accessory »)."""
 
 _CANCELLED = "(-128)"
 """L'erreur d'``osascript`` quand la personne annule (« User canceled. (-128) »)."""
