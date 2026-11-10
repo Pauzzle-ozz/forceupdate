@@ -245,6 +245,17 @@ def test_macos_asks_the_finder() -> None:
         "folder",
         "/Users/moi",
     ]
+    # E38 : osascript passe lui-même au premier plan, pour que la fenêtre ait le clavier, sans
+    # autorisation ; dans un try : si macOS le refuse, la fenêtre s'ouvre quand même.
+    script = picker.OSASCRIPT
+    assert (
+        script.index("    try")
+        < script.index("setActivationPolicy:1")
+        < script.index("activateIgnoringOtherApps:true")
+        < script.index("end try")
+        < script.index("choose folder")
+    )
+    assert "System Events" not in script
     run = answering("/Users/moi/app.py\n")
     assert (
         picker.pick(picker.PickKind.FILE, run=run, system="darwin", which=tools("osascript"))

@@ -11,7 +11,7 @@ du serveur (``cancel``) la ferme. Selon le système (E37) :
   programme. Elle passe au premier plan (``-topmost``) : sinon Windows la laisserait derrière le
   navigateur (vérifié par l'utilisateur, session 37) ;
 - **macOS** : ``osascript`` (``choose folder``, ``choose file``), la fenêtre du Finder, sans
-  dépendre de Tk ; annuler est l'erreur -128 ;
+  dépendre de Tk ; annuler est l'erreur -128 ; elle prend le clavier (E38) ;
 - **Linux** : avec un affichage (``DISPLAY``, ``WAYLAND_DISPLAY``), ``zenity`` (GNOME) ou
   ``kdialog`` (KDE), sinon Tk ; sans affichage (un serveur, WSL sans WSLg), aucune.
 
@@ -83,7 +83,16 @@ print(json.dumps({"path": chosen if isinstance(chosen, str) and chosen else None
 choisi (``null`` : annulé), ou pourquoi il n'y a pas de fenêtre."""
 
 OSASCRIPT = """\
+use AppleScript version "2.4"
+use framework "AppKit"
+use scripting additions
+
 on run argv
+    try
+        set theApp to current application's NSApplication's sharedApplication()
+        theApp's setActivationPolicy:1
+        theApp's activateIgnoringOtherApps:true
+    end try
     set thePrompt to item 1 of argv
     set theKind to item 2 of argv
     if (count of argv) > 2 then
@@ -102,10 +111,15 @@ on run argv
 end run
 """
 """Le script AppleScript de macOS (``osascript -e``) : le titre, le genre, puis le dossier de
-départ, en arguments. Il écrit le chemin POSIX choisi (``/Users/…/projet/``). La fenêtre s'affiche
-devant le navigateur, mais le clavier lui reste jusqu'à un clic dans la fenêtre : ``osascript`` est
-un programme d'arrière-plan, ``activate`` n'y change rien (vu sur la machine macOS de la CI, E37) ;
-l'amener au premier plan demanderait de piloter System Events, et une autorisation."""
+départ, en arguments. Il écrit le chemin POSIX choisi (``/Users/…/projet/``).
+
+``osascript`` est un programme d'arrière-plan : sa fenêtre s'affichait devant le navigateur, mais
+le clavier restait au navigateur jusqu'à un clic dedans, et ``activate`` n'y changeait rien (un
+tel programme ne peut pas passer au premier plan ; vu sur la machine macOS de la CI, E37). Il se
+déclare donc d'abord programme de premier plan, sans icône dans le Dock (AppKit :
+``setActivationPolicy:`` 1, « accessory »), puis passe devant (E38). Il ne touche qu'à lui-même :
+aucune autorisation de macOS, contrairement à System Events. Si macOS le refuse (``try``), la
+fenêtre s'ouvre comme avant ; à sa fermeture, macOS rend la main au navigateur."""
 
 _CANCELLED = "(-128)"
 """L'erreur d'``osascript`` quand la personne annule (« User canceled. (-128) »)."""
