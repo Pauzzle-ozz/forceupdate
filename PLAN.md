@@ -131,7 +131,8 @@ Statuts : `à faire`, `en cours`, `fait`.
 | E35 | H | Documentation, packaging, CI | fait |
 | E36 | H | Recette finale | fait |
 | E37 | I. Après la 1.0.0 | Indirectes retenues et majeures refusées, plus loin (1.1.0) | fait |
-| E38 | I | Entretien après la 1.1.0 | à faire |
+| E38 | I | Entretien après la 1.1.0 (1.1.1) | fait |
+| E39 | I | Entretien après la 1.1.1 | à faire |
 
 **Jalons** :
 
@@ -4095,21 +4096,92 @@ Ce que E36 a laissé (session 37, décidé avec l'utilisateur) ; la 1.0.0 est li
 
 Ce que la session 38 a vu en route, hors de E37 ; aucune nouvelle fonction prévue.
 
-- [ ] **Un test Playwright instable sous Windows, en CI** : `e2e/report.spec.ts:24` (« choisir un
+- [x] **Un test Playwright instable sous Windows, en CI** : `e2e/report.spec.ts:24` (« choisir un
   mini-projet… ») n'a pas trouvé `requirements.in` dans la liste du dossier `vulnerable` en 5 s,
   une fois (CI de `9eca848`), puis est repassé : trouver pourquoi (la liste lue avant la fin du
   chargement ? l'antivirus de la machine Windows ?) et le rendre sûr, sans allonger l'attente
   à l'aveugle.
-- [ ] **« Parcourir… » sous macOS : le clavier** : la fenêtre du Finder s'affiche devant le
+- [x] **« Parcourir… » sous macOS : le clavier** : la fenêtre du Finder s'affiche devant le
   navigateur, mais le clavier reste au navigateur jusqu'à un clic dedans (`osascript` est un
   programme d'arrière-plan). La porter au premier plan demanderait de piloter System Events, donc
   une autorisation de macOS au premier usage : décider avec l'utilisateur (le faire, avec repli
   sans autorisation ; ou le laisser, c'est dit dans USAGE.md).
-- [ ] Les tests `network` du lundi (`network.yml`) : regarder le dernier passage, corriger ce
+- [x] Les tests `network` du lundi (`network.yml`) : regarder le dernier passage, corriger ce
   qu'un registre ou un outil a changé.
-- [ ] Le « yank » de la 0.1.0 sur PyPI : le rappeler à l'utilisateur (c'est lui qui le fait).
-- [ ] Une 1.1.1 seulement si une correction le demande (CHANGELOG, CI verte, accord de
+- [x] Le « yank » de la 0.1.0 sur PyPI : le rappeler à l'utilisateur (c'est lui qui le fait).
+- [x] Une 1.1.1 seulement si une correction le demande (CHANGELOG, CI verte, accord de
   l'utilisateur).
+
+**Fini quand** : les points sont faits ou décidés avec l'utilisateur.
+
+#### Notes (session 39)
+
+- **Le test Playwright instable : un vrai défaut de l'écran 2**, pas un délai. La trace de l'échec
+  (artefact `traces-playwright-windows-latest` du run `42658623638`) : le champ contient le chemin
+  de `vulnerable`, la liste montrée est celle des points de départ, et **aucune requête**
+  `/api/fs?path=…` après Entrée. Le chemin a été collé puis validé pendant les 71 ms où la liste
+  des points de départ se chargeait ; or « Aller », le bouton d'envoi du formulaire, était
+  désactivé pendant tout chargement (`disabled={busy}`, depuis E14), et un formulaire dont le
+  bouton d'envoi par défaut est désactivé ne s'envoie pas par Entrée (règle de HTML). Une personne
+  qui colle un chemin pendant qu'un lecteur lent se charge perdait sa frappe de même, sans rien
+  voir. **Corrigé** : « Aller » n'est jamais désactivé ; c'est une navigation, pas une action (la
+  règle de MASTER, « désactivé pendant une requête », vise les boutons d'action) : un chemin
+  remplace celui qui charge, les squelettes disent le chargement. Test Vitest qui le reproduit
+  (les points de départ tardent : Entrée ouvre quand même le dossier, et les points de départ
+  arrivés après ne le remplacent pas) ; `mockApi` attend désormais une réponse promise. Les
+  autres boutons d'envoi désactivés (connecter un compte, analyser, enregistrer les réglages) le
+  sont pendant leur propre action : voulu.
+- **« Parcourir… » sous macOS : décidé avec l'utilisateur, sans autorisation.** Une troisième
+  voie, pas vue à la session 38 : `osascript` se déclare lui-même programme de premier plan sans
+  icône dans le Dock (AppleScriptObjC : `NSApplication`, `setActivationPolicy:` 1,
+  « accessory »), puis `activateIgnoringOtherApps:` ; il ne touche qu'à lui-même, donc ni System
+  Events ni autorisation. Dans un `try` : si macOS le refuse, la fenêtre s'ouvre comme avant.
+  `tests/picker_desktop.py` ne simule plus le clic. **Vérifié sur la machine macOS de la CI**
+  (run `42782751953`, les trois essais verts) : sans clic, les frappes vont à la fenêtre (⇧⌘G, le
+  chemin, Entrée, puis Échap pour l'annulation) ; l'ancien script échouait au même essai (run
+  `42656564639`, `79e8866` : la fenêtre restée ouverte). Les captures : la sélection en bleu
+  (fenêtre qui a le clavier), pas d'icône dans le Dock. La barre de menus reste celle de Safari,
+  et System Events dit « Safari » au premier plan : c'est le propre d'un programme
+  « accessory » ; cette ligne de l'essai ne prouve rien (elle disait aussi « Safari » après le
+  clic simulé de la session 38). USAGE.md et le CHANGELOG le disent.
+- **Tests `network`** : le passage du lundi 9 (`42629307478`) avait tourné sur `d170147` (la
+  1.0.0), avant les commits de la session 38, qui avaient déjà corrigé ses deux échecs (le npm
+  du projet relu même case décochée ; le nombre de requêtes du vrai GitHub). Relancé sur `main`
+  (`42781224486`) : 28 verts.
+- **Le « yank »**, fait par l'utilisateur, guidé pas à pas (PyPI n'a pas d'API pour ça) : la page
+  de gestion des versions est en français, « Options » puis **« Remiser »** (pas « Supprimer »),
+  un motif, la version retapée. **0.1.0** (« Version de test, très incomplète… ») et **1.0.0rc1**
+  (« Pré-version remplacée par la 1.0.0… », à la demande de l'utilisateur) : vérifiés par l'API
+  JSON de PyPI (`yanked: true`, le motif). Il y avait quatre versions, pas trois : la 1.0.0rc1
+  (session 37) avait été oubliée dans la consigne.
+- **La 1.1.1**, accord de l'utilisateur : les deux corrections, `pyproject.toml`, `uv lock`,
+  `openapi.json`, le CHANGELOG « 1.1.1 — 2026-11-10 », USAGE.md.
+- **Commits** (accord de l'utilisateur) : la branche `e38` pour l'essai macOS (`54b39d4`, écran 2 ;
+  `8289f92`, macOS), puis `main` avancé dessus et poussé ; `7fff3e6` (la 1.1.1). **CI verte sur
+  les huit jobs** pour `8289f92` et `7fff3e6` (« Front · windows-latest » compris).
+- **Publication** : l'étiquette annotée **`v1.1.1`** sur `7fff3e6`, le workflow « Publication »
+  vert (`42786199000`) ; **sur PyPI** : le wheel et le sdist. **Vérifié depuis PyPI, sans node** :
+  sous Windows (dossiers d'outils à part, `uv tool install --refresh forceupdate`) : 1.1.1, le scan
+  de `vulnerable` (27 failles, code 0, `refused_by` et `blockers` dans le JSON), `ui --no-browser`
+  (401 sans jeton, la page 200 avec, l'API 200 avec le cookie) ; sous Linux (Docker, utilisateur
+  non root) : 1.1.1, le même scan. Piège : arrêter `forceupdate.exe` par `kill` laisse tourner le
+  Python qu'il a lancé (le serveur écoutait encore) : l'arrêter par son PID (vu par le port), et
+  effacer son dossier `forceupdate-ui-*` (un arrêt brutal le laisse).
+- **Tests** : 5 192 Python (29 sautés), 183 Vitest, 72 Playwright ; ruff, types, lint.
+- `tests/picker_desktop.py` ne dit plus « au premier plan » sous macOS pendant l'essai (System
+  Events y nomme le navigateur, qui garde la barre de menus) : seules les frappes le prouvent.
+
+### E39 — Entretien après la 1.1.1
+
+Le projet est livrable et la 1.1.1 publiée : aucune nouvelle fonction prévue. Cette étape n'est
+que de l'entretien, quand l'utilisateur le veut.
+
+- [ ] Les tests `network` du lundi (`network.yml`, sur `main`) : regarder les derniers passages,
+  corriger ce qu'un registre ou un outil a changé.
+- [ ] Ce que l'utilisateur rapporte en se servant de la 1.1.1 : le reproduire (un test qui échoue
+  d'abord), le corriger.
+- [ ] Une 1.1.2 seulement si une correction le demande (CHANGELOG, CI verte, accord de
+  l'utilisateur ; vérifier ensuite depuis PyPI avec `--refresh`).
 
 **Fini quand** : les points sont faits ou décidés avec l'utilisateur.
 
@@ -4182,3 +4254,4 @@ En fin de session : suivre la règle « Travail par sessions » de CLAUDE.md.
 | 36 | 2026-11-03 | E35 | Fait. Les essais de l'utilisateur, faits ensemble, guidés étape par étape (installé depuis le dépôt) : lancement, analyse de forceupdate et d'Argos (mêmes chiffres qu'en ligne de commande), mise à jour d'une copie d'Argos (uv, npm 10 par npx), un fichier de code et un fichier déposé, les trois forges connectées par OAuth, 11 dépôts analysés, la PR #1 et la MR !1 mises à jour (sans nouvelle PR), les réglages, `scan` et `update` en ligne de commande, Ctrl+C. Deux défauts corrigés : le terminal et le Markdown (donc les PR) ne disaient pas pourquoi une version plus récente n'est pas proposée quand le runtime ne la fait pas tourner (`Finding.blocked`) ; l'écran de résultat des PR disait « rien à faire » quand npm avait gardé les versions choisies (des indirectes retenues par leur parent, le dépôt `mew` de l'utilisateur), il dit maintenant lesquelles et par qui. Une course dans trois tests Vitest de l'écran 8, révélée en route, corrigée ; les rapports d'exemple du front régénérés (périmés depuis E34). Portés à E36 (décidé avec l'utilisateur) : la fenêtre de choix d'un dossier du système, l'indirecte retenue dite d'avance, deux détails de « Mes dépôts », la déconnexion. Commits `bdb1b05` et `b9aacaf`, poussés, CI verte sur les huit jobs ; **la 1.0.0rc1 publiée sur PyPI** (accord de l'utilisateur), vérifiée depuis PyPI sans node. Puis son test final (une PR sur quatre de ses dépôts, relues par `gh`) : un lockfile npm que `npm ci` refuse partait tel quel (corrigé : toujours relu, refait par une vraie installation) ; trois défauts portés à E36. À sa demande : télécharger le rapport (Markdown, JSON, les dépendances à mettre à jour en CSV ; `scan --format csv`) et « Parcourir… », la fenêtre de choix du système (Tk). Commits `bdb1b05`, `b9aacaf`, `3007959` et celui de la fin, poussés. 5 125 tests Python, 174 Vitest, 72 Playwright. |
 | 37 | 2026-11-03 → 04 | E36 | Fait. **La 1.0.0 est publiée sur PyPI** et vérifiée depuis PyPI, sans node, sous Windows et sous Linux (Docker) ; « Le livrable » coché. Découpage proposé, refusé. La PR #1 de `forceupdate` renvoyée avec l'utilisateur : le lockfile refait par npm passe ; deux causes de plus dans notre code (la règle `react(immutability)` d'oxlint 1.91, une course dans un test Vitest), corrigées, CI de la PR verte. **Une majeure que l'outil refuse ne fait plus tomber tout le lockfile** (relancé sans les majeures, puis avec chacune ; celles qu'il refuse retirées avec sa raison) : vérifié avec le vrai uv sur `sechunter` (redis 8, python-dateutil 4) et sur les dépôts de test (pip-compile : flask 3, werkzeug 3). **L'indirecte retenue dite d'avance** (`package-lock.json` : `Dependency.required_by`, `UpdateOption.held_by`). Les huit écarts de E35, les points de la session 36 (commit, chemins `~`, `[selection]`, « Mes dépôts »), le résultat des PR (renvoyer un dépôt en échec, « En route », l'icône). Trouvé à la recette : Bitbucket prenait une PR fusionnée pour l'ouverte (le paramètre `state` ignoré avec `q`), corrigé ; un lien pour choisir les mises à jour d'un dépôt sauté. Recette guidée (clone de `sechunter`, les trois forges, PR #2 / MR !2 / PR #2, la déconnexion), un vrai projet par écosystème (six projets publics ; vraies mises à jour Rust, Go, PHP, Java), revue d'interface (axe-core, clair et sombre, 375 et 1 440 px). Ajoutée : E37 (la 1.1.0). Commits `06d9c3c`, `153c67d`, `d96a71f`, `cd096ff`, `9c37b39`, étiquette `v1.0.0`. 5 151 tests Python, 179 Vitest, 72 Playwright. |
 | 38 | 2026-11-09 | E37 | Fait. **La 1.1.0 est publiée sur PyPI** (`v1.1.0` sur `45c8584`) et vérifiée depuis PyPI, sans node, sous Windows et Linux. Début : deux tests `network` restés en arrière corrigés ; les PR #2 et la MR !2 des `forceupdate-demo` fermées sans fusion (à la demande de l'utilisateur). Toute E37 dans la session (découpage refusé). Trouvé : `uv.lock` et `pnpm-lock.yaml` n'écrivent pas les plages, d'où une base commune : ce que demande chaque version, lu au registre (document npm, API JSON de PyPI). Les plages de Yarn 1 et 2+ et Poetry ; la passe `update/blockers` : l'indirecte retenue avec la version du parent qui l'accepte, le refus prévu (`refused_by` : Python, pairs de npm, la dépendance pair de la version visée), pour l'écran 5, le récapitulatif des PR, le terminal, la description de PR ; vérifié sur le front de forceupdate, `sechunter` et `argos-ops` (redis 8, python-dateutil 4, typescript 7, pillow 13, React 19). « Parcourir… » : osascript (macOS), zenity ou kdialog (Linux), Tk ; vérifié sous Linux (Docker, Xvfb) et sur la machine macOS de la CI (le workflow « Fenêtre de choix ») : la fenêtre devant Safari, le clavier après un clic. 5 190 tests Python, 182 Vitest, 72 Playwright. Ajouté : E38 (entretien : un test Playwright instable sous Windows, le clavier sous macOS) |
+| 39 | 2026-11-10 | E38 | Fait. **La 1.1.1 est publiée sur PyPI** (`v1.1.1` sur `7fff3e6`) et vérifiée depuis PyPI, sans node, sous Windows et Linux. Le test Playwright instable était un vrai défaut de l'écran 2 : « Aller », désactivé pendant tout chargement, faisait perdre Entrée (un formulaire au bouton d'envoi désactivé ne s'envoie pas) ; trouvé par la trace de la CI, reproduit par un test Vitest, corrigé. « Parcourir… » sous macOS : décidé avec l'utilisateur, sans autorisation ; `osascript` se déclare programme « accessory » et passe devant (AppKit), vérifié sans clic sur le Mac de la CI. Les tests `network` du lundi avaient tourné sur la 1.0.0 : verts sur `main`. La 0.1.0 et la 1.0.0rc1 retirées (« Remiser ») par l'utilisateur, guidé pas à pas. Ajoutée : E39, l'entretien après la 1.1.1. 5 192 tests Python, 183 Vitest, 72 Playwright |

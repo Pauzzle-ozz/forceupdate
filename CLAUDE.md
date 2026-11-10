@@ -11,8 +11,9 @@ fichiers, sur une forge il ouvre une PR.
 
 ## État
 
-**Livré : la 1.1.0 est sur PyPI** (session 38 ; la 1.0.0 à la session 37). Reste l'étape E38,
-l'entretien (un test instable, le clavier de « Parcourir… » sous macOS).
+**Livré : la 1.1.1 est sur PyPI** (session 39 ; la 1.1.0 à la session 38, la 1.0.0 à la 37 ; la
+0.1.0 et la 1.0.0rc1 retirées, « yank »). Reste l'étape E39, l'entretien, quand l'utilisateur le
+veut (les tests `network` du lundi, ce qu'il rapporte).
 L'avancement est dans [PLAN.md](PLAN.md) (tableau « Vue d'ensemble »). L'idée et les
 décisions prises sont dans [docs/BRIEF.md](docs/BRIEF.md).
 

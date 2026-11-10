@@ -67,7 +67,10 @@ def attempt(label: str, fill: bool) -> object:
     thread = threading.Thread(target=go, daemon=True)
     thread.start()
     time.sleep(6)
-    print(label, "au premier plan :", frontmost(), flush=True)
+    # Sous macOS, System Events nomme le programme qui a la barre de menus : le navigateur, même
+    # quand la fenêtre (osascript, « accessory ») a le clavier (E38). Seules les frappes le disent.
+    if not MAC:
+        print(label, "au premier plan :", frontmost(), flush=True)
     shot(f"{label}-ouverte")
     if MAC:
         # Sans clic (E38) : osascript s'est mis lui-même au premier plan ; les frappes vont au
