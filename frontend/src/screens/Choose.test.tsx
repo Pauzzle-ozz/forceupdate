@@ -109,6 +109,32 @@ describe('choisir un dossier ou un fichier (écran 2)', () => {
     expect(JSON.parse(String(post.init.body)).path).toBe('C:/Projets/scripts/imports.py')
   })
 
+  it('Entrée suit le chemin collé même pendant le chargement d’une liste (E38)', async () => {
+    // Les points de départ tardent (un lecteur réseau lent) : « Aller » désactivé pendant un
+    // chargement, Entrée n'envoyait plus le formulaire, sans rien dire (un test e2e l'a vu).
+    let release = () => {}
+    const slow = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    mockApi({
+      'GET /api/fs': async ({ url }) => {
+        const path = url.searchParams.get('path')
+        if (path === null) await slow
+        return folders(path)
+      },
+    })
+    const user = userEvent.setup()
+    renderApp('/choisir?mode=dossier')
+    expect(screen.getByRole('list', { name: 'Chargement du dossier' })).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Dossier ouvert'), 'C:/Projets/vulnerable{Enter}')
+    const list = await screen.findByRole('list', { name: 'Contenu de C:/Projets/vulnerable' })
+    expect(within(list).getByRole('button', { name: /requirements\.in/ })).toBeInTheDocument()
+    // Les points de départ, arrivés après, ne remplacent pas le dossier ouvert.
+    release()
+    await slow
+    expect(screen.getByRole('list', { name: 'Contenu de C:/Projets/vulnerable' })).toBeInTheDocument()
+  })
+
   it('un chemin qui n’existe pas : l’alerte, et le chemin reste éditable', async () => {
     api()
     const user = userEvent.setup()

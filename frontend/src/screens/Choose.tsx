@@ -96,7 +96,6 @@ export function Choose() {
             key={path ?? ''}
             path={path ?? ''}
             onOpen={(next) => open(next)}
-            busy={listing.isFetching}
             browse={
               <Button type="button" onClick={() => browse.mutate()} disabled={browse.isPending}>
                 {browse.isPending ? (
@@ -186,16 +185,19 @@ export function Choose() {
   )
 }
 
-/** Le chemin courant, éditable : coller un chemin et y aller ; `browse`, la fenêtre du système. */
+/**
+ * Le chemin courant, éditable : coller un chemin et y aller ; `browse`, la fenêtre du système.
+ * « Aller » n'est jamais désactivé : c'est une navigation, pas une action, et un chemin
+ * remplace celui qui charge (les squelettes disent le chargement). Désactivé, il faisait perdre
+ * Entrée sans rien dire : un formulaire dont le bouton d'envoi l'est ne s'envoie pas (E38).
+ */
 function PathField({
   path,
   onOpen,
-  busy,
   browse,
 }: {
   path: string
   onOpen: (path: string | null) => void
-  busy: boolean
   browse: ReactNode
 }) {
   const id = useId()
@@ -222,7 +224,7 @@ function PathField({
           spellCheck={false}
           aria-describedby={`${id}-aide`}
         />
-        <Button type="submit" variant="ghost" disabled={busy}>
+        <Button type="submit" variant="ghost">
           <ArrowRight aria-hidden="true" />
           Aller
         </Button>

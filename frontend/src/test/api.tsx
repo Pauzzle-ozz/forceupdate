@@ -58,7 +58,8 @@ type Reply = Handler | Status | typeof DOWN | object
 
 /**
  * Remplace `fetch` : `routes` donne, par « MÉTHODE /chemin » (sans la requête), la réponse
- * (un objet, une `Status`, `DOWN`, ou une fonction de la requête). Rend la liste des appels.
+ * (un objet, une `Status`, `DOWN`, ou une fonction de la requête, qui peut la promettre : une
+ * réponse lente). Rend la liste des appels.
  * Par défaut, `GET /api/accounts` rend les forges sans compte connecté (l'accueil les demande),
  * et `GET /api/settings` les réglages par défaut (les options d'analyse les suivent).
  */
@@ -76,7 +77,7 @@ export function mockApi(given: Record<string, Reply>) {
     const key = `${method} ${url.pathname}`
     if (!(key in routes)) throw new Error(`route non simulée : ${key}`)
     const route = routes[key]
-    const reply = typeof route === 'function' ? (route as Handler)({ url, init }) : route
+    const reply = await (typeof route === 'function' ? (route as Handler)({ url, init }) : route)
     if (reply === DOWN) throw new TypeError('Failed to fetch')
     if (reply instanceof Status) {
       return new Response(JSON.stringify(reply.body), {
